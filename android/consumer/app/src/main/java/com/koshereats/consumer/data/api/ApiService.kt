@@ -17,6 +17,9 @@ interface ApiService {
     @POST("auth/refresh")
     suspend fun refreshToken(@Header("Authorization") refreshToken: String): Response<ApiResponse<AuthResponse>>
 
+    @POST("auth/social")
+    suspend fun socialLogin(@Body request: SocialLoginRequest): Response<ApiResponse<AuthResponse>>
+
     @POST("auth/logout")
     suspend fun logout(): Response<ApiResponse<Unit>>
 

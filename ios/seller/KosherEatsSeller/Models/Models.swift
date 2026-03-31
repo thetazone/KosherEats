@@ -296,7 +296,7 @@ struct AuthResponse: Codable {
 
 // MARK: - Dashboard Stats
 
-struct DashboardStats {
+struct DashboardStats: Codable {
     var todayOrders: Int = 0
     var todayRevenue: Double = 0
     var activeOrders: Int = 0

@@ -28,6 +28,80 @@ struct SellerLoginView: View {
                             .foregroundColor(.keTextSecondary)
                     }
 
+                    // Social Login Buttons
+                    VStack(spacing: 12) {
+                        // Continue with Google
+                        Button {
+                            authVM.signInWithGoogle()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text("G")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.red)
+                                Text("Continue with Google")
+                                    .font(.system(size: 16, weight: .medium))
+                            }
+                            .foregroundColor(.keTextPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+
+                        // Continue with Apple
+                        Button {
+                            authVM.signInWithApple()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "apple.logo")
+                                    .font(.system(size: 20))
+                                Text("Continue with Apple")
+                                    .font(.system(size: 16, weight: .medium))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.black)
+                            .cornerRadius(12)
+                        }
+
+                        // Continue with Facebook
+                        Button {
+                            authVM.signInWithFacebook()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text("f")
+                                    .font(.system(size: 22, weight: .bold))
+                                Text("Continue with Facebook")
+                                    .font(.system(size: 16, weight: .medium))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color(red: 0.094, green: 0.467, blue: 0.949))
+                            .cornerRadius(12)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+
+                    // Or divider
+                    HStack(spacing: 16) {
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundColor(.keTextSecondary.opacity(0.3))
+                        Text("or")
+                            .font(.subheadline)
+                            .foregroundColor(.keTextSecondary)
+                        Rectangle()
+                            .frame(height: 1)
+                            .foregroundColor(.keTextSecondary.opacity(0.3))
+                    }
+                    .padding(.horizontal, 24)
+
                     // Form
                     VStack(spacing: 16) {
                         VStack(alignment: .leading, spacing: 8) {

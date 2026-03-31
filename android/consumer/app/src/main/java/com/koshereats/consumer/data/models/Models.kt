@@ -90,6 +90,13 @@ data class RegisterRequest(
     val phone: String,
 )
 
+data class SocialLoginRequest(
+    val provider: String,
+    val token: String,
+    @SerializedName("first_name") val firstName: String,
+    @SerializedName("last_name") val lastName: String,
+)
+
 data class AuthResponse(
     val token: String,
     @SerializedName("refresh_token") val refreshToken: String,

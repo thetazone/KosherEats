@@ -141,6 +141,16 @@ actor APIService {
         return try await request("POST", path: "/auth/login", body: body)
     }
 
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async throws -> AuthResponse {
+        let body: [String: String] = [
+            "provider": provider,
+            "token": token,
+            "first_name": firstName,
+            "last_name": lastName
+        ]
+        return try await request("POST", path: "/auth/social", body: body)
+    }
+
     // MARK: - Restaurant
 
     func getRestaurant() async throws -> Restaurant {

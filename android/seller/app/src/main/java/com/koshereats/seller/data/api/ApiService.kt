@@ -1,8 +1,17 @@
 package com.koshereats.seller.data.api
 
 import com.koshereats.seller.data.models.*
+import com.squareup.moshi.JsonClass
 import retrofit2.Response
 import retrofit2.http.*
+
+@JsonClass(generateAdapter = true)
+data class SocialLoginRequest(
+    val provider: String,
+    val token: String,
+    val firstName: String,
+    val lastName: String,
+)
 
 interface ApiService {
 
@@ -10,6 +19,9 @@ interface ApiService {
 
     @POST("api/seller/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
+
+    @POST("api/seller/auth/social")
+    suspend fun socialLogin(@Body request: SocialLoginRequest): Response<LoginResponse>
 
     @POST("api/seller/auth/logout")
     suspend fun logout(): Response<ApiResponse<Unit>>

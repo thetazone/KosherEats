@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.PrefsKeys
+import com.koshereats.seller.data.api.SocialLoginRequest
 import com.koshereats.seller.data.api.dataStore
 import com.koshereats.seller.data.models.LoginRequest
 import com.koshereats.seller.data.models.Restaurant
@@ -93,6 +94,54 @@ class AuthViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun socialLogin(provider: String, token: String, firstName: String, lastName: String) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null)
+            try {
+                val response = apiService.socialLogin(
+                    SocialLoginRequest(provider, token, firstName, lastName)
+                )
+                if (response.isSuccessful) {
+                    val body = response.body()!!
+                    context.dataStore.edit { prefs ->
+                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
+                        prefs[PrefsKeys.RESTAURANT_ID] = body.restaurant.id
+                    }
+                    _state.value = AuthState(
+                        isLoggedIn = true,
+                        isLoading = false,
+                        restaurant = body.restaurant,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = "Social login failed. Please try again.",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    error = "Connection error. Please check your network.",
+                )
+            }
+        }
+    }
+
+    fun signInWithGoogle() {
+        // TODO: Integrate Google Sign-In SDK, obtain ID token, then call:
+        // socialLogin("google", idToken, firstName, lastName)
+    }
+
+    fun signInWithApple() {
+        // TODO: Integrate Apple Sign-In (via Android credentials API), obtain token, then call:
+        // socialLogin("apple", identityToken, firstName, lastName)
+    }
+
+    fun signInWithFacebook() {
+        // TODO: Integrate Facebook Login SDK, obtain access token, then call:
+        // socialLogin("facebook", accessToken, firstName, lastName)
     }
 
     fun logout() {

@@ -1,0 +1,458 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		024629DF097B579F1BD361F1 /* SellerOrderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD06DE0EBA89049E9CB9A3CB /* SellerOrderDetailView.swift */; };
+		037867EC3E520E12117F72C1 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E946A8FFE94C5890B89B631 /* DashboardView.swift */; };
+		04E8253FB0FF7C3DC09F4B08 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAED930B2182569DE930190 /* Colors.swift */; };
+		0B06ED772B70BFFC18B26839 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 919D30E2C6D91D9EE2DA0A0C /* Assets.xcassets */; };
+		1F8732EF0F499DDCF719A2AD /* KosherEatsSellerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8058558FAF79E9BD2D46CBF /* KosherEatsSellerApp.swift */; };
+		2057A744DDDAE077FBBEC4EC /* ActiveOrderCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91864DBA42050BD4A29A19DE /* ActiveOrderCard.swift */; };
+		219E056CA053AE67106C72FC /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D2FA59443B5C673249532C2 /* AuthViewModel.swift */; };
+		291BBFDDE01DD7582F004BF5 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFF0693B261207A529D69AFB /* APIService.swift */; };
+		2CECE52169B5DA4D0943C35C /* SellerOrdersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0E527284825A85852A2D46 /* SellerOrdersView.swift */; };
+		2DD2A57FC4451D0238CE7056 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3549B7131DB87E7F1F129052 /* DashboardViewModel.swift */; };
+		2EA4931C591274D26A03B3C4 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 981B203F547FDFB3F473CB9E /* MainTabView.swift */; };
+		60AE714388B87CF358727D8D /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED058EA6182AC0662AD2596F /* Models.swift */; };
+		84A58CCA0E45D2F52D15E4CB /* MenuItemFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D763CDB81CF496A2C25C0CAB /* MenuItemFormView.swift */; };
+		8EE85D70DAA4B47941E19156 /* RestaurantSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B16B22A21A339324A6C5AC09 /* RestaurantSettingsView.swift */; };
+		91BB1E39571BDD34E54618F4 /* SellerLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E16A7159134532D8A2A50A2 /* SellerLoginView.swift */; };
+		9A0D533D0B9E6CAAF01781ED /* MenuManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAEF8A919BD60C7E6FB9AD1 /* MenuManagementView.swift */; };
+		A482B6676151016BE83C3860 /* MenuViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974440267F22F40FB9157133 /* MenuViewModel.swift */; };
+		CEA97640FD219E902637B492 /* OrdersViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BC77F71B8BE4175E230F98 /* OrdersViewModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1E946A8FFE94C5890B89B631 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		2E0E527284825A85852A2D46 /* SellerOrdersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOrdersView.swift; sourceTree = "<group>"; };
+		3549B7131DB87E7F1F129052 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		3EAED930B2182569DE930190 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		5E16A7159134532D8A2A50A2 /* SellerLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerLoginView.swift; sourceTree = "<group>"; };
+		63BC77F71B8BE4175E230F98 /* OrdersViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrdersViewModel.swift; sourceTree = "<group>"; };
+		7D2FA59443B5C673249532C2 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		91864DBA42050BD4A29A19DE /* ActiveOrderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveOrderCard.swift; sourceTree = "<group>"; };
+		919D30E2C6D91D9EE2DA0A0C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		974440267F22F40FB9157133 /* MenuViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuViewModel.swift; sourceTree = "<group>"; };
+		981B203F547FDFB3F473CB9E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		B16B22A21A339324A6C5AC09 /* RestaurantSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantSettingsView.swift; sourceTree = "<group>"; };
+		D763CDB81CF496A2C25C0CAB /* MenuItemFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemFormView.swift; sourceTree = "<group>"; };
+		D8058558FAF79E9BD2D46CBF /* KosherEatsSellerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherEatsSellerApp.swift; sourceTree = "<group>"; };
+		DD06DE0EBA89049E9CB9A3CB /* SellerOrderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOrderDetailView.swift; sourceTree = "<group>"; };
+		DFF0693B261207A529D69AFB /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		ED058EA6182AC0662AD2596F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		EEAEF8A919BD60C7E6FB9AD1 /* MenuManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuManagementView.swift; sourceTree = "<group>"; };
+		FA3A23E0A68C8DEA323B53F4 /* KosherEatsSeller.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KosherEatsSeller.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		18ED1CD0AF4D654C3A3052D3 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				981B203F547FDFB3F473CB9E /* MainTabView.swift */,
+				D8F904B52F2AA7259B18161F /* Auth */,
+				ED8B05616FBB3AEBB72EB3F2 /* Dashboard */,
+				21732CA90062D02DAA99CB6A /* Menu */,
+				460EE84AE930E935B97B94A7 /* Orders */,
+				57EEF44A473EC415647690E6 /* Settings */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		21732CA90062D02DAA99CB6A /* Menu */ = {
+			isa = PBXGroup;
+			children = (
+				D763CDB81CF496A2C25C0CAB /* MenuItemFormView.swift */,
+				EEAEF8A919BD60C7E6FB9AD1 /* MenuManagementView.swift */,
+			);
+			path = Menu;
+			sourceTree = "<group>";
+		};
+		2F5EF83485236667C376F7BE /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				3EAED930B2182569DE930190 /* Colors.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		460EE84AE930E935B97B94A7 /* Orders */ = {
+			isa = PBXGroup;
+			children = (
+				DD06DE0EBA89049E9CB9A3CB /* SellerOrderDetailView.swift */,
+				2E0E527284825A85852A2D46 /* SellerOrdersView.swift */,
+			);
+			path = Orders;
+			sourceTree = "<group>";
+		};
+		46553E7FCDBAA3E2B4913EBD /* KosherEatsSeller */ = {
+			isa = PBXGroup;
+			children = (
+				919D30E2C6D91D9EE2DA0A0C /* Assets.xcassets */,
+				D8058558FAF79E9BD2D46CBF /* KosherEatsSellerApp.swift */,
+				549112B57CFF7F35D9D9B014 /* Models */,
+				742DB04233E6D6F69ECF7135 /* Services */,
+				2F5EF83485236667C376F7BE /* Theme */,
+				A4D6928E43E9131488312D32 /* ViewModels */,
+				18ED1CD0AF4D654C3A3052D3 /* Views */,
+			);
+			path = KosherEatsSeller;
+			sourceTree = "<group>";
+		};
+		549112B57CFF7F35D9D9B014 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				ED058EA6182AC0662AD2596F /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		57EEF44A473EC415647690E6 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				B16B22A21A339324A6C5AC09 /* RestaurantSettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		742DB04233E6D6F69ECF7135 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				DFF0693B261207A529D69AFB /* APIService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		87A7175E9FA11A30DBEA955D = {
+			isa = PBXGroup;
+			children = (
+				46553E7FCDBAA3E2B4913EBD /* KosherEatsSeller */,
+				CC5FFC3BC5AAF26F7A39EE71 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A4D6928E43E9131488312D32 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				7D2FA59443B5C673249532C2 /* AuthViewModel.swift */,
+				3549B7131DB87E7F1F129052 /* DashboardViewModel.swift */,
+				974440267F22F40FB9157133 /* MenuViewModel.swift */,
+				63BC77F71B8BE4175E230F98 /* OrdersViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		CC5FFC3BC5AAF26F7A39EE71 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FA3A23E0A68C8DEA323B53F4 /* KosherEatsSeller.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		D8F904B52F2AA7259B18161F /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				5E16A7159134532D8A2A50A2 /* SellerLoginView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		ED8B05616FBB3AEBB72EB3F2 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				91864DBA42050BD4A29A19DE /* ActiveOrderCard.swift */,
+				1E946A8FFE94C5890B89B631 /* DashboardView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C970B4070B681F0D601F2FBA /* KosherEatsSeller */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 65113DAB9CCB90DBC0CF5460 /* Build configuration list for PBXNativeTarget "KosherEatsSeller" */;
+			buildPhases = (
+				9B72368F2D85F7712AB83C82 /* Sources */,
+				6059B9749995A9AD4AFC7760 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KosherEatsSeller;
+			packageProductDependencies = (
+			);
+			productName = KosherEatsSeller;
+			productReference = FA3A23E0A68C8DEA323B53F4 /* KosherEatsSeller.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B42D91444309A2EEBBFBDC2E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					C970B4070B681F0D601F2FBA = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 935C7AEA0F95ECAF32631E6B /* Build configuration list for PBXProject "KosherEatsSeller" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 87A7175E9FA11A30DBEA955D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C970B4070B681F0D601F2FBA /* KosherEatsSeller */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		6059B9749995A9AD4AFC7760 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0B06ED772B70BFFC18B26839 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9B72368F2D85F7712AB83C82 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				291BBFDDE01DD7582F004BF5 /* APIService.swift in Sources */,
+				2057A744DDDAE077FBBEC4EC /* ActiveOrderCard.swift in Sources */,
+				219E056CA053AE67106C72FC /* AuthViewModel.swift in Sources */,
+				04E8253FB0FF7C3DC09F4B08 /* Colors.swift in Sources */,
+				037867EC3E520E12117F72C1 /* DashboardView.swift in Sources */,
+				2DD2A57FC4451D0238CE7056 /* DashboardViewModel.swift in Sources */,
+				1F8732EF0F499DDCF719A2AD /* KosherEatsSellerApp.swift in Sources */,
+				2EA4931C591274D26A03B3C4 /* MainTabView.swift in Sources */,
+				84A58CCA0E45D2F52D15E4CB /* MenuItemFormView.swift in Sources */,
+				9A0D533D0B9E6CAAF01781ED /* MenuManagementView.swift in Sources */,
+				A482B6676151016BE83C3860 /* MenuViewModel.swift in Sources */,
+				60AE714388B87CF358727D8D /* Models.swift in Sources */,
+				CEA97640FD219E902637B492 /* OrdersViewModel.swift in Sources */,
+				8EE85D70DAA4B47941E19156 /* RestaurantSettingsView.swift in Sources */,
+				91BB1E39571BDD34E54618F4 /* SellerLoginView.swift in Sources */,
+				024629DF097B579F1BD361F1 /* SellerOrderDetailView.swift in Sources */,
+				2CECE52169B5DA4D0943C35C /* SellerOrdersView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		19A0F764A0D6B410F0C940E4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KosherEatsSeller/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.seller;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		63821EC923794784E1280B56 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		91500AFB0817B53EDDE45747 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = KosherEatsSeller/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.seller;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A350FE60031595E0CEC4B641 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		65113DAB9CCB90DBC0CF5460 /* Build configuration list for PBXNativeTarget "KosherEatsSeller" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				91500AFB0817B53EDDE45747 /* Debug */,
+				19A0F764A0D6B410F0C940E4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		935C7AEA0F95ECAF32631E6B /* Build configuration list for PBXProject "KosherEatsSeller" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A350FE60031595E0CEC4B641 /* Debug */,
+				63821EC923794784E1280B56 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B42D91444309A2EEBBFBDC2E /* Project object */;
+}

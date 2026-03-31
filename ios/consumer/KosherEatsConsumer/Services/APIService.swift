@@ -197,6 +197,13 @@ class APIService: ObservableObject {
         return response
     }
 
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async throws -> AuthResponse {
+        let body = SocialLoginRequest(provider: provider, token: token, firstName: firstName, lastName: lastName)
+        let response: AuthResponse = try await request(method: "POST", path: "/auth/social", body: body)
+        setToken(response.token, refresh: response.refreshToken)
+        return response
+    }
+
     func logout() {
         clearToken()
     }

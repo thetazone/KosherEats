@@ -53,6 +53,33 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let response = try await api.socialLogin(provider: provider, token: token, firstName: firstName, lastName: lastName)
+            user = response.user
+            isAuthenticated = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
+    func signInWithGoogle() {
+        errorMessage = "Google Sign-In SDK needs to be configured. Add GoogleSignIn pod and set up your OAuth client ID."
+    }
+
+    func signInWithApple() {
+        errorMessage = "Apple Sign-In needs to be configured. Enable Sign in with Apple capability in Xcode."
+    }
+
+    func signInWithFacebook() {
+        errorMessage = "Facebook Login SDK needs to be configured. Add FacebookLogin pod and set up your App ID."
+    }
+
     func logout() {
         api.logout()
         user = nil

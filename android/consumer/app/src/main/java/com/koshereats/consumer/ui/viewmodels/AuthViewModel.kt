@@ -9,6 +9,7 @@ import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.api.PrefsKeys
 import com.koshereats.consumer.data.models.LoginRequest
 import com.koshereats.consumer.data.models.RegisterRequest
+import com.koshereats.consumer.data.models.SocialLoginRequest
 import com.koshereats.consumer.data.models.User
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -167,6 +168,56 @@ class AuthViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun socialLogin(provider: String, token: String, firstName: String, lastName: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = apiService.socialLogin(
+                    SocialLoginRequest(
+                        provider = provider,
+                        token = token,
+                        firstName = firstName,
+                        lastName = lastName,
+                    )
+                )
+                if (response.isSuccessful && response.body()?.success == true) {
+                    val authData = response.body()!!.data!!
+                    saveAuth(authData.token, authData.refreshToken, authData.user.id)
+                    _uiState.update {
+                        it.copy(
+                            isLoggedIn = true,
+                            user = authData.user,
+                            isLoading = false,
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = response.body()?.error ?: "Social login failed",
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
+                }
+            }
+        }
+    }
+
+    fun signInWithGoogle() {
+        _uiState.update { it.copy(error = "Google Sign-In not yet configured") }
+    }
+
+    fun signInWithApple() {
+        _uiState.update { it.copy(error = "Apple Sign-In not yet configured") }
+    }
+
+    fun signInWithFacebook() {
+        _uiState.update { it.copy(error = "Facebook Sign-In not yet configured") }
     }
 
     fun logout() {

@@ -53,6 +53,7 @@ func main() {
 		r.Post("/register", h.Register)
 		r.Post("/login", h.Login)
 		r.Post("/refresh", h.RefreshToken)
+		r.Post("/social", h.SocialLogin)
 	})
 
 	// Restaurants

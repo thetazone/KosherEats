@@ -428,6 +428,19 @@ struct RegisterRequest: Codable {
     }
 }
 
+struct SocialLoginRequest: Codable {
+    let provider: String
+    let token: String
+    let firstName: String
+    let lastName: String
+
+    enum CodingKeys: String, CodingKey {
+        case provider, token
+        case firstName = "first_name"
+        case lastName = "last_name"
+    }
+}
+
 struct AddToCartRequest: Codable {
     let menuItemID: String
     let quantity: Int

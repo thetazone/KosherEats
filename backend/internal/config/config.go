@@ -10,6 +10,16 @@ type Config struct {
 	StripeSecretKey  string
 	StripeWebhookSec string
 	WebURL           string
+
+	// OAuth
+	GoogleClientID     string
+	GoogleClientSecret string
+	AppleClientID      string
+	AppleTeamID        string
+	AppleKeyID         string
+	ApplePrivateKey    string
+	FacebookAppID      string
+	FacebookAppSecret  string
 }
 
 func Load() *Config {
@@ -21,6 +31,15 @@ func Load() *Config {
 		StripeSecretKey:  getEnv("STRIPE_SECRET_KEY", ""),
 		StripeWebhookSec: getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		WebURL:           getEnv("WEB_URL", "http://localhost:3000"),
+
+		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		AppleClientID:      getEnv("APPLE_CLIENT_ID", ""),
+		AppleTeamID:        getEnv("APPLE_TEAM_ID", ""),
+		AppleKeyID:         getEnv("APPLE_KEY_ID", ""),
+		ApplePrivateKey:    getEnv("APPLE_PRIVATE_KEY", ""),
+		FacebookAppID:      getEnv("FACEBOOK_APP_ID", ""),
+		FacebookAppSecret:  getEnv("FACEBOOK_APP_SECRET", ""),
 	}
 }
 

@@ -36,6 +36,77 @@ struct LoginView: View {
                                 .multilineTextAlignment(.center)
                         }
 
+                        // Social Login Buttons
+                        VStack(spacing: 12) {
+                            // Continue with Apple
+                            Button {
+                                authVM.signInWithApple()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "apple.logo")
+                                        .font(.system(size: 18, weight: .medium))
+                                    Text("Continue with Apple")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .foregroundColor(.white)
+                                .background(Color.black)
+                                .cornerRadius(12)
+                            }
+
+                            // Continue with Google
+                            Button {
+                                authVM.signInWithGoogle()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Text("G")
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundColor(.red)
+                                    Text("Continue with Google")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.keTextPrimary)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.keDivider, lineWidth: 1)
+                                )
+                            }
+
+                            // Continue with Facebook
+                            Button {
+                                authVM.signInWithFacebook()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Text("f")
+                                        .font(.system(size: 20, weight: .bold))
+                                    Text("Continue with Facebook")
+                                        .font(.system(size: 16, weight: .semibold))
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .foregroundColor(.white)
+                                .background(Color(red: 0.094, green: 0.471, blue: 0.949))
+                                .cornerRadius(12)
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        // Or divider
+                        HStack {
+                            Rectangle()
+                                .fill(Color.keDivider)
+                                .frame(height: 1)
+                            Text("or")
+                                .font(.system(size: 13))
+                                .foregroundColor(.keTextMuted)
+                            Rectangle()
+                                .fill(Color.keDivider)
+                                .frame(height: 1)
+                        }
+                        .padding(.horizontal, 40)
+
                         // Form
                         VStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 6) {
@@ -88,20 +159,6 @@ struct LoginView: View {
                         .buttonStyle(KEPrimaryButtonStyle(isEnabled: isFormValid && !authVM.isLoading))
                         .disabled(!isFormValid || authVM.isLoading)
                         .padding(.horizontal)
-
-                        // Divider
-                        HStack {
-                            Rectangle()
-                                .fill(Color.keDivider)
-                                .frame(height: 1)
-                            Text("or")
-                                .font(.system(size: 13))
-                                .foregroundColor(.keTextMuted)
-                            Rectangle()
-                                .fill(Color.keDivider)
-                                .frame(height: 1)
-                        }
-                        .padding(.horizontal, 40)
 
                         // Register link
                         Button {
