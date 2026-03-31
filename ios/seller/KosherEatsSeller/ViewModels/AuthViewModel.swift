@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+import AuthenticationServices
+import GoogleSignIn
+import FacebookLogin
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -77,16 +80,84 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
+    // MARK: - Google Sign-In
+
     func signInWithGoogle() {
-        errorMessage = "Google Sign-In is not yet configured. Please add the GoogleSignIn SDK and set up your OAuth client ID."
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Unable to find root view controller."
+            return
+        }
+
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { [weak self] result, error in
+            guard let self else { return }
+            if let error {
+                Task { @MainActor in self.errorMessage = error.localizedDescription }
+                return
+            }
+            guard let idToken = result?.user.idToken?.tokenString else {
+                Task { @MainActor in self.errorMessage = "Failed to retrieve Google ID token." }
+                return
+            }
+            let firstName = result?.user.profile?.givenName ?? ""
+            let lastName = result?.user.profile?.familyName ?? ""
+            Task {
+                await self.socialLogin(provider: "google", token: idToken, firstName: firstName, lastName: lastName)
+            }
+        }
     }
+
+    // MARK: - Apple Sign-In
 
     func signInWithApple() {
-        errorMessage = "Apple Sign-In is not yet configured. Please enable Sign in with Apple capability in your project settings."
+        let provider = ASAuthorizationAppleIDProvider()
+        let request = provider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+
+        let delegate = AppleSignInDelegate { [weak self] result in
+            guard let self else { return }
+            Task { @MainActor in
+                switch result {
+                case .success(let (token, firstName, lastName)):
+                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName)
+                case .failure(let error):
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        // Retain the delegate for the duration of the auth flow
+        self.appleSignInDelegate = delegate
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = delegate
+        controller.performRequests()
     }
 
+    private var appleSignInDelegate: AppleSignInDelegate?
+
+    // MARK: - Facebook Login
+
     func signInWithFacebook() {
-        errorMessage = "Facebook Login is not yet configured. Please add the Facebook SDK and set up your App ID."
+        let loginManager = LoginManager()
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Unable to find root view controller."
+            return
+        }
+
+        loginManager.logIn(permissions: ["email", "public_profile"], from: rootVC) { [weak self] result, error in
+            guard let self else { return }
+            if let error {
+                Task { @MainActor in self.errorMessage = error.localizedDescription }
+                return
+            }
+            guard let result, !result.isCancelled, let token = result.token?.tokenString else {
+                return
+            }
+            Task {
+                await self.socialLogin(provider: "facebook", token: token, firstName: "", lastName: "")
+            }
+        }
     }
 
     func logout() {
@@ -97,5 +168,35 @@ class AuthViewModel: ObservableObject {
         }
         user = nil
         isAuthenticated = false
+    }
+}
+
+// MARK: - Apple Sign-In Delegate
+
+class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate {
+    private let completion: (Result<(String, String, String), Error>) -> Void
+
+    init(completion: @escaping (Result<(String, String, String), Error>) -> Void) {
+        self.completion = completion
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let identityTokenData = credential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            completion(.failure(NSError(domain: "AppleSignIn", code: -1,
+                                       userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve Apple identity token."])))
+            return
+        }
+
+        let firstName = credential.fullName?.givenName ?? ""
+        let lastName = credential.fullName?.familyName ?? ""
+        completion(.success((identityToken, firstName, lastName)))
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithError error: Error) {
+        completion(.failure(error))
     }
 }

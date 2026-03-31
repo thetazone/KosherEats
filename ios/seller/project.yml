@@ -6,6 +6,14 @@ options:
   xcodeVersion: "15.0"
   createIntermediateGroups: true
 
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "7.0.0"
+  FacebookSDK:
+    url: https://github.com/facebook/facebook-ios-sdk
+    from: "17.0.0"
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -29,3 +37,9 @@ targets:
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+    dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: FacebookSDK
+        product: FacebookLogin
+      - sdk: AuthenticationServices.framework

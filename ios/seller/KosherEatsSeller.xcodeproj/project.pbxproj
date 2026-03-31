@@ -23,11 +23,15 @@
 		8EE85D70DAA4B47941E19156 /* RestaurantSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B16B22A21A339324A6C5AC09 /* RestaurantSettingsView.swift */; };
 		91BB1E39571BDD34E54618F4 /* SellerLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E16A7159134532D8A2A50A2 /* SellerLoginView.swift */; };
 		9A0D533D0B9E6CAAF01781ED /* MenuManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEAEF8A919BD60C7E6FB9AD1 /* MenuManagementView.swift */; };
+		9E7D89FEEF9336700FDC5EAB /* FacebookLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 93DB56F6EB788379014A9F4A /* FacebookLogin */; };
 		A482B6676151016BE83C3860 /* MenuViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 974440267F22F40FB9157133 /* MenuViewModel.swift */; };
+		BE1382029B7EF8D4F5524DC6 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 142B193CEACAB6A23385BECA /* AuthenticationServices.framework */; };
 		CEA97640FD219E902637B492 /* OrdersViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63BC77F71B8BE4175E230F98 /* OrdersViewModel.swift */; };
+		D6C804DC7C556462C1ED5620 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = B1286DC536EB6CF6DBEC11EC /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		142B193CEACAB6A23385BECA /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		1E946A8FFE94C5890B89B631 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		2E0E527284825A85852A2D46 /* SellerOrdersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOrdersView.swift; sourceTree = "<group>"; };
 		3549B7131DB87E7F1F129052 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
@@ -37,6 +41,7 @@
 		7D2FA59443B5C673249532C2 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		91864DBA42050BD4A29A19DE /* ActiveOrderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveOrderCard.swift; sourceTree = "<group>"; };
 		919D30E2C6D91D9EE2DA0A0C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		91B70B8908364E4D69468DC9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		974440267F22F40FB9157133 /* MenuViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuViewModel.swift; sourceTree = "<group>"; };
 		981B203F547FDFB3F473CB9E /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		B16B22A21A339324A6C5AC09 /* RestaurantSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantSettingsView.swift; sourceTree = "<group>"; };
@@ -48,6 +53,19 @@
 		EEAEF8A919BD60C7E6FB9AD1 /* MenuManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuManagementView.swift; sourceTree = "<group>"; };
 		FA3A23E0A68C8DEA323B53F4 /* KosherEatsSeller.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KosherEatsSeller.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		761658742D9FBF4C6892A1BB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D6C804DC7C556462C1ED5620 /* GoogleSignIn in Frameworks */,
+				9E7D89FEEF9336700FDC5EAB /* FacebookLogin in Frameworks */,
+				BE1382029B7EF8D4F5524DC6 /* AuthenticationServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		18ED1CD0AF4D654C3A3052D3 /* Views */ = {
@@ -93,6 +111,7 @@
 			isa = PBXGroup;
 			children = (
 				919D30E2C6D91D9EE2DA0A0C /* Assets.xcassets */,
+				91B70B8908364E4D69468DC9 /* Info.plist */,
 				D8058558FAF79E9BD2D46CBF /* KosherEatsSellerApp.swift */,
 				549112B57CFF7F35D9D9B014 /* Models */,
 				742DB04233E6D6F69ECF7135 /* Services */,
@@ -109,6 +128,14 @@
 				ED058EA6182AC0662AD2596F /* Models.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		558D6FB909609A6845023AA4 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				142B193CEACAB6A23385BECA /* AuthenticationServices.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		57EEF44A473EC415647690E6 /* Settings */ = {
@@ -131,6 +158,7 @@
 			isa = PBXGroup;
 			children = (
 				46553E7FCDBAA3E2B4913EBD /* KosherEatsSeller */,
+				558D6FB909609A6845023AA4 /* Frameworks */,
 				CC5FFC3BC5AAF26F7A39EE71 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -180,6 +208,7 @@
 			buildPhases = (
 				9B72368F2D85F7712AB83C82 /* Sources */,
 				6059B9749995A9AD4AFC7760 /* Resources */,
+				761658742D9FBF4C6892A1BB /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -187,6 +216,8 @@
 			);
 			name = KosherEatsSeller;
 			packageProductDependencies = (
+				B1286DC536EB6CF6DBEC11EC /* GoogleSignIn */,
+				93DB56F6EB788379014A9F4A /* FacebookLogin */,
 			);
 			productName = KosherEatsSeller;
 			productReference = FA3A23E0A68C8DEA323B53F4 /* KosherEatsSeller.app */;
@@ -216,6 +247,10 @@
 			);
 			mainGroup = 87A7175E9FA11A30DBEA955D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3EB77C98898D5452625CBD73 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
+				81F0D31D01CDA966123316B2 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
@@ -453,6 +488,38 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3EB77C98898D5452625CBD73 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 17.0.0;
+			};
+		};
+		81F0D31D01CDA966123316B2 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		93DB56F6EB788379014A9F4A /* FacebookLogin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3EB77C98898D5452625CBD73 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
+			productName = FacebookLogin;
+		};
+		B1286DC536EB6CF6DBEC11EC /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 81F0D31D01CDA966123316B2 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B42D91444309A2EEBBFBDC2E /* Project object */;
 }

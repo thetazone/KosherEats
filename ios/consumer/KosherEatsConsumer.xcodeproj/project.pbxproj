@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		0E61857615283AC07DADE848 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532AB806EDEAECDDD14F3C5F /* LoginView.swift */; };
 		2197D6C931C2B176D90FCC59 /* OrderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF97B3F6AB7D955152EAF372 /* OrderDetailView.swift */; };
+		24EFA5C72D8A914A67E78D88 /* FacebookLogin in Frameworks */ = {isa = PBXBuildFile; productRef = A0004698BB5022DEE70FE774 /* FacebookLogin */; };
+		2C9B0CEB08358C9B4C585168 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D019A6271BC7CE6BB755EC9 /* AuthenticationServices.framework */; };
 		4C35D4FCDA42B026896DDAB0 /* RestaurantDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07ECCFC7FC5B9A1BCDD2C943 /* RestaurantDetailView.swift */; };
 		4D2B9654DE48CAD2840B5E7C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23226A6F71B3E20D4DF471BE /* Assets.xcassets */; };
 		5A233AA40D989E8385E7A23F /* OrdersListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531B67D67A3B71B2FD41B42F /* OrdersListView.swift */; };
@@ -28,8 +30,10 @@
 		CE2B434340EF7439D08837DF /* MenuItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A45B39CCD6CEDE249E944741 /* MenuItemView.swift */; };
 		D5C5123F3DC9E5E47A141EA9 /* CartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DAAA06CFF2566D78C4B2F9 /* CartView.swift */; };
 		E3CCE5D3A1D417776BC902C4 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B5AB0E0230042474E927066 /* APIService.swift */; };
+		ED3BEC64D991358290A1A843 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 5AD74E256E1AB0720076F4A5 /* GoogleSignIn */; };
 		F5B9155BDD745D05AC32D326 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673D1479DC5055E75F603745 /* AuthViewModel.swift */; };
 		FA068F0755EA02FADC9B891B /* KosherBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1511B23D9E29EA6CF456DB /* KosherBadge.swift */; };
+		FAC2051D7A23C59D1CF3EF0D /* AppleSignInHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,11 +45,14 @@
 		23226A6F71B3E20D4DF471BE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2B4DA7BEFD0546C320D82D97 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
 		40C25F8CFF903E76F83DE658 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
+		4F6CB22D2F641271C73FB7F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		531B67D67A3B71B2FD41B42F /* OrdersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrdersListView.swift; sourceTree = "<group>"; };
 		532AB806EDEAECDDD14F3C5F /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		673D1479DC5055E75F603745 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		71DAAA06CFF2566D78C4B2F9 /* CartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartView.swift; sourceTree = "<group>"; };
+		78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInHelper.swift; sourceTree = "<group>"; };
 		82571CD405C9C2761DCE5F31 /* CartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartViewModel.swift; sourceTree = "<group>"; };
+		8D019A6271BC7CE6BB755EC9 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		8D5A874B0A0C1B288256EF17 /* KosherEatsConsumerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherEatsConsumerApp.swift; sourceTree = "<group>"; };
 		90906256C000F3E7B2857B94 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		A45B39CCD6CEDE249E944741 /* MenuItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemView.swift; sourceTree = "<group>"; };
@@ -58,6 +65,19 @@
 		F940AFDF40BDC9601E6AD669 /* RestaurantCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantCardView.swift; sourceTree = "<group>"; };
 		FF97B3F6AB7D955152EAF372 /* OrderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderDetailView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F5CD473AEA94D94412FABDA6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ED3BEC64D991358290A1A843 /* GoogleSignIn in Frameworks */,
+				24EFA5C72D8A914A67E78D88 /* FacebookLogin in Frameworks */,
+				2C9B0CEB08358C9B4C585168 /* AuthenticationServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		1A0A0226E549F02D551039C7 /* Profile */ = {
@@ -96,6 +116,14 @@
 				D4EA3F0BB7FA0256BA619A66 /* RestaurantViewModel.swift */,
 			);
 			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		466A13C43EBC5A82C80EC8E5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8D019A6271BC7CE6BB755EC9 /* AuthenticationServices.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		6CE51596C2AE52E830F4A30D /* Models */ = {
@@ -143,6 +171,7 @@
 			isa = PBXGroup;
 			children = (
 				23226A6F71B3E20D4DF471BE /* Assets.xcassets */,
+				4F6CB22D2F641271C73FB7F9 /* Info.plist */,
 				8D5A874B0A0C1B288256EF17 /* KosherEatsConsumerApp.swift */,
 				6CE51596C2AE52E830F4A30D /* Models */,
 				E82223B434C6EEA291CCFD6F /* Services */,
@@ -165,6 +194,7 @@
 			isa = PBXGroup;
 			children = (
 				BDF008E4DD389E6BCC7C9DFA /* KosherEatsConsumer */,
+				466A13C43EBC5A82C80EC8E5 /* Frameworks */,
 				E201F07FE0A15061E6799F23 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -198,6 +228,7 @@
 			isa = PBXGroup;
 			children = (
 				0B5AB0E0230042474E927066 /* APIService.swift */,
+				78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -211,6 +242,7 @@
 			buildPhases = (
 				7ADD4732DCAB095AA91E77E8 /* Sources */,
 				47EB3E7150A0E2966504EB3E /* Resources */,
+				F5CD473AEA94D94412FABDA6 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -218,6 +250,8 @@
 			);
 			name = KosherEatsConsumer;
 			packageProductDependencies = (
+				5AD74E256E1AB0720076F4A5 /* GoogleSignIn */,
+				A0004698BB5022DEE70FE774 /* FacebookLogin */,
 			);
 			productName = KosherEatsConsumer;
 			productReference = E3A03C6943E8EF5A65A550EC /* KosherEatsConsumer.app */;
@@ -247,6 +281,10 @@
 			);
 			mainGroup = D04D4A89F30690F97079D83B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F851B7641E1069CBC077C6C2 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
+				709F08EE7EE55B617A14AF78 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
@@ -273,6 +311,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E3CCE5D3A1D417776BC902C4 /* APIService.swift in Sources */,
+				FAC2051D7A23C59D1CF3EF0D /* AppleSignInHelper.swift in Sources */,
 				F5B9155BDD745D05AC32D326 /* AuthViewModel.swift in Sources */,
 				D5C5123F3DC9E5E47A141EA9 /* CartView.swift in Sources */,
 				73E74372318EDDCB77158815 /* CartViewModel.swift in Sources */,
@@ -491,6 +530,38 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		709F08EE7EE55B617A14AF78 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+		F851B7641E1069CBC077C6C2 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 17.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5AD74E256E1AB0720076F4A5 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 709F08EE7EE55B617A14AF78 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		A0004698BB5022DEE70FE774 /* FacebookLogin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F851B7641E1069CBC077C6C2 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
+			productName = FacebookLogin;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B0528D8BBC96451668259EF4 /* Project object */;
 }

@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+import AuthenticationServices
+import GoogleSignIn
+import FacebookLogin
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -9,6 +12,7 @@ class AuthViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let api = APIService.shared
+    private var appleSignInDelegate: AppleSignInDelegate?
 
     init() {
         isAuthenticated = api.isAuthenticated
@@ -68,19 +72,92 @@ class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
-    func signInWithGoogle() {
-        errorMessage = "Google Sign-In SDK needs to be configured. Add GoogleSignIn pod and set up your OAuth client ID."
-    }
+    // MARK: - Apple Sign-In
 
     func signInWithApple() {
-        errorMessage = "Apple Sign-In needs to be configured. Enable Sign in with Apple capability in Xcode."
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.email, .fullName]
+
+        appleSignInDelegate = AppleSignInDelegate(
+            onSuccess: { [weak self] token, firstName, lastName in
+                guard let self else { return }
+                Task { @MainActor in
+                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName)
+                }
+            },
+            onError: { [weak self] message in
+                Task { @MainActor in
+                    self?.errorMessage = message
+                }
+            }
+        )
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = appleSignInDelegate
+        controller.performRequests()
     }
 
+    // MARK: - Google Sign-In
+
+    func signInWithGoogle() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Cannot find root view controller"
+            return
+        }
+
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { [weak self] result, error in
+            guard let self else { return }
+            if let error = error {
+                Task { @MainActor in
+                    self.errorMessage = error.localizedDescription
+                }
+                return
+            }
+            guard let idToken = result?.user.idToken?.tokenString else {
+                Task { @MainActor in
+                    self.errorMessage = "Failed to get Google ID token"
+                }
+                return
+            }
+            let firstName = result?.user.profile?.givenName ?? ""
+            let lastName = result?.user.profile?.familyName ?? ""
+            Task { @MainActor in
+                await self.socialLogin(provider: "google", token: idToken, firstName: firstName, lastName: lastName)
+            }
+        }
+    }
+
+    // MARK: - Facebook Sign-In
+
     func signInWithFacebook() {
-        errorMessage = "Facebook Login SDK needs to be configured. Add FacebookLogin pod and set up your App ID."
+        let loginManager = LoginManager()
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Cannot find root view controller"
+            return
+        }
+
+        loginManager.logIn(permissions: ["email", "public_profile"], from: rootVC) { [weak self] result, error in
+            guard let self else { return }
+            if let error = error {
+                Task { @MainActor in
+                    self.errorMessage = error.localizedDescription
+                }
+                return
+            }
+            guard let result = result, !result.isCancelled, let token = result.token?.tokenString else {
+                return
+            }
+            Task { @MainActor in
+                await self.socialLogin(provider: "facebook", token: token, firstName: "", lastName: "")
+            }
+        }
     }
 
     func logout() {
+        GIDSignIn.sharedInstance.signOut()
+        LoginManager().logOut()
         api.logout()
         user = nil
         isAuthenticated = false
