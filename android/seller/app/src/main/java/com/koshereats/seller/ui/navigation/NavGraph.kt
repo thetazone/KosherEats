@@ -18,6 +18,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -71,7 +72,7 @@ fun NavGraph() {
                 NavigationBar(
                     containerColor = BackgroundDark,
                     contentColor = TextWhite,
-                    tonalElevation = androidx.compose.ui.unit.dp.times(0),
+                    tonalElevation = 0.dp,
                 ) {
                     Screen.bottomNavItems.forEach { screen ->
                         val selected = currentDestination?.hierarchy?.any {

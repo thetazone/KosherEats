@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -200,7 +200,7 @@ fun SellerLoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                HorizontalDivider(
+                Divider(
                     modifier = Modifier.weight(1f),
                     color = DividerColor,
                 )
@@ -210,7 +210,7 @@ fun SellerLoginScreen(
                     color = TextMuted,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                HorizontalDivider(
+                Divider(
                     modifier = Modifier.weight(1f),
                     color = DividerColor,
                 )

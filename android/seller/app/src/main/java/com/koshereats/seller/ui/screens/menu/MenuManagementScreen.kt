@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -56,6 +57,7 @@ import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.viewmodels.MenuViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuManagementScreen(
     onAddItem: () -> Unit,
@@ -128,8 +130,6 @@ fun MenuManagementScreen(
                         border = FilterChipDefaults.filterChipBorder(
                             borderColor = SurfaceDark,
                             selectedBorderColor = Orange.copy(alpha = 0.5f),
-                            enabled = true,
-                            selected = state.selectedCategory == category,
                         ),
                     )
                 }

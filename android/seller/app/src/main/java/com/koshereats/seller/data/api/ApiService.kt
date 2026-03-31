@@ -17,38 +17,38 @@ interface ApiService {
 
     // --- Auth ---
 
-    @POST("api/seller/auth/login")
+    @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
-    @POST("api/seller/auth/social")
+    @POST("auth/social")
     suspend fun socialLogin(@Body request: SocialLoginRequest): Response<LoginResponse>
 
-    @POST("api/seller/auth/logout")
-    suspend fun logout(): Response<ApiResponse<Unit>>
+    @POST("auth/logout")
+    suspend fun logout(): Response<Unit>
 
     // --- Dashboard ---
 
-    @GET("api/seller/dashboard/stats")
+    @GET("seller/dashboard/stats")
     suspend fun getDashboardStats(): Response<ApiResponse<DashboardStats>>
 
-    @GET("api/seller/dashboard/active-orders")
+    @GET("seller/dashboard/active-orders")
     suspend fun getActiveOrders(): Response<ApiResponse<List<Order>>>
 
     // --- Orders ---
 
-    @GET("api/seller/orders")
+    @GET("seller/orders")
     suspend fun getOrders(
         @Query("status") status: String? = null,
         @Query("page") page: Int = 1,
         @Query("limit") limit: Int = 20,
     ): Response<ApiResponse<List<Order>>>
 
-    @GET("api/seller/orders/{orderId}")
+    @GET("seller/orders/{orderId}")
     suspend fun getOrderDetail(
         @Path("orderId") orderId: String,
     ): Response<ApiResponse<Order>>
 
-    @PUT("api/seller/orders/{orderId}/status")
+    @PUT("seller/orders/{orderId}/status")
     suspend fun updateOrderStatus(
         @Path("orderId") orderId: String,
         @Body request: UpdateOrderStatusRequest,
@@ -56,33 +56,33 @@ interface ApiService {
 
     // --- Menu ---
 
-    @GET("api/seller/menu")
+    @GET("seller/menu")
     suspend fun getMenuItems(
         @Query("category") category: String? = null,
     ): Response<ApiResponse<List<MenuItem>>>
 
-    @GET("api/seller/menu/{itemId}")
+    @GET("seller/menu/{itemId}")
     suspend fun getMenuItem(
         @Path("itemId") itemId: String,
     ): Response<ApiResponse<MenuItem>>
 
-    @POST("api/seller/menu")
+    @POST("seller/menu")
     suspend fun createMenuItem(
         @Body item: UpdateMenuItemRequest,
     ): Response<ApiResponse<MenuItem>>
 
-    @PUT("api/seller/menu/{itemId}")
+    @PUT("seller/menu/{itemId}")
     suspend fun updateMenuItem(
         @Path("itemId") itemId: String,
         @Body item: UpdateMenuItemRequest,
     ): Response<ApiResponse<MenuItem>>
 
-    @DELETE("api/seller/menu/{itemId}")
+    @DELETE("seller/menu/{itemId}")
     suspend fun deleteMenuItem(
         @Path("itemId") itemId: String,
     ): Response<ApiResponse<Unit>>
 
-    @PUT("api/seller/menu/{itemId}/availability")
+    @PUT("seller/menu/{itemId}/availability")
     suspend fun toggleMenuItemAvailability(
         @Path("itemId") itemId: String,
         @Body body: Map<String, Boolean>,
@@ -90,14 +90,14 @@ interface ApiService {
 
     // --- Restaurant Settings ---
 
-    @GET("api/seller/restaurant")
+    @GET("seller/restaurant")
     suspend fun getRestaurant(): Response<ApiResponse<Restaurant>>
 
-    @PUT("api/seller/restaurant")
+    @PUT("seller/restaurant")
     suspend fun updateRestaurant(
         @Body restaurant: Map<String, @JvmSuppressWildcards Any>,
     ): Response<ApiResponse<Restaurant>>
 
-    @PUT("api/seller/restaurant/toggle-status")
+    @PUT("seller/restaurant/toggle-status")
     suspend fun toggleRestaurantStatus(): Response<ApiResponse<Restaurant>>
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.viewmodels.OrdersViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SellerOrdersScreen(
     onOrderClick: (String) -> Unit,
@@ -106,8 +108,6 @@ fun SellerOrdersScreen(
                     border = FilterChipDefaults.filterChipBorder(
                         borderColor = SurfaceDark,
                         selectedBorderColor = Orange.copy(alpha = 0.5f),
-                        enabled = true,
-                        selected = state.selectedFilter == status,
                     ),
                 )
             }

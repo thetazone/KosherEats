@@ -44,21 +44,7 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             val token = context.dataStore.data.map { it[PrefsKeys.AUTH_TOKEN] }.first()
             if (token != null) {
-                try {
-                    val response = apiService.getRestaurant()
-                    if (response.isSuccessful && response.body()?.success == true) {
-                        _state.value = AuthState(
-                            isLoggedIn = true,
-                            isLoading = false,
-                            restaurant = response.body()?.data,
-                        )
-                    } else {
-                        clearAuth()
-                    }
-                } catch (e: Exception) {
-                    // Token exists but can't verify -- allow offline mode
-                    _state.value = AuthState(isLoggedIn = true, isLoading = false)
-                }
+                _state.value = AuthState(isLoggedIn = true, isLoading = false)
             } else {
                 _state.value = AuthState(isLoggedIn = false, isLoading = false)
             }
@@ -72,14 +58,20 @@ class AuthViewModel @Inject constructor(
                 val response = apiService.login(LoginRequest(email, password))
                 if (response.isSuccessful) {
                     val body = response.body()!!
+                    // Check role is seller
+                    if (body.user.role != "seller" && body.user.role != "admin") {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = "This account is not a seller account.",
+                        )
+                        return@launch
+                    }
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.RESTAURANT_ID] = body.restaurant.id
                     }
                     _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
-                        restaurant = body.restaurant,
                     )
                 } else {
                     _state.value = _state.value.copy(
@@ -90,7 +82,7 @@ class AuthViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Connection error. Please check your network.",
+                    error = "Connection error: ${e.message}",
                 )
             }
         }
@@ -107,12 +99,10 @@ class AuthViewModel @Inject constructor(
                     val body = response.body()!!
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.RESTAURANT_ID] = body.restaurant.id
                     }
                     _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
-                        restaurant = body.restaurant,
                     )
                 } else {
                     _state.value = _state.value.copy(

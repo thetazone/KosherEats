@@ -124,9 +124,21 @@ data class LoginRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class User(
+    val id: String = "",
+    val email: String = "",
+    @Json(name = "first_name") val firstName: String = "",
+    @Json(name = "last_name") val lastName: String = "",
+    val phone: String = "",
+    val role: String = "",
+    @Json(name = "avatar_url") val avatarUrl: String = "",
+)
+
+@JsonClass(generateAdapter = true)
 data class LoginResponse(
     val token: String,
-    val restaurant: Restaurant,
+    @Json(name = "refresh_token") val refreshToken: String = "",
+    val user: User,
 )
 
 // --- API Responses ---
