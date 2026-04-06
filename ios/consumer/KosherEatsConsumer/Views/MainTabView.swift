@@ -3,6 +3,8 @@ import SwiftUI
 struct MainTabView: View {
     @EnvironmentObject var cartVM: CartViewModel
     @State private var selectedTab = 0
+    @State private var pendingTrackingOrderId: String?
+    @State private var pendingDetailOrderId: String?
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -42,6 +44,24 @@ struct MainTabView: View {
             if !cartVM.isEmpty {
                 CartFloatingButton(itemCount: cartVM.itemCount)
                     .padding(.bottom, 56)
+            }
+        }
+        // App-wide navigation event listeners. Checkout completion and push
+        // notification taps all land here — this is the one place in the app
+        // that owns cross-tab navigation.
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToOrdersTab)) { _ in
+            selectedTab = 2
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderTracking)) { note in
+            if let id = note.userInfo?["order_id"] as? String {
+                selectedTab = 2
+                pendingTrackingOrderId = id
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderDetail)) { note in
+            if let id = note.userInfo?["order_id"] as? String {
+                selectedTab = 2
+                pendingDetailOrderId = id
             }
         }
     }

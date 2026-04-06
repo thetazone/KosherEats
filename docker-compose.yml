@@ -7,6 +7,12 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    environment:
+      # Inside the docker network, the DB and Redis live at their service
+      # names, not localhost. These override whatever is in .env so local
+      # `go run` (which uses localhost) and `docker compose` both work.
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/koshereats?sslmode=disable
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy

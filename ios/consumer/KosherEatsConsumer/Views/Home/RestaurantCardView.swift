@@ -5,16 +5,9 @@ struct RestaurantCardView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            // Image placeholder
-            ZStack {
-                RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
-                    .fill(Color.keCardHover)
-                    .frame(width: 90, height: 90)
-
-                Image(systemName: "fork.knife")
-                    .font(.system(size: 28))
-                    .foregroundColor(.kePrimary.opacity(0.6))
-            }
+            RemoteImage(url: restaurant.imageURL)
+                .frame(width: 90, height: 90)
+                .cornerRadius(Theme.cornerRadiusMedium)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {

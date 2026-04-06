@@ -60,7 +60,7 @@ struct ActiveOrderCard: View {
 
                 Spacer()
 
-                Text(String(format: "$%.2f", order.total))
+                Text(order.totalFormatted)
                     .font(.headline)
                     .foregroundColor(.kePrimary)
             }

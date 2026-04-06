@@ -18,7 +18,24 @@ class AuthViewModel: ObservableObject {
         if let token = UserDefaults.standard.string(forKey: tokenKey) {
             Task {
                 await APIService.shared.setToken(token)
-                self.isAuthenticated = true
+                // Verify the stored token is still valid before showing the
+                // main tabs. If it 401s (expired), clear it and drop back to
+                // the login screen — otherwise the first seller API call on
+                // the home tab would show "session expired" with no clear
+                // path back to the login form.
+                do {
+                    _ = try await APIService.shared.listRestaurants()
+                    self.isAuthenticated = true
+                } catch APIError.unauthorized {
+                    UserDefaults.standard.removeObject(forKey: self.tokenKey)
+                    UserDefaults.standard.removeObject(forKey: self.refreshTokenKey)
+                    await APIService.shared.setToken(nil)
+                    self.isAuthenticated = false
+                } catch {
+                    // Network / server errors: optimistically stay logged in,
+                    // the user can retry once connectivity comes back.
+                    self.isAuthenticated = true
+                }
             }
         }
     }
@@ -42,6 +59,11 @@ class AuthViewModel: ObservableObject {
 
             self.user = response.user
             self.isAuthenticated = true
+        } catch APIError.unauthorized {
+            // 401 on /auth/login means the credentials didn't match — NOT an
+            // expired session. The generic .unauthorized message ("Session
+            // expired…") reads as a bug to anyone who hasn't logged in yet.
+            errorMessage = "Invalid email or password."
         } catch {
             errorMessage = error.localizedDescription
         }

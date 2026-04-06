@@ -1,0 +1,72 @@
+package handlers
+
+import (
+	"net/http"
+	"strings"
+)
+
+// Upload presigning. Clients (courier iOS for docs, consumer/seller for photos)
+// call this to get a short-lived PUT URL, then upload directly to S3. The
+// file never passes through our Go server.
+//
+// Accepted kinds are allowlisted so a malicious client can't use this to
+// write arbitrary keys.
+
+type PresignRequest struct {
+	Kind        string `json:"kind"`         // "courier/license", "courier/insurance", etc.
+	ContentType string `json:"content_type"` // "image/jpeg", "image/png", "image/heic"
+}
+
+var allowedUploadKinds = map[string]bool{
+	"courier/license":      true,
+	"courier/insurance":    true,
+	"courier/registration": true,
+	"courier/profile":      true,
+	"restaurant/cover":     true,
+	"restaurant/logo":      true,
+	"menu_item":            true,
+}
+
+var allowedContentTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/jpg":  true,
+	"image/png":  true,
+	"image/heic": true,
+}
+
+func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+
+	var req PresignRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if !allowedUploadKinds[req.Kind] {
+		writeError(w, http.StatusBadRequest, "unsupported upload kind")
+		return
+	}
+	if !allowedContentTypes[strings.ToLower(req.ContentType)] {
+		writeError(w, http.StatusBadRequest, "unsupported content type")
+		return
+	}
+
+	// Role-gate courier uploads — only couriers can upload to courier/* keys.
+	if strings.HasPrefix(req.Kind, "courier/") && user["role"] != "courier" && user["role"] != "admin" {
+		writeError(w, http.StatusForbidden, "courier role required for this upload kind")
+		return
+	}
+	if strings.HasPrefix(req.Kind, "restaurant/") && user["role"] != "seller" && user["role"] != "admin" {
+		writeError(w, http.StatusForbidden, "seller role required for this upload kind")
+		return
+	}
+
+	result, err := h.storage.Presign(r.Context(), user["user_id"], req.Kind, req.ContentType)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to presign upload")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}

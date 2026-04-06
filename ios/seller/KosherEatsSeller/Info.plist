@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>KosherEats Seller</string>
+	<string>KE Seller</string>
 	<key>CFBundleDisplayName</key>
 	<string>KosherEats Seller</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

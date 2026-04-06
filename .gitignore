@@ -18,12 +18,16 @@ ios/**/DerivedData/
 ios/**/*.xcodeproj/project.xcworkspace/
 ios/**/Pods/
 ios/**/.build/
+ios/**/build/
 
 # Android
 android/**/build/
 android/**/.gradle/
 android/**/local.properties
+android/**/google-services*.json
+google-services*.json
 android/**/*.iml
+firebase-adminsdk*.json
 
 # IDE
 .idea/

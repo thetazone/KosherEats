@@ -1,0 +1,45 @@
+# Fly.io config for the KosherEats Go API.
+# Deploy with:
+#   cd backend && fly launch --no-deploy         # first time only
+#   fly secrets set $(cat ../.env.production)    # set env vars
+#   fly deploy
+#
+# Postgres is provisioned separately:
+#   fly postgres create --name koshereats-db --region iad
+#   fly postgres attach koshereats-db            # auto-sets DATABASE_URL
+#
+# Redis (optional, for future caching):
+#   fly redis create --name koshereats-redis --region iad
+#   fly secrets set REDIS_URL=<output of `fly redis status koshereats-redis`>
+
+app = "koshereats-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  PORT = "8080"
+  APNS_BUNDLE_PREFIX = "com.koshereats"
+  APNS_PRODUCTION = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

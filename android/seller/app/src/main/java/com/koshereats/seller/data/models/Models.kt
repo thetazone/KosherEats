@@ -144,13 +144,6 @@ data class LoginResponse(
 // --- API Responses ---
 
 @JsonClass(generateAdapter = true)
-data class ApiResponse<T>(
-    val success: Boolean,
-    val data: T? = null,
-    val message: String? = null,
-)
-
-@JsonClass(generateAdapter = true)
 data class DashboardStats(
     @Json(name = "total_orders_today") val totalOrdersToday: Int = 0,
     @Json(name = "revenue_today") val revenueToday: Double = 0.0,
@@ -158,6 +151,15 @@ data class DashboardStats(
     @Json(name = "average_prep_time") val averagePrepTime: Int = 0,
     @Json(name = "total_orders_week") val totalOrdersWeek: Int = 0,
     @Json(name = "revenue_week") val revenueWeek: Double = 0.0,
+)
+
+// --- Device tokens (push notifications) ---
+
+@JsonClass(generateAdapter = true)
+data class RegisterDeviceRequest(
+    val token: String,
+    val platform: String = "android",
+    val app: String = "seller",
 )
 
 @JsonClass(generateAdapter = true)

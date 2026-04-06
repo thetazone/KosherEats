@@ -14,8 +14,19 @@ struct MenuManagementView: View {
                 Color.keBackground.ignoresSafeArea()
 
                 if vm.isLoading && vm.categories.isEmpty {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .kePrimary))
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            ForEach(0..<5, id: \.self) { _ in
+                                MenuItemRowSkeleton()
+                            }
+                        }
+                        .padding()
+                    }
+                } else if let err = vm.errorMessage, vm.categories.isEmpty {
+                    ErrorStateView(
+                        message: err,
+                        onRetry: { Task { await vm.load() } },
+                    )
                 } else if vm.categories.isEmpty {
                     emptyState
                 } else {
@@ -47,6 +58,7 @@ struct MenuManagementView: View {
             }
             .searchable(text: $searchText, prompt: "Search menu items")
             .refreshable {
+                Haptics.impact(.light)
                 await vm.load()
             }
             .task {
@@ -55,13 +67,14 @@ struct MenuManagementView: View {
             .sheet(isPresented: $showAddItem) {
                 MenuItemFormView(
                     categories: vm.categories,
-                    onSave: { cat, name, desc, price, meat, dairy, pareve in
+                    onSave: { cat, name, desc, price, imageUrl, meat, dairy, pareve in
                         Task {
                             let success = await vm.createItem(
                                 categoryId: cat,
                                 name: name,
                                 description: desc,
                                 price: price,
+                                imageUrl: imageUrl,
                                 isMeat: meat,
                                 isDairy: dairy,
                                 isPareve: pareve
@@ -75,7 +88,7 @@ struct MenuManagementView: View {
                 MenuItemFormView(
                     categories: vm.categories,
                     existingItem: item,
-                    onSave: { cat, name, desc, price, meat, dairy, pareve in
+                    onSave: { cat, name, desc, price, imageUrl, meat, dairy, pareve in
                         Task {
                             let success = await vm.updateItem(
                                 id: item.id,
@@ -83,6 +96,7 @@ struct MenuManagementView: View {
                                 name: name,
                                 description: desc,
                                 price: price,
+                                imageUrl: imageUrl,
                                 isMeat: meat,
                                 isDairy: dairy,
                                 isPareve: pareve,

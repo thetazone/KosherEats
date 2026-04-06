@@ -3,6 +3,11 @@ import SwiftUI
 struct OrdersListView: View {
     @StateObject private var vm = OrderViewModel()
     @State private var selectedSegment = 0
+    // Deep-link state: when a navigation notification arrives, we set one
+    // of these so a NavigationLink(isActive:) pushes the right screen.
+    @State private var deepLinkOrderId: String?
+    @State private var showTrackingForDeepLink = false
+    @State private var showDetailForDeepLink = false
 
     var body: some View {
         NavigationStack {
@@ -20,11 +25,20 @@ struct OrdersListView: View {
 
                     let displayOrders = selectedSegment == 0 ? vm.activeOrders : vm.pastOrders
 
-                    if vm.isLoading {
-                        Spacer()
-                        ProgressView()
-                            .tint(.kePrimary)
-                        Spacer()
+                    if vm.isLoading && displayOrders.isEmpty {
+                        ScrollView(showsIndicators: false) {
+                            LazyVStack(spacing: 12) {
+                                ForEach(0..<3, id: \.self) { _ in
+                                    OrderRowSkeleton()
+                                }
+                            }
+                            .padding()
+                        }
+                    } else if let err = vm.errorMessage, vm.orders.isEmpty {
+                        ErrorStateView(
+                            message: err,
+                            onRetry: { Task { await vm.loadOrders() } },
+                        )
                     } else if displayOrders.isEmpty {
                         Spacer()
                         VStack(spacing: 12) {
@@ -61,7 +75,31 @@ struct OrdersListView: View {
                 await vm.loadOrders()
             }
             .refreshable {
+                Haptics.impact(.light)
                 await vm.loadOrders()
+            }
+            // Deep-link hooks for "track your order" button and push taps.
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderTracking)) { note in
+                if let id = note.userInfo?["order_id"] as? String {
+                    deepLinkOrderId = id
+                    showTrackingForDeepLink = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderDetail)) { note in
+                if let id = note.userInfo?["order_id"] as? String {
+                    deepLinkOrderId = id
+                    showDetailForDeepLink = true
+                }
+            }
+            .navigationDestination(isPresented: $showTrackingForDeepLink) {
+                if let id = deepLinkOrderId {
+                    OrderTrackingView(orderId: id)
+                }
+            }
+            .navigationDestination(isPresented: $showDetailForDeepLink) {
+                if let id = deepLinkOrderId {
+                    OrderDetailView(orderID: id)
+                }
             }
         }
     }

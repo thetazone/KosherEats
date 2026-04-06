@@ -28,7 +28,8 @@ class MenuViewModel: ObservableObject {
         categoryId: String,
         name: String,
         description: String,
-        price: Double,
+        price: Int, // cents
+        imageUrl: String,
         isMeat: Bool,
         isDairy: Bool,
         isPareve: Bool
@@ -41,7 +42,7 @@ class MenuViewModel: ObservableObject {
             name: name,
             description: description,
             price: price,
-            imageUrl: nil,
+            imageUrl: imageUrl,
             isMeat: isMeat,
             isDairy: isDairy,
             isPareve: isPareve,
@@ -65,7 +66,8 @@ class MenuViewModel: ObservableObject {
         categoryId: String,
         name: String,
         description: String,
-        price: Double,
+        price: Int, // cents
+        imageUrl: String,
         isMeat: Bool,
         isDairy: Bool,
         isPareve: Bool,
@@ -79,7 +81,7 @@ class MenuViewModel: ObservableObject {
             name: name,
             description: description,
             price: price,
-            imageUrl: nil,
+            imageUrl: imageUrl,
             isMeat: isMeat,
             isDairy: isDairy,
             isPareve: isPareve,

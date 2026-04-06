@@ -1,9 +1,11 @@
 import SwiftUI
+import PhotosUI
 
 struct MenuItemFormView: View {
     let categories: [MenuCategory]
     var existingItem: MenuItem?
-    let onSave: (String, String, String, Double, Bool, Bool, Bool) -> Void
+    // Args: categoryId, name, description, priceCents, imageUrl, isMeat, isDairy, isPareve
+    let onSave: (String, String, String, Int, String, Bool, Bool, Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -15,6 +17,13 @@ struct MenuItemFormView: View {
     @State private var isDairy = false
     @State private var isPareve = true
 
+    // Image upload state
+    @State private var imageUrl: String = ""
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var pickedUIImage: UIImage?
+    @State private var isUploading = false
+    @State private var uploadError: String?
+
     var isEditing: Bool { existingItem != nil }
 
     var body: some View {
@@ -24,6 +33,12 @@ struct MenuItemFormView: View {
 
                 ScrollView {
                     VStack(spacing: 24) {
+                        // Photo — tap to pick from library, uploaded via
+                        // UploadService to S3 (or stubbed in dev).
+                        formSection("Photo") {
+                            photoPicker
+                        }
+
                         // Basic Info
                         formSection("Basic Info") {
                             formField("Item Name", text: $name, placeholder: "e.g., Falafel Plate")
@@ -101,8 +116,10 @@ struct MenuItemFormView: View {
 
                         // Save Button
                         Button {
-                            let price = Double(priceText) ?? 0
-                            onSave(selectedCategoryId, name, description, price, isMeat, isDairy, isPareve)
+                            // priceText is dollars as typed; convert to cents.
+                            let priceCents = Int(round((Double(priceText) ?? 0) * 100))
+                            Haptics.impact(.light)
+                            onSave(selectedCategoryId, name, description, priceCents, imageUrl, isMeat, isDairy, isPareve)
                         } label: {
                             Text(isEditing ? "Update Item" : "Add Item")
                                 .font(.headline)
@@ -132,14 +149,18 @@ struct MenuItemFormView: View {
                 if let item = existingItem {
                     name = item.name
                     description = item.description
-                    priceText = String(format: "%.2f", item.price)
+                    priceText = String(format: "%.2f", Double(item.price) / 100)
                     selectedCategoryId = item.categoryId
                     isMeat = item.isMeat
                     isDairy = item.isDairy
                     isPareve = item.isPareve
+                    imageUrl = item.imageUrl ?? ""
                 } else if let first = categories.first {
                     selectedCategoryId = first.id
                 }
+            }
+            .onChange(of: pickerItem) { _, newItem in
+                Task { await loadAndUpload(newItem) }
             }
         }
     }
@@ -210,6 +231,83 @@ struct MenuItemFormView: View {
         !name.isEmpty &&
         !selectedCategoryId.isEmpty &&
         (Double(priceText) ?? 0) > 0 &&
-        (isMeat || isDairy || isPareve)
+        (isMeat || isDairy || isPareve) &&
+        !isUploading
+    }
+
+    // MARK: - Photo picker
+
+    /// Photo tile at the top of the form. Tapping opens PhotosPicker; once a
+    /// photo is selected it's uploaded via UploadService and the returned
+    /// S3 URL is stashed in `imageUrl` to be sent on save.
+    private var photoPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.keCard)
+                        .frame(height: 180)
+
+                    if let pickedUIImage = pickedUIImage {
+                        Image(uiImage: pickedUIImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else if !imageUrl.isEmpty {
+                        // Editing an existing item — show the already-saved image.
+                        RemoteImage(url: imageUrl)
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        VStack(spacing: 8) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.kePrimary)
+                            Text("Add photo")
+                                .font(.subheadline)
+                                .foregroundColor(.keTextSecondary)
+                        }
+                    }
+
+                    if isUploading {
+                        ZStack {
+                            Color.black.opacity(0.55)
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .disabled(isUploading)
+
+            if let err = uploadError {
+                Text(err).font(.caption2).foregroundColor(.keError)
+            }
+        }
+    }
+
+    /// Loads the selected photo, compresses to JPEG, uploads via UploadService,
+    /// and stores the resulting public URL. Errors are surfaced inline so the
+    /// seller knows the image won't save.
+    private func loadAndUpload(_ item: PhotosPickerItem?) async {
+        guard let item = item else { return }
+        isUploading = true
+        uploadError = nil
+        defer { isUploading = false }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let uiImage = UIImage(data: data) else {
+                throw NSError(domain: "photo", code: 0, userInfo: [NSLocalizedDescriptionKey: "Couldn't read photo"])
+            }
+            pickedUIImage = uiImage
+            let publicURL = try await UploadService.shared.uploadImage(uiImage, kind: .menuItem)
+            imageUrl = publicURL
+        } catch {
+            uploadError = error.localizedDescription
+        }
     }
 }

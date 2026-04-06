@@ -1,4 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Base English strings for the seller app. Only keys that exist on iOS
+  with he/yi translations are mirrored here; the rest of the UI continues
+  to use inline strings until gradually migrated.
+-->
 <resources>
     <string name="app_name">KosherEats Seller</string>
+
+    <!-- Auth -->
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_login_title">Welcome back</string>
+
+    <!-- Chat -->
+    <string name="chat_title">Chat</string>
+    <string name="chat_placeholder">Type a message…</string>
+
+    <!-- Order statuses -->
+    <string name="order_status_pending">Waiting for the restaurant</string>
+    <string name="order_status_preparing">Your food is being prepared</string>
+    <string name="order_status_on_the_way">Your order is on the way</string>
+    <string name="order_status_delivered">Delivered — enjoy!</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_done">Done</string>
+    <string name="common_retry">Try again</string>
 </resources>

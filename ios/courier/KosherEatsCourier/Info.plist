@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>KE Driver</string>
+	<key>CFBundleDisplayName</key>
+	<string>KosherEats Driver</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>KosherEats Driver uses your location to show nearby deliveries and navigate to pickups.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>KosherEats Driver needs background location to keep customers updated on delivery progress.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>KosherEats Driver needs camera access to capture your drivers license and vehicle documents.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

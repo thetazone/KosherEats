@@ -151,6 +151,15 @@ fun CartScreen(
                     )
                 }
 
+                // Delivery time (ASAP vs schedule for later)
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    DeliveryTimeCard(
+                        scheduledFor = state.scheduledFor,
+                        onChange = { cartViewModel.updateScheduledFor(it) },
+                    )
+                }
+
                 // Tip section
                 item {
                     Spacer(modifier = Modifier.height(16.dp))

@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.TrendingUp
@@ -28,9 +29,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +60,17 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    var showPicker by remember { mutableStateOf(false) }
+
+    if (showPicker) {
+        RestaurantPickerSheet(
+            onDismiss = { showPicker = false },
+            // After a restaurant is picked, every /seller/ call will now carry
+            // the new ?restaurant_id= param. Reload the dashboard so the stats
+            // + active orders reflect the new selection.
+            onChange = { viewModel.loadDashboard() },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -71,18 +87,31 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
+                Column(
+                    // Tapping the title opens the restaurant picker for
+                    // multi-restaurant sellers. Single-restaurant sellers
+                    // see the same chevron but the sheet just shows one row.
+                    modifier = Modifier.clickable { showPicker = true },
+                ) {
                     Text(
                         text = "Dashboard",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite,
                     )
-                    Text(
-                        text = "Restaurant overview",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Restaurant overview",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "Switch restaurant",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
 
                 IconButton(onClick = { viewModel.refresh() }) {

@@ -47,7 +47,7 @@ class OrdersViewModel @Inject constructor(
                 val response = apiService.getOrders(status = statusStr)
                 if (response.isSuccessful) {
                     _state.value = _state.value.copy(
-                        orders = response.body()?.data ?: emptyList(),
+                        orders = response.body() ?: emptyList(),
                         isLoading = false,
                     )
                 } else {
@@ -72,7 +72,7 @@ class OrdersViewModel @Inject constructor(
                 val response = apiService.getOrderDetail(orderId)
                 if (response.isSuccessful) {
                     _state.value = _state.value.copy(
-                        selectedOrder = response.body()?.data,
+                        selectedOrder = response.body(),
                         isLoading = false,
                     )
                 } else {
@@ -100,7 +100,7 @@ class OrdersViewModel @Inject constructor(
                 )
                 val response = apiService.updateOrderStatus(orderId, request)
                 if (response.isSuccessful) {
-                    val updatedOrder = response.body()?.data
+                    val updatedOrder = response.body()
                     _state.value = _state.value.copy(
                         selectedOrder = updatedOrder,
                         orders = _state.value.orders.map {

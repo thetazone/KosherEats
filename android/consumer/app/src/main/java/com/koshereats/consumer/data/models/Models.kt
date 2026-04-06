@@ -261,6 +261,13 @@ data class CreateOrderRequest(
     val tip: Double = 0.0,
     @SerializedName("payment_method_id") val paymentMethodId: String,
     @SerializedName("special_instructions") val specialInstructions: String? = null,
+    /**
+     * Scheduled delivery time as RFC-3339. `null` means deliver ASAP. When
+     * set more than 30 minutes in the future the backend flags the order
+     * `scheduled` and the in-process dispatcher promotes it to `pending` as
+     * the delivery window approaches.
+     */
+    @SerializedName("scheduled_for") val scheduledFor: String? = null,
 )
 
 data class CreateOrderItem(
@@ -272,19 +279,38 @@ data class CreateOrderItem(
 
 // ── API Responses ─────────────────────────────────────────
 
-data class ApiResponse<T>(
-    val success: Boolean = false,
-    val data: T? = null,
-    val message: String? = null,
-    val error: String? = null,
-)
-
 data class PaginatedResponse<T>(
     val items: List<T> = emptyList(),
     val total: Int = 0,
     val page: Int = 1,
     @SerializedName("per_page") val perPage: Int = 20,
     @SerializedName("total_pages") val totalPages: Int = 1,
+)
+
+// ── Chat (order-scoped messaging) ────────────────────────
+
+/**
+ * A single chat message on an order. Mirrors backend handlers/chat.go.
+ * All three parties (consumer, seller, courier) see the same thread.
+ * `senderRole` drives bubble alignment + label in the UI.
+ */
+data class ChatMessage(
+    val id: String = "",
+    @SerializedName("order_id") val orderId: String = "",
+    @SerializedName("sender_user_id") val senderUserId: String = "",
+    @SerializedName("sender_role") val senderRole: String = "",
+    val text: String = "",
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class SendChatMessageRequest(val text: String)
+
+// ── Device tokens (push notifications) ───────────────────
+
+data class RegisterDeviceRequest(
+    val token: String,
+    val platform: String = "android",
+    val app: String = "consumer",
 )
 
 // ── Reviews ───────────────────────────────────────────────

@@ -40,8 +40,8 @@ class DashboardViewModel @Inject constructor(
                 val ordersResponse = apiService.getActiveOrders()
 
                 _state.value = _state.value.copy(
-                    stats = statsResponse.body()?.data ?: DashboardStats(),
-                    activeOrders = ordersResponse.body()?.data ?: emptyList(),
+                    stats = statsResponse.body() ?: DashboardStats(),
+                    activeOrders = ordersResponse.body() ?: emptyList(),
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -61,8 +61,8 @@ class DashboardViewModel @Inject constructor(
                 val ordersResponse = apiService.getActiveOrders()
 
                 _state.value = _state.value.copy(
-                    stats = statsResponse.body()?.data ?: _state.value.stats,
-                    activeOrders = ordersResponse.body()?.data ?: _state.value.activeOrders,
+                    stats = statsResponse.body() ?: _state.value.stats,
+                    activeOrders = ordersResponse.body() ?: _state.value.activeOrders,
                     isRefreshing = false,
                 )
             } catch (e: Exception) {

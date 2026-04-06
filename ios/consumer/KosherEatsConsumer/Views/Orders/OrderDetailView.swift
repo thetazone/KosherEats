@@ -14,6 +14,24 @@ struct OrderDetailView: View {
             } else if let order = vm.currentOrder {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: Theme.spacingLG) {
+                        // Track order (live map) — shown for any active post-accept state
+                        if order.status.isActive && order.status != .pending {
+                            NavigationLink(destination: OrderTrackingView(orderId: order.id)) {
+                                HStack {
+                                    Image(systemName: "location.circle.fill")
+                                    Text("Track your order")
+                                        .font(.headline)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                }
+                                .foregroundColor(.white)
+                                .padding()
+                                .background(Color.kePrimary)
+                                .cornerRadius(Theme.cornerRadiusMedium)
+                                .padding(.horizontal)
+                            }
+                        }
+
                         // Status tracker
                         statusTracker(order: order)
 

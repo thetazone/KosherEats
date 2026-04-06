@@ -13,13 +13,27 @@ struct DashboardView: View {
                         // Restaurant Status
                         if let restaurant = vm.restaurant {
                             restaurantStatusCard(restaurant)
+                        } else if vm.isLoading {
+                            SkeletonBlock(cornerRadius: 16).frame(height: 72)
                         }
 
-                        // Stats Grid
-                        statsGrid
+                        // Stats Grid — skeleton while loading so the layout
+                        // doesn't jump when real numbers arrive.
+                        if vm.isLoading && vm.restaurant == nil {
+                            StatsGridSkeleton()
+                        } else {
+                            statsGrid
+                        }
 
-                        // Active Orders
-                        activeOrdersSection
+                        if let err = vm.errorMessage, vm.restaurant == nil {
+                            ErrorStateView(
+                                message: err,
+                                onRetry: { Task { await vm.load() } },
+                            )
+                            .frame(minHeight: 240)
+                        } else {
+                            activeOrdersSection
+                        }
                     }
                     .padding()
                 }
@@ -28,6 +42,7 @@ struct DashboardView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .refreshable {
+                Haptics.impact(.light)
                 await vm.load()
             }
             .task {
@@ -93,14 +108,15 @@ struct DashboardView: View {
 
             StatCard(
                 title: "Today's Revenue",
-                value: String(format: "$%.2f", vm.stats.todayRevenue),
+                // Backend returns cents; divide for display.
+                value: String(format: "$%.2f", Double(vm.stats.todayRevenue) / 100),
                 icon: "dollarsign.circle.fill",
                 iconColor: .keWarning
             )
 
             StatCard(
                 title: "Avg Prep Time",
-                value: "\(vm.stats.avgPrepTime) min",
+                value: String(format: "%.0f min", vm.stats.avgPrepTime),
                 icon: "clock.fill",
                 iconColor: .keTextSecondary
             )

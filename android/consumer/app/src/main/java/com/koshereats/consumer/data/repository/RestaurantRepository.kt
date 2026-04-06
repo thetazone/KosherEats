@@ -43,11 +43,11 @@ class RestaurantRepository @Inject constructor(
                 isGlattKosher = isGlattKosher,
                 sortBy = sortBy,
             )
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No data returned"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Failed to load restaurants", response.code()))
+                emit(Resource.Error("Failed to load restaurants", response.code()))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))
@@ -62,11 +62,11 @@ class RestaurantRepository @Inject constructor(
         emit(Resource.Loading)
         try {
             val response = apiService.searchRestaurants(query, latitude, longitude)
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No data returned"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Search failed"))
+                emit(Resource.Error("Search failed"))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))
@@ -80,11 +80,11 @@ class RestaurantRepository @Inject constructor(
         emit(Resource.Loading)
         try {
             val response = apiService.getFeaturedRestaurants(latitude, longitude)
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No data returned"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Failed to load featured restaurants"))
+                emit(Resource.Error("Failed to load featured restaurants"))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))
@@ -95,11 +95,11 @@ class RestaurantRepository @Inject constructor(
         emit(Resource.Loading)
         try {
             val response = apiService.getRestaurant(restaurantId)
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("Restaurant not found"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Failed to load restaurant"))
+                emit(Resource.Error("Failed to load restaurant"))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))
@@ -110,11 +110,11 @@ class RestaurantRepository @Inject constructor(
         emit(Resource.Loading)
         try {
             val response = apiService.getRestaurantMenu(restaurantId)
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No menu data"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Failed to load menu"))
+                emit(Resource.Error("Failed to load menu"))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))
@@ -128,11 +128,11 @@ class RestaurantRepository @Inject constructor(
         emit(Resource.Loading)
         try {
             val response = apiService.getOrders(page, status)
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No orders found"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Failed to load orders"))
+                emit(Resource.Error("Failed to load orders"))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))
@@ -143,11 +143,11 @@ class RestaurantRepository @Inject constructor(
         emit(Resource.Loading)
         try {
             val response = apiService.createOrder(request)
-            if (response.isSuccessful && response.body()?.success == true) {
-                response.body()?.data?.let { emit(Resource.Success(it)) }
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("Order creation failed"))
             } else {
-                emit(Resource.Error(response.body()?.error ?: "Failed to create order"))
+                emit(Resource.Error("Failed to create order"))
             }
         } catch (e: Exception) {
             emit(Resource.Error(e.localizedMessage ?: "Network error"))

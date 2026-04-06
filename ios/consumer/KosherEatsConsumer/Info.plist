@@ -6,8 +6,10 @@
 	<string>KosherEats</string>
 	<key>CFBundleDisplayName</key>
 	<string>KosherEats</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>KosherEats needs your location to find nearby kosher restaurants</string>
+	<string>KosherEats uses your location to show nearby kosher restaurants and estimate delivery times.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

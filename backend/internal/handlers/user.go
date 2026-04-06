@@ -91,7 +91,7 @@ func (h *Handler) ListAddresses(w http.ResponseWriter, r *http.Request) {
 		addresses = []models.Address{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{"addresses": addresses})
+	writeJSON(w, http.StatusOK, addresses)
 }
 
 func (h *Handler) AddAddress(w http.ResponseWriter, r *http.Request) {

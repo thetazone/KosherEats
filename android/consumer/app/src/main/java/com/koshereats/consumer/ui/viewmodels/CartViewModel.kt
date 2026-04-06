@@ -20,6 +20,13 @@ data class CartUiState(
     val serviceFee: Double = 2.49,
     val taxRate: Double = 0.08875,
     val tip: Double = 0.0,
+    /**
+     * Scheduled delivery time. `null` = deliver ASAP (the default). Any
+     * future value gets serialized to RFC-3339 and sent on CreateOrderRequest;
+     * the backend flags the order `scheduled` and the dispatcher promotes it
+     * to `pending` as the window approaches.
+     */
+    val scheduledFor: java.time.LocalDateTime? = null,
     val isPlacingOrder: Boolean = false,
     val orderPlaced: Order? = null,
     val error: String? = null,
@@ -108,6 +115,11 @@ class CartViewModel @Inject constructor(
         _uiState.update { it.copy(tip = amount) }
     }
 
+    /** Pass `null` for ASAP, or a local-time instant for a scheduled delivery. */
+    fun updateScheduledFor(value: java.time.LocalDateTime?) {
+        _uiState.update { it.copy(scheduledFor = value) }
+    }
+
     fun clearCart() {
         _uiState.update { it.copy(cart = Cart()) }
     }
@@ -115,6 +127,16 @@ class CartViewModel @Inject constructor(
     fun placeOrder(deliveryAddressId: String, paymentMethodId: String) {
         val state = _uiState.value
         if (state.isEmpty) return
+
+        // Scheduled deliveries need a timezone-aware RFC-3339 string; the
+        // LocalDateTime the user picked is in their local zone, so attach the
+        // system ZoneOffset before formatting. Backend's CreateOrderRequest
+        // decodes it as `time.Time`.
+        val scheduledFor = state.scheduledFor?.let { local ->
+            val zone = java.time.ZoneId.systemDefault()
+            local.atZone(zone).toOffsetDateTime()
+                .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        }
 
         val request = CreateOrderRequest(
             restaurantId = state.cart.restaurantId,
@@ -129,6 +151,7 @@ class CartViewModel @Inject constructor(
             deliveryAddressId = deliveryAddressId,
             tip = state.tip,
             paymentMethodId = paymentMethodId,
+            scheduledFor = scheduledFor,
         )
 
         viewModelScope.launch {

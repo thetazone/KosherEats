@@ -2,8 +2,26 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KosherEats - Kosher Food Delivery",
-  description: "Order kosher food from the best restaurants near you",
+  title: "KosherEats — Kosher Food, Delivered",
+  description:
+    "Order from verified kosher-certified restaurants near you. Filter by OU, OK, Star-K, Kof-K, cRc, Badatz, Chof-K. Glatt Kosher, Cholov Yisroel, Pas Yisroel. Download on iOS and Android.",
+  keywords: [
+    "kosher food delivery",
+    "kosher restaurant delivery",
+    "glatt kosher",
+    "cholov yisroel",
+    "kosher near me",
+    "kosher food order",
+    "koshereats",
+  ],
+  openGraph: {
+    title: "KosherEats — Kosher Food, Delivered",
+    description:
+      "Order from verified kosher-certified restaurants near you. Every restaurant verified. Every meal trusted.",
+    url: "https://koshereats.shop",
+    siteName: "KosherEats",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

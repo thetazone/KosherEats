@@ -1,9 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.dagger.hilt.android")
     kotlin("kapt")
 }
+
+// Firebase config comes from local.properties — see FIREBASE.md. Blank
+// defaults keep CI / fresh-clone builds green; PushBootstrap skips init
+// at runtime when any field is empty.
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
+}
+fun lp(key: String): String = localProps.getProperty(key, "")
 
 android {
     namespace = "com.koshereats.seller"
@@ -23,6 +34,11 @@ android {
         }
 
         buildConfigField("String", "BASE_URL", "\"https://api.koshereats.com/api/v1/\"")
+
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
+        buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_SELLER_APP_ID")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
     }
 
     buildTypes {
@@ -108,6 +124,14 @@ dependencies {
 
     // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.1")
+
+    // Firebase Cloud Messaging. Manual init (no google-services plugin) —
+    // see PushBootstrap + FIREBASE.md.
+    implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // coroutines-play-services for FirebaseMessaging.token.await()
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

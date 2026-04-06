@@ -47,7 +47,7 @@ class MenuViewModel @Inject constructor(
                 val response = apiService.getMenuItems(category = categoryStr)
                 if (response.isSuccessful) {
                     _state.value = _state.value.copy(
-                        items = response.body()?.data ?: emptyList(),
+                        items = response.body() ?: emptyList(),
                         isLoading = false,
                     )
                 } else {
@@ -72,7 +72,7 @@ class MenuViewModel @Inject constructor(
                 val response = apiService.getMenuItem(itemId)
                 if (response.isSuccessful) {
                     _state.value = _state.value.copy(
-                        selectedItem = response.body()?.data,
+                        selectedItem = response.body(),
                         isLoading = false,
                     )
                 }

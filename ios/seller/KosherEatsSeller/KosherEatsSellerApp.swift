@@ -4,14 +4,8 @@ import FacebookCore
 
 @main
 struct KosherEatsSellerApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authVM = AuthViewModel()
-
-    init() {
-        ApplicationDelegate.shared.application(
-            UIApplication.shared,
-            didFinishLaunchingWithOptions: nil
-        )
-    }
 
     var body: some Scene {
         WindowGroup {
@@ -25,6 +19,12 @@ struct KosherEatsSellerApp: App {
                 }
             }
             .preferredColorScheme(.dark)
+            .task(id: authVM.isAuthenticated) {
+                if authVM.isAuthenticated {
+                    await PushNotifications.shared.requestAuthorization()
+                    await PushNotifications.shared.registerPendingTokenIfPossible()
+                }
+            }
             .onOpenURL { url in
                 GIDSignIn.sharedInstance.handle(url)
                 ApplicationDelegate.shared.application(

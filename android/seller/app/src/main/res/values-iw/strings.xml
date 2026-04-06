@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hebrew (legacy Android code iw). -->
+<resources>
+    <string name="app_name">KosherEats Seller</string>
+
+    <string name="auth_email">דוא"ל</string>
+    <string name="auth_password">סיסמה</string>
+    <string name="auth_login_title">ברוך שובך</string>
+
+    <string name="chat_title">צ\'אט</string>
+    <string name="chat_placeholder">הקלד הודעה…</string>
+
+    <string name="order_status_pending">ממתין למסעדה</string>
+    <string name="order_status_preparing">האוכל שלך בהכנה</string>
+    <string name="order_status_on_the_way">ההזמנה שלך בדרך</string>
+    <string name="order_status_delivered">נמסר — בתיאבון!</string>
+
+    <string name="common_cancel">ביטול</string>
+    <string name="common_done">סיום</string>
+    <string name="common_retry">נסה שוב</string>
+</resources>

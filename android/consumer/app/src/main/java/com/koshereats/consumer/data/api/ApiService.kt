@@ -9,36 +9,36 @@ interface ApiService {
     // ── Auth ──────────────────────────────────────────────
 
     @POST("auth/login")
-    suspend fun login(@Body request: LoginRequest): Response<ApiResponse<AuthResponse>>
+    suspend fun login(@Body request: LoginRequest): Response<AuthResponse>
 
     @POST("auth/register")
-    suspend fun register(@Body request: RegisterRequest): Response<ApiResponse<AuthResponse>>
+    suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
 
     @POST("auth/refresh")
-    suspend fun refreshToken(@Header("Authorization") refreshToken: String): Response<ApiResponse<AuthResponse>>
+    suspend fun refreshToken(@Header("Authorization") refreshToken: String): Response<AuthResponse>
 
     @POST("auth/social")
-    suspend fun socialLogin(@Body request: SocialLoginRequest): Response<ApiResponse<AuthResponse>>
+    suspend fun socialLogin(@Body request: SocialLoginRequest): Response<AuthResponse>
 
     @POST("auth/logout")
-    suspend fun logout(): Response<ApiResponse<Unit>>
+    suspend fun logout(): Response<Unit>
 
     // ── User ──────────────────────────────────────────────
 
     @GET("user/profile")
-    suspend fun getProfile(): Response<ApiResponse<User>>
+    suspend fun getProfile(): Response<User>
 
     @PUT("user/profile")
-    suspend fun updateProfile(@Body user: User): Response<ApiResponse<User>>
+    suspend fun updateProfile(@Body user: User): Response<User>
 
     @GET("user/addresses")
-    suspend fun getAddresses(): Response<ApiResponse<List<Address>>>
+    suspend fun getAddresses(): Response<List<Address>>
 
     @POST("user/addresses")
-    suspend fun addAddress(@Body address: Address): Response<ApiResponse<Address>>
+    suspend fun addAddress(@Body address: Address): Response<Address>
 
     @DELETE("user/addresses/{id}")
-    suspend fun deleteAddress(@Path("id") addressId: String): Response<ApiResponse<Unit>>
+    suspend fun deleteAddress(@Path("id") addressId: String): Response<Unit>
 
     // ── Restaurants ───────────────────────────────────────
 
@@ -55,57 +55,73 @@ interface ApiService {
         @Query("is_pas_yisroel") isPasYisroel: Boolean? = null,
         @Query("is_glatt_kosher") isGlattKosher: Boolean? = null,
         @Query("sort_by") sortBy: String? = null,
-    ): Response<ApiResponse<PaginatedResponse<Restaurant>>>
+    ): Response<PaginatedResponse<Restaurant>>
 
     @GET("restaurants/search")
     suspend fun searchRestaurants(
         @Query("q") query: String,
         @Query("latitude") latitude: Double? = null,
         @Query("longitude") longitude: Double? = null,
-    ): Response<ApiResponse<List<Restaurant>>>
+    ): Response<List<Restaurant>>
 
     @GET("restaurants/featured")
     suspend fun getFeaturedRestaurants(
         @Query("latitude") latitude: Double? = null,
         @Query("longitude") longitude: Double? = null,
-    ): Response<ApiResponse<List<Restaurant>>>
+    ): Response<List<Restaurant>>
 
     @GET("restaurants/nearby")
     suspend fun getNearbyRestaurants(
         @Query("latitude") latitude: Double,
         @Query("longitude") longitude: Double,
         @Query("radius") radiusMiles: Double = 5.0,
-    ): Response<ApiResponse<List<Restaurant>>>
+    ): Response<List<Restaurant>>
 
     @GET("restaurants/{id}")
-    suspend fun getRestaurant(@Path("id") restaurantId: String): Response<ApiResponse<Restaurant>>
+    suspend fun getRestaurant(@Path("id") restaurantId: String): Response<Restaurant>
 
     @GET("restaurants/{id}/menu")
-    suspend fun getRestaurantMenu(@Path("id") restaurantId: String): Response<ApiResponse<List<MenuCategory>>>
+    suspend fun getRestaurantMenu(@Path("id") restaurantId: String): Response<List<MenuCategory>>
 
     @GET("restaurants/{id}/reviews")
     suspend fun getRestaurantReviews(
         @Path("id") restaurantId: String,
         @Query("page") page: Int = 1,
-    ): Response<ApiResponse<PaginatedResponse<Review>>>
+    ): Response<PaginatedResponse<Review>>
 
     // ── Orders ────────────────────────────────────────────
 
     @POST("orders")
-    suspend fun createOrder(@Body request: CreateOrderRequest): Response<ApiResponse<Order>>
+    suspend fun createOrder(@Body request: CreateOrderRequest): Response<Order>
 
     @GET("orders")
     suspend fun getOrders(
         @Query("page") page: Int = 1,
         @Query("status") status: String? = null,
-    ): Response<ApiResponse<PaginatedResponse<Order>>>
+    ): Response<PaginatedResponse<Order>>
 
     @GET("orders/{id}")
-    suspend fun getOrder(@Path("id") orderId: String): Response<ApiResponse<Order>>
+    suspend fun getOrder(@Path("id") orderId: String): Response<Order>
 
     @POST("orders/{id}/cancel")
-    suspend fun cancelOrder(@Path("id") orderId: String): Response<ApiResponse<Order>>
+    suspend fun cancelOrder(@Path("id") orderId: String): Response<Order>
 
     @POST("orders/{id}/reorder")
-    suspend fun reorder(@Path("id") orderId: String): Response<ApiResponse<Order>>
+    suspend fun reorder(@Path("id") orderId: String): Response<Order>
+
+    // ── Order chat ──────────────────────────────────────────
+
+    @GET("orders/{id}/chat")
+    suspend fun listChatMessages(@Path("id") orderId: String): Response<List<ChatMessage>>
+
+    @POST("orders/{id}/chat")
+    suspend fun sendChatMessage(
+        @Path("id") orderId: String,
+        @Body body: SendChatMessageRequest,
+    ): Response<ChatMessage>
+
+    // ── Devices (push notifications) ─────────────────────
+
+    @POST("devices/register")
+    suspend fun registerDevice(@Body body: RegisterDeviceRequest): Response<Map<String, String>>
 }

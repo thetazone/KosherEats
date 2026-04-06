@@ -233,8 +233,20 @@ class APIService: ObservableObject {
         try await request(method: "GET", path: "/cart", authenticated: true)
     }
 
-    func addToCart(menuItemID: String, quantity: Int, notes: String?, restaurantID: String) async throws -> Cart {
-        let body = AddToCartRequest(menuItemID: menuItemID, quantity: quantity, notes: notes, restaurantID: restaurantID)
+    func addToCart(
+        menuItemID: String,
+        quantity: Int,
+        notes: String?,
+        restaurantID: String,
+        modifierIDs: [String] = [],
+    ) async throws -> Cart {
+        let body = AddToCartRequest(
+            menuItemID: menuItemID,
+            quantity: quantity,
+            notes: notes,
+            restaurantID: restaurantID,
+            modifierIDs: modifierIDs,
+        )
         return try await request(method: "POST", path: "/cart/items", body: body, authenticated: true)
     }
 
@@ -253,9 +265,68 @@ class APIService: ObservableObject {
 
     // MARK: - Orders
 
-    func createOrder(deliveryAddress: String, lat: Double, lng: Double) async throws -> Order {
-        let body = CreateOrderRequest(deliveryAddress: deliveryAddress, deliveryLat: lat, deliveryLng: lng)
+    func createOrder(
+        deliveryAddress: String,
+        lat: Double,
+        lng: Double,
+        paymentIntentId: String,
+        tip: Int,
+        scheduledFor: Date? = nil,
+    ) async throws -> Order {
+        struct Body: Encodable {
+            let deliveryAddress: String
+            let deliveryLat: Double
+            let deliveryLng: Double
+            let paymentIntentId: String
+            let tip: Int
+            let scheduledFor: Date?
+            enum CodingKeys: String, CodingKey {
+                case deliveryAddress = "delivery_address"
+                case deliveryLat = "delivery_lat"
+                case deliveryLng = "delivery_lng"
+                case paymentIntentId = "payment_intent_id"
+                case tip
+                case scheduledFor = "scheduled_for"
+            }
+        }
+        let body = Body(deliveryAddress: deliveryAddress, deliveryLat: lat, deliveryLng: lng,
+                        paymentIntentId: paymentIntentId, tip: tip, scheduledFor: scheduledFor)
         return try await request(method: "POST", path: "/orders", body: body, authenticated: true)
+    }
+
+    // MARK: - Checkout (Stripe PaymentSheet)
+
+    struct PaymentSheetBundle: Decodable {
+        let paymentIntentSecret: String
+        let ephemeralKeySecret: String
+        let customerId: String
+        let publishableKey: String
+        let subtotal: Int
+        let deliveryFee: Int
+        let serviceFee: Int
+        let tax: Int
+        let tip: Int
+        let total: Int
+
+        enum CodingKeys: String, CodingKey {
+            case paymentIntentSecret = "payment_intent_secret"
+            case ephemeralKeySecret = "ephemeral_key_secret"
+            case customerId = "customer_id"
+            case publishableKey = "publishable_key"
+            case subtotal, tax, tip, total
+            case deliveryFee = "delivery_fee"
+            case serviceFee = "service_fee"
+        }
+
+        /// Dev-stub mode when the backend has no STRIPE_SECRET_KEY. iOS should
+        /// skip presenting PaymentSheet in this case and go straight to createOrder.
+        var isStub: Bool { paymentIntentSecret.hasPrefix("pi_stub_") }
+    }
+
+    func createPaymentSheet(tip: Int) async throws -> PaymentSheetBundle {
+        struct Body: Encodable { let tip: Int }
+        return try await request(method: "POST", path: "/payments/intent",
+                                 body: Body(tip: tip), authenticated: true)
     }
 
     func listOrders() async throws -> [Order] {
@@ -300,6 +371,27 @@ class APIService: ObservableObject {
 
     func deleteAddress(id: String) async throws {
         try await requestVoid(method: "DELETE", path: "/user/addresses/\(id)", authenticated: true)
+    }
+
+    // MARK: - Device tokens (push)
+
+    func registerDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid(method: "POST", path: "/devices/register",
+                              body: Body(token: token, platform: platform, app: app),
+                              authenticated: true)
+    }
+
+    // MARK: - Chat
+
+    func listChatMessages(orderID: String) async throws -> [ChatMessage] {
+        try await request(method: "GET", path: "/orders/\(orderID)/chat", authenticated: true)
+    }
+
+    func sendChatMessage(orderID: String, text: String) async throws -> ChatMessage {
+        struct Body: Encodable { let text: String }
+        return try await request(method: "POST", path: "/orders/\(orderID)/chat",
+                                 body: Body(text: text), authenticated: true)
     }
 }
 

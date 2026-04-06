@@ -182,11 +182,14 @@ struct MenuItem: Codable, Identifiable, Equatable {
     var name: String
     var description: String
     var imageUrl: String?
-    var price: Double
+    /// Cents (matches backend). Divide by 100 at display via priceFormatted.
+    var price: Int
     var isMeat: Bool
     var isDairy: Bool
     var isPareve: Bool
     var isAvailable: Bool
+
+    var priceFormatted: String { String(format: "$%.2f", Double(price) / 100) }
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, price
@@ -211,6 +214,39 @@ struct MenuItem: Codable, Identifiable, Equatable {
     }
 }
 
+struct CourierPublic: Codable {
+    let id: String
+    let firstName: String
+    let phone: String
+    let avatarUrl: String?
+    let vehicleType: String
+    let vehicleMake: String?
+    let vehicleModel: String?
+    let vehicleColor: String?
+    let licensePlate: String?
+    let rating: Double
+    let totalDeliveries: Int
+    let lat: Double
+    let lng: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id, phone, rating, lat, lng
+        case firstName = "first_name"
+        case avatarUrl = "avatar_url"
+        case vehicleType = "vehicle_type"
+        case vehicleMake = "vehicle_make"
+        case vehicleModel = "vehicle_model"
+        case vehicleColor = "vehicle_color"
+        case licensePlate = "license_plate"
+        case totalDeliveries = "total_deliveries"
+    }
+
+    var vehicleSummary: String {
+        let parts = [vehicleColor, vehicleMake, vehicleModel].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? vehicleType.capitalized : parts.joined(separator: " ")
+    }
+}
+
 struct Order: Codable, Identifiable {
     let id: String
     let userId: String
@@ -218,18 +254,21 @@ struct Order: Codable, Identifiable {
     let restaurantName: String
     var status: OrderStatus
     let items: [OrderItem]
-    let subtotal: Double
-    let deliveryFee: Double
-    let serviceFee: Double
-    let tax: Double
-    let total: Double
+    // All money fields are cents (matches backend + consumer app). Divide by
+    // 100 at display time via the *Formatted computed properties below.
+    let subtotal: Int
+    let deliveryFee: Int
+    let serviceFee: Int
+    let tax: Int
+    let total: Int
     let deliveryAddress: String
     let estDeliveryTime: String?
     let createdAt: String
     let updatedAt: String
+    let courier: CourierPublic?
 
     enum CodingKeys: String, CodingKey {
-        case id, status, items, subtotal, tax, total
+        case id, status, items, subtotal, tax, total, courier
         case userId = "user_id"
         case restaurantId = "restaurant_id"
         case restaurantName = "restaurant_name"
@@ -240,6 +279,14 @@ struct Order: Codable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+
+    /// Dollars display for the total. Every UI using $%.2f on order.total
+    /// should use this instead.
+    var totalFormatted: String { String(format: "$%.2f", Double(total) / 100) }
+    var subtotalFormatted: String { String(format: "$%.2f", Double(subtotal) / 100) }
+    var deliveryFeeFormatted: String { String(format: "$%.2f", Double(deliveryFee) / 100) }
+    var serviceFeeFormatted: String { String(format: "$%.2f", Double(serviceFee) / 100) }
+    var taxFormatted: String { String(format: "$%.2f", Double(tax) / 100) }
 
     var formattedDate: String {
         let formatter = ISO8601DateFormatter()
@@ -270,14 +317,40 @@ struct OrderItem: Codable, Identifiable {
     let orderId: String
     let menuItemId: String
     let name: String
-    let price: Double
+    let price: Int // cents per-unit, includes modifier deltas
     let quantity: Int
     let notes: String?
+    let selectedModifiers: [SelectedModifier]?
+
+    var lineTotalFormatted: String {
+        String(format: "$%.2f", Double(price * quantity) / 100)
+    }
+
+    var modifierSummary: String? {
+        guard let m = selectedModifiers, !m.isEmpty else { return nil }
+        return m.map(\.name).joined(separator: " • ")
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, price, quantity, notes
         case orderId = "order_id"
         case menuItemId = "menu_item_id"
+        case selectedModifiers = "selected_modifiers"
+    }
+}
+
+/// Snapshot of a modifier selection on an order item. Matches the backend
+/// JSONB shape so the seller can see "Large + Extra hummus" on each line.
+struct SelectedModifier: Codable, Hashable, Identifiable {
+    let id: String
+    let groupName: String
+    let name: String
+    let priceDelta: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case groupName = "group_name"
+        case priceDelta = "price_delta"
     }
 }
 
@@ -298,7 +371,16 @@ struct AuthResponse: Codable {
 
 struct DashboardStats: Codable {
     var todayOrders: Int = 0
-    var todayRevenue: Double = 0
+    /// Cents. Divide by 100 to display.
+    var todayRevenue: Int = 0
     var activeOrders: Int = 0
-    var avgPrepTime: Int = 0
+    /// Minutes, averaged across today's delivered orders.
+    var avgPrepTime: Double = 0
+
+    enum CodingKeys: String, CodingKey {
+        case todayOrders = "today_orders"
+        case todayRevenue = "today_revenue"
+        case activeOrders = "active_orders"
+        case avgPrepTime = "avg_prep_time"
+    }
 }

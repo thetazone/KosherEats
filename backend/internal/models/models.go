@@ -8,6 +8,28 @@ const (
 	RoleConsumer UserRole = "consumer"
 	RoleSeller   UserRole = "seller"
 	RoleAdmin    UserRole = "admin"
+	RoleCourier  UserRole = "courier"
+)
+
+type CourierOnboardingStatus string
+
+const (
+	OnboardingPendingInfo       CourierOnboardingStatus = "pending_info"
+	OnboardingPendingDocuments  CourierOnboardingStatus = "pending_documents"
+	OnboardingPendingBackground CourierOnboardingStatus = "pending_background"
+	OnboardingApproved          CourierOnboardingStatus = "approved"
+	OnboardingRejected          CourierOnboardingStatus = "rejected"
+	OnboardingSuspended         CourierOnboardingStatus = "suspended"
+)
+
+type VehicleType string
+
+const (
+	VehicleCar        VehicleType = "car"
+	VehicleBike       VehicleType = "bike"
+	VehicleScooter    VehicleType = "scooter"
+	VehicleMotorcycle VehicleType = "motorcycle"
+	VehicleWalk       VehicleType = "walk"
 )
 
 type KosherCertification string
@@ -26,6 +48,7 @@ const (
 type OrderStatus string
 
 const (
+	OrderScheduled  OrderStatus = "scheduled"
 	OrderPending    OrderStatus = "pending"
 	OrderAccepted   OrderStatus = "accepted"
 	OrderPreparing  OrderStatus = "preparing"
@@ -105,18 +128,58 @@ type MenuCategory struct {
 }
 
 type MenuItem struct {
-	ID           string `json:"id"`
-	RestaurantID string `json:"restaurant_id"`
-	CategoryID   string `json:"category_id"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	ImageURL     string `json:"image_url,omitempty"`
-	Price        int    `json:"price"` // cents
-	IsMeat       bool   `json:"is_meat"`
-	IsDairy      bool   `json:"is_dairy"`
-	IsPareve     bool   `json:"is_pareve"`
-	IsAvailable  bool   `json:"is_available"`
-	SortOrder    int    `json:"sort_order"`
+	ID             string          `json:"id"`
+	RestaurantID   string          `json:"restaurant_id"`
+	CategoryID     string          `json:"category_id"`
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	ImageURL       string          `json:"image_url,omitempty"`
+	Price          int             `json:"price"` // cents
+	IsMeat         bool            `json:"is_meat"`
+	IsDairy        bool            `json:"is_dairy"`
+	IsPareve       bool            `json:"is_pareve"`
+	IsAvailable    bool            `json:"is_available"`
+	SortOrder      int             `json:"sort_order"`
+	ModifierGroups []ModifierGroup `json:"modifier_groups,omitempty"`
+}
+
+// ModifierGroup is a set of selectable options on a menu item — e.g.
+// "Choose your size" (required, exactly 1) or "Add-ons" (optional, up to 5).
+type ModifierGroup struct {
+	ID            string     `json:"id"`
+	MenuItemID    string     `json:"menu_item_id"`
+	Name          string     `json:"name"`
+	Description   string     `json:"description,omitempty"`
+	IsRequired    bool       `json:"is_required"`
+	MinSelections int        `json:"min_selections"`
+	MaxSelections int        `json:"max_selections"`
+	SortOrder     int        `json:"sort_order"`
+	Modifiers     []Modifier `json:"modifiers"`
+}
+
+// Modifier is a single option inside a ModifierGroup. PriceDelta is added
+// to the base menu item price when selected; it can be zero or negative
+// (e.g. "remove onions" stays at 0; "small size" could be -200 cents).
+type Modifier struct {
+	ID          string `json:"id"`
+	GroupID     string `json:"group_id"`
+	Name        string `json:"name"`
+	PriceDelta  int    `json:"price_delta"`
+	IsDefault   bool   `json:"is_default"`
+	IsAvailable bool   `json:"is_available"`
+	SortOrder   int    `json:"sort_order"`
+}
+
+// SelectedModifier is the JSONB shape we snapshot into cart_items.selected_modifiers
+// and order_items.selected_modifiers. We copy the name + price at selection
+// time so the display + pricing stay stable even if the seller later edits
+// the underlying modifier row.
+type SelectedModifier struct {
+	ID         string `json:"id"`
+	GroupID    string `json:"group_id"`
+	GroupName  string `json:"group_name"`
+	Name       string `json:"name"`
+	PriceDelta int    `json:"price_delta"`
 }
 
 type Cart struct {
@@ -128,42 +191,120 @@ type Cart struct {
 }
 
 type CartItem struct {
-	ID         string `json:"id"`
-	CartID     string `json:"cart_id"`
-	MenuItemID string `json:"menu_item_id"`
-	Name       string `json:"name"`
-	Price      int    `json:"price"`
-	Quantity   int    `json:"quantity"`
-	Notes      string `json:"notes,omitempty"`
+	ID                string             `json:"id"`
+	CartID            string             `json:"cart_id"`
+	MenuItemID        string             `json:"menu_item_id"`
+	Name              string             `json:"name"`
+	Price             int                `json:"price"` // already includes modifier deltas, per-unit
+	Quantity          int                `json:"quantity"`
+	Notes             string             `json:"notes,omitempty"`
+	SelectedModifiers []SelectedModifier `json:"selected_modifiers,omitempty"`
 }
 
 type Order struct {
-	ID               string      `json:"id"`
-	UserID           string      `json:"user_id"`
-	RestaurantID     string      `json:"restaurant_id"`
-	RestaurantName   string      `json:"restaurant_name"`
-	Status           OrderStatus `json:"status"`
-	Items            []OrderItem `json:"items"`
-	Subtotal         int         `json:"subtotal"`
-	DeliveryFee      int         `json:"delivery_fee"`
-	ServiceFee       int         `json:"service_fee"`
-	Tax              int         `json:"tax"`
-	Total            int         `json:"total"`
-	DeliveryAddress  string      `json:"delivery_address"`
-	DeliveryLat      float64     `json:"delivery_lat"`
-	DeliveryLng      float64     `json:"delivery_lng"`
-	StripePaymentID  string      `json:"stripe_payment_id,omitempty"`
-	EstDeliveryTime  time.Time   `json:"est_delivery_time"`
-	CreatedAt        time.Time   `json:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"`
+	ID              string      `json:"id"`
+	UserID          string      `json:"user_id"`
+	RestaurantID    string      `json:"restaurant_id"`
+	RestaurantName  string      `json:"restaurant_name"`
+	RestaurantLat   float64     `json:"restaurant_lat,omitempty"`
+	RestaurantLng   float64     `json:"restaurant_lng,omitempty"`
+	Status          OrderStatus `json:"status"`
+	Items           []OrderItem `json:"items"`
+	Subtotal        int         `json:"subtotal"`
+	DeliveryFee     int         `json:"delivery_fee"`
+	ServiceFee      int         `json:"service_fee"`
+	Tax             int         `json:"tax"`
+	Total           int         `json:"total"`
+	DeliveryAddress string      `json:"delivery_address"`
+	DeliveryLat     float64     `json:"delivery_lat"`
+	DeliveryLng     float64     `json:"delivery_lng"`
+	StripePaymentID string      `json:"stripe_payment_id,omitempty"`
+	EstDeliveryTime time.Time   `json:"est_delivery_time"`
+
+	// Courier assignment
+	CourierID     *string        `json:"courier_id,omitempty"`
+	Courier       *CourierPublic `json:"courier,omitempty"`
+	ClaimedAt     *time.Time     `json:"claimed_at,omitempty"`
+	PickedUpAt    *time.Time     `json:"picked_up_at,omitempty"`
+	DeliveredAt   *time.Time     `json:"delivered_at,omitempty"`
+	CourierPayout int            `json:"courier_payout"`
+	CourierTip    int            `json:"courier_tip"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// CourierProfile is the full record returned to the courier themselves.
+type CourierProfile struct {
+	ID                     string                  `json:"id"`
+	UserID                 string                  `json:"user_id"`
+	OnboardingStatus       CourierOnboardingStatus `json:"onboarding_status"`
+	PhoneVerified          bool                    `json:"phone_verified"`
+	VehicleType            VehicleType             `json:"vehicle_type"`
+	VehicleMake            string                  `json:"vehicle_make"`
+	VehicleModel           string                  `json:"vehicle_model"`
+	VehicleYear            int                     `json:"vehicle_year"`
+	VehicleColor           string                  `json:"vehicle_color"`
+	LicensePlate           string                  `json:"license_plate"`
+	DriversLicenseURL      string                  `json:"drivers_license_url,omitempty"`
+	DriversLicenseNumber   string                  `json:"drivers_license_number,omitempty"`
+	InsuranceURL           string                  `json:"insurance_url,omitempty"`
+	VehicleRegistrationURL string                  `json:"vehicle_registration_url,omitempty"`
+	ProfilePhotoURL        string                  `json:"profile_photo_url,omitempty"`
+	BackgroundCheckStatus  string                  `json:"background_check_status"`
+	PayoutReady            bool                    `json:"payout_ready"`
+	IsOnline               bool                    `json:"is_online"`
+	LastLat                float64                 `json:"last_lat"`
+	LastLng                float64                 `json:"last_lng"`
+	LastLocationAt         *time.Time              `json:"last_location_at,omitempty"`
+	TotalDeliveries        int                     `json:"total_deliveries"`
+	Rating                 float64                 `json:"rating"`
+	CreatedAt              time.Time               `json:"created_at"`
+	UpdatedAt              time.Time               `json:"updated_at"`
+}
+
+// CourierPublic is the trimmed view of a courier that consumers and sellers see
+// once a courier is assigned to their order. Never exposes license / background / payout.
+type CourierPublic struct {
+	ID              string      `json:"id"`
+	FirstName       string      `json:"first_name"`
+	Phone           string      `json:"phone"`
+	AvatarURL       string      `json:"avatar_url,omitempty"`
+	VehicleType     VehicleType `json:"vehicle_type"`
+	VehicleMake     string      `json:"vehicle_make,omitempty"`
+	VehicleModel    string      `json:"vehicle_model,omitempty"`
+	VehicleColor    string      `json:"vehicle_color,omitempty"`
+	LicensePlate    string      `json:"license_plate,omitempty"`
+	Rating          float64     `json:"rating"`
+	TotalDeliveries int         `json:"total_deliveries"`
+	Lat             float64     `json:"lat"`
+	Lng             float64     `json:"lng"`
+}
+
+// CourierLocationPing is a single GPS heartbeat from the courier app.
+type CourierLocationPing struct {
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Heading float64 `json:"heading"`
+	Speed   float64 `json:"speed"`
+}
+
+// DashboardStats is what GET /seller/dashboard/stats returns. Matches the
+// shape expected by the iOS seller client's StatCard layout.
+type DashboardStats struct {
+	TodayOrders       int     `json:"today_orders"`
+	TodayRevenueCents int     `json:"today_revenue"`
+	ActiveOrders      int     `json:"active_orders"`
+	AvgPrepTime       float64 `json:"avg_prep_time"`
 }
 
 type OrderItem struct {
-	ID         string `json:"id"`
-	OrderID    string `json:"order_id"`
-	MenuItemID string `json:"menu_item_id"`
-	Name       string `json:"name"`
-	Price      int    `json:"price"`
-	Quantity   int    `json:"quantity"`
-	Notes      string `json:"notes,omitempty"`
+	ID                string             `json:"id"`
+	OrderID           string             `json:"order_id"`
+	MenuItemID        string             `json:"menu_item_id"`
+	Name              string             `json:"name"`
+	Price             int                `json:"price"` // per-unit, includes modifier deltas
+	Quantity          int                `json:"quantity"`
+	Notes             string             `json:"notes,omitempty"`
+	SelectedModifiers []SelectedModifier `json:"selected_modifiers,omitempty"`
 }

@@ -15,10 +15,19 @@ struct SellerOrdersView: View {
                         .padding(.vertical, 12)
 
                     if vm.isLoading && vm.orders.isEmpty {
-                        Spacer()
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .kePrimary))
-                        Spacer()
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(0..<3, id: \.self) { _ in
+                                    ActiveOrderCardSkeleton()
+                                }
+                            }
+                            .padding()
+                        }
+                    } else if let err = vm.errorMessage, vm.orders.isEmpty {
+                        ErrorStateView(
+                            message: err,
+                            onRetry: { Task { await vm.load() } },
+                        )
                     } else if vm.filteredOrders.isEmpty {
                         Spacer()
                         emptyState
@@ -42,6 +51,7 @@ struct SellerOrdersView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .refreshable {
+                Haptics.impact(.light)
                 await vm.load()
             }
             .task {
@@ -125,7 +135,7 @@ struct OrderRowView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(String(format: "$%.2f", order.total))
+                Text(order.totalFormatted)
                     .font(.subheadline.bold())
                     .foregroundColor(.keTextPrimary)
 

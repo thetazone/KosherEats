@@ -43,12 +43,21 @@ class OrderViewModel: ObservableObject {
         isLoading = false
     }
 
-    func createOrder(deliveryAddress: String, lat: Double, lng: Double) async -> Order? {
+    func createOrder(
+        deliveryAddress: String,
+        lat: Double,
+        lng: Double,
+        paymentIntentId: String,
+        tip: Int,
+    ) async -> Order? {
         isLoading = true
         errorMessage = nil
 
         do {
-            let order = try await api.createOrder(deliveryAddress: deliveryAddress, lat: lat, lng: lng)
+            let order = try await api.createOrder(
+                deliveryAddress: deliveryAddress, lat: lat, lng: lng,
+                paymentIntentId: paymentIntentId, tip: tip,
+            )
             currentOrder = order
             isLoading = false
             return order

@@ -113,7 +113,7 @@ struct SellerOrderDetailView: View {
 
                         Spacer()
 
-                        Text(String(format: "$%.2f", item.price * Double(item.quantity)))
+                        Text(item.lineTotalFormatted)
                             .font(.subheadline)
                             .foregroundColor(.keTextSecondary)
                     }
@@ -186,7 +186,7 @@ struct SellerOrderDetailView: View {
                         .font(.headline)
                         .foregroundColor(.keTextPrimary)
                     Spacer()
-                    Text(String(format: "$%.2f", order.total))
+                    Text(order.totalFormatted)
                         .font(.headline)
                         .foregroundColor(.kePrimary)
                 }
@@ -205,6 +205,7 @@ struct SellerOrderDetailView: View {
         case .pending:
             VStack(spacing: 10) {
                 actionButton("Accept Order", icon: "checkmark.circle.fill", color: .keSuccess) {
+                    Haptics.success()
                     Task {
                         await vm.acceptOrder(id: order.id)
                         order.status = .accepted
@@ -212,28 +213,102 @@ struct SellerOrderDetailView: View {
                 }
 
                 actionButton("Reject Order", icon: "xmark.circle.fill", color: .keError) {
+                    Haptics.warning()
                     showRejectAlert = true
                 }
             }
 
-        case .accepted, .preparing:
-            actionButton("Mark as Ready", icon: "bag.fill", color: .kePrimary) {
+        case .accepted:
+            actionButton("Start Preparing", icon: "flame.fill", color: .kePrimary) {
+                Haptics.impact(.medium)
+                Task {
+                    await vm.markPreparing(id: order.id)
+                    order.status = .preparing
+                }
+            }
+
+        case .preparing:
+            actionButton("Mark as Ready for Pickup", icon: "bag.fill", color: .keSuccess) {
+                Haptics.success()
                 Task {
                     await vm.markReady(id: order.id)
                     order.status = .ready
                 }
             }
 
-        case .ready:
-            actionButton("Complete Order", icon: "checkmark.seal.fill", color: .keSuccess) {
-                Task {
-                    await vm.completeOrder(id: order.id)
-                    order.status = .delivered
-                }
-            }
+        case .ready, .pickedUp:
+            // Courier now owns the handoff. Show who's handling delivery
+            // instead of an action — same UX pattern as the UberEats merchant app.
+            courierStatusCard
 
         default:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var courierStatusCard: some View {
+        if let courier = order.courier {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: order.status == .pickedUp ? "car.fill" : "figure.walk.motion")
+                        .foregroundColor(.kePrimary)
+                    Text(order.status == .pickedUp ? "Courier is delivering" : "Courier on the way to pick up")
+                        .font(.headline)
+                        .foregroundColor(.keTextPrimary)
+                }
+
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(Color.keBorder)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Text(String(courier.firstName.prefix(1)))
+                                .font(.headline)
+                                .foregroundColor(.kePrimary)
+                        )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(courier.firstName)
+                            .foregroundColor(.keTextPrimary)
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill").font(.caption2).foregroundColor(.keWarning)
+                            Text(String(format: "%.1f", courier.rating))
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+                            Text("• \(courier.totalDeliveries) deliveries")
+                                .font(.caption)
+                                .foregroundColor(.keTextMuted)
+                        }
+                        Text(courier.vehicleSummary)
+                            .font(.caption)
+                            .foregroundColor(.keTextMuted)
+                    }
+                    Spacer()
+                    if let url = URL(string: "tel:\(courier.phone)") {
+                        Link(destination: url) {
+                            Image(systemName: "phone.fill")
+                                .foregroundColor(.kePrimary)
+                                .padding(10)
+                                .background(Color.keBorder)
+                                .clipShape(Circle())
+                        }
+                    }
+                }
+            }
+            .padding()
+            .background(Color.keCard)
+            .cornerRadius(14)
+        } else {
+            HStack(spacing: 10) {
+                ProgressView().tint(.kePrimary)
+                Text("Waiting for a courier to claim this order…")
+                    .font(.subheadline)
+                    .foregroundColor(.keTextSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(Color.keCard)
+            .cornerRadius(14)
         }
     }
 
@@ -249,13 +324,13 @@ struct SellerOrderDetailView: View {
         }
     }
 
-    private func priceRow(_ label: String, value: Double) -> some View {
+    private func priceRow(_ label: String, value: Int) -> some View {
         HStack {
             Text(label)
                 .font(.subheadline)
                 .foregroundColor(.keTextSecondary)
             Spacer()
-            Text(String(format: "$%.2f", value))
+            Text(String(format: "$%.2f", Double(value) / 100))
                 .font(.subheadline)
                 .foregroundColor(.keTextPrimary)
         }

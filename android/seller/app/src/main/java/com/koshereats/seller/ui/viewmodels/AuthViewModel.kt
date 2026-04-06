@@ -10,6 +10,7 @@ import com.koshereats.seller.data.api.SocialLoginRequest
 import com.koshereats.seller.data.api.dataStore
 import com.koshereats.seller.data.models.LoginRequest
 import com.koshereats.seller.data.models.Restaurant
+import com.koshereats.seller.push.PushBootstrap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +46,9 @@ class AuthViewModel @Inject constructor(
             val token = context.dataStore.data.map { it[PrefsKeys.AUTH_TOKEN] }.first()
             if (token != null) {
                 _state.value = AuthState(isLoggedIn = true, isLoading = false)
+                // Resumed session — re-register the current FCM token in
+                // case it rotated or never uploaded on first login.
+                PushBootstrap.registerCurrentToken(apiService)
             } else {
                 _state.value = AuthState(isLoggedIn = false, isLoading = false)
             }
@@ -73,6 +77,7 @@ class AuthViewModel @Inject constructor(
                         isLoggedIn = true,
                         isLoading = false,
                     )
+                    PushBootstrap.registerCurrentToken(apiService)
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -104,6 +109,7 @@ class AuthViewModel @Inject constructor(
                         isLoggedIn = true,
                         isLoading = false,
                     )
+                    PushBootstrap.registerCurrentToken(apiService)
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,

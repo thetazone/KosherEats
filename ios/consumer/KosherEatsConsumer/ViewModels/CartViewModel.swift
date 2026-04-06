@@ -21,7 +21,13 @@ class CartViewModel: ObservableObject {
         }
     }
 
-    func addItem(menuItemID: String, quantity: Int, notes: String?, restaurantID: String) async {
+    func addItem(
+        menuItemID: String,
+        quantity: Int,
+        notes: String?,
+        restaurantID: String,
+        modifierIDs: [String] = [],
+    ) async {
         isLoading = true
         errorMessage = nil
 
@@ -30,10 +36,13 @@ class CartViewModel: ObservableObject {
                 menuItemID: menuItemID,
                 quantity: quantity,
                 notes: notes,
-                restaurantID: restaurantID
+                restaurantID: restaurantID,
+                modifierIDs: modifierIDs,
             )
+            Haptics.success()
         } catch {
             errorMessage = error.localizedDescription
+            Haptics.error()
         }
 
         isLoading = false

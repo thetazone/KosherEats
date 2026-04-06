@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -53,7 +54,7 @@ fun KosherEatsNavHost() {
             if (showBottomBar) {
                 NavigationBar(
                     containerColor = BackgroundDark,
-                    tonalElevation = androidx.compose.ui.unit.dp.times(0),
+                    tonalElevation = 0.dp,
                 ) {
                     BottomNavItem.entries.forEach { item ->
                         val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
@@ -161,10 +162,23 @@ fun KosherEatsNavHost() {
 
             composable(Screen.Orders.route) {
                 OrdersScreen(
-                    onOrderClick = { /* Navigate to order detail */ },
+                    onOrderClick = { orderId ->
+                        navController.navigate(Screen.Chat.createRoute(orderId))
+                    },
                     onReorderClick = { restaurantId ->
                         navController.navigate(Screen.Restaurant.createRoute(restaurantId))
                     },
+                )
+            }
+
+            composable(
+                route = Screen.Chat.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("orderId") { type = androidx.navigation.NavType.StringType },
+                ),
+            ) {
+                com.koshereats.consumer.ui.screens.chat.ChatScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
 

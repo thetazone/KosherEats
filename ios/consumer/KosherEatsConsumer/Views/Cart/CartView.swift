@@ -2,9 +2,10 @@ import SwiftUI
 
 struct CartView: View {
     @EnvironmentObject var cartVM: CartViewModel
-    @StateObject private var orderVM = OrderViewModel()
     @Environment(\.dismiss) var dismiss
-    @State private var showOrderPlaced = false
+    @State private var showCheckout = false
+    @State private var placedOrder: Order?
+    @State private var showConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -52,12 +53,35 @@ struct CartView: View {
                     }
                 }
             }
-            .alert("Order Placed!", isPresented: $showOrderPlaced) {
-                Button("OK") {
-                    dismiss()
+            .navigationDestination(isPresented: $showCheckout) {
+                CheckoutView(onOrderPlaced: { order in
+                    placedOrder = order
+                    showCheckout = false
+                    showConfirmation = true
+                })
+                .environmentObject(cartVM)
+            }
+            .navigationDestination(isPresented: $showConfirmation) {
+                if let order = placedOrder {
+                    OrderConfirmationView(
+                        order: order,
+                        onDone: {
+                            showConfirmation = false
+                            dismiss()
+                            // Route to Orders tab after cart dismisses.
+                            NotificationCenter.default.post(name: .navigateToOrdersTab, object: nil)
+                        },
+                        onTrack: {
+                            showConfirmation = false
+                            dismiss()
+                            NotificationCenter.default.post(
+                                name: .navigateToOrderTracking,
+                                object: nil,
+                                userInfo: ["order_id": order.id],
+                            )
+                        },
+                    )
                 }
-            } message: {
-                Text("Your order has been placed. You can track it in the Orders tab.")
             }
         }
     }
@@ -115,38 +139,16 @@ struct CartView: View {
             Divider().background(Color.keDivider)
 
             VStack(spacing: 12) {
-                if let error = orderVM.errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundColor(.keError)
-                }
-
                 Button {
-                    Task {
-                        // Using placeholder address for now
-                        if let _ = await orderVM.createOrder(
-                            deliveryAddress: "123 Main St",
-                            lat: 40.7128,
-                            lng: -74.0060
-                        ) {
-                            await cartVM.clearCart()
-                            showOrderPlaced = true
-                        }
-                    }
+                    showCheckout = true
                 } label: {
                     HStack {
-                        if orderVM.isLoading {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text("Place Order")
-                            Spacer()
-                            Text(cart.subtotalFormatted)
-                        }
+                        Text("Checkout")
+                        Spacer()
+                        Text(cart.subtotalFormatted)
                     }
                 }
-                .buttonStyle(KEPrimaryButtonStyle(isEnabled: !orderVM.isLoading))
-                .disabled(orderVM.isLoading)
+                .buttonStyle(KEPrimaryButtonStyle())
             }
             .padding()
             .background(Color.keBackgroundElevated)
@@ -166,6 +168,15 @@ struct CartItemRow: View {
                 Text(item.name)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.keTextPrimary)
+
+                // Selected modifiers shown as a single dot-separated line —
+                // same pattern UberEats uses in the cart view.
+                if let summary = item.modifierSummary {
+                    Text(summary)
+                        .font(.system(size: 12))
+                        .foregroundColor(.keTextTertiary)
+                        .lineLimit(2)
+                }
 
                 if let notes = item.notes, !notes.isEmpty {
                     Text(notes)

@@ -153,26 +153,43 @@ actor APIService {
 
     // MARK: - Restaurant
 
+    // Every seller call below runs through `sellerPath(_:)` which appends the
+    // currently-selected restaurant id as a query param. The backend reads it
+    // via resolveSellerRestaurant. When nothing is selected (first launch) the
+    // backend falls back to the seller's first owned restaurant.
+    @MainActor
+    private func sellerPath(_ path: String) async -> String {
+        SelectedRestaurant.shared.appendQuery(to: path)
+    }
+
+    // MARK: - Restaurants
+
+    /// Every restaurant this seller owns. Drives the restaurant picker sheet.
+    func listRestaurants() async throws -> [Restaurant] {
+        try await request("GET", path: "/seller/restaurants")
+    }
+
     func getRestaurant() async throws -> Restaurant {
-        try await request("GET", path: "/seller/restaurant")
+        try await request("GET", path: await sellerPath("/seller/restaurant"))
     }
 
     func updateRestaurant(_ data: Restaurant) async throws -> Restaurant {
-        try await request("PUT", path: "/seller/restaurant", body: data)
+        try await request("PUT", path: await sellerPath("/seller/restaurant"), body: data)
     }
 
     func toggleOpen(_ isOpen: Bool) async throws -> Restaurant {
-        try await request("PATCH", path: "/seller/restaurant/status", body: ["is_open": isOpen])
+        try await request("PATCH", path: await sellerPath("/seller/restaurant/status"),
+                          body: ["is_open": isOpen])
     }
 
     // MARK: - Menu
 
     func getMenu() async throws -> [MenuCategory] {
-        try await request("GET", path: "/seller/menu")
+        try await request("GET", path: await sellerPath("/seller/menu"))
     }
 
     func createMenuItem(_ item: CreateMenuItemRequest) async throws -> MenuItem {
-        try await request("POST", path: "/seller/menu/items", body: item)
+        try await request("POST", path: await sellerPath("/seller/menu/items"), body: item)
     }
 
     func updateMenuItem(id: String, _ item: CreateMenuItemRequest) async throws -> MenuItem {
@@ -188,7 +205,8 @@ actor APIService {
     }
 
     func createCategory(_ name: String) async throws -> MenuCategory {
-        try await request("POST", path: "/seller/menu/categories", body: ["name": name])
+        try await request("POST", path: await sellerPath("/seller/menu/categories"),
+                          body: ["name": name])
     }
 
     func deleteCategory(id: String) async throws {
@@ -198,8 +216,9 @@ actor APIService {
     // MARK: - Orders
 
     func getOrders(status: String? = nil) async throws -> [Order] {
-        let path = status != nil ? "/seller/orders?status=\(status!)" : "/seller/orders"
-        return try await request("GET", path: path)
+        var path = "/seller/orders"
+        if let s = status { path += "?status=\(s)" }
+        return try await request("GET", path: await sellerPath(path))
     }
 
     func getOrder(id: String) async throws -> Order {
@@ -215,18 +234,60 @@ actor APIService {
         return try await request("PATCH", path: "/seller/orders/\(id)/reject", body: body)
     }
 
+    func markOrderPreparing(id: String) async throws -> Order {
+        try await request("PATCH", path: "/seller/orders/\(id)/preparing")
+    }
+
     func markOrderReady(id: String) async throws -> Order {
         try await request("PATCH", path: "/seller/orders/\(id)/ready")
     }
 
-    func completeOrder(id: String) async throws -> Order {
-        try await request("PATCH", path: "/seller/orders/\(id)/complete")
-    }
+    // NOTE: Sellers no longer mark orders delivered. Once status == 'ready', a
+    // courier claims the order and drives it through picked_up -> delivered.
 
     // MARK: - Dashboard
 
     func getDashboardStats() async throws -> DashboardStats {
-        try await request("GET", path: "/seller/dashboard/stats")
+        try await request("GET", path: await sellerPath("/seller/dashboard/stats"))
+    }
+
+    // MARK: - Uploads (menu item photos)
+
+    struct PresignResponse: Decodable {
+        let uploadUrl: String
+        let publicUrl: String
+        let key: String
+        let expiresIn: Int
+
+        enum CodingKeys: String, CodingKey {
+            case key
+            case uploadUrl = "upload_url"
+            case publicUrl = "public_url"
+            case expiresIn = "expires_in"
+        }
+
+        var isStub: Bool { uploadUrl.hasPrefix("stub://") }
+    }
+
+    func presignUpload(kind: String, contentType: String) async throws -> PresignResponse {
+        struct Body: Encodable {
+            let kind: String
+            let contentType: String
+            enum CodingKeys: String, CodingKey {
+                case kind
+                case contentType = "content_type"
+            }
+        }
+        return try await request("POST", path: "/uploads/presign",
+                                 body: Body(kind: kind, contentType: contentType))
+    }
+
+    // MARK: - Device tokens (push)
+
+    func registerDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid("POST", path: "/devices/register",
+                              body: Body(token: token, platform: platform, app: app))
     }
 }
 
@@ -236,8 +297,9 @@ struct CreateMenuItemRequest: Encodable {
     let categoryId: String
     let name: String
     let description: String
-    let price: Double
-    let imageUrl: String?
+    /// Cents — matches backend contract. Form converts dollars → cents before submit.
+    let price: Int
+    let imageUrl: String
     let isMeat: Bool
     let isDairy: Bool
     let isPareve: Bool

@@ -11,6 +11,7 @@ import com.koshereats.consumer.data.models.LoginRequest
 import com.koshereats.consumer.data.models.RegisterRequest
 import com.koshereats.consumer.data.models.SocialLoginRequest
 import com.koshereats.consumer.data.models.User
+import com.koshereats.consumer.push.PushBootstrap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,10 +56,13 @@ class AuthViewModel @Inject constructor(
             if (token != null) {
                 try {
                     val response = apiService.getProfile()
-                    if (response.isSuccessful && response.body()?.success == true) {
+                    if (response.isSuccessful) {
                         _uiState.update {
-                            it.copy(isLoggedIn = true, user = response.body()?.data)
+                            it.copy(isLoggedIn = true, user = response.body())
                         }
+                        // Resumed session — refresh the FCM token on the
+                        // backend in case it rotated since last launch.
+                        PushBootstrap.registerCurrentToken(apiService)
                     } else {
                         clearAuth()
                     }
@@ -91,8 +95,8 @@ class AuthViewModel @Inject constructor(
                 val response = apiService.login(
                     LoginRequest(email = state.loginEmail, password = state.loginPassword)
                 )
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val authData = response.body()!!.data!!
+                if (response.isSuccessful) {
+                    val authData = response.body()!!
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
@@ -103,11 +107,12 @@ class AuthViewModel @Inject constructor(
                             loginPassword = "",
                         )
                     }
+                    PushBootstrap.registerCurrentToken(apiService)
                 } else {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = response.body()?.error ?: "Login failed",
+                            error = "Login failed",
                         )
                     }
                 }
@@ -144,8 +149,8 @@ class AuthViewModel @Inject constructor(
                         phone = state.registerPhone,
                     )
                 )
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val authData = response.body()!!.data!!
+                if (response.isSuccessful) {
+                    val authData = response.body()!!
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
@@ -154,11 +159,12 @@ class AuthViewModel @Inject constructor(
                             isLoading = false,
                         )
                     }
+                    PushBootstrap.registerCurrentToken(apiService)
                 } else {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = response.body()?.error ?: "Registration failed",
+                            error = "Registration failed",
                         )
                     }
                 }
@@ -182,8 +188,8 @@ class AuthViewModel @Inject constructor(
                         lastName = lastName,
                     )
                 )
-                if (response.isSuccessful && response.body()?.success == true) {
-                    val authData = response.body()!!.data!!
+                if (response.isSuccessful) {
+                    val authData = response.body()!!
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
@@ -192,11 +198,12 @@ class AuthViewModel @Inject constructor(
                             isLoading = false,
                         )
                     }
+                    PushBootstrap.registerCurrentToken(apiService)
                 } else {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = response.body()?.error ?: "Social login failed",
+                            error = "Social login failed",
                         )
                     }
                 }

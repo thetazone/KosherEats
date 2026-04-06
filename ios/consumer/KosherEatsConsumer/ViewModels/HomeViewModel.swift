@@ -1,6 +1,28 @@
 import Foundation
 import SwiftUI
 
+/// Filter state for the kosher filter sheet. Each field narrows the result
+/// set — empty Set / false means "no constraint", not "exclude everything".
+struct KosherFilters: Equatable {
+    var certifications: Set<KosherCertification> = []
+    var glattOnly: Bool = false
+    var cholovYisroelOnly: Bool = false
+    var pasYisroelOnly: Bool = false
+
+    var isActive: Bool {
+        !certifications.isEmpty || glattOnly || cholovYisroelOnly || pasYisroelOnly
+    }
+
+    /// Count of active filters — drives the "3" badge on the filter button.
+    var activeCount: Int {
+        var n = certifications.count
+        if glattOnly { n += 1 }
+        if cholovYisroelOnly { n += 1 }
+        if pasYisroelOnly { n += 1 }
+        return n
+    }
+}
+
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var restaurants: [Restaurant] = []
@@ -8,6 +30,7 @@ class HomeViewModel: ObservableObject {
     @Published var featuredRestaurants: [Restaurant] = []
     @Published var searchText = ""
     @Published var selectedCuisine: String?
+    @Published var kosherFilters = KosherFilters()
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -63,7 +86,20 @@ class HomeViewModel: ObservableObject {
         applyFilters()
     }
 
-    private func applyFilters() {
+    /// Applies an updated kosher filter set and refreshes the list.
+    func setKosherFilters(_ filters: KosherFilters) {
+        kosherFilters = filters
+        applyFilters()
+    }
+
+    func clearKosherFilters() {
+        kosherFilters = KosherFilters()
+        applyFilters()
+    }
+
+    /// Made internal so callers (like the filter sheet's "preview X results"
+    /// footer) can compute counts against the current filter set.
+    func applyFilters() {
         var results = restaurants.filter { $0.isActive }
 
         if let cuisine = selectedCuisine {
@@ -77,6 +113,21 @@ class HomeViewModel: ObservableObject {
                 $0.name.localizedCaseInsensitiveContains(searchText) ||
                 $0.description.localizedCaseInsensitiveContains(searchText)
             }
+        }
+
+        // Kosher-specific filters. All of these are AND-combined so the user
+        // can build a precise query like "Glatt + Cholov Yisroel + OU or cRc".
+        if !kosherFilters.certifications.isEmpty {
+            results = results.filter { kosherFilters.certifications.contains($0.kosherCertification) }
+        }
+        if kosherFilters.glattOnly {
+            results = results.filter { $0.isGlattKosher }
+        }
+        if kosherFilters.cholovYisroelOnly {
+            results = results.filter { $0.isCholovYisroel }
+        }
+        if kosherFilters.pasYisroelOnly {
+            results = results.filter { $0.isPasYisroel }
         }
 
         filteredRestaurants = results

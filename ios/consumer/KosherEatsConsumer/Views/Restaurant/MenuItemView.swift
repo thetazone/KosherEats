@@ -13,16 +13,9 @@ struct MenuItemView: View {
             }
         } label: {
             HStack(spacing: 14) {
-                // Item image placeholder
-                ZStack {
-                    RoundedRectangle(cornerRadius: Theme.cornerRadiusSmall)
-                        .fill(Color.keCardHover)
-                        .frame(width: 72, height: 72)
-
-                    Image(systemName: "takeoutbag.and.cup.and.straw")
-                        .font(.system(size: 24))
-                        .foregroundColor(.keTextMuted.opacity(0.5))
-                }
+                RemoteImage(url: item.imageURL, fallbackSymbol: "takeoutbag.and.cup.and.straw")
+                    .frame(width: 72, height: 72)
+                    .cornerRadius(Theme.cornerRadiusSmall)
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -100,16 +93,46 @@ struct KashrusTypeIndicator: View {
 
 // MARK: - Add to Cart Sheet
 
+/// Sheet for adding a menu item to cart. Shows modifier groups with the
+/// selection rules baked in (single- vs multi-select, required groups), a
+/// live running total that updates as the user picks, and a notes field.
+/// Required groups must be satisfied before the Add button enables.
 struct AddToCartSheet: View {
     let item: MenuItem
     let restaurantID: String
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
+
     @State private var quantity = 1
     @State private var notes = ""
+    /// Selected modifier ids keyed by group id.
+    @State private var selection: [String: Set<String>] = [:]
+
+    private var unitPrice: Int {
+        let deltas = (item.modifierGroups ?? []).flatMap { group in
+            (selection[group.id] ?? []).compactMap { id in
+                group.modifiers.first(where: { $0.id == id })?.priceDelta
+            }
+        }
+        return item.price + deltas.reduce(0, +)
+    }
 
     private var totalPrice: String {
-        "$\(String(format: "%.2f", Double(item.price * quantity) / 100))"
+        "$\(String(format: "%.2f", Double(unitPrice * quantity) / 100))"
+    }
+
+    private var canAdd: Bool {
+        for group in (item.modifierGroups ?? []) where group.isRequired {
+            let picked = (selection[group.id] ?? []).count
+            if picked < max(group.minSelections, 1) { return false }
+        }
+        return true
+    }
+
+    private var allSelectedIDs: [String] {
+        (item.modifierGroups ?? []).flatMap { group in
+            (selection[group.id] ?? []).sorted()
+        }
     }
 
     var body: some View {
@@ -117,108 +140,40 @@ struct AddToCartSheet: View {
             ZStack {
                 Color.keBackground.ignoresSafeArea()
 
-                VStack(spacing: Theme.spacingLG) {
-                    // Item info
-                    VStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
-                                .fill(Color.keCardHover)
-                                .frame(height: 160)
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: Theme.spacingLG) {
+                        header
 
-                            Image(systemName: "takeoutbag.and.cup.and.straw")
-                                .font(.system(size: 48))
-                                .foregroundColor(.keTextMuted.opacity(0.3))
-                        }
-
-                        Text(item.name)
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.keTextPrimary)
-
-                        Text(item.description)
-                            .font(.body)
-                            .foregroundColor(.keTextSecondary)
-                            .multilineTextAlignment(.center)
-
-                        HStack(spacing: 8) {
-                            Text(item.priceFormatted)
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.kePrimary)
-
-                            if item.isMeat {
-                                KashrusTag(text: "Meat", color: .keMeat)
-                            } else if item.isDairy {
-                                KashrusTag(text: "Dairy", color: .keDairy)
-                            } else if item.isPareve {
-                                KashrusTag(text: "Pareve", color: .kePareve)
-                            }
-                        }
-                    }
-                    .padding(.horizontal)
-
-                    // Notes
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Special Instructions")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.keTextSecondary)
-
-                        TextField("e.g., no onions, extra sauce", text: $notes)
-                            .keTextField()
-                    }
-                    .padding(.horizontal)
-
-                    Spacer()
-
-                    // Quantity + Add button
-                    VStack(spacing: 16) {
-                        // Quantity stepper
-                        HStack(spacing: 24) {
-                            Button {
-                                if quantity > 1 { quantity -= 1 }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .font(.system(size: 36))
-                                    .foregroundColor(quantity > 1 ? .kePrimary : .keTextMuted)
-                            }
-                            .disabled(quantity <= 1)
-
-                            Text("\(quantity)")
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.keTextPrimary)
-                                .frame(width: 40)
-
-                            Button {
-                                if quantity < 99 { quantity += 1 }
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 36))
-                                    .foregroundColor(.kePrimary)
-                            }
-                        }
-
-                        Button {
-                            Task {
-                                await cartVM.addItem(
-                                    menuItemID: item.id,
-                                    quantity: quantity,
-                                    notes: notes.isEmpty ? nil : notes,
-                                    restaurantID: restaurantID
+                        if let groups = item.modifierGroups, !groups.isEmpty {
+                            ForEach(groups.sorted(by: { $0.sortOrder < $1.sortOrder })) { group in
+                                ModifierGroupSection(
+                                    group: group,
+                                    selected: Binding(
+                                        get: { selection[group.id] ?? [] },
+                                        set: { selection[group.id] = $0 },
+                                    ),
                                 )
-                                dismiss()
-                            }
-                        } label: {
-                            HStack {
-                                Text("Add to Cart")
-                                Spacer()
-                                Text(totalPrice)
                             }
                         }
-                        .buttonStyle(KEPrimaryButtonStyle())
-                        .padding(.horizontal)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Special Instructions")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.keTextSecondary)
+                            TextField("e.g., no onions, extra sauce", text: $notes)
+                                .keTextField()
+                        }
                     }
-                    .padding(.bottom, Theme.spacingLG)
+                    .padding(.horizontal)
+                    .padding(.bottom, 180)
+                }
+
+                VStack {
+                    Spacer()
+                    addBar
                 }
             }
-            .navigationTitle("Add Item")
+            .navigationTitle("Customize")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -227,8 +182,233 @@ struct AddToCartSheet: View {
                         .foregroundColor(.kePrimary)
                 }
             }
+            .onAppear {
+                // Pre-select each group's default options so required
+                // single-select groups start valid.
+                var initial: [String: Set<String>] = [:]
+                for group in (item.modifierGroups ?? []) {
+                    let defaults = group.modifiers.filter(\.isDefault).map(\.id)
+                    if !defaults.isEmpty { initial[group.id] = Set(defaults) }
+                }
+                selection = initial
+            }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            RemoteImage(url: item.imageURL, fallbackSymbol: "takeoutbag.and.cup.and.straw")
+                .frame(height: 180)
+                .frame(maxWidth: .infinity)
+                .cornerRadius(Theme.cornerRadiusMedium)
+
+            Text(item.name)
+                .font(.title2.bold())
+                .foregroundColor(.keTextPrimary)
+
+            if !item.description.isEmpty {
+                Text(item.description)
+                    .font(.subheadline)
+                    .foregroundColor(.keTextSecondary)
+            }
+
+            HStack(spacing: 8) {
+                Text(item.priceFormatted)
+                    .font(.headline)
+                    .foregroundColor(.kePrimary)
+                if item.isMeat {
+                    KashrusTag(text: "Meat", color: .keMeat)
+                } else if item.isDairy {
+                    KashrusTag(text: "Dairy", color: .keDairy)
+                } else if item.isPareve {
+                    KashrusTag(text: "Pareve", color: .kePareve)
+                }
+            }
+        }
+    }
+
+    private var addBar: some View {
+        VStack(spacing: 0) {
+            Divider().background(Color.keDivider)
+            VStack(spacing: 12) {
+                HStack(spacing: 24) {
+                    Button {
+                        if quantity > 1 { quantity -= 1 }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(quantity > 1 ? .kePrimary : .keTextMuted)
+                    }
+                    .disabled(quantity <= 1)
+
+                    Text("\(quantity)")
+                        .font(.title3.bold())
+                        .foregroundColor(.keTextPrimary)
+                        .frame(width: 40)
+
+                    Button {
+                        if quantity < 99 { quantity += 1 }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.kePrimary)
+                    }
+                }
+
+                Button {
+                    Task {
+                        await cartVM.addItem(
+                            menuItemID: item.id,
+                            quantity: quantity,
+                            notes: notes.isEmpty ? nil : notes,
+                            restaurantID: restaurantID,
+                            modifierIDs: allSelectedIDs,
+                        )
+                        dismiss()
+                    }
+                } label: {
+                    HStack {
+                        Text(canAdd ? "Add to Cart" : "Select required options")
+                        Spacer()
+                        Text(totalPrice)
+                    }
+                }
+                .buttonStyle(KEPrimaryButtonStyle(isEnabled: canAdd))
+                .disabled(!canAdd)
+            }
+            .padding()
+            .background(Color.keBackgroundElevated)
+        }
+    }
+}
+
+// MARK: - Modifier group section
+
+/// One section per modifier group. Radio-style rows when maxSelections == 1,
+/// checkbox otherwise. Header shows "Required" or "Up to N".
+private struct ModifierGroupSection: View {
+    let group: ModifierGroup
+    @Binding var selected: Set<String>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.name)
+                        .font(.headline)
+                        .foregroundColor(.keTextPrimary)
+                    if let desc = group.description, !desc.isEmpty {
+                        Text(desc)
+                            .font(.caption)
+                            .foregroundColor(.keTextTertiary)
+                    }
+                }
+                Spacer()
+                Text(group.isRequired ? "Required" : rangeLabel)
+                    .font(.caption.bold())
+                    .foregroundColor(group.isRequired ? .kePrimary : .keTextMuted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background((group.isRequired ? Color.kePrimary : Color.keTextMuted).opacity(0.15))
+                    .cornerRadius(4)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(group.modifiers.sorted(by: { $0.sortOrder < $1.sortOrder })) { mod in
+                    ModifierRow(
+                        modifier: mod,
+                        isSelected: selected.contains(mod.id),
+                        style: group.isSingleSelect ? .radio : .checkbox,
+                        action: { toggle(mod) },
+                    )
+                    if mod.id != group.modifiers.last?.id {
+                        Divider().background(Color.keDivider)
+                    }
+                }
+            }
+            .background(Color.keCard)
+            .cornerRadius(Theme.cornerRadiusMedium)
+        }
+    }
+
+    private var rangeLabel: String {
+        if group.maxSelections == 1 { return "Choose 1" }
+        return "Up to \(group.maxSelections)"
+    }
+
+    private func toggle(_ mod: Modifier) {
+        if group.isSingleSelect {
+            selected = [mod.id]
+            return
+        }
+        if selected.contains(mod.id) {
+            selected.remove(mod.id)
+        } else if selected.count < group.maxSelections {
+            selected.insert(mod.id)
+        }
+    }
+}
+
+// MARK: - Modifier row
+
+private struct ModifierRow: View {
+    enum Style { case radio, checkbox }
+
+    let modifier: Modifier
+    let isSelected: Bool
+    let style: Style
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                indicator
+                Text(modifier.name)
+                    .foregroundColor(.keTextPrimary)
+                Spacer()
+                if !modifier.priceDeltaFormatted.isEmpty {
+                    Text(modifier.priceDeltaFormatted)
+                        .font(.subheadline)
+                        .foregroundColor(.keTextSecondary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var indicator: some View {
+        Group {
+            switch style {
+            case .radio:
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? Color.kePrimary : Color.keTextMuted, lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                    if isSelected {
+                        Circle()
+                            .fill(Color.kePrimary)
+                            .frame(width: 10, height: 10)
+                    }
+                }
+            case .checkbox:
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isSelected ? Color.kePrimary : Color.clear)
+                        .frame(width: 20, height: 20)
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isSelected ? Color.kePrimary : Color.keTextMuted, lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .opacity(isSelected ? 1 : 0)
+                }
+            }
+        }
     }
 }

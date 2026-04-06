@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Yiddish (yi). -->
+<resources>
+    <string name="app_name">KosherEats Driver</string>
+
+    <string name="auth_email">אימעיל</string>
+    <string name="auth_password">פּאַראָל</string>
+    <string name="auth_login_title">ברוך הבא צוריק</string>
+    <string name="auth_signup_title">עפֿן אַ חשבון</string>
+
+    <string name="chat_title">שמועס</string>
+    <string name="chat_placeholder">שרייב אַ מעלדונג…</string>
+
+    <string name="order_status_pending">וואַרטן אויפֿן רעסטאָראַן</string>
+    <string name="order_status_preparing">דיין עסן ווערט צוגעגרייט</string>
+    <string name="order_status_on_the_way">דיין באַשטעלונג איז אין וועג</string>
+    <string name="order_status_delivered">צוגעשטעלט — אַ גוטן אַפּעטיט!</string>
+
+    <string name="common_cancel">אָפּזאָגן</string>
+    <string name="common_done">פֿאַרטיק</string>
+    <string name="common_retry">פּרובירן נאָך אַ מאָל</string>
+</resources>

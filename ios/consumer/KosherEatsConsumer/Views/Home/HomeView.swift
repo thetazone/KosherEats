@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
     @EnvironmentObject var cartVM: CartViewModel
+    @State private var showKosherFilter = false
 
     var body: some View {
         NavigationStack {
@@ -37,7 +38,16 @@ struct HomeView: View {
                 await cartVM.loadCart()
             }
             .refreshable {
+                Haptics.impact(.light)
                 await vm.loadRestaurants()
+            }
+            .sheet(isPresented: $showKosherFilter) {
+                KosherFilterSheet(
+                    isPresented: $showKosherFilter,
+                    allRestaurants: vm.restaurants,
+                    currentFilters: vm.kosherFilters,
+                    onApply: { vm.setKosherFilters($0) },
+                )
             }
         }
     }
@@ -56,13 +66,37 @@ struct HomeView: View {
                         .foregroundColor(.keTextSecondary)
                 }
                 Spacer()
-                Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(.kePrimary)
+                kosherFilterButton
             }
         }
         .padding(.horizontal)
         .padding(.top, 8)
+    }
+
+    /// Filter button with a live count badge matching the UberEats pattern.
+    /// Tapping opens the kosher filter sheet; the badge glows if any filters
+    /// are currently applied so the user always knows the list is filtered.
+    private var kosherFilterButton: some View {
+        Button {
+            showKosherFilter = true
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(vm.kosherFilters.isActive ? .kePrimary : .keTextSecondary)
+
+                if vm.kosherFilters.activeCount > 0 {
+                    Text("\(vm.kosherFilters.activeCount)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(Color.kePrimary)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.keBackground, lineWidth: 2))
+                        .offset(x: 4, y: -4)
+                }
+            }
+        }
     }
 
     // MARK: - Search Bar
@@ -192,35 +226,21 @@ struct FeaturedRestaurantCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Image placeholder
-            ZStack {
-                RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
-                    .fill(
-                        LinearGradient(
-                            colors: [.kePrimary.opacity(0.3), .kePrimaryDark.opacity(0.5)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+            ZStack(alignment: .topTrailing) {
+                RemoteImage(url: restaurant.coverImageURL ?? restaurant.imageURL)
                     .frame(width: 240, height: 140)
-
-                VStack {
-                    Image(systemName: "fork.knife")
-                        .font(.system(size: 32))
-                        .foregroundColor(.kePrimary)
-                }
-
-                // Certification badge
-                VStack {
-                    HStack {
-                        Spacer()
-                        KosherBadge(certification: restaurant.kosherCertification, size: .small)
-                            .padding(8)
-                    }
-                    Spacer()
-                }
+                    .cornerRadius(Theme.cornerRadiusMedium)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
+                            .fill(LinearGradient(
+                                colors: [.clear, .black.opacity(0.3)],
+                                startPoint: .top,
+                                endPoint: .bottom,
+                            )),
+                    )
+                KosherBadge(certification: restaurant.kosherCertification, size: .small)
+                    .padding(8)
             }
-            .frame(width: 240, height: 140)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(restaurant.name)

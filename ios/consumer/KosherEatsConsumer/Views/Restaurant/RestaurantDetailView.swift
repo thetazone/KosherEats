@@ -10,9 +10,25 @@ struct RestaurantDetailView: View {
         ZStack {
             Color.keBackground.ignoresSafeArea()
 
-            if vm.isLoading {
-                ProgressView()
-                    .tint(.kePrimary)
+            if vm.isLoading && vm.restaurant == nil {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        SkeletonBlock(cornerRadius: 0).frame(height: 240)
+                        VStack(alignment: .leading, spacing: 10) {
+                            SkeletonBlock().frame(height: 22).frame(maxWidth: 220)
+                            SkeletonBlock().frame(height: 12).frame(maxWidth: 140)
+                            HStack(spacing: 10) {
+                                SkeletonBlock().frame(width: 60, height: 14)
+                                SkeletonBlock().frame(width: 60, height: 14)
+                                SkeletonBlock().frame(width: 60, height: 14)
+                            }
+                            ForEach(0..<4, id: \.self) { _ in
+                                MenuItemSkeleton()
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
             } else if let restaurant = vm.restaurant {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
@@ -31,13 +47,10 @@ struct RestaurantDetailView: View {
                     .padding(.bottom, 100)
                 }
             } else if let error = vm.errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundColor(.keError)
-                    Text(error)
-                        .foregroundColor(.keTextSecondary)
-                }
+                ErrorStateView(
+                    message: error,
+                    onRetry: { Task { await vm.load(restaurantID: restaurantID) } },
+                )
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -50,36 +63,32 @@ struct RestaurantDetailView: View {
     // MARK: - Hero
 
     private func heroSection(_ restaurant: Restaurant) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            // Cover image placeholder
+        ZStack(alignment: .bottom) {
+            RemoteImage(url: restaurant.coverImageURL ?? restaurant.imageURL)
+                .frame(maxWidth: .infinity)
+                .frame(height: 240)
+
+            // Dark gradient at the bottom so text is readable even on bright photos.
             LinearGradient(
-                colors: [.kePrimary.opacity(0.4), .kePrimaryDark.opacity(0.6), .keBackground],
+                colors: [.clear, .keBackground.opacity(0.9)],
                 startPoint: .top,
-                endPoint: .bottom
+                endPoint: .bottom,
             )
-            .frame(height: 220)
+            .frame(height: 120)
 
-            VStack {
-                Spacer()
-                Image(systemName: "fork.knife.circle.fill")
-                    .font(.system(size: 64))
-                    .foregroundColor(.kePrimary.opacity(0.5))
-                Spacer()
-            }
-            .frame(height: 220)
-            .frame(maxWidth: .infinity)
-
-            // Open/closed overlay
             if !restaurant.isOpen {
-                Color.black.opacity(0.5)
-                    .frame(height: 220)
+                Color.black.opacity(0.55)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 240)
                     .overlay(
                         Text("Currently Closed")
                             .font(.title2.bold())
-                            .foregroundColor(.white)
+                            .foregroundColor(.white),
                     )
             }
         }
+        .frame(height: 240)
+        .clipped()
     }
 
     // MARK: - Info

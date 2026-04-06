@@ -64,6 +64,31 @@ object NetworkModule {
             chain.proceed(request)
         }
 
+        // Multi-restaurant support: auto-appends ?restaurant_id= to every
+        // /seller/* request when the seller has picked one from the picker
+        // sheet. The backend falls back to the seller's first owned
+        // restaurant when the param is absent. Mirrors the iOS
+        // SelectedRestaurant.appendQuery pattern — same cross-platform
+        // semantics without touching every ViewModel.
+        val sellerRestaurantInterceptor = Interceptor { chain ->
+            val req = chain.request()
+            val path = req.url.encodedPath
+            if (!path.contains("/seller/") || path.endsWith("/seller/restaurants")) {
+                // Skip the picker's own list endpoint and anything outside /seller/.
+                return@Interceptor chain.proceed(req)
+            }
+            val restaurantId = runBlocking {
+                context.dataStore.data.map { it[PrefsKeys.RESTAURANT_ID] }.first()
+            }
+            if (restaurantId.isNullOrBlank()) {
+                return@Interceptor chain.proceed(req)
+            }
+            val newUrl = req.url.newBuilder()
+                .addQueryParameter("restaurant_id", restaurantId)
+                .build()
+            chain.proceed(req.newBuilder().url(newUrl).build())
+        }
+
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BODY
@@ -74,6 +99,7 @@ object NetworkModule {
 
         return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(sellerRestaurantInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

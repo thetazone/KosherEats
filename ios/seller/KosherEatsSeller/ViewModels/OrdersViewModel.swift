@@ -65,21 +65,21 @@ class OrdersViewModel: ObservableObject {
         }
     }
 
-    func markReady(id: String) async {
+    func markPreparing(id: String) async {
         do {
-            let updated = try await APIService.shared.markOrderReady(id: id)
+            let updated = try await APIService.shared.markOrderPreparing(id: id)
             updateOrder(updated)
-            successMessage = "Order marked as ready"
+            successMessage = "Started preparing"
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func completeOrder(id: String) async {
+    func markReady(id: String) async {
         do {
-            let updated = try await APIService.shared.completeOrder(id: id)
+            let updated = try await APIService.shared.markOrderReady(id: id)
             updateOrder(updated)
-            successMessage = "Order completed"
+            successMessage = "Order ready for courier pickup"
         } catch {
             errorMessage = error.localizedDescription
         }
