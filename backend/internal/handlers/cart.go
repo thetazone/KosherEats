@@ -136,13 +136,29 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 
 	selectedJSON, _ := json.Marshal(selected)
 
-	// Add item. unit_price is the per-unit charge including modifier deltas,
-	// snapshotted at add-to-cart time so later modifier price edits don't
-	// retroactively change what the user sees in their cart.
-	_, err = h.db.Pool.Exec(r.Context(),
-		`INSERT INTO cart_items (cart_id, menu_item_id, quantity, notes, unit_price, selected_modifiers)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		cartID, req.MenuItemID, req.Quantity, req.Notes, unitPrice, selectedJSON)
+	// If the same menu item with the same modifiers already exists in the cart,
+	// increment the quantity instead of adding a duplicate row.
+	var existingItemID string
+	err = h.db.Pool.QueryRow(r.Context(),
+		`SELECT id FROM cart_items
+		 WHERE cart_id = $1 AND menu_item_id = $2 AND selected_modifiers = $3`,
+		cartID, req.MenuItemID, selectedJSON,
+	).Scan(&existingItemID)
+
+	if err == nil {
+		// Same item + modifiers already in cart — bump quantity
+		_, err = h.db.Pool.Exec(r.Context(),
+			`UPDATE cart_items SET quantity = quantity + $1 WHERE id = $2`,
+			req.Quantity, existingItemID)
+	} else {
+		// Add new item. unit_price is the per-unit charge including modifier deltas,
+		// snapshotted at add-to-cart time so later modifier price edits don't
+		// retroactively change what the user sees in their cart.
+		_, err = h.db.Pool.Exec(r.Context(),
+			`INSERT INTO cart_items (cart_id, menu_item_id, quantity, notes, unit_price, selected_modifiers)
+			 VALUES ($1, $2, $3, $4, $5, $6)`,
+			cartID, req.MenuItemID, req.Quantity, req.Notes, unitPrice, selectedJSON)
+	}
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to add item to cart")
@@ -207,9 +223,9 @@ func (h *Handler) UpdateCartItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE cart_items SET quantity = $1, notes = $2
-		 WHERE id = $3 AND cart_id IN (SELECT id FROM carts WHERE user_id = $4)`,
-		req.Quantity, req.Notes, itemID, user["user_id"])
+		`UPDATE cart_items SET quantity = $1
+		 WHERE id = $2 AND cart_id IN (SELECT id FROM carts WHERE user_id = $3)`,
+		req.Quantity, itemID, user["user_id"])
 
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusNotFound, "cart item not found")

@@ -9,32 +9,24 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView()
-                .tabItem {
-                    Image(systemName: "house.fill")
-                    Text("Home")
-                }
+                .tabItem { Image(systemName: "house.fill") }
                 .tag(0)
 
-            SearchView()
-                .tabItem {
-                    Image(systemName: "magnifyingglass")
-                    Text("Search")
-                }
+            NearbyMapView()
+                .tabItem { Image(systemName: "map.fill") }
                 .tag(1)
 
-            OrdersListView()
-                .tabItem {
-                    Image(systemName: "list.bullet.rectangle")
-                    Text("Orders")
-                }
+            SearchView()
+                .tabItem { Image(systemName: "magnifyingglass") }
                 .tag(2)
 
-            ProfileView()
-                .tabItem {
-                    Image(systemName: "person.fill")
-                    Text("Profile")
-                }
+            OrdersListView()
+                .tabItem { Image(systemName: "cart.fill") }
                 .tag(3)
+
+            ProfileView()
+                .tabItem { Image(systemName: "person.fill") }
+                .tag(4)
         }
         .tint(.kePrimary)
         .onAppear {
@@ -50,17 +42,17 @@ struct MainTabView: View {
         // notification taps all land here — this is the one place in the app
         // that owns cross-tab navigation.
         .onReceive(NotificationCenter.default.publisher(for: .navigateToOrdersTab)) { _ in
-            selectedTab = 2
+            selectedTab = 3
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderTracking)) { note in
             if let id = note.userInfo?["order_id"] as? String {
-                selectedTab = 2
+                selectedTab = 3
                 pendingTrackingOrderId = id
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderDetail)) { note in
             if let id = note.userInfo?["order_id"] as? String {
-                selectedTab = 2
+                selectedTab = 3
                 pendingDetailOrderId = id
             }
         }

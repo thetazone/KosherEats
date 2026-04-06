@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		020EA4A0A1B653F3561014F4 /* NearbyMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6292F982F2B7330033BC8AD7 /* NearbyMapView.swift */; };
 		0CBE3D53C9C810A6E2A9AB56 /* OrderChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B392A5239BFC99AF9F5AF911 /* OrderChatView.swift */; };
 		0E61857615283AC07DADE848 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532AB806EDEAECDDD14F3C5F /* LoginView.swift */; };
 		1CCCB3FEDE50C77C00C369AF /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F43399ABE7040035BB1376F7 /* Localizable.xcstrings */; };
@@ -73,6 +74,7 @@
 		531B67D67A3B71B2FD41B42F /* OrdersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrdersListView.swift; sourceTree = "<group>"; };
 		532AB806EDEAECDDD14F3C5F /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		5673E6D26A116A1FE841CA83 /* AddressPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressPickerSheet.swift; sourceTree = "<group>"; };
+		6292F982F2B7330033BC8AD7 /* NearbyMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyMapView.swift; sourceTree = "<group>"; };
 		62CD9268735408B8E5061B0B /* RemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImage.swift; sourceTree = "<group>"; };
 		673D1479DC5055E75F603745 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		71DAAA06CFF2566D78C4B2F9 /* CartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartView.swift; sourceTree = "<group>"; };
@@ -174,6 +176,14 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		9956F23566E7A7BAA18957D8 /* Map */ = {
+			isa = PBXGroup;
+			children = (
+				6292F982F2B7330033BC8AD7 /* NearbyMapView.swift */,
+			);
+			path = Map;
+			sourceTree = "<group>";
+		};
 		ABFFC73D2B1AC06F91C6BFA4 /* Home */ = {
 			isa = PBXGroup;
 			children = (
@@ -202,6 +212,7 @@
 				C6765A3CF9499AFD4F29217F /* Chat */,
 				CB1D074048C7C3132C1EC3C0 /* Components */,
 				ABFFC73D2B1AC06F91C6BFA4 /* Home */,
+				9956F23566E7A7BAA18957D8 /* Map */,
 				255B8C81A54A44E676C8A822 /* Orders */,
 				1A0A0226E549F02D551039C7 /* Profile */,
 				AC74FEE50AF4261CCD471CE2 /* Restaurant */,
@@ -337,7 +348,7 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					0681E9AEA4EF5541F31A1477 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 4RSM8W4755;
 					};
 				};
 			};
@@ -408,6 +419,7 @@
 				CE2B434340EF7439D08837DF /* MenuItemView.swift in Sources */,
 				7DAE855C67AA152C7B800F9B /* Models.swift in Sources */,
 				F979300E86B244D8A324FA79 /* NavigationEvents.swift in Sources */,
+				020EA4A0A1B653F3561014F4 /* NearbyMapView.swift in Sources */,
 				0CBE3D53C9C810A6E2A9AB56 /* OrderChatView.swift in Sources */,
 				9B7E8FFE5E05BE97B81BABA2 /* OrderConfirmationView.swift in Sources */,
 				2197D6C931C2B176D90FCC59 /* OrderDetailView.swift in Sources */,
@@ -489,7 +501,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -578,7 +590,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
