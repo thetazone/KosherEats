@@ -33,7 +33,7 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "BASE_URL", "\"https://api.koshereats.com/\"")
+        buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
 
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
         buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_CONSUMER_APP_ID")}\"")
@@ -55,7 +55,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "BASE_URL", "\"https://api.koshereats.com/api/v1/\"")
+            buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
         }
     }
 

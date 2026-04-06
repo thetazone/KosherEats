@@ -1,7 +1,7 @@
 // Admin API client. Uses a separate token stored under "ke_admin_token" so
 // the admin session doesn't collide with any consumer web session.
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://koshereats-api.fly.dev/api/v1";
 
 const TOKEN_KEY = "ke_admin_token";
 

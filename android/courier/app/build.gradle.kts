@@ -33,7 +33,7 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "BASE_URL", "\"https://api.koshereats.com/api/v1/\"")
+        buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
 
         // Firebase config. Read from local.properties (see FIREBASE.md). Empty
         // strings are fine for builds — PushBootstrap skips init at runtime
@@ -59,7 +59,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "BASE_URL", "\"https://api.koshereats.com/api/v1/\"")
+            buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
         }
     }
 

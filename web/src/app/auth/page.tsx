@@ -46,7 +46,7 @@ export default function AuthPage() {
         : { email, password, first_name: firstName, last_name: lastName, phone };
 
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}${endpoint}`,
+        `${process.env.NEXT_PUBLIC_API_URL || "https://koshereats-api.fly.dev/api/v1"}${endpoint}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

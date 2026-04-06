@@ -30,7 +30,7 @@ actor APIService {
         #if DEBUG
         self.baseURL = "http://localhost:8080/api/v1"
         #else
-        self.baseURL = "https://api.koshereats.com/api/v1"
+        self.baseURL = "https://koshereats-api.fly.dev/api/v1"
         #endif
 
         self.decoder = JSONDecoder()

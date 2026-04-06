@@ -27,7 +27,7 @@ final class APIService: ObservableObject {
     #if DEBUG
     private var baseURL = "http://localhost:8080/api/v1"
     #else
-    private var baseURL = "https://api.koshereats.com/api/v1"
+    private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #endif
 
     private var token: String? {
