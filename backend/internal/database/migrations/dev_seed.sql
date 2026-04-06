@@ -4,6 +4,20 @@
 --
 -- Idempotent: checks existence before inserting so re-running is safe.
 
+-- ── Demo consumer (for App Store Review) ───────────────────
+-- Login: review@koshereats.dev / KosherEats2026!
+-- Provide these credentials to Apple during app submission.
+INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role)
+SELECT
+    '00000000-0000-0000-0000-000000000001',
+    'review@koshereats.dev',
+    '$2y$10$6ELYu5F5vYyWO1Bn/6728Or/CoWxpoyt.gftrSgdga94ogmYIBNES',
+    'App',
+    'Review',
+    '+15559990001',
+    'consumer'
+ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+
 -- ── Seller user (owns all 5 restaurants) ────────────────────
 -- Login: seller@koshereats.dev / sellerpass
 -- Hash generated with bcrypt cost 12.
