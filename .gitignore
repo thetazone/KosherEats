@@ -28,6 +28,8 @@ android/**/google-services*.json
 google-services*.json
 android/**/*.iml
 firebase-adminsdk*.json
+*.p8
+ios/**/firebase*.json
 
 # IDE
 .idea/
