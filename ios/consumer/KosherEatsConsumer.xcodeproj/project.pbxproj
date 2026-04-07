@@ -122,6 +122,7 @@
 		915C21DC5033205D046A0A9C /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
 		93C35EE84FA77BAA6AD45CD7 /* DeliveryAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryAttributes.swift; sourceTree = "<group>"; };
 		A45B39CCD6CEDE249E944741 /* MenuItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemView.swift; sourceTree = "<group>"; };
+		A9FCF332C76AB212F42D0128 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B392A5239BFC99AF9F5AF911 /* OrderChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderChatView.swift; sourceTree = "<group>"; };
 		B3DE2ED9B4572AE729D13E48 /* DeliveryActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityManager.swift; sourceTree = "<group>"; };
 		BF1511B23D9E29EA6CF456DB /* KosherBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherBadge.swift; sourceTree = "<group>"; };
@@ -197,6 +198,7 @@
 			children = (
 				4777260F42F1BADF9F18D2C7 /* DeliveryActivityBundle.swift */,
 				10302CD3644A5F8D8E5169A6 /* DeliveryActivityWidget.swift */,
+				A9FCF332C76AB212F42D0128 /* Info.plist */,
 			);
 			path = DeliveryActivity;
 			sourceTree = "<group>";
@@ -705,9 +707,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = DeliveryActivity;
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				INFOPLIST_FILE = DeliveryActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -724,9 +724,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = DeliveryActivity;
-				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				INFOPLIST_FILE = DeliveryActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -54,11 +54,14 @@ targets:
     sources:
       - DeliveryActivity
       - path: KosherEatsConsumer/Models/DeliveryAttributes.swift
+    info:
+      path: DeliveryActivity/Info.plist
+      properties:
+        CFBundleDisplayName: DeliveryActivity
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.koshereats.consumer.DeliveryActivity
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: DeliveryActivity
-        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
