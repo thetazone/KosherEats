@@ -58,6 +58,7 @@ targets:
       path: DeliveryActivity/Info.plist
       properties:
         CFBundleDisplayName: DeliveryActivity
+        CFBundleShortVersionString: "1.0.0"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
