@@ -15,9 +15,9 @@ struct CheckoutView: View {
     @StateObject private var vm = CheckoutViewModel()
     @Environment(\.dismiss) var dismiss
     @State private var showAddressPicker = false
+    @State private var placedOrder: Order?
 
-    /// Called when the order is placed so the parent can dismiss the cart +
-    /// navigate to the orders tab. Parent supplies the completion.
+    /// Called when the user finishes with confirmation (Done or Track).
     var onOrderPlaced: (Order) -> Void
 
     var body: some View {
@@ -81,6 +81,28 @@ struct CheckoutView: View {
                 Task { await vm.refreshBundle() }
             }
         }
+        .fullScreenCover(item: $placedOrder) { order in
+            OrderConfirmationView(
+                order: order,
+                onDone: {
+                    placedOrder = nil
+                    Task { await cartVM.loadCart() }
+                    onOrderPlaced(order)
+                },
+                onTrack: {
+                    placedOrder = nil
+                    Task { await cartVM.loadCart() }
+                    onOrderPlaced(order)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        NotificationCenter.default.post(
+                            name: .navigateToOrderTracking,
+                            object: nil,
+                            userInfo: ["order_id": order.id]
+                        )
+                    }
+                }
+            )
+        }
     }
 
     // MARK: - Pay button
@@ -120,9 +142,8 @@ struct CheckoutView: View {
         await vm.presentAndChargePaymentSheet(bundle: bundle)
         if vm.paymentSucceeded {
             if let order = await vm.placeOrder(address: address, bundle: bundle) {
-                await cartVM.loadCart() // cart cleared server-side
                 Haptics.success()
-                onOrderPlaced(order)
+                placedOrder = order
             } else {
                 Haptics.error()
             }

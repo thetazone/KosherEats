@@ -4,8 +4,6 @@ struct CartView: View {
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
     @State private var showCheckout = false
-    @State private var placedOrder: Order?
-    @State private var showConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -54,33 +52,13 @@ struct CartView: View {
                 }
             }
             .navigationDestination(isPresented: $showCheckout) {
-                CheckoutView(onOrderPlaced: { order in
-                    placedOrder = order
-                    showCheckout = false
-                    showConfirmation = true
+                CheckoutView(onOrderPlaced: { _ in
+                    // Order was placed and user dismissed confirmation.
+                    // Dismiss the cart sheet and go to orders tab.
+                    dismiss()
+                    NotificationCenter.default.post(name: .navigateToOrdersTab, object: nil)
                 })
                 .environmentObject(cartVM)
-            }
-            .fullScreenCover(isPresented: $showConfirmation) {
-                if let order = placedOrder {
-                    OrderConfirmationView(
-                        order: order,
-                        onDone: {
-                            showConfirmation = false
-                            dismiss()
-                            NotificationCenter.default.post(name: .navigateToOrdersTab, object: nil)
-                        },
-                        onTrack: {
-                            showConfirmation = false
-                            dismiss()
-                            NotificationCenter.default.post(
-                                name: .navigateToOrderTracking,
-                                object: nil,
-                                userInfo: ["order_id": order.id],
-                            )
-                        },
-                    )
-                }
             }
         }
     }

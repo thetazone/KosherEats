@@ -41,3 +41,4 @@ ios/**/firebase*.json
 # OS
 .DS_Store
 Thumbs.db
+ios/**/firebase*.json
