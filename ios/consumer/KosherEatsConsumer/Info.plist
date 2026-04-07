@@ -10,12 +10,14 @@
 	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>KosherEats uses your location to show nearby kosher restaurants and estimate delivery times.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>KosherEats uses the camera to scan your payment card for faster checkout.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.YOUR_CLIENT_ID</string>
+				<string>com.googleusercontent.apps.98949098353-2pq3fn45qj472ovqng76k6ohfj1sscnh</string>
 			</array>
 			<key>CFBundleURLName</key>
 			<string>Google Sign-In</string>
@@ -23,24 +25,26 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>fbYOUR_FACEBOOK_APP_ID</string>
+				<string>koshereats</string>
 			</array>
 			<key>CFBundleURLName</key>
-			<string>Facebook Login</string>
+			<string>Stripe Redirect</string>
 		</dict>
 	</array>
-	<key>FacebookAppID</key>
-	<string>YOUR_FACEBOOK_APP_ID</string>
-	<key>FacebookClientToken</key>
-	<string>YOUR_FACEBOOK_CLIENT_TOKEN</string>
-	<key>FacebookDisplayName</key>
-	<string>KosherEats</string>
 	<key>LSApplicationQueriesSchemes</key>
+	<array/>
+	<key>UISupportedInterfaceOrientations</key>
 	<array>
-		<string>fbapi</string>
-		<string>fb-messenger-share-api</string>
-		<string>fbauth2</string>
-		<string>fbshareextension</string>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>

@@ -12,10 +12,10 @@
 		0E61857615283AC07DADE848 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532AB806EDEAECDDD14F3C5F /* LoginView.swift */; };
 		1CCCB3FEDE50C77C00C369AF /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F43399ABE7040035BB1376F7 /* Localizable.xcstrings */; };
 		2197D6C931C2B176D90FCC59 /* OrderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF97B3F6AB7D955152EAF372 /* OrderDetailView.swift */; };
-		24EFA5C72D8A914A67E78D88 /* FacebookLogin in Frameworks */ = {isa = PBXBuildFile; productRef = A0004698BB5022DEE70FE774 /* FacebookLogin */; };
+		24EFA5C72D8A914A67E78D88 /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = 2607C4F975A2C9C831C312A3 /* StripePaymentSheet */; };
+		2C16F01F50E7D16D12007F35 /* DeliveryAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C35EE84FA77BAA6AD45CD7 /* DeliveryAttributes.swift */; };
 		2C9B0CEB08358C9B4C585168 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D019A6271BC7CE6BB755EC9 /* AuthenticationServices.framework */; };
 		2F98DEED740C75D26424A107 /* KosherFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7ABBA9D64B24D971395AA3 /* KosherFilterSheet.swift */; };
-		31FE6F394140F691B5EE0377 /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = 2607C4F975A2C9C831C312A3 /* StripePaymentSheet */; };
 		3D723789E7DC58FFBA9B9BFC /* CheckoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 341963D6254E0BA6E3DB592B /* CheckoutView.swift */; };
 		4C35D4FCDA42B026896DDAB0 /* RestaurantDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07ECCFC7FC5B9A1BCDD2C943 /* RestaurantDetailView.swift */; };
 		4D2B9654DE48CAD2840B5E7C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 23226A6F71B3E20D4DF471BE /* Assets.xcassets */; };
@@ -28,14 +28,18 @@
 		7C66DE74965DF1BD5E62A49B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A97F847B89A67ADE01ABA8 /* Theme.swift */; };
 		7DAE855C67AA152C7B800F9B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01335D3A72F34D64E37688CC /* Models.swift */; };
 		89426127EA95D498631EC092 /* RestaurantCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F940AFDF40BDC9601E6AD669 /* RestaurantCardView.swift */; };
+		955AFAE3B0F5AE925D510190 /* DeliveryActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5306981A9C15467FACCA2132 /* DeliveryActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9B7E8FFE5E05BE97B81BABA2 /* OrderConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 820B609CEE9DA0C5A2C87EC2 /* OrderConfirmationView.swift */; };
 		9CFA63C8397B9823F5984746 /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C25F8CFF903E76F83DE658 /* RegisterView.swift */; };
+		A15EB4E67ECDC283429455DC /* DeliveryActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4777260F42F1BADF9F18D2C7 /* DeliveryActivityBundle.swift */; };
+		A1B52A5C09F9DF968E7B0659 /* DeliveryActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10302CD3644A5F8D8E5169A6 /* DeliveryActivityWidget.swift */; };
 		AE581A238EA63E08F383D4D6 /* OrderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FA54E845EF93165911E9087 /* OrderViewModel.swift */; };
 		AEBC2B3DE2B0DC6E30103739 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B4DA7BEFD0546C320D82D97 /* Colors.swift */; };
 		AEDF82358B6B795FC1BDFBE8 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D7D4F3B004C53FB8CDB28F5C /* PrivacyInfo.xcprivacy */; };
 		BADA55FF4EC4319692E24766 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B790510D5180E0B8A6D69C /* HomeViewModel.swift */; };
 		BB12B8D9EC6BB30C8A386404 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90906256C000F3E7B2857B94 /* MainTabView.swift */; };
 		BC5AD34F35E2D28CBFD6763D /* RestaurantViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4EA3F0BB7FA0256BA619A66 /* RestaurantViewModel.swift */; };
+		BD91E1FBCC9144DB4457E448 /* DeliveryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DE2ED9B4572AE729D13E48 /* DeliveryActivityManager.swift */; };
 		C12DE9D97B881DBD8601DEF3 /* OrderTrackingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C0C1448784B4D1C460276BF /* OrderTrackingView.swift */; };
 		C151FA0D2A924B4E9E81EBA3 /* KosherEatsConsumerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5A874B0A0C1B288256EF17 /* KosherEatsConsumerApp.swift */; };
 		C6E8EE6B06C0C1D9F647E700 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A5B362D2A4246A5896909EF /* AppDelegate.swift */; };
@@ -44,6 +48,7 @@
 		CE2B434340EF7439D08837DF /* MenuItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A45B39CCD6CEDE249E944741 /* MenuItemView.swift */; };
 		D5C5123F3DC9E5E47A141EA9 /* CartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71DAAA06CFF2566D78C4B2F9 /* CartView.swift */; };
 		DA684BFA3A17243A26519095 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = F07342725B1161EEB56AE5AE /* PushNotifications.swift */; };
+		DC51D39EA34312B88B0A7D68 /* DeliveryAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93C35EE84FA77BAA6AD45CD7 /* DeliveryAttributes.swift */; };
 		E3B1FFF8A09E6760923270B1 /* AddressPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5673E6D26A116A1FE841CA83 /* AddressPickerSheet.swift */; };
 		E3CCE5D3A1D417776BC902C4 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B5AB0E0230042474E927066 /* APIService.swift */; };
 		EA430880C9529EA6530A23A5 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3A20760EEEA82A2523C5DD /* Haptics.swift */; };
@@ -55,6 +60,30 @@
 		FAC2051D7A23C59D1CF3EF0D /* AppleSignInHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		3E4DCB72242C35A29725504A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B0528D8BBC96451668259EF4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E74387274BC278C80E649655;
+			remoteInfo = DeliveryActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		00F9A63F466513D1843F1382 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				955AFAE3B0F5AE925D510190 /* DeliveryActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		01335D3A72F34D64E37688CC /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		040228A968D2179125E57BD5 /* NavigationEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationEvents.swift; sourceTree = "<group>"; };
@@ -62,15 +91,18 @@
 		08B790510D5180E0B8A6D69C /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
 		0B5AB0E0230042474E927066 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		0FA54E845EF93165911E9087 /* OrderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderViewModel.swift; sourceTree = "<group>"; };
+		10302CD3644A5F8D8E5169A6 /* DeliveryActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityWidget.swift; sourceTree = "<group>"; };
 		23226A6F71B3E20D4DF471BE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2B4DA7BEFD0546C320D82D97 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
 		2C3A20760EEEA82A2523C5DD /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
 		341963D6254E0BA6E3DB592B /* CheckoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutView.swift; sourceTree = "<group>"; };
 		3F00BBAF66228B0F469FBF0A /* ErrorStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorStateView.swift; sourceTree = "<group>"; };
 		40C25F8CFF903E76F83DE658 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
+		4777260F42F1BADF9F18D2C7 /* DeliveryActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityBundle.swift; sourceTree = "<group>"; };
 		4A5B362D2A4246A5896909EF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		4AE8CD2C50633EF55B9274E3 /* CheckoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutViewModel.swift; sourceTree = "<group>"; };
 		4F6CB22D2F641271C73FB7F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5306981A9C15467FACCA2132 /* DeliveryActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DeliveryActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		531B67D67A3B71B2FD41B42F /* OrdersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrdersListView.swift; sourceTree = "<group>"; };
 		532AB806EDEAECDDD14F3C5F /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		5673E6D26A116A1FE841CA83 /* AddressPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressPickerSheet.swift; sourceTree = "<group>"; };
@@ -88,8 +120,10 @@
 		8F7ABBA9D64B24D971395AA3 /* KosherFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherFilterSheet.swift; sourceTree = "<group>"; };
 		90906256C000F3E7B2857B94 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		915C21DC5033205D046A0A9C /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
+		93C35EE84FA77BAA6AD45CD7 /* DeliveryAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryAttributes.swift; sourceTree = "<group>"; };
 		A45B39CCD6CEDE249E944741 /* MenuItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemView.swift; sourceTree = "<group>"; };
 		B392A5239BFC99AF9F5AF911 /* OrderChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderChatView.swift; sourceTree = "<group>"; };
+		B3DE2ED9B4572AE729D13E48 /* DeliveryActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityManager.swift; sourceTree = "<group>"; };
 		BF1511B23D9E29EA6CF456DB /* KosherBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherBadge.swift; sourceTree = "<group>"; };
 		D0C3889D3852F82910204CE4 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		D281D6A3AE606A35DE4EE8C8 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
@@ -109,8 +143,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ED3BEC64D991358290A1A843 /* GoogleSignIn in Frameworks */,
-				24EFA5C72D8A914A67E78D88 /* FacebookLogin in Frameworks */,
-				31FE6F394140F691B5EE0377 /* StripePaymentSheet in Frameworks */,
+				24EFA5C72D8A914A67E78D88 /* StripePaymentSheet in Frameworks */,
 				2C9B0CEB08358C9B4C585168 /* AuthenticationServices.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -159,6 +192,15 @@
 			path = ViewModels;
 			sourceTree = "<group>";
 		};
+		45DA96DE8C0A68C0BCE79535 /* DeliveryActivity */ = {
+			isa = PBXGroup;
+			children = (
+				4777260F42F1BADF9F18D2C7 /* DeliveryActivityBundle.swift */,
+				10302CD3644A5F8D8E5169A6 /* DeliveryActivityWidget.swift */,
+			);
+			path = DeliveryActivity;
+			sourceTree = "<group>";
+		};
 		466A13C43EBC5A82C80EC8E5 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -171,6 +213,7 @@
 			isa = PBXGroup;
 			children = (
 				8D10CA3E19A971ABBB3575FA /* ChatMessage.swift */,
+				93C35EE84FA77BAA6AD45CD7 /* DeliveryAttributes.swift */,
 				01335D3A72F34D64E37688CC /* Models.swift */,
 			);
 			path = Models;
@@ -260,6 +303,7 @@
 		D04D4A89F30690F97079D83B = {
 			isa = PBXGroup;
 			children = (
+				45DA96DE8C0A68C0BCE79535 /* DeliveryActivity */,
 				BDF008E4DD389E6BCC7C9DFA /* KosherEatsConsumer */,
 				466A13C43EBC5A82C80EC8E5 /* Frameworks */,
 				E201F07FE0A15061E6799F23 /* Products */,
@@ -279,6 +323,7 @@
 		E201F07FE0A15061E6799F23 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				5306981A9C15467FACCA2132 /* DeliveryActivity.appex */,
 				E3A03C6943E8EF5A65A550EC /* KosherEatsConsumer.app */,
 			);
 			name = Products;
@@ -306,6 +351,7 @@
 			children = (
 				0B5AB0E0230042474E927066 /* APIService.swift */,
 				78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */,
+				B3DE2ED9B4572AE729D13E48 /* DeliveryActivityManager.swift */,
 				2C3A20760EEEA82A2523C5DD /* Haptics.swift */,
 				040228A968D2179125E57BD5 /* NavigationEvents.swift */,
 				F07342725B1161EEB56AE5AE /* PushNotifications.swift */,
@@ -323,20 +369,38 @@
 				7ADD4732DCAB095AA91E77E8 /* Sources */,
 				47EB3E7150A0E2966504EB3E /* Resources */,
 				F5CD473AEA94D94412FABDA6 /* Frameworks */,
+				00F9A63F466513D1843F1382 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D90B495D2E68C81108DFB9BB /* PBXTargetDependency */,
 			);
 			name = KosherEatsConsumer;
 			packageProductDependencies = (
 				5AD74E256E1AB0720076F4A5 /* GoogleSignIn */,
-				A0004698BB5022DEE70FE774 /* FacebookLogin */,
 				2607C4F975A2C9C831C312A3 /* StripePaymentSheet */,
 			);
 			productName = KosherEatsConsumer;
 			productReference = E3A03C6943E8EF5A65A550EC /* KosherEatsConsumer.app */;
 			productType = "com.apple.product-type.application";
+		};
+		E74387274BC278C80E649655 /* DeliveryActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3E9C57482B2C0D39D7E8EE36 /* Build configuration list for PBXNativeTarget "DeliveryActivity" */;
+			buildPhases = (
+				43B6AF27DCFF99808731ED61 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeliveryActivity;
+			packageProductDependencies = (
+			);
+			productName = DeliveryActivity;
+			productReference = 5306981A9C15467FACCA2132 /* DeliveryActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -348,6 +412,9 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					0681E9AEA4EF5541F31A1477 = {
+						DevelopmentTeam = 4RSM8W4755;
+					};
+					E74387274BC278C80E649655 = {
 						DevelopmentTeam = 4RSM8W4755;
 					};
 				};
@@ -365,7 +432,6 @@
 			mainGroup = D04D4A89F30690F97079D83B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F851B7641E1069CBC077C6C2 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */,
 				709F08EE7EE55B617A14AF78 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				A1B565944BADCABB12A9163C /* XCRemoteSwiftPackageReference "stripe-ios" */,
 			);
@@ -373,6 +439,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				E74387274BC278C80E649655 /* DeliveryActivity */,
 				0681E9AEA4EF5541F31A1477 /* KosherEatsConsumer */,
 			);
 		};
@@ -392,6 +459,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		43B6AF27DCFF99808731ED61 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A15EB4E67ECDC283429455DC /* DeliveryActivityBundle.swift in Sources */,
+				A1B52A5C09F9DF968E7B0659 /* DeliveryActivityWidget.swift in Sources */,
+				DC51D39EA34312B88B0A7D68 /* DeliveryAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7ADD4732DCAB095AA91E77E8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -407,6 +484,8 @@
 				3D723789E7DC58FFBA9B9BFC /* CheckoutView.swift in Sources */,
 				66D106AD75B35F584F41ACB9 /* CheckoutViewModel.swift in Sources */,
 				AEBC2B3DE2B0DC6E30103739 /* Colors.swift in Sources */,
+				BD91E1FBCC9144DB4457E448 /* DeliveryActivityManager.swift in Sources */,
+				2C16F01F50E7D16D12007F35 /* DeliveryAttributes.swift in Sources */,
 				C8F8C4A3609E7CBF669D79AA /* ErrorStateView.swift in Sources */,
 				EA430880C9529EA6530A23A5 /* Haptics.swift in Sources */,
 				71CE7B8B1DAEB5A6D8F15C0C /* HomeView.swift in Sources */,
@@ -440,6 +519,14 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		D90B495D2E68C81108DFB9BB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E74387274BC278C80E649655 /* DeliveryActivity */;
+			targetProxy = 3E4DCB72242C35A29725504A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
 		21EB907E597ABFBEEAAD8B0D /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -451,6 +538,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = KosherEatsConsumer/Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "KosherEats needs your location to find nearby restaurants";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -540,6 +628,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = KosherEatsConsumer/Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "KosherEats needs your location to find nearby restaurants";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -612,9 +701,56 @@
 			};
 			name = Release;
 		};
+		A508A0510E7E22BF8074C360 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = DeliveryActivity;
+				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.consumer.DeliveryActivity;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A68A72014165D44091D76E34 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = DeliveryActivity;
+				INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier = "com.apple.widgetkit-extension";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.consumer.DeliveryActivity;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3E9C57482B2C0D39D7E8EE36 /* Build configuration list for PBXNativeTarget "DeliveryActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A68A72014165D44091D76E34 /* Debug */,
+				A508A0510E7E22BF8074C360 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		C4ECB91431211F2A8ADA0004 /* Build configuration list for PBXNativeTarget "KosherEatsConsumer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -652,14 +788,6 @@
 				minimumVersion = 23.27.0;
 			};
 		};
-		F851B7641E1069CBC077C6C2 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/facebook/facebook-ios-sdk";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 17.0.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -672,11 +800,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 709F08EE7EE55B617A14AF78 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
-		};
-		A0004698BB5022DEE70FE774 /* FacebookLogin */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F851B7641E1069CBC077C6C2 /* XCRemoteSwiftPackageReference "facebook-ios-sdk" */;
-			productName = FacebookLogin;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

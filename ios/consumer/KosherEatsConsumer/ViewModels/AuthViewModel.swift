@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import AuthenticationServices
 import GoogleSignIn
-import FacebookLogin
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -128,36 +127,8 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Facebook Sign-In
-
-    func signInWithFacebook() {
-        let loginManager = LoginManager()
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else {
-            errorMessage = "Cannot find root view controller"
-            return
-        }
-
-        loginManager.logIn(permissions: ["email", "public_profile"], from: rootVC) { [weak self] result, error in
-            guard let self else { return }
-            if let error = error {
-                Task { @MainActor in
-                    self.errorMessage = error.localizedDescription
-                }
-                return
-            }
-            guard let result = result, !result.isCancelled, let token = result.token?.tokenString else {
-                return
-            }
-            Task { @MainActor in
-                await self.socialLogin(provider: "facebook", token: token, firstName: "", lastName: "")
-            }
-        }
-    }
-
     func logout() {
         GIDSignIn.sharedInstance.signOut()
-        LoginManager().logOut()
         api.logout()
         user = nil
         isAuthenticated = false

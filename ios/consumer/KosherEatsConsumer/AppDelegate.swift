@@ -1,16 +1,12 @@
 import UIKit
-import FacebookCore
 import UserNotifications
 
-// Consumer app delegate. Handles Facebook SDK init, forwards APNs registration
-// callbacks into PushNotifications.shared, and routes push notification taps
-// into the app via NotificationCenter events that MainTabView listens to.
+// Consumer app delegate. Forwards APNs registration callbacks into
+// PushNotifications.shared, and routes push notification taps into the app
+// via NotificationCenter events that MainTabView listens to.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        ApplicationDelegate.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
-        // Install ourselves as the UNUserNotificationCenter delegate so we
-        // receive willPresent (foreground) and didReceive (tap) callbacks.
         UNUserNotificationCenter.current().delegate = self
         return true
     }

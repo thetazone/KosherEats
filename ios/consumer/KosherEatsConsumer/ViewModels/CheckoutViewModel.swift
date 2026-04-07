@@ -49,6 +49,8 @@ final class CheckoutViewModel: ObservableObject {
     @Published var paymentSucceeded: Bool = false
 
     private let api = APIService.shared
+    private var activeSheet: PaymentSheet?
+    private var sheetContinuation: CheckedContinuation<Void, Never>?
 
     // MARK: - Addresses
 
@@ -132,21 +134,30 @@ final class CheckoutViewModel: ObservableObject {
             return
         }
 
-        // PaymentSheet uses a callback-based API; bridge it into async/await.
-        let result: PaymentSheetResult = await withCheckedContinuation { continuation in
-            sheet.present(from: rootVC) { r in
-                continuation.resume(returning: r)
-            }
-        }
+        // Store sheet so it isn't deallocated before the callback fires.
+        self.activeSheet = sheet
 
-        switch result {
-        case .completed:
-            paymentSucceeded = true
-        case .canceled:
-            paymentSucceeded = false
-        case .failed(let error):
-            paymentSucceeded = false
-            errorMessage = error.localizedDescription
+        // Use a continuation-free approach: store the result in a published
+        // property and let the caller poll or observe.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            self.sheetContinuation = continuation
+            sheet.present(from: rootVC) { [weak self] result in
+                guard let self else { return }
+                Task { @MainActor in
+                    switch result {
+                    case .completed:
+                        self.paymentSucceeded = true
+                    case .canceled:
+                        self.paymentSucceeded = false
+                    case .failed(let error):
+                        self.paymentSucceeded = false
+                        self.errorMessage = error.localizedDescription
+                    }
+                    self.activeSheet = nil
+                    self.sheetContinuation?.resume()
+                    self.sheetContinuation = nil
+                }
+            }
         }
     }
 

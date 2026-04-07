@@ -66,21 +66,6 @@ struct RegisterView: View {
                             )
                         }
 
-                        // Continue with Facebook
-                        Button {
-                            authVM.signInWithFacebook()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Text("f")
-                                    .font(.system(size: 20, weight: .bold))
-                                Text("Continue with Facebook")
-                                    .font(.system(size: 16, weight: .semibold))
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .foregroundColor(.white)
-                            .background(Color(red: 0.094, green: 0.471, blue: 0.949))
-                            .cornerRadius(12)
-                        }
                     }
                     .padding(.horizontal)
 

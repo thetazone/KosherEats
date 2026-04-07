@@ -209,7 +209,18 @@ struct OrderTrackingView: View {
 
     private func loadOnce() async {
         do {
-            order = try await APIService.shared.getOrder(id: orderId)
+            let fetched = try await APIService.shared.getOrder(id: orderId)
+            let isFirst = order == nil
+            order = fetched
+
+            // Live Activity management
+            if isFirst && fetched.status.isActive {
+                DeliveryActivityManager.shared.startTracking(order: fetched)
+            } else if fetched.status.isActive {
+                DeliveryActivityManager.shared.update(order: fetched)
+            } else {
+                DeliveryActivityManager.shared.endTracking(order: fetched)
+            }
         } catch {
             print("[tracking] fetch error: \(error)")
         }

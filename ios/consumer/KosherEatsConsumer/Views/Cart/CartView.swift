@@ -61,14 +61,13 @@ struct CartView: View {
                 })
                 .environmentObject(cartVM)
             }
-            .navigationDestination(isPresented: $showConfirmation) {
+            .fullScreenCover(isPresented: $showConfirmation) {
                 if let order = placedOrder {
                     OrderConfirmationView(
                         order: order,
                         onDone: {
                             showConfirmation = false
                             dismiss()
-                            // Route to Orders tab after cart dismisses.
                             NotificationCenter.default.post(name: .navigateToOrdersTab, object: nil)
                         },
                         onTrack: {

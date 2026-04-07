@@ -10,9 +10,6 @@ packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "7.0.0"
-  FacebookLogin:
-    url: https://github.com/facebook/facebook-ios-sdk
-    from: "17.0.0"
   StripePaymentSheet:
     url: https://github.com/stripe/stripe-ios
     from: "23.27.0"
@@ -42,11 +39,26 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "KosherEats needs your location to find nearby restaurants"
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
     dependencies:
       - package: GoogleSignIn
         product: GoogleSignIn
-      - package: FacebookLogin
-        product: FacebookLogin
       - package: StripePaymentSheet
         product: StripePaymentSheet
       - sdk: AuthenticationServices.framework
+      - target: DeliveryActivity
+
+  DeliveryActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - DeliveryActivity
+      - path: KosherEatsConsumer/Models/DeliveryAttributes.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.koshereats.consumer.DeliveryActivity
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: DeliveryActivity
+        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.widgetkit-extension
