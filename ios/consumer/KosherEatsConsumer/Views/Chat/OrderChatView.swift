@@ -55,7 +55,6 @@ struct OrderChatView: View {
         .background(Color.keBackground.ignoresSafeArea())
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await fetch()
             startPolling()
@@ -124,6 +123,10 @@ struct OrderChatView: View {
     private func send() async {
         let text = input.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+        guard text.count <= 2000 else {
+            errorMessage = "Message is too long"
+            return
+        }
         isSending = true
         defer { isSending = false }
         do {

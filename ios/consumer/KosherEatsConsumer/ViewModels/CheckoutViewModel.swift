@@ -1,4 +1,6 @@
 import Foundation
+import PassKit
+import StripeApplePay
 import StripePaymentSheet
 import SwiftUI
 import UIKit
@@ -12,7 +14,7 @@ import UIKit
 /// It is intentionally dumb about the order creation step — the view wires
 /// `placeOrder` in after PaymentSheet completes successfully.
 @MainActor
-final class CheckoutViewModel: ObservableObject {
+final class CheckoutViewModel: NSObject, ObservableObject {
 
     // MARK: - Tip selection
 
@@ -50,7 +52,10 @@ final class CheckoutViewModel: ObservableObject {
 
     private let api = APIService.shared
     private var activeSheet: PaymentSheet?
+    private var bundleGeneration = 0
     private var sheetContinuation: CheckedContinuation<Void, Never>?
+    private var applePayContext: STPApplePayContext?
+    private var applePayContinuation: CheckedContinuation<Void, Never>?
 
     // MARK: - Addresses
 
@@ -79,8 +84,8 @@ final class CheckoutViewModel: ObservableObject {
         case .none: return 0
         case .percent(let p): return Int(Double(subtotal) * p)
         case .custom:
-            let dollars = Double(customTipText) ?? 0
-            return Int(dollars * 100)
+            let dollars = max(0, Double(customTipText) ?? 0)
+            return min(Int(dollars * 100), 50_000)
         }
     }
 
@@ -90,17 +95,21 @@ final class CheckoutViewModel: ObservableObject {
     /// load and any time the tip selection changes so the totals match what
     /// Stripe will actually charge.
     func refreshBundle() async {
+        bundleGeneration += 1
+        let gen = bundleGeneration
         isLoadingBundle = true
         errorMessage = nil
-        defer { isLoadingBundle = false }
 
         do {
             let tip = currentTipCents()
             let fresh = try await api.createPaymentSheet(tip: tip)
+            guard gen == bundleGeneration else { return }
             bundle = fresh
         } catch {
+            guard gen == bundleGeneration else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+        isLoadingBundle = false
     }
 
     // MARK: - Stripe PaymentSheet
@@ -124,7 +133,17 @@ final class CheckoutViewModel: ObservableObject {
         var config = PaymentSheet.Configuration()
         config.merchantDisplayName = "KosherEats"
         config.customer = .init(id: bundle.customerId, ephemeralKeySecret: bundle.ephemeralKeySecret)
-        config.allowsDelayedPaymentMethods = true
+        // Apple Pay needs the merchant id from our entitlements; PaymentSheet
+        // only shows the "Apple Pay" button when this is wired. Merchant id is
+        // registered under the team's App Store Connect account.
+        config.applePay = .init(
+            merchantId: "merchant.com.koshereats.consumer",
+            merchantCountryCode: "US",
+        )
+        // Saved card support needs allowsDelayedPaymentMethods = false; keeping
+        // delayed methods off also matches the backend restriction to card only
+        // (no ACH/bank debits).
+        config.allowsDelayedPaymentMethods = false
         config.returnURL = "koshereats://stripe-redirect"
 
         let sheet = PaymentSheet(paymentIntentClientSecret: bundle.paymentIntentSecret, configuration: config)
@@ -161,9 +180,78 @@ final class CheckoutViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Apple Pay express
+
+    /// One-tap Apple Pay from the checkout screen — skips the PaymentSheet
+    /// entirely. STPApplePayContext handles the PaymentIntent confirmation
+    /// once the user authorizes in the native Apple Pay sheet; we just hand
+    /// it our existing client_secret via the delegate.
+    func presentApplePayExpress(bundle: APIService.PaymentSheetBundle) async {
+        isProcessing = true
+        errorMessage = nil
+        defer { isProcessing = false }
+
+        if bundle.isStub {
+            // Mirror the PaymentSheet dev-stub behaviour so reviewers without
+            // real Stripe keys still get through the flow.
+            paymentSucceeded = true
+            return
+        }
+
+        StripeAPI.defaultPublishableKey = bundle.publishableKey
+
+        let request = StripeAPI.paymentRequest(
+            withMerchantIdentifier: "merchant.com.koshereats.consumer",
+            country: "US",
+            currency: "USD",
+        )
+        request.paymentSummaryItems = applePaySummaryItems(bundle: bundle)
+
+        guard let context = STPApplePayContext(paymentRequest: request, delegate: self) else {
+            errorMessage = "Apple Pay is not available on this device"
+            return
+        }
+
+        guard let rootVC = Self.topViewController() else {
+            errorMessage = "Could not present Apple Pay"
+            return
+        }
+
+        self.applePayContext = context
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            self.applePayContinuation = continuation
+            context.presentApplePay(on: rootVC)
+        }
+    }
+
+    /// Itemised summary items for the Apple Pay sheet. The last row is the
+    /// merchant total, per Apple's guidelines — the prior rows are a
+    /// breakdown so the user sees what they're paying for.
+    private func applePaySummaryItems(bundle: APIService.PaymentSheetBundle) -> [PKPaymentSummaryItem] {
+        func item(_ label: String, _ cents: Int) -> PKPaymentSummaryItem {
+            PKPaymentSummaryItem(
+                label: label,
+                amount: NSDecimalNumber(value: Double(cents) / 100),
+            )
+        }
+        var items: [PKPaymentSummaryItem] = [
+            item("Subtotal", bundle.subtotal),
+            item("Tax", bundle.tax),
+            item("Service fee", bundle.serviceFee),
+            item("Delivery", bundle.deliveryFee),
+        ]
+        if bundle.tip > 0 {
+            items.append(item("Driver tip", bundle.tip))
+        }
+        items.append(item("KosherEats", bundle.total))
+        return items
+    }
+
     // MARK: - Order creation
 
     func placeOrder(address: Address, bundle: APIService.PaymentSheetBundle) async -> Order? {
+        guard !isProcessing else { return nil }
         isProcessing = true
         defer { isProcessing = false }
 
@@ -206,5 +294,50 @@ final class CheckoutViewModel: ObservableObject {
             top = presented
         }
         return top
+    }
+}
+
+// MARK: - Apple Pay context delegate
+
+extension CheckoutViewModel: ApplePayContextDelegate {
+    /// Hand STPApplePayContext the client_secret from our existing
+    /// /payments/create-payment-sheet response. The SDK then confirms the
+    /// PaymentIntent with the tokenised Apple Pay card on our behalf.
+    func applePayContext(
+        _ context: STPApplePayContext,
+        didCreatePaymentMethod paymentMethod: StripeAPI.PaymentMethod,
+        paymentInformation: PKPayment
+    ) async throws -> String {
+        guard let secret = self.bundle?.paymentIntentSecret else {
+            throw NSError(
+                domain: "Checkout",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Missing payment intent"]
+            )
+        }
+        return secret
+    }
+
+    func applePayContext(
+        _ context: STPApplePayContext,
+        didCompleteWith status: STPApplePayContext.PaymentStatus,
+        error: Error?
+    ) {
+        Task { @MainActor in
+            switch status {
+            case .success:
+                self.paymentSucceeded = true
+            case .userCancellation:
+                self.paymentSucceeded = false
+            case .error:
+                self.paymentSucceeded = false
+                self.errorMessage = error?.localizedDescription ?? "Apple Pay failed"
+            @unknown default:
+                self.paymentSucceeded = false
+            }
+            self.applePayContext = nil
+            self.applePayContinuation?.resume()
+            self.applePayContinuation = nil
+        }
     }
 }

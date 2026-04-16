@@ -6,6 +6,11 @@ options:
   xcodeVersion: "15.0"
   createIntermediateGroups: true
 
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "7.0.0"
+
 settings:
   base:
     SWIFT_VERSION: "5.9"
@@ -17,12 +22,17 @@ targets:
     platform: iOS
     sources:
       - KosherEatsCourier
+    scheme:
+      testTargets: []
+      gatherCoverageData: false
     settings:
       base:
         INFOPLIST_FILE: KosherEatsCourier/Info.plist
+        CODE_SIGN_ENTITLEMENTS: KosherEatsCourier/KosherEatsCourier.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.koshereats.courier
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
@@ -33,3 +43,9 @@ targets:
         INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription: "KosherEats Courier needs background location to keep customers updated on delivery progress."
         INFOPLIST_KEY_UIBackgroundModes: "location fetch"
         INFOPLIST_KEY_NSCameraUsageDescription: "KosherEats Courier needs camera access to capture your drivers license and vehicle documents."
+    dependencies:
+      - sdk: AuthenticationServices.framework
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: GoogleSignIn
+        product: GoogleSignInSwift

@@ -25,13 +25,14 @@ actor APIService {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private var token: String?
+    /// Held inside the actor so request/refresh can coordinate without
+    /// reaching into UserDefaults on every call. AuthViewModel still owns
+    /// the durable persistence (UserDefaults) and hydrates this on launch
+    /// via `setRefreshToken(_:)`.
+    private var refreshToken: String?
 
     private init() {
-        #if DEBUG
-        self.baseURL = "http://localhost:8080/api/v1"
-        #else
         self.baseURL = "https://koshereats-api.fly.dev/api/v1"
-        #endif
 
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
@@ -42,7 +43,15 @@ actor APIService {
         self.token = token
     }
 
+    func setRefreshToken(_ refresh: String?) {
+        self.refreshToken = refresh
+    }
+
     // MARK: - Core Request
+
+    /// Maximum retries for transient server errors (502/503/504) caused by
+    /// Fly.io cold-starts or momentary unavailability.
+    private let maxRetries = 1
 
     private func request<T: Decodable>(
         _ method: String,
@@ -65,30 +74,91 @@ actor APIService {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
-        let (data, response): (Data, URLResponse)
+        var lastError: Error = APIError.networkError("Unknown error")
+        for attempt in 0...maxRetries {
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await URLSession.shared.data(for: req)
+            } catch {
+                throw APIError.networkError(error.localizedDescription)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.networkError("Invalid response")
+            }
+
+            // Retry on transient server errors (cold-start 502/503/504)
+            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+                try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+                continue
+            }
+
+            if httpResponse.statusCode == 401 {
+                // Try refreshing the access token once before giving up. A
+                // bare 401 here would otherwise log the seller out whenever
+                // the JWT quietly expired between calls, even though the
+                // refresh token is still valid.
+                if refreshToken != nil {
+                    let refreshed = await performTokenRefresh()
+                    if refreshed {
+                        return try await request(method, path: path, body: body)
+                    }
+                }
+                throw APIError.unauthorized
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let errorMsg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? "Unknown error"
+                lastError = APIError.serverError(httpResponse.statusCode, errorMsg)
+                break
+            }
+
+            do {
+                return try decoder.decode(T.self, from: data)
+            } catch {
+                throw APIError.decodingError(error.localizedDescription)
+            }
+        }
+        throw lastError
+    }
+
+    /// Swaps the stored refresh token for a fresh access + refresh pair. A
+    /// `false` return means the refresh token itself is expired — the caller
+    /// should treat that as a hard 401 and route the user back to login.
+    private var isRefreshing = false
+
+    private func performTokenRefresh() async -> Bool {
+        if isRefreshing { return token != nil }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        guard let refresh = refreshToken,
+              let url = URL(string: "\(baseURL)/auth/refresh") else { return false }
+
+        struct RefreshResponse: Decodable {
+            let token: String
+            let refreshToken: String
+            enum CodingKeys: String, CodingKey {
+                case token
+                case refreshToken = "refresh_token"
+            }
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": refresh])
+
         do {
-            (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else { return false }
+            let decoded = try decoder.decode(RefreshResponse.self, from: data)
+            self.token = decoded.token
+            self.refreshToken = decoded.refreshToken
+            return true
         } catch {
-            throw APIError.networkError(error.localizedDescription)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.networkError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? "Unknown error"
-            throw APIError.serverError(httpResponse.statusCode, errorMsg)
-        }
-
-        do {
-            return try decoder.decode(T.self, from: data)
-        } catch {
-            throw APIError.decodingError(error.localizedDescription)
+            return false
         }
     }
 
@@ -113,25 +183,45 @@ actor APIService {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: req)
-        } catch {
-            throw APIError.networkError(error.localizedDescription)
-        }
+        var lastError: Error = APIError.networkError("Unknown error")
+        for attempt in 0...maxRetries {
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await URLSession.shared.data(for: req)
+            } catch {
+                throw APIError.networkError(error.localizedDescription)
+            }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.networkError("Invalid response")
-        }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.networkError("Invalid response")
+            }
 
-        if httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
-        }
+            // Retry on transient server errors (cold-start 502/503/504)
+            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+                try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+                continue
+            }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? "Unknown error"
-            throw APIError.serverError(httpResponse.statusCode, errorMsg)
+            if httpResponse.statusCode == 401 {
+                if refreshToken != nil {
+                    let refreshed = await performTokenRefresh()
+                    if refreshed {
+                        try await requestVoid(method, path: path, body: body)
+                        return
+                    }
+                }
+                throw APIError.unauthorized
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let errorMsg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? "Unknown error"
+                lastError = APIError.serverError(httpResponse.statusCode, errorMsg)
+                break
+            }
+
+            return // success
         }
+        throw lastError
     }
 
     // MARK: - Auth
@@ -139,6 +229,54 @@ actor APIService {
     func login(email: String, password: String) async throws -> AuthResponse {
         let body = ["email": email, "password": password]
         return try await request("POST", path: "/auth/login", body: body)
+    }
+
+    /// Creates a consumer account via /auth/register. The seller app funnels
+    /// new email users into SellerOnboardingView afterward (same path as a
+    /// non-seller Apple/Google sign-up) — there's no public self-service
+    /// seller-role signup, so the reviewer pass-through and any curious
+    /// drop-ins end up on the "become a seller" screen.
+    func register(email: String, password: String, firstName: String, lastName: String) async throws -> AuthResponse {
+        let body = [
+            "email": email,
+            "password": password,
+            "first_name": firstName,
+            "last_name": lastName,
+            "phone": "",
+        ]
+        return try await request("POST", path: "/auth/register", body: body)
+    }
+
+    struct EmailCheckResponse: Decodable { let exists: Bool; let role: String }
+
+    func checkEmail(_ email: String) async throws -> EmailCheckResponse {
+        let body = ["email": email]
+        return try await request("POST", path: "/auth/email/check", body: body)
+    }
+
+    /// Returns the currently authenticated user. Used on cold start to restore
+    /// `user` (and therefore `hasSellerAccess`) after a saved token is loaded —
+    /// without this, `AuthViewModel.user` stays nil and real sellers get routed
+    /// into SellerOnboardingView on relaunch.
+    func getProfile() async throws -> User {
+        try await request("GET", path: "/user/profile")
+    }
+
+    struct UpdateProfileBody: Encodable {
+        let firstName: String
+        let lastName: String
+        let phone: String
+        let email: String?
+        enum CodingKeys: String, CodingKey {
+            case firstName = "first_name"
+            case lastName = "last_name"
+            case phone, email
+        }
+    }
+
+    func updateProfile(firstName: String, lastName: String, phone: String, email: String? = nil) async throws -> User {
+        let body = UpdateProfileBody(firstName: firstName, lastName: lastName, phone: phone, email: email)
+        return try await request("PUT", path: "/user/profile", body: body)
     }
 
     func socialLogin(provider: String, token: String, firstName: String, lastName: String) async throws -> AuthResponse {
@@ -149,6 +287,52 @@ actor APIService {
             "last_name": lastName
         ]
         return try await request("POST", path: "/auth/social", body: body)
+    }
+
+    // MARK: - Phone OTP Login
+    //
+    // The backend is wired to Twilio Verify — /auth/phone/start triggers the
+    // SMS, /auth/phone/verify trades a valid code for a JWT. Phone must be
+    // E.164 ("+15551234567"); the caller formats it that way before sending.
+    //
+    // The verify call advertises role="seller" so the backend can create a
+    // brand-new seller account or promote an existing consumer → seller.
+    // Cross-role promotion (courier ↔ seller) is not applied server-side, so
+    // AuthViewModel still enforces a role guard on the response.
+
+    struct PhoneVerifyBody: Encodable {
+        let phone: String
+        let code: String
+        let role: String
+        let firstName: String?
+        let lastName: String?
+        enum CodingKeys: String, CodingKey {
+            case phone, code, role
+            case firstName = "first_name"
+            case lastName = "last_name"
+        }
+    }
+
+    func startPhoneLogin(phone: String) async throws {
+        try await requestVoid("POST", path: "/auth/phone/start", body: ["phone": phone])
+    }
+
+    func verifyPhoneLogin(phone: String, code: String,
+                          firstName: String? = nil, lastName: String? = nil) async throws -> AuthResponse {
+        let body = PhoneVerifyBody(phone: phone, code: code, role: "seller",
+                                   firstName: firstName, lastName: lastName)
+        return try await request("POST", path: "/auth/phone/verify", body: body)
+    }
+
+    // MARK: - App Store Reviewer Bypass
+    //
+    // Signs in as the shared App Review demo seller. Paired with the
+    // /auth/reviewer/seller backend handler — exists only so Apple's
+    // reviewer can reach the dashboard without a human approving a real
+    // seller application. Remove once a self-serve demo path ships.
+
+    func reviewerSellerLogin() async throws -> AuthResponse {
+        try await request("POST", path: "/auth/reviewer/seller")
     }
 
     // MARK: - Restaurant
@@ -193,15 +377,15 @@ actor APIService {
     }
 
     func updateMenuItem(id: String, _ item: CreateMenuItemRequest) async throws -> MenuItem {
-        try await request("PUT", path: "/seller/menu/items/\(id)", body: item)
+        try await request("PUT", path: await sellerPath("/seller/menu/items/\(id)"), body: item)
     }
 
     func deleteMenuItem(id: String) async throws {
-        try await requestVoid("DELETE", path: "/seller/menu/items/\(id)")
+        try await requestVoid("DELETE", path: await sellerPath("/seller/menu/items/\(id)"))
     }
 
     func toggleItemAvailability(id: String, available: Bool) async throws -> MenuItem {
-        try await request("PATCH", path: "/seller/menu/items/\(id)/availability", body: ["is_available": available])
+        try await request("PATCH", path: await sellerPath("/seller/menu/items/\(id)/availability"), body: ["is_available": available])
     }
 
     func createCategory(_ name: String) async throws -> MenuCategory {
@@ -210,7 +394,31 @@ actor APIService {
     }
 
     func deleteCategory(id: String) async throws {
-        try await requestVoid("DELETE", path: "/seller/menu/categories/\(id)")
+        try await requestVoid("DELETE", path: await sellerPath("/seller/menu/categories/\(id)"))
+    }
+
+    // MARK: - Menu item modifiers
+
+    func createModifierGroup(itemID: String, _ body: ModifierGroupRequest) async throws -> ModifierGroup {
+        try await request("POST",
+                          path: await sellerPath("/seller/menu/items/\(itemID)/modifier-groups"),
+                          body: body)
+    }
+
+    func updateModifierGroup(groupID: String, _ body: ModifierGroupRequest) async throws -> ModifierGroup {
+        try await request("PUT",
+                          path: await sellerPath("/seller/menu/modifier-groups/\(groupID)"),
+                          body: body)
+    }
+
+    func deleteModifierGroup(groupID: String) async throws {
+        try await requestVoid("DELETE", path: await sellerPath("/seller/menu/modifier-groups/\(groupID)"))
+    }
+
+    // MARK: - Account
+
+    func deleteAccount() async throws {
+        try await requestVoid("DELETE", path: "/user/account")
     }
 
     // MARK: - Orders
@@ -222,24 +430,24 @@ actor APIService {
     }
 
     func getOrder(id: String) async throws -> Order {
-        try await request("GET", path: "/seller/orders/\(id)")
+        try await request("GET", path: await sellerPath("/seller/orders/\(id)"))
     }
 
     func acceptOrder(id: String) async throws -> Order {
-        try await request("PATCH", path: "/seller/orders/\(id)/accept")
+        try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/accept"))
     }
 
     func rejectOrder(id: String, reason: String? = nil) async throws -> Order {
-        let body: [String: String]? = reason != nil ? ["reason": reason!] : nil
-        return try await request("PATCH", path: "/seller/orders/\(id)/reject", body: body)
+        let body: [String: String]? = reason.map { ["reason": $0] }
+        return try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/reject"), body: body)
     }
 
     func markOrderPreparing(id: String) async throws -> Order {
-        try await request("PATCH", path: "/seller/orders/\(id)/preparing")
+        try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/preparing"))
     }
 
     func markOrderReady(id: String) async throws -> Order {
-        try await request("PATCH", path: "/seller/orders/\(id)/ready")
+        try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/ready"))
     }
 
     // NOTE: Sellers no longer mark orders delivered. Once status == 'ready', a
@@ -313,6 +521,48 @@ struct CreateMenuItemRequest: Encodable {
         case isDairy = "is_dairy"
         case isPareve = "is_pareve"
         case isAvailable = "is_available"
+    }
+}
+
+// MARK: - Modifier group request payload
+//
+// Mirrors `handlers.ModifierGroupRequest` in the backend. `ModifierOptionRequest`
+// reuses `id` as an optional marker: set it for existing options (update) or
+// leave empty for new options (insert). The server reconciles the list
+// against the stored options and deletes anything not referenced.
+
+struct ModifierGroupRequest: Encodable {
+    let name: String
+    let description: String
+    let isRequired: Bool
+    let minSelections: Int
+    let maxSelections: Int
+    let sortOrder: Int
+    let modifiers: [ModifierOptionRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case name, description, modifiers
+        case isRequired = "is_required"
+        case minSelections = "min_selections"
+        case maxSelections = "max_selections"
+        case sortOrder = "sort_order"
+    }
+}
+
+struct ModifierOptionRequest: Encodable {
+    let id: String?
+    let name: String
+    let priceDelta: Int
+    let isDefault: Bool
+    let isAvailable: Bool
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case priceDelta = "price_delta"
+        case isDefault = "is_default"
+        case isAvailable = "is_available"
+        case sortOrder = "sort_order"
     }
 }
 

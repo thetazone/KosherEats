@@ -1,10 +1,21 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var cartVM: CartViewModel
     @State private var selectedTab = 0
     @State private var pendingTrackingOrderId: String?
     @State private var pendingDetailOrderId: String?
+    @State private var showLoginSheet = false
+    // Latches when the user taps "Not now" on ProfileCompletionSheet. Without
+    // this the sheet would re-present immediately because needsProfileCompletion
+    // is still true on the user record. Resets per app launch — checkout flow
+    // can re-prompt by setting needsProfileCompletion when it actually matters.
+    @State private var profileSheetDismissed = false
+    // First-launch welcome: show LoginView once, unless the user is already
+    // signed in. Dismissing the sheet (sign-in, register, or "Continue as
+    // Guest") flips this flag so we don't nag on subsequent launches.
+    @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -20,17 +31,61 @@ struct MainTabView: View {
                 .tabItem { Image(systemName: "magnifyingglass") }
                 .tag(2)
 
-            OrdersListView()
-                .tabItem { Image(systemName: "cart.fill") }
-                .tag(3)
+            Group {
+                if authVM.isAuthenticated {
+                    OrdersListView()
+                } else {
+                    AuthRequiredView(title: "Your Orders", message: "Sign in to view your order history and track deliveries.") {
+                        showLoginSheet = true
+                    }
+                }
+            }
+            .tabItem { Image(systemName: "cart.fill") }
+            .badge(cartVM.itemCount)
+            .tag(3)
 
-            ProfileView()
-                .tabItem { Image(systemName: "person.fill") }
-                .tag(4)
+            Group {
+                if authVM.isAuthenticated {
+                    ProfileView()
+                } else {
+                    AuthRequiredView(title: "Profile", message: "Sign in to manage your profile, addresses, and preferences.") {
+                        showLoginSheet = true
+                    }
+                }
+            }
+            .tabItem { Image(systemName: "person.fill") }
+            .tag(4)
+        }
+        .sheet(isPresented: $showLoginSheet, onDismiss: {
+            // Any path out of the welcome sheet counts as "seen" — signed in,
+            // registered, or chose to browse as a guest.
+            hasSeenWelcome = true
+        }) {
+            LoginView()
+                .environmentObject(authVM)
+        }
+        .sheet(isPresented: Binding(
+            // Triggered when an authenticated user is still missing core
+            // profile data — e.g. Apple sign-in where `fullName` was nil or
+            // the email is a @privaterelay.appleid.com forwarder. Cleared
+            // automatically once the PUT /user/profile response fills those in,
+            // or when the user taps "Not now" (consumer-only escape hatch).
+            get: { authVM.isAuthenticated && authVM.needsProfileCompletion && !profileSheetDismissed },
+            set: { newValue in
+                if !newValue { profileSheetDismissed = true }
+            }
+        )) {
+            ProfileCompletionSheet()
+                .environmentObject(authVM)
         }
         .tint(.kePrimary)
         .onAppear {
             configureTabBarAppearance()
+            // First launch: present the welcome/login sheet. Skip for users
+            // who already have a session (e.g. reinstall + restored keychain).
+            if !hasSeenWelcome && !authVM.isAuthenticated {
+                showLoginSheet = true
+            }
         }
         .overlay(alignment: .bottom) {
             if !cartVM.isEmpty {
@@ -177,10 +232,52 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .task {
             await vm.loadRestaurants()
+        }
+    }
+}
+
+// MARK: - Auth Required Placeholder
+
+struct AuthRequiredView: View {
+    let title: String
+    let message: String
+    let onSignIn: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.keBackground.ignoresSafeArea()
+
+                VStack(spacing: 20) {
+                    Spacer()
+
+                    Image(systemName: "person.crop.circle.badge.questionmark")
+                        .font(.system(size: 64))
+                        .foregroundColor(.keTextMuted)
+
+                    Text(message)
+                        .font(.body)
+                        .foregroundColor(.keTextSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+
+                    Button(action: onSignIn) {
+                        Text("Sign In")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 200, height: 48)
+                            .background(Color.kePrimary)
+                            .cornerRadius(Theme.cornerRadiusMedium)
+                    }
+
+                    Spacer()
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.large)
         }
     }
 }

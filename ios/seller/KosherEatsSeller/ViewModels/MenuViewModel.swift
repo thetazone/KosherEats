@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 
@@ -8,6 +9,23 @@ class MenuViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
+
+    /// Watches `SelectedRestaurant` so a switch in the picker reloads the
+    /// menu tab in place — otherwise sellers would see the previous
+    /// restaurant's items until they relaunch.
+    private var restaurantSubscription: AnyCancellable?
+
+    func startObservingRestaurant() {
+        guard restaurantSubscription == nil else { return }
+        restaurantSubscription = SelectedRestaurant.shared.$id
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.load()
+                }
+            }
+    }
 
     func load() async {
         isLoading = true
@@ -36,6 +54,7 @@ class MenuViewModel: ObservableObject {
     ) async -> Bool {
         isLoading = true
         errorMessage = nil
+        defer { isLoading = false }
 
         let request = CreateMenuItemRequest(
             categoryId: categoryId,
@@ -56,7 +75,6 @@ class MenuViewModel: ObservableObject {
             return true
         } catch {
             errorMessage = error.localizedDescription
-            isLoading = false
             return false
         }
     }
@@ -74,6 +92,7 @@ class MenuViewModel: ObservableObject {
         isAvailable: Bool
     ) async -> Bool {
         isLoading = true
+        defer { isLoading = false }
         errorMessage = nil
 
         let request = CreateMenuItemRequest(
@@ -95,7 +114,6 @@ class MenuViewModel: ObservableObject {
             return true
         } catch {
             errorMessage = error.localizedDescription
-            isLoading = false
             return false
         }
     }
@@ -123,8 +141,21 @@ class MenuViewModel: ObservableObject {
     }
 
     func createCategory(name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Category name cannot be empty."
+            return
+        }
+        guard trimmed.count <= 100 else {
+            errorMessage = "Category name must be 100 characters or less."
+            return
+        }
+        if categories.contains(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            errorMessage = "A category with this name already exists."
+            return
+        }
         do {
-            let _ = try await APIService.shared.createCategory(name)
+            let _ = try await APIService.shared.createCategory(trimmed)
             await load()
         } catch {
             errorMessage = error.localizedDescription

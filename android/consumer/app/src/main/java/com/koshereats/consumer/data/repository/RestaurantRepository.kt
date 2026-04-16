@@ -28,7 +28,7 @@ class RestaurantRepository @Inject constructor(
         isPasYisroel: Boolean? = null,
         isGlattKosher: Boolean? = null,
         sortBy: String? = null,
-    ): Flow<Resource<PaginatedResponse<Restaurant>>> = flow {
+    ): Flow<Resource<List<Restaurant>>> = flow {
         emit(Resource.Loading)
         try {
             val response = apiService.getRestaurants(
@@ -124,7 +124,7 @@ class RestaurantRepository @Inject constructor(
     fun getOrders(
         page: Int = 1,
         status: String? = null,
-    ): Flow<Resource<PaginatedResponse<Order>>> = flow {
+    ): Flow<Resource<List<Order>>> = flow {
         emit(Resource.Loading)
         try {
             val response = apiService.getOrders(page, status)

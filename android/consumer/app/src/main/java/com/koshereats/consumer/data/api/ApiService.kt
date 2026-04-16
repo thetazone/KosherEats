@@ -55,7 +55,7 @@ interface ApiService {
         @Query("is_pas_yisroel") isPasYisroel: Boolean? = null,
         @Query("is_glatt_kosher") isGlattKosher: Boolean? = null,
         @Query("sort_by") sortBy: String? = null,
-    ): Response<PaginatedResponse<Restaurant>>
+    ): Response<List<Restaurant>>
 
     @GET("restaurants/search")
     suspend fun searchRestaurants(
@@ -89,6 +89,22 @@ interface ApiService {
         @Query("page") page: Int = 1,
     ): Response<PaginatedResponse<Review>>
 
+    // ── Cart (server-backed, used during checkout sync) ──
+
+    @GET("cart")
+    suspend fun getCart(): Response<ServerCart>
+
+    @POST("cart/items")
+    suspend fun addToCart(@Body request: AddToCartRequest): Response<ServerCart>
+
+    @DELETE("cart")
+    suspend fun clearServerCart(): Response<Unit>
+
+    // ── Payments ──────────────────────────────────────────
+
+    @POST("payments/intent")
+    suspend fun createPaymentSheet(@Body request: PaymentSheetRequest): Response<PaymentSheetBundle>
+
     // ── Orders ────────────────────────────────────────────
 
     @POST("orders")
@@ -98,7 +114,7 @@ interface ApiService {
     suspend fun getOrders(
         @Query("page") page: Int = 1,
         @Query("status") status: String? = null,
-    ): Response<PaginatedResponse<Order>>
+    ): Response<List<Order>>
 
     @GET("orders/{id}")
     suspend fun getOrder(@Path("id") orderId: String): Response<Order>

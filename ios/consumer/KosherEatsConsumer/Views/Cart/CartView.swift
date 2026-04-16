@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct CartView: View {
+    @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
     @State private var showCheckout = false
+    @State private var showLoginSheet = false
 
     var body: some View {
         NavigationStack {
@@ -36,7 +38,6 @@ struct CartView: View {
             }
             .navigationTitle("Cart")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Close") { dismiss() }
@@ -117,7 +118,11 @@ struct CartView: View {
 
             VStack(spacing: 12) {
                 Button {
-                    showCheckout = true
+                    if authVM.isAuthenticated {
+                        showCheckout = true
+                    } else {
+                        showLoginSheet = true
+                    }
                 } label: {
                     HStack {
                         Text("Checkout")
@@ -129,6 +134,10 @@ struct CartView: View {
             }
             .padding()
             .background(Color.keBackgroundElevated)
+        }
+        .sheet(isPresented: $showLoginSheet) {
+            LoginView()
+                .environmentObject(authVM)
         }
     }
 }

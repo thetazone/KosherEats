@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 struct KosherEatsCourierApp: App {
@@ -18,6 +19,12 @@ struct KosherEatsCourierApp: App {
                         await PushNotifications.shared.requestAuthorization()
                         await PushNotifications.shared.registerPendingTokenIfPossible()
                     }
+                }
+                .onOpenURL { url in
+                    // Google's OAuth flow bounces back into the app via a
+                    // custom URL scheme (com.googleusercontent.apps.<ID>).
+                    // Handing the URL to GIDSignIn completes the sign-in.
+                    GIDSignIn.sharedInstance.handle(url)
                 }
         }
     }

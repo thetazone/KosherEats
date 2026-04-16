@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/stripe/stripe-go/v78/webhook"
@@ -61,7 +62,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		`SELECT email, first_name, last_name FROM users WHERE id = $1`, user["user_id"],
 	).Scan(&email, &firstName, &lastName)
 
-	bundle, err := h.stripe.CreatePaymentSheet(total, user["user_id"], email, firstName+" "+lastName)
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, user["user_id"], email, firstName+" "+lastName)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create payment: "+err.Error())
 		return
@@ -91,11 +92,51 @@ func (h *Handler) ConfirmPayment(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "confirmed"})
 }
 
+// GetPaymentCustomer returns everything iOS's STPCustomerSheet needs to list,
+// add, and delete the user's saved payment methods from the profile screen.
+// Unlike CreatePaymentIntent this does not create a PaymentIntent — the
+// CustomerSheet uses SetupIntents (see CreateSetupIntent) for adding cards.
+func (h *Handler) GetPaymentCustomer(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+
+	var email, firstName, lastName string
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT email, first_name, last_name FROM users WHERE id = $1`, user["user_id"],
+	).Scan(&email, &firstName, &lastName)
+
+	bundle, err := h.stripe.CreateCustomerBundle(r.Context(), h.db.Pool, user["user_id"], email, firstName+" "+lastName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create customer session: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, bundle)
+}
+
+// CreateSetupIntent issues a SetupIntent client_secret scoped to the user's
+// persistent Stripe Customer. The iOS STPCustomerSheet needs a fresh
+// SetupIntent for each "add a new card" flow.
+func (h *Handler) CreateSetupIntent(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+
+	var email, firstName, lastName string
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT email, first_name, last_name FROM users WHERE id = $1`, user["user_id"],
+	).Scan(&email, &firstName, &lastName)
+
+	clientSecret, err := h.stripe.CreateSetupIntent(r.Context(), h.db.Pool, user["user_id"], email, firstName+" "+lastName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create setup intent: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"client_secret": clientSecret})
+}
+
 func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	// Verify the Stripe signature before trusting any webhook payload. This
 	// handler updates courier payout readiness from Stripe Connect's
 	// account.updated events, so it must fail closed when misconfigured.
 	if h.cfg.StripeWebhookSec == "" {
+		slog.Error("stripe webhook signing secret is not configured")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -108,6 +149,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 
 	event, err := webhook.ConstructEvent(payload, r.Header.Get("Stripe-Signature"), h.cfg.StripeWebhookSec)
 	if err != nil {
+		slog.Warn("stripe webhook signature verification failed", slog.String("error", err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

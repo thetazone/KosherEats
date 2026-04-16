@@ -3,6 +3,8 @@ import SwiftUI
 struct RestaurantSettingsView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var dashVM = DashboardViewModel()
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.openURL) private var openURL
 
     @State private var name = ""
     @State private var description = ""
@@ -25,6 +27,7 @@ struct RestaurantSettingsView: View {
     @State private var isSaving = false
     @State private var showSaved = false
     @State private var showLogoutConfirm = false
+    @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -180,6 +183,25 @@ struct RestaurantSettingsView: View {
                                 .foregroundColor(.keError)
                         }
 
+                        // Legal — required in-app by App Store Review
+                        // (guideline 5.1.1). External URLs open in Safari
+                        // so we don't have to host an in-app webview.
+                        VStack(spacing: 0) {
+                            legalLinkRow("Privacy Policy", icon: "shield.fill") {
+                                openURL(LegalURLs.privacyPolicy)
+                            }
+                            Divider().background(Color.keBorder)
+                            legalLinkRow("Terms of Service", icon: "doc.text.fill") {
+                                openURL(LegalURLs.termsOfService)
+                            }
+                            Divider().background(Color.keBorder)
+                            legalLinkRow("Help & Support", icon: "questionmark.circle.fill") {
+                                openURL(LegalURLs.supportEmail)
+                            }
+                        }
+                        .background(Color.keCard)
+                        .cornerRadius(12)
+
                         // Logout
                         Button {
                             showLogoutConfirm = true
@@ -196,9 +218,26 @@ struct RestaurantSettingsView: View {
                             .cornerRadius(12)
                         }
 
+                        // Delete Account
+                        Button {
+                            showDeleteConfirm = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Delete Account")
+                            }
+                            .font(.subheadline.bold())
+                            .foregroundColor(.keError)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(Color.keError.opacity(0.1))
+                            .cornerRadius(12)
+                        }
+
                         Spacer().frame(height: 20)
                     }
                     .padding()
+                    .adaptiveContentWidth(700)
                 }
             }
             .navigationTitle("Settings")
@@ -215,6 +254,14 @@ struct RestaurantSettingsView: View {
                 }
             } message: {
                 Text("Are you sure you want to log out?")
+            }
+            .alert("Delete Account", isPresented: $showDeleteConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    Task { await authVM.deleteAccount() }
+                }
+            } message: {
+                Text("This will permanently delete your account and all associated data. This action cannot be undone.")
             }
             .overlay {
                 if showSaved {
@@ -283,6 +330,27 @@ struct RestaurantSettingsView: View {
         }
     }
 
+    private func legalLinkRow(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(.keTextSecondary)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 15))
+                    .foregroundColor(.keTextPrimary)
+                Spacer()
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 13))
+                    .foregroundColor(.keTextMuted)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+    }
+
     private func kosherToggleRow(_ label: String, isOn: Binding<Bool>) -> some View {
         HStack {
             Text(label)
@@ -308,8 +376,8 @@ struct RestaurantSettingsView: View {
         city = r.city
         state = r.state
         zipCode = r.zipCode
-        deliveryFee = String(format: "%.2f", r.deliveryFee / 100.0)
-        minOrder = String(format: "%.2f", r.minOrder)
+        deliveryFee = String(format: "%.2f", Double(r.deliveryFee) / 100)
+        minOrder = String(format: "%.2f", Double(r.minOrder) / 100)
         estDeliveryMin = "\(r.estDeliveryMin)"
         estDeliveryMax = "\(r.estDeliveryMax)"
         kosherCert = r.kosherCertification
@@ -332,8 +400,10 @@ struct RestaurantSettingsView: View {
         restaurant.city = city
         restaurant.state = state
         restaurant.zipCode = zipCode
-        restaurant.deliveryFee = ((Double(deliveryFee) ?? 0) * 100).rounded()
-        restaurant.minOrder = Double(minOrder) ?? 0
+        // Dollars in the text fields → cents on the wire, matching the
+        // backend contract (delivery_fee / min_order are INTEGER cents).
+        restaurant.deliveryFee = Int(((Double(deliveryFee) ?? 0) * 100).rounded())
+        restaurant.minOrder = Int(((Double(minOrder) ?? 0) * 100).rounded())
         restaurant.estDeliveryMin = Int(estDeliveryMin) ?? 20
         restaurant.estDeliveryMax = Int(estDeliveryMax) ?? 45
         restaurant.kosherCertification = kosherCert
@@ -343,7 +413,9 @@ struct RestaurantSettingsView: View {
         restaurant.isGlattKosher = isGlattKosher
 
         do {
-            let _ = try await APIService.shared.updateRestaurant(restaurant)
+            let updated = try await APIService.shared.updateRestaurant(restaurant)
+            dashVM.restaurant = updated
+            errorMessage = nil
             withAnimation { showSaved = true }
         } catch {
             errorMessage = error.localizedDescription

@@ -82,6 +82,49 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// CheckEmail tells the unified email-entry UI whether an account already
+// exists for this email — used to route the user to "sign in" vs "create
+// account" without forcing a dummy login attempt first. Doesn't leak anything
+// /login doesn't already leak via its "invalid credentials" vs "user not
+// found" error messaging (we don't actually distinguish those, but a timing
+// attack would). Role is returned when known so the client can detect
+// cross-app mismatches early (e.g. courier app refusing to log in a consumer).
+func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	if email == "" || !strings.Contains(email, "@") {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	var role string
+	err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT role FROM users WHERE email = $1`, email,
+	).Scan(&role)
+
+	if err != nil {
+		// Any error — including pgx.ErrNoRows — is treated as "doesn't
+		// exist". Callers should branch on `exists` rather than the role.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"exists": false,
+			"role":   "",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"exists": true,
+		"role":   role,
+	})
+}
+
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := readJSON(r, &req); err != nil {
@@ -141,8 +184,16 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := (*claims)["sub"].(string)
-	role := (*claims)["role"].(string)
+	userID, ok := (*claims)["sub"].(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid refresh token: missing sub claim")
+		return
+	}
+	role, ok := (*claims)["role"].(string)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "invalid refresh token: missing role claim")
+		return
+	}
 
 	newToken, newRefresh, err := h.generateTokens(userID, role)
 	if err != nil {
@@ -180,8 +231,16 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		userID := (*claims)["sub"].(string)
-		role := (*claims)["role"].(string)
+		userID, ok := (*claims)["sub"].(string)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "invalid token: missing sub claim")
+			return
+		}
+		role, ok := (*claims)["role"].(string)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "invalid token: missing role claim")
+			return
+		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, map[string]string{
 			"user_id": userID,

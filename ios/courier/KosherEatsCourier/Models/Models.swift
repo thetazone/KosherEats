@@ -117,6 +117,7 @@ struct AvailableDelivery: Codable, Identifiable {
     let status: String
     let total: Int
     let deliveryFee: Int
+    let courierTip: Int
     let deliveryAddress: String
     let deliveryLat: Double
     let deliveryLng: Double
@@ -129,6 +130,7 @@ struct AvailableDelivery: Codable, Identifiable {
         case restaurantId = "restaurant_id"
         case restaurantName = "restaurant_name"
         case deliveryFee = "delivery_fee"
+        case courierTip = "courier_tip"
         case deliveryAddress = "delivery_address"
         case deliveryLat = "delivery_lat"
         case deliveryLng = "delivery_lng"
@@ -153,9 +155,13 @@ struct CourierOrder: Codable, Identifiable {
     let deliveryAddress: String
     let deliveryLat: Double
     let deliveryLng: Double
+    let restaurantLat: Double
+    let restaurantLng: Double
     let claimedAt: Date?
     let pickedUpAt: Date?
     let createdAt: Date
+    let customerName: String?
+    let customerPhone: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status, total
@@ -166,9 +172,13 @@ struct CourierOrder: Codable, Identifiable {
         case deliveryAddress = "delivery_address"
         case deliveryLat = "delivery_lat"
         case deliveryLng = "delivery_lng"
+        case restaurantLat = "restaurant_lat"
+        case restaurantLng = "restaurant_lng"
         case claimedAt = "claimed_at"
         case pickedUpAt = "picked_up_at"
         case createdAt = "created_at"
+        case customerName = "customer_name"
+        case customerPhone = "customer_phone"
     }
 }
 

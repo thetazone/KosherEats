@@ -47,7 +47,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +78,7 @@ fun HomeScreen(
     val cartState by cartViewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
+    var showFilterSheet by remember { mutableStateOf(false) }
 
     // Load more when reaching the end
     val shouldLoadMore by remember {
@@ -104,23 +107,56 @@ fun HomeScreen(
         ) {
             // Header
             item {
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "KosherEats",
-                        color = Orange,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Kosher food delivered to your door",
-                        color = TextTertiary,
-                        fontSize = 14.sp,
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "KosherEats",
+                            color = Orange,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Kosher food delivered to your door",
+                            color = TextTertiary,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    val activeFilterCount = (if (uiState.filterGlattOnly) 1 else 0) +
+                        (if (uiState.filterCholovYisroelOnly) 1 else 0) +
+                        (if (uiState.filterPasYisroelOnly) 1 else 0) +
+                        uiState.filterCertifications.size
+                    BadgedBox(
+                        badge = {
+                            if (activeFilterCount > 0) {
+                                Badge(containerColor = Orange) {
+                                    Text(
+                                        activeFilterCount.toString(),
+                                        color = TextWhite,
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                            }
+                        },
+                    ) {
+                        IconButton(
+                            onClick = { showFilterSheet = true },
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(SurfaceDark),
+                        ) {
+                            Icon(
+                                Icons.Filled.FilterList,
+                                contentDescription = "Filter",
+                                tint = TextWhite,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -388,6 +424,20 @@ fun HomeScreen(
                     Icon(Icons.Filled.ShoppingCart, contentDescription = "Cart")
                 }
             }
+        }
+
+        if (showFilterSheet) {
+            KosherFilterSheet(
+                currentGlatt = uiState.filterGlattOnly,
+                currentCholovYisroel = uiState.filterCholovYisroelOnly,
+                currentPasYisroel = uiState.filterPasYisroelOnly,
+                currentCertifications = uiState.filterCertifications,
+                allRestaurants = uiState.allRestaurants,
+                onDismiss = { showFilterSheet = false },
+                onApply = { g, c, p, certs ->
+                    viewModel.applyKosherFilters(g, c, p, certs)
+                },
+            )
         }
     }
 }

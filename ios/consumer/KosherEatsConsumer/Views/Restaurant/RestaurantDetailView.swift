@@ -54,7 +54,6 @@ struct RestaurantDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await vm.load(restaurantID: restaurantID)
         }

@@ -119,7 +119,7 @@ func TestVerifyAppleTokenAcceptsValidSignedToken(t *testing.T) {
 
 	token := signedAppleToken(t, privateKey, "test-kid", handler.cfg.AppleClientID, true)
 
-	email, firstName, lastName, providerID, err := handler.verifyAppleToken(token, "", "")
+	email, firstName, lastName, providerID, err := handler.verifyAppleToken(token, "", "", "")
 	if err != nil {
 		t.Fatalf("verify apple token: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestVerifyAppleTokenRejectsAlgNone(t *testing.T) {
 		t.Fatalf("sign none token: %v", err)
 	}
 
-	if _, _, _, _, err := handler.verifyAppleToken(tokenString, "", ""); err == nil {
+	if _, _, _, _, err := handler.verifyAppleToken(tokenString, "", "", ""); err == nil {
 		t.Fatal("expected alg=none token to be rejected")
 	}
 }
@@ -187,7 +187,7 @@ func TestVerifyAppleTokenRejectsUnverifiedEmail(t *testing.T) {
 
 	token := signedAppleToken(t, privateKey, "test-kid", handler.cfg.AppleClientID, false)
 
-	if _, _, _, _, err := handler.verifyAppleToken(token, "", ""); err == nil {
+	if _, _, _, _, err := handler.verifyAppleToken(token, "", "", ""); err == nil {
 		t.Fatal("expected unverified apple email to be rejected")
 	}
 }

@@ -31,29 +31,99 @@ struct DashboardView: View {
             location.requestPermission()
             location.startTracking()
             await vm.refresh()
+            vm.resumeIfActive(location: location)
+            await vm.loadTodayEarnings()
+        }
+        .onChange(of: vm.forceLogout) { _, shouldLogout in
+            if shouldLogout { auth.logout() }
         }
     }
 
     private var deliveriesTab: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.spacingMD) {
-                    OnlineToggleCard(vm: vm, location: location)
+            Group {
+                if let active = vm.active.first {
+                    DeliveryMapView(order: active, vm: vm, location: location)
+                } else {
+                    ScrollView {
+                        VStack(spacing: Theme.spacingMD) {
+                            if location.locationUpdateFailing {
+                                locationFailingBanner
+                            }
 
-                    if let active = vm.active.first {
-                        ActiveDeliveryCard(order: active, vm: vm)
-                    } else if vm.isOnline {
-                        availableSection
-                    } else {
-                        offlineHero
+                            // Payouts-not-ready nag: without a Stripe Connect
+                                // account, completed deliveries queue up in the
+                                // payout retry table and the courier doesn't
+                                // see a dime. Surface this at the top of the
+                                // dashboard so nobody drives for hours wondering
+                                // why "Earnings" went up but their bank account
+                                // didn't.
+                            if let p = auth.profile, !p.payoutReady {
+                                payoutReminderBanner
+                            }
+
+                            OnlineToggleCard(vm: vm, location: location)
+
+                            if vm.todayEarnings > 0 {
+                                todayEarningsPill
+                            }
+
+                            if vm.isOnline {
+                                availableSection
+                            } else {
+                                offlineHero
+                            }
+                        }
+                        .padding(Theme.spacingMD)
+                    }
+                    .refreshable {
+                        await vm.refresh()
+                        await auth.loadProfile()
                     }
                 }
-                .padding(Theme.spacingMD)
             }
             .background(Color.keBackground.ignoresSafeArea())
             .navigationTitle("KosherEats Driver")
             .navigationBarTitleDisplayMode(.inline)
-            .refreshable { await vm.refresh() }
+        }
+    }
+
+    private var locationFailingBanner: some View {
+        HStack {
+            Image(systemName: "location.slash.fill")
+            Text("Location updates failing \u{2014} customers can\u{2019}t track you")
+        }
+        .foregroundColor(.white)
+        .padding()
+        .background(Color.red.cornerRadius(8))
+        .padding(.horizontal)
+    }
+
+    private var payoutReminderBanner: some View {
+        NavigationLink(destination: PayoutsSetupView()) {
+            HStack(spacing: Theme.spacingSM) {
+                Image(systemName: "dollarsign.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.kePrimary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Set up direct deposit")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keTextPrimary)
+                    Text("Link your bank with Stripe so you can get paid.")
+                        .font(.caption)
+                        .foregroundColor(.keTextSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.keTextTertiary)
+            }
+            .padding()
+            .background(Color.kePrimary.opacity(0.12))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
+                    .stroke(Color.kePrimary.opacity(0.35), lineWidth: 1)
+            )
+            .cornerRadius(Theme.cornerRadiusMedium)
         }
     }
 
@@ -106,6 +176,23 @@ struct DashboardView: View {
         .padding(.vertical, Theme.spacingXL)
         .frame(maxWidth: .infinity)
     }
+
+    private var todayEarningsPill: some View {
+        HStack {
+            Image(systemName: "dollarsign.circle.fill")
+                .foregroundColor(.keSuccess)
+            Text("Today")
+                .font(.subheadline)
+                .foregroundColor(.keTextSecondary)
+            Spacer()
+            Text(String(format: "$%.2f", Double(vm.todayEarnings) / 100))
+                .font(.title3.bold())
+                .foregroundColor(.keTextPrimary)
+        }
+        .padding()
+        .background(Color.keCard)
+        .cornerRadius(Theme.cornerRadiusMedium)
+    }
 }
 
 // MARK: - Online toggle
@@ -127,7 +214,7 @@ private struct OnlineToggleCard: View {
             Spacer()
             Toggle("", isOn: Binding(
                 get: { vm.isOnline },
-                set: { _ in Task { await vm.toggleOnline(location: location.currentLocation) } }
+                set: { _ in Task { await vm.toggleOnline(location: location) } }
             ))
             .labelsHidden()
             .tint(.kePrimary)
@@ -147,26 +234,40 @@ struct AvailableDeliveryCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            HStack {
-                Text("$\(String(format: "%.2f", Double(delivery.deliveryFee) / 100))")
-                    .font(.title2.bold())
+            HStack(alignment: .firstTextBaseline) {
+                // Courier-facing payout = base delivery fee + 100% of the
+                // customer's tip. We show the combined number up front as
+                // the headline amount, then break it down below so couriers
+                // on the road can eyeball each job's payout at a glance.
+                Text("$\(String(format: "%.2f", Double(delivery.deliveryFee + delivery.courierTip) / 100))")
+                    .font(.largeTitle.bold())
                     .foregroundColor(.kePrimary)
+                if delivery.courierTip > 0 {
+                    Text("incl. tip")
+                        .font(.caption.bold())
+                        .foregroundColor(.keSuccess)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.keSuccess.opacity(0.15))
+                        .cornerRadius(4)
+                }
                 Spacer()
                 if let pickupDistance = distanceFromMe {
                     Label(String(format: "%.1f mi", pickupDistance),
                           systemImage: "location.fill")
-                        .font(.caption)
-                        .foregroundColor(.keTextTertiary)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keTextPrimary)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Label(delivery.restaurantName, systemImage: "fork.knife")
+                    .font(.title3.bold())
                     .foregroundColor(.keTextPrimary)
                 Label(delivery.deliveryAddress, systemImage: "house.fill")
-                    .font(.subheadline)
-                    .foregroundColor(.keTextSecondary)
-                    .lineLimit(1)
+                    .font(.body)
+                    .foregroundColor(.keTextPrimary)
+                    .lineLimit(2)
             }
 
             Button("Accept") { onAccept() }
@@ -185,73 +286,3 @@ struct AvailableDeliveryCard: View {
     }
 }
 
-// MARK: - Active delivery card
-
-struct ActiveDeliveryCard: View {
-    let order: CourierOrder
-    @ObservedObject var vm: DashboardViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.spacingMD) {
-            Text(currentPhase)
-                .font(.caption.bold())
-                .foregroundColor(.kePrimary)
-                .textCase(.uppercase)
-
-            VStack(alignment: .leading, spacing: Theme.spacingSM) {
-                Label {
-                    VStack(alignment: .leading) {
-                        Text("Pickup").font(.caption).foregroundColor(.keTextTertiary)
-                        Text(order.restaurantName).foregroundColor(.keTextPrimary)
-                    }
-                } icon: {
-                    Image(systemName: "fork.knife").foregroundColor(.kePrimary)
-                }
-
-                Divider().background(Color.keDivider)
-
-                Label {
-                    VStack(alignment: .leading) {
-                        Text("Dropoff").font(.caption).foregroundColor(.keTextTertiary)
-                        Text(order.deliveryAddress).foregroundColor(.keTextPrimary)
-                    }
-                } icon: {
-                    Image(systemName: "house.fill").foregroundColor(.kePrimary)
-                }
-            }
-
-            HStack(spacing: 8) {
-                // Chat with the customer + restaurant on this order.
-                NavigationLink(destination: OrderChatView(orderID: order.id)) {
-                    Image(systemName: "bubble.left.fill")
-                        .foregroundColor(.kePrimary)
-                        .frame(width: 48, height: 48)
-                        .background(Color.keBackgroundElevated)
-                        .cornerRadius(12)
-                }
-
-                Button(actionLabel) {
-                    Task {
-                        if order.status == "ready" {
-                            await vm.pickup(order)
-                        } else {
-                            await vm.deliver(order)
-                        }
-                    }
-                }
-                .buttonStyle(KEPrimaryButtonStyle())
-            }
-        }
-        .padding()
-        .background(Color.keCard)
-        .cornerRadius(Theme.cornerRadiusMedium)
-    }
-
-    private var currentPhase: String {
-        order.status == "ready" ? "Heading to restaurant" : "Delivering"
-    }
-
-    private var actionLabel: String {
-        order.status == "ready" ? "I've picked it up" : "Mark delivered"
-    }
-}

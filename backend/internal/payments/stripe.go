@@ -10,15 +10,19 @@
 package payments
 
 import (
+	"context"
 	"fmt"
 	"log"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/config"
 	"github.com/stripe/stripe-go/v78"
 	"github.com/stripe/stripe-go/v78/account"
 	"github.com/stripe/stripe-go/v78/accountlink"
 	"github.com/stripe/stripe-go/v78/ephemeralkey"
 	"github.com/stripe/stripe-go/v78/paymentintent"
+	"github.com/stripe/stripe-go/v78/refund"
+	"github.com/stripe/stripe-go/v78/setupintent"
 	"github.com/stripe/stripe-go/v78/transfer"
 	stripecustomer "github.com/stripe/stripe-go/v78/customer"
 )
@@ -154,6 +158,25 @@ func (c *Client) GetAccountStatus(accountID string) (*AccountStatus, error) {
 	}, nil
 }
 
+// RefundPaymentIntent issues a full refund for the given PaymentIntent id.
+// Called when an order is rejected (either manually by the seller or
+// automatically by the stale-order sweep) so the customer isn't charged for
+// food they won't receive. In dev stub mode this just logs so rejection
+// flows work without real Stripe keys.
+func (c *Client) RefundPaymentIntent(paymentIntentID string) error {
+	if !c.enabled {
+		log.Printf("[stripe stub] refund payment_intent=%s", paymentIntentID)
+		return nil
+	}
+	if paymentIntentID == "" {
+		return fmt.Errorf("refund: empty payment intent id")
+	}
+	_, err := refund.New(&stripe.RefundParams{
+		PaymentIntent: stripe.String(paymentIntentID),
+	})
+	return err
+}
+
 // TransferToCourier sends `amountCents` to the courier's Connect account.
 // Called when an order is marked delivered. In prod this is a Stripe Transfer
 // which debits the platform balance and credits the connected account. In
@@ -190,16 +213,66 @@ type PaymentSheetBundle struct {
 	EphemeralKeySecret  string `json:"ephemeral_key_secret"`
 	CustomerID          string `json:"customer_id"`
 	PublishableKey      string `json:"publishable_key"`
+	// Populated when the customer has a saved card on file. The iOS checkout
+	// uses these to render a "Paying with •••• 4242" preview so the user knows
+	// which card PaymentSheet will default to without having to open the sheet.
+	DefaultCardBrand string `json:"default_card_brand,omitempty"`
+	DefaultCardLast4 string `json:"default_card_last4,omitempty"`
+}
+
+// GetOrCreateCustomer looks up the Stripe Customer id cached on the users
+// row; if the user has never had one (new account, or first checkout after
+// the stripe_customer_id migration), it creates a Customer and persists the
+// id back. Subsequent calls return the same id so saved payment methods
+// persist across orders and are visible in the profile's Payment Methods
+// screen.
+//
+// In stub mode this just returns a stub id without touching the DB.
+func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, userID, email, name string) (string, error) {
+	if !c.enabled {
+		return "cus_stub_" + fakeID(), nil
+	}
+
+	var existing *string
+	err := pool.QueryRow(ctx,
+		`SELECT stripe_customer_id FROM users WHERE id = $1`, userID,
+	).Scan(&existing)
+	if err == nil && existing != nil && *existing != "" {
+		return *existing, nil
+	}
+
+	cust, err := stripecustomer.New(&stripe.CustomerParams{
+		Email: stripe.String(email),
+		Name:  stripe.String(name),
+		Params: stripe.Params{
+			Metadata: map[string]string{"user_id": userID},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("create customer: %w", err)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`UPDATE users SET stripe_customer_id = $1, updated_at = NOW() WHERE id = $2`,
+		cust.ID, userID,
+	); err != nil {
+		// Non-fatal — we can still return the customer id even if caching
+		// fails. Next call will just create another customer, which Stripe
+		// permits. Log so ops notices if this is systematic.
+		log.Printf("[stripe] persist customer id for user=%s: %v", userID, err)
+	}
+	return cust.ID, nil
 }
 
 // CreatePaymentSheet builds everything iOS needs for one PaymentSheet invocation.
-// `customerEmail` + `customerName` are used to create-or-retrieve a Stripe
-// Customer object tied to this user so saved cards persist across orders.
+// Uses the persistent Stripe Customer (see GetOrCreateCustomer) so saved
+// cards carry over between checkouts and are visible in Profile → Payment
+// Methods.
 //
 // In dev stub mode (no STRIPE_SECRET_KEY), returns fake values. The iOS app
 // detects the stub prefix and skips actually presenting PaymentSheet, which
 // keeps local dev functional without real Stripe keys.
-func (c *Client) CreatePaymentSheet(amountCents int, userID, email, name string) (*PaymentSheetBundle, error) {
+func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents int, userID, email, name string) (*PaymentSheetBundle, error) {
 	if !c.enabled {
 		return &PaymentSheetBundle{
 			PaymentIntentSecret: "pi_stub_" + fakeID() + "_secret_stub",
@@ -209,37 +282,37 @@ func (c *Client) CreatePaymentSheet(amountCents int, userID, email, name string)
 		}, nil
 	}
 
-	// Create or reuse a Customer keyed on our internal user id (via metadata).
-	// In production you'd cache the customer_id on the users table; for now
-	// we create fresh each time and rely on Stripe to dedupe via metadata.
-	cust, err := stripecustomer.New(&stripe.CustomerParams{
-		Email: stripe.String(email),
-		Name:  stripe.String(name),
-		Params: stripe.Params{
-			Metadata: map[string]string{"user_id": userID},
-		},
-	})
+	customerID, err := c.GetOrCreateCustomer(ctx, pool, userID, email, name)
 	if err != nil {
-		return nil, fmt.Errorf("create customer: %w", err)
+		return nil, err
 	}
 
 	// Ephemeral key lets the iOS PaymentSheet fetch this customer's saved
 	// payment methods directly from Stripe without exposing our secret key.
 	ek, err := ephemeralkey.New(&stripe.EphemeralKeyParams{
-		Customer:      stripe.String(cust.ID),
+		Customer:      stripe.String(customerID),
 		StripeVersion: stripe.String("2024-06-20"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create ephemeral key: %w", err)
 	}
 
+	// Restrict to card only. Apple Pay rides on top of "card" in Stripe's
+	// model (it's a tokenized card), so the iOS PaymentSheet still surfaces
+	// it when the device is Apple Pay capable — but bank debits, Amazon Pay,
+	// and Cash App don't appear.
+	//
+	// SetupFutureUsage = off_session tells Stripe to save the card to the
+	// Customer after a successful charge, so the next checkout can pick it
+	// from "Saved" without re-entering details. The iOS PaymentSheet also
+	// sets the newly added method as the Customer's default automatically,
+	// which satisfies the "most recent payment = default" requirement.
 	pi, err := paymentintent.New(&stripe.PaymentIntentParams{
-		Amount:   stripe.Int64(int64(amountCents)),
-		Currency: stripe.String(string(stripe.CurrencyUSD)),
-		Customer: stripe.String(cust.ID),
-		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
+		Amount:             stripe.Int64(int64(amountCents)),
+		Currency:           stripe.String(string(stripe.CurrencyUSD)),
+		Customer:           stripe.String(customerID),
+		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
+		SetupFutureUsage:   stripe.String("off_session"),
 		Params: stripe.Params{
 			Metadata: map[string]string{"user_id": userID},
 		},
@@ -248,12 +321,103 @@ func (c *Client) CreatePaymentSheet(amountCents int, userID, email, name string)
 		return nil, fmt.Errorf("create payment intent: %w", err)
 	}
 
+	brand, last4 := lookupDefaultCard(customerID)
+
 	return &PaymentSheetBundle{
 		PaymentIntentSecret: pi.ClientSecret,
 		EphemeralKeySecret:  ek.Secret,
-		CustomerID:          cust.ID,
+		CustomerID:          customerID,
 		PublishableKey:      c.cfg.StripePublishableKey,
+		DefaultCardBrand:    brand,
+		DefaultCardLast4:    last4,
 	}, nil
+}
+
+// lookupDefaultCard returns the brand + last4 for the customer's
+// `invoice_settings.default_payment_method`, which PaymentSheet automatically
+// populates on the first successful off-session setup. Returns empty strings
+// if the customer has no saved card yet or the lookup fails — iOS treats
+// those as "no preview to show".
+func lookupDefaultCard(customerID string) (brand, last4 string) {
+	params := &stripe.CustomerParams{}
+	params.AddExpand("invoice_settings.default_payment_method")
+	cust, err := stripecustomer.Get(customerID, params)
+	if err != nil || cust == nil || cust.InvoiceSettings == nil {
+		return "", ""
+	}
+	pm := cust.InvoiceSettings.DefaultPaymentMethod
+	if pm == nil || pm.Card == nil {
+		return "", ""
+	}
+	return string(pm.Card.Brand), pm.Card.Last4
+}
+
+// CustomerSheetBundle is what iOS's STPCustomerSheet needs to manage saved
+// payment methods outside of a checkout flow: the persistent Customer id,
+// a fresh ephemeral key scoped to that customer, and the publishable key.
+// No PaymentIntent — CustomerSheet uses SetupIntents instead (see
+// CreateSetupIntent below).
+type CustomerSheetBundle struct {
+	CustomerID         string `json:"customer_id"`
+	EphemeralKeySecret string `json:"ephemeral_key_secret"`
+	PublishableKey     string `json:"publishable_key"`
+}
+
+// CreateCustomerBundle returns everything iOS's STPCustomerSheet needs to
+// list/add/delete the user's saved payment methods on the profile screen.
+func (c *Client) CreateCustomerBundle(ctx context.Context, pool *pgxpool.Pool, userID, email, name string) (*CustomerSheetBundle, error) {
+	if !c.enabled {
+		return &CustomerSheetBundle{
+			CustomerID:         "cus_stub_" + fakeID(),
+			EphemeralKeySecret: "ek_stub_" + fakeID(),
+			PublishableKey:     "pk_stub_dev",
+		}, nil
+	}
+
+	customerID, err := c.GetOrCreateCustomer(ctx, pool, userID, email, name)
+	if err != nil {
+		return nil, err
+	}
+
+	ek, err := ephemeralkey.New(&stripe.EphemeralKeyParams{
+		Customer:      stripe.String(customerID),
+		StripeVersion: stripe.String("2024-06-20"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create ephemeral key: %w", err)
+	}
+
+	return &CustomerSheetBundle{
+		CustomerID:         customerID,
+		EphemeralKeySecret: ek.Secret,
+		PublishableKey:     c.cfg.StripePublishableKey,
+	}, nil
+}
+
+// CreateSetupIntent returns a SetupIntent client_secret for the user's
+// persistent Stripe Customer. STPCustomerSheet uses this to let the user
+// add a new card without charging it.
+func (c *Client) CreateSetupIntent(ctx context.Context, pool *pgxpool.Pool, userID, email, name string) (string, error) {
+	if !c.enabled {
+		return "seti_stub_" + fakeID() + "_secret_stub", nil
+	}
+
+	customerID, err := c.GetOrCreateCustomer(ctx, pool, userID, email, name)
+	if err != nil {
+		return "", err
+	}
+
+	si, err := setupintent.New(&stripe.SetupIntentParams{
+		Customer: stripe.String(customerID),
+		AutomaticPaymentMethods: &stripe.SetupIntentAutomaticPaymentMethodsParams{
+			Enabled: stripe.Bool(true),
+		},
+		Usage: stripe.String("off_session"),
+	})
+	if err != nil {
+		return "", fmt.Errorf("create setup intent: %w", err)
+	}
+	return si.ClientSecret, nil
 }
 
 // fakeID generates a short random-ish id for dev stubs. Not cryptographically

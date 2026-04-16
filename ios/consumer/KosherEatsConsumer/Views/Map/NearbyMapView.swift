@@ -3,8 +3,12 @@ import MapKit
 
 struct NearbyMapView: View {
     @StateObject private var vm = HomeViewModel()
+    @ObservedObject private var location = LocationManager.shared
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var selectedRestaurant: Restaurant?
+    // Flip once we've snapped to the first location fix so we don't fight the
+    // user if they've panned manually since.
+    @State private var hasSnappedToUser = false
 
     var body: some View {
         NavigationStack {
@@ -33,6 +37,17 @@ struct NearbyMapView: View {
                     MapCompass()
                 }
                 .ignoresSafeArea(edges: .top)
+                .onChange(of: location.currentLocation?.latitude) { _, _ in
+                    guard !hasSnappedToUser, let coord = location.currentLocation else { return }
+                    // ~800m span = 3–4 city blocks, matches Uber/DoorDash
+                    // default first-open zoom. 3km showed a whole suburb.
+                    position = .region(MKCoordinateRegion(
+                        center: coord,
+                        latitudinalMeters: 800,
+                        longitudinalMeters: 800
+                    ))
+                    hasSnappedToUser = true
+                }
 
                 // Bottom card when a restaurant is selected
                 if let restaurant = selectedRestaurant {
@@ -51,7 +66,6 @@ struct NearbyMapView: View {
             }
             .navigationTitle("Nearby")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -64,7 +78,15 @@ struct NearbyMapView: View {
             }
         }
         .task {
+            // Kick the location session so the first fix comes in promptly;
+            // Map's own tracking is lazy and often leaves the camera on the
+            // fallback globe view until the user pans.
+            location.requestLocationPermission()
+            location.startUpdatingLocation()
             await vm.loadRestaurants()
+        }
+        .onDisappear {
+            location.stopUpdatingLocation()
         }
     }
 }

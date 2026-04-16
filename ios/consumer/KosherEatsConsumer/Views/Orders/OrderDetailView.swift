@@ -48,7 +48,7 @@ struct OrderDetailView: View {
                         priceBreakdown(order: order)
 
                         // Cancel button
-                        if order.status == .pending {
+                        if order.status == .pending || order.status == .accepted {
                             Button {
                                 Task { await vm.cancelOrder(id: order.id) }
                             } label: {
@@ -78,13 +78,13 @@ struct OrderDetailView: View {
         }
         .navigationTitle("Order Details")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await vm.loadOrder(id: orderID)
             if vm.currentOrder?.status.isActive == true {
                 vm.startPolling(orderID: orderID)
             }
         }
+        .onDisappear { vm.stopPolling() }
     }
 
     // MARK: - Status Tracker

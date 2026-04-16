@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -130,9 +131,11 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	m.CreatedAt = createdAt.Format(time.RFC3339)
 
-	// TODO: APNs push to the other participants when we have recipient-
-	// specific notification keys (currently notifier is order-event driven,
-	// not chat driven).
+	// Fan out push notifications to the other order participants so they
+	// see the message even if their app is backgrounded. Runs in its own
+	// goroutine with a detached context so slow APNs/FCM calls don't block
+	// the client's send-message response.
+	go h.notify.ChatMessageSent(context.Background(), orderID, user["user_id"], user["role"], req.Text)
 
 	writeJSON(w, http.StatusCreated, m)
 }

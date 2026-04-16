@@ -3,7 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -130,13 +134,16 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		if len(modJSON) == 0 {
 			modJSON = []byte("[]")
 		}
-		h.db.Pool.Exec(r.Context(),
+		if _, err := h.db.Pool.Exec(r.Context(),
 			`INSERT INTO order_items (order_id, menu_item_id, name, price, quantity, notes, selected_modifiers)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			order.ID, item.MenuItemID, item.Name, item.Price, item.Quantity, item.Notes, modJSON)
+			order.ID, item.MenuItemID, item.Name, item.Price, item.Quantity, item.Notes, modJSON); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to insert order items")
+			return
+		}
 	}
 
-	// Clear cart
+	// Clear cart — only reached when all item inserts succeeded above.
 	h.db.Pool.Exec(r.Context(), `DELETE FROM cart_items WHERE cart_id = $1`, cart.ID)
 	h.db.Pool.Exec(r.Context(), `DELETE FROM carts WHERE id = $1`, cart.ID)
 
@@ -156,8 +163,8 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
 		        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
-		        o.courier_tip, o.delivery_address, o.est_delivery_time,
-		        o.created_at, o.updated_at
+		        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
+		        o.est_delivery_time, o.created_at, o.updated_at
 		   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.user_id = $1
 		  ORDER BY o.created_at DESC LIMIT 50`,
@@ -169,15 +176,32 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var orders []models.Order
+	var orderIDs []string
 	for rows.Next() {
 		var o models.Order
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
 			&o.Subtotal, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
-			&o.CourierTip, &o.DeliveryAddress, &o.EstDeliveryTime,
-			&o.CreatedAt, &o.UpdatedAt); err != nil {
+			&o.CourierTip, &o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
+			&o.EstDeliveryTime, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			continue
 		}
 		orders = append(orders, o)
+		orderIDs = append(orderIDs, o.ID)
+	}
+
+	// Batch-load items so the list row can render the item summary without
+	// N+1 round trips. Always assign a non-nil slice — a nil slice serializes
+	// as JSON null, which fails to decode into Swift's non-optional [OrderItem].
+	itemsByOrder := map[string][]models.OrderItem{}
+	if len(orderIDs) > 0 {
+		itemsByOrder = h.loadOrderItemsBatch(r, orderIDs)
+	}
+	for i := range orders {
+		items := itemsByOrder[orders[i].ID]
+		if items == nil {
+			items = []models.OrderItem{}
+		}
+		orders[i].Items = items
 	}
 
 	if orders == nil {
@@ -246,11 +270,15 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			       cu.first_name, cu.phone, cu.avatar_url,
 			       cp.vehicle_type, cp.vehicle_make, cp.vehicle_model, cp.vehicle_color,
 			       cp.license_plate, cp.rating, cp.total_deliveries,
-			       cp.last_lat, cp.last_lng
+			       cp.last_lat, cp.last_lng,
+			       cr.stars,
+			       consumer.first_name, consumer.phone
 			  FROM orders o
 			  JOIN restaurants rest ON o.restaurant_id = rest.id
 			  LEFT JOIN users cu ON o.courier_id = cu.id
 			  LEFT JOIN courier_profiles cp ON cp.user_id = o.courier_id
+			  LEFT JOIN courier_ratings cr ON cr.order_id = o.id
+			  LEFT JOIN users consumer ON o.user_id = consumer.id
 			 WHERE o.id = $1 AND o.user_id = $2`
 	} else { // seller scope — scopeValue is the owner's user id
 		query = `
@@ -264,11 +292,15 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			       cu.first_name, cu.phone, cu.avatar_url,
 			       cp.vehicle_type, cp.vehicle_make, cp.vehicle_model, cp.vehicle_color,
 			       cp.license_plate, cp.rating, cp.total_deliveries,
-			       cp.last_lat, cp.last_lng
+			       cp.last_lat, cp.last_lng,
+			       cr.stars,
+			       consumer.first_name, consumer.phone
 			  FROM orders o
 			  JOIN restaurants rest ON o.restaurant_id = rest.id
 			  LEFT JOIN users cu ON o.courier_id = cu.id
 			  LEFT JOIN courier_profiles cp ON cp.user_id = o.courier_id
+			  LEFT JOIN courier_ratings cr ON cr.order_id = o.id
+			  LEFT JOIN users consumer ON o.user_id = consumer.id
 			 WHERE o.id = $1 AND rest.owner_id = $2`
 	}
 
@@ -280,6 +312,8 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 		cRating                                   *float64
 		cTotal                                    *int
 		cLat, cLng                                *float64
+		ratingStars                               *int
+		consumerFirst, consumerPhone              *string
 	)
 
 	err := h.db.Pool.QueryRow(r.Context(), query, orderID, scopeValue).Scan(
@@ -293,6 +327,8 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 		&cFirst, &cPhone, &cAvatar,
 		&cVehType, &cMake, &cModel, &cColor, &cPlate, &cRating, &cTotal,
 		&cLat, &cLng,
+		&ratingStars,
+		&consumerFirst, &consumerPhone,
 	)
 	if err != nil {
 		return nil, err
@@ -316,6 +352,9 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			Lng:             floatOr(cLng, 0),
 		}
 	}
+	o.CourierRating = ratingStars
+	o.CustomerName = strOr(consumerFirst, "")
+	o.CustomerPhone = strOr(consumerPhone, "")
 
 	return &o, nil
 }
@@ -343,14 +382,27 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromContext(r)
 	id := chi.URLParam(r, "id")
 
+	// Allow cancel while pending OR accepted (before kitchen starts preparing).
 	result, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE orders SET status = $1, updated_at = NOW()
-		 WHERE id = $2 AND user_id = $3 AND status = $4`,
-		models.OrderCancelled, id, user["user_id"], models.OrderPending)
+		 WHERE id = $2 AND user_id = $3 AND status IN ($4, $5)`,
+		models.OrderCancelled, id, user["user_id"], models.OrderPending, models.OrderAccepted)
 
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot cancel this order")
 		return
+	}
+
+	// Best-effort Stripe refund -- log failure but don't block the cancel.
+	var paymentID string
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT stripe_payment_id FROM orders WHERE id = $1`, id).Scan(&paymentID)
+	if paymentID != "" {
+		if err := h.stripe.RefundPaymentIntent(paymentID); err != nil {
+			slog.Error("cancel refund failed",
+				slog.String("order_id", id),
+				slog.String("error", err.Error()))
+		}
 	}
 
 	order, err := h.loadOrderWithCourier(r, id, "user_id", user["user_id"])
@@ -361,6 +413,83 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	order.Items = h.loadOrderItems(r, id)
 
 	writeJSON(w, http.StatusOK, order)
+}
+
+// RateOrder lets a consumer rate their courier after delivery. One rating
+// per order (enforced by unique(order_id)). On insert the courier's
+// aggregate rating is recomputed from the average of all their stars so the
+// displayed rating stays fresh. Only the consumer who placed the order can
+// rate it, and only once the order is in `delivered` state.
+func (h *Handler) RateOrder(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	orderID := chi.URLParam(r, "id")
+
+	var req struct {
+		Stars   int    `json:"stars"`
+		Comment string `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req.Stars < 1 || req.Stars > 5 {
+		writeError(w, http.StatusBadRequest, "stars must be between 1 and 5")
+		return
+	}
+
+	// Confirm the order belongs to this consumer, is delivered, and has a
+	// courier. We need the courier_id for the ratings row and the avg
+	// recompute.
+	var courierID *string
+	var status string
+	err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT status, courier_id FROM orders WHERE id = $1 AND user_id = $2`,
+		orderID, user["user_id"],
+	).Scan(&status, &courierID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "order not found")
+		return
+	}
+	if status != string(models.OrderDelivered) {
+		writeError(w, http.StatusBadRequest, "order is not delivered")
+		return
+	}
+	if courierID == nil {
+		writeError(w, http.StatusBadRequest, "order has no courier to rate")
+		return
+	}
+
+	comment := strings.TrimSpace(req.Comment)
+	var commentArg any = comment
+	if comment == "" {
+		commentArg = nil
+	}
+
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`INSERT INTO courier_ratings (order_id, consumer_id, courier_id, stars, comment)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (order_id) DO NOTHING`,
+		orderID, user["user_id"], *courierID, req.Stars, commentArg,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save rating")
+		return
+	}
+
+	// Recompute courier's aggregate rating from the average stars across all
+	// submitted ratings. Kept as a single UPDATE so the read path doesn't
+	// need to aggregate on every fetch.
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE courier_profiles SET rating = COALESCE((
+		     SELECT AVG(stars)::FLOAT FROM courier_ratings WHERE courier_id = $1
+		 ), 5.0), updated_at = NOW() WHERE id = $1`,
+		*courierID,
+	); err != nil {
+		// Non-fatal — the rating was saved even if the aggregate update
+		// failed; the next submission will correct it.
+		log.Printf("[rating] recompute failed for courier=%s: %v", *courierID, err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"stars": req.Stars})
 }
 
 // Seller order handlers
@@ -406,11 +535,16 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 
 	// Batch-load items for every listed order so the dashboard can render
 	// item summaries without N+1 queries.
+	itemsByOrder := map[string][]models.OrderItem{}
 	if len(orderIDs) > 0 {
-		itemsByOrder := h.loadOrderItemsBatch(r, orderIDs)
-		for i := range orders {
-			orders[i].Items = itemsByOrder[orders[i].ID]
+		itemsByOrder = h.loadOrderItemsBatch(r, orderIDs)
+	}
+	for i := range orders {
+		items := itemsByOrder[orders[i].ID]
+		if items == nil {
+			items = []models.OrderItem{}
 		}
+		orders[i].Items = items
 	}
 
 	if orders == nil {
@@ -491,8 +625,122 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 // Sellers no longer mark orders delivered — that transition is owned by the
 // courier app (picked_up → delivered). Keeping only reject.
 
+// RejectOrder refunds the customer first, then flips status to 'rejected'.
+// Refund-then-flip mirrors tryStaleReject in the dispatcher: a Stripe failure
+// leaves the order 'pending' for a retry instead of stranding the customer
+// in a "rejected but not refunded" state.
 func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
-	h.updateSellerOrderStatus(w, r, models.OrderRejected, models.OrderPending)
+	id := chi.URLParam(r, "id")
+	user := getUserFromContext(r)
+
+	var paymentIntentID string
+	err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT orders.stripe_payment_id
+		   FROM orders JOIN restaurants ON orders.restaurant_id = restaurants.id
+		  WHERE orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = $3`,
+		id, user["user_id"], models.OrderPending,
+	).Scan(&paymentIntentID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "cannot update order status")
+		return
+	}
+
+	if paymentIntentID != "" && h.stripe != nil {
+		if err := h.stripe.RefundPaymentIntent(paymentIntentID); err != nil {
+			writeError(w, http.StatusBadGateway, "refund failed, order not rejected")
+			return
+		}
+	}
+
+	result, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE orders SET status = $1, updated_at = NOW()
+		 FROM restaurants WHERE orders.restaurant_id = restaurants.id
+		 AND orders.id = $2 AND restaurants.owner_id = $3 AND orders.status = $4`,
+		models.OrderRejected, id, user["user_id"], models.OrderPending)
+	if err != nil || result.RowsAffected() == 0 {
+		writeError(w, http.StatusBadRequest, "cannot update order status")
+		return
+	}
+
+	order, err := h.loadOrderWithCourier(r, id, "restaurant_owner", user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status updated but failed to reload order")
+		return
+	}
+	order.Items = h.loadOrderItems(r, id)
+	writeJSON(w, http.StatusOK, order)
+}
+
+// StreamOrderLocation streams courier location pings for an order as
+// Server-Sent Events. The consumer app holds this open for the duration of
+// the order-tracking screen; each courier UpdateCourierLocation call fans an
+// event to every open stream for that order via the in-memory broker.
+//
+// We also emit a heartbeat comment every 25s to keep intermediaries from
+// dropping the idle connection, and clear the server's WriteTimeout via
+// http.ResponseController so the long-lived connection isn't killed.
+func (h *Handler) StreamOrderLocation(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	user := getUserFromContext(r)
+
+	// Ownership check — same contract as GetOrder: only the placing consumer
+	// can stream. (Seller/courier already have first-class order access via
+	// their own apps; if we need them later, widen here.)
+	var exists bool
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM orders WHERE id = $1 AND user_id = $2)`,
+		id, user["user_id"],
+	).Scan(&exists); err != nil || !exists {
+		writeError(w, http.StatusNotFound, "order not found")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	// The server has a 15s WriteTimeout; clear the per-write deadline so this
+	// long-lived stream isn't killed mid-connection.
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+	flusher.Flush()
+
+	events, unsub := h.location.Subscribe(id)
+	defer unsub()
+
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		case e, ok := <-events:
+			if !ok {
+				return
+			}
+			payload, err := json.Marshal(e)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: location\ndata: %s\n\n", payload); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 func (h *Handler) updateSellerOrderStatus(w http.ResponseWriter, r *http.Request, newStatus, requiredStatus models.OrderStatus) {

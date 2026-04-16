@@ -32,6 +32,7 @@ final class PushNotifications: NSObject, ObservableObject {
         let hex = data.map { String(format: "%02x", $0) }.joined()
         do {
             try await APIService.shared.registerDevice(token: hex, platform: "ios", app: app)
+            pendingToken = nil
         } catch {
             print("[push] failed to register token: \(error)")
         }

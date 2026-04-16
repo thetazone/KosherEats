@@ -2,7 +2,9 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject var authVM: AuthViewModel
+    @Environment(\.openURL) private var openURL
     @State private var showEditProfile = false
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -19,12 +21,30 @@ struct ProfileView: View {
                             ProfileMenuItem(icon: "person.fill", title: "Edit Profile", color: .kePrimary) {
                                 showEditProfile = true
                             }
-                            ProfileMenuItem(icon: "mappin.circle.fill", title: "Saved Addresses", color: .kePrimary) {}
-                            ProfileMenuItem(icon: "creditcard.fill", title: "Payment Methods", color: .keSuccess) {}
-                            ProfileMenuItem(icon: "bell.fill", title: "Notifications", color: .keWarning) {}
-                            ProfileMenuItem(icon: "shield.fill", title: "Privacy & Security", color: .keDairy) {}
-                            ProfileMenuItem(icon: "questionmark.circle.fill", title: "Help & Support", color: .keTextSecondary) {}
-                            ProfileMenuItem(icon: "doc.text.fill", title: "Terms of Service", color: .keTextSecondary) {}
+                            NavigationLink {
+                                SavedAddressesView()
+                            } label: {
+                                ProfileMenuRow(icon: "mappin.circle.fill", title: "Saved Addresses", color: .kePrimary)
+                            }
+                            NavigationLink {
+                                PaymentMethodsView()
+                            } label: {
+                                ProfileMenuRow(icon: "creditcard.fill", title: "Payment Methods", color: .keSuccess)
+                            }
+                            NavigationLink {
+                                NotificationPreferencesView()
+                            } label: {
+                                ProfileMenuRow(icon: "bell.fill", title: "Notifications", color: .keWarning)
+                            }
+                            ProfileMenuItem(icon: "shield.fill", title: "Privacy Policy", color: .keDairy) {
+                                openURL(LegalURLs.privacyPolicy)
+                            }
+                            ProfileMenuItem(icon: "questionmark.circle.fill", title: "Help & Support", color: .keTextSecondary) {
+                                openURL(LegalURLs.supportEmail)
+                            }
+                            ProfileMenuItem(icon: "doc.text.fill", title: "Terms of Service", color: .keTextSecondary) {
+                                openURL(LegalURLs.termsOfService)
+                            }
                         }
                         .background(Color.keCard)
                         .cornerRadius(Theme.cornerRadiusMedium)
@@ -47,6 +67,29 @@ struct ProfileView: View {
                         }
                         .padding(.horizontal)
 
+                        // Delete Account
+                        Button {
+                            showDeleteConfirmation = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Delete Account")
+                            }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.keTextMuted)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                        }
+                        .padding(.horizontal)
+                        .alert("Delete Account", isPresented: $showDeleteConfirmation) {
+                            Button("Cancel", role: .cancel) {}
+                            Button("Delete", role: .destructive) {
+                                Task { await authVM.deleteAccount() }
+                            }
+                        } message: {
+                            Text("This will permanently delete your account and all associated data. This action cannot be undone.")
+                        }
+
                         // App version
                         Text("KosherEats v1.0.0")
                             .font(.system(size: 12))
@@ -58,7 +101,6 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(isPresented: $showEditProfile) {
                 EditProfileView()
             }
@@ -116,25 +158,38 @@ struct ProfileMenuItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 18))
-                    .foregroundColor(color)
-                    .frame(width: 28)
-
-                Text(title)
-                    .font(.system(size: 16))
-                    .foregroundColor(.keTextPrimary)
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.keTextMuted)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            ProfileMenuRow(icon: icon, title: title, color: color)
         }
+    }
+}
+
+/// Presentation-only variant of ProfileMenuItem — use inside NavigationLink
+/// so the system supplies the tap behavior.
+struct ProfileMenuRow: View {
+    let icon: String
+    let title: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(color)
+                .frame(width: 28)
+
+            Text(title)
+                .font(.system(size: 16))
+                .foregroundColor(.keTextPrimary)
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.keTextMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
     }
 }
 
@@ -192,7 +247,6 @@ struct EditProfileView: View {
             }
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") { dismiss() }

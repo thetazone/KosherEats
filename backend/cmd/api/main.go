@@ -108,6 +108,21 @@ func main() {
 		r.Post("/login", h.Login)
 		r.Post("/refresh", h.RefreshToken)
 		r.Post("/social", h.SocialLogin)
+		// Used by the unified email entry on each app: given an email, says
+		// whether a user exists so the client can route to "enter password"
+		// vs "create account". Doesn't leak enough to be a useful enumeration
+		// primitive beyond what /login already reveals via its error message.
+		r.Post("/email/check", h.CheckEmail)
+		// Phone OTP login (Twilio Verify). Used by the seller app's "Continue
+		// with phone" flow. Start sends the SMS; verify trades a valid code
+		// for a JWT if the phone is associated with an existing account.
+		r.Post("/phone/start", h.StartPhoneLogin)
+		r.Post("/phone/verify", h.VerifyPhoneLogin)
+		// App Store Review bypass. Signs in a preprovisioned seller account
+		// + demo restaurant so Apple's reviewer can exercise the dashboard
+		// without a real approval flow. Temporary — remove once a public
+		// demo path exists.
+		r.Post("/reviewer/seller", h.ReviewerSellerLogin)
 	})
 
 	// Restaurants (public, IP rate limited)
@@ -127,10 +142,25 @@ func main() {
 		r.Get("/", h.ListOrders)
 		r.Get("/{id}", h.GetOrder)
 		r.Patch("/{id}/cancel", h.CancelOrder)
+		r.Post("/{id}/rating", h.RateOrder)
+		// Live courier-location SSE stream. Consumer opens this while on the
+		// order-tracking screen; each courier /location ping fans an event to
+		// every open stream for that order.
+		r.Get("/{id}/location/stream", h.StreamOrderLocation)
 		// Order-scoped chat. Consumer, seller (via order's restaurant
 		// ownership), and assigned courier all read + write the same thread.
 		r.Get("/{id}/chat", h.ListChatMessages)
 		r.Post("/{id}/chat", h.SendChatMessage)
+	})
+
+	// Favorites (authenticated)
+	r.Route("/api/v1/favorites", func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Use(apiLimiter.PerUser)
+		r.Get("/", h.ListFavorites)
+		r.Get("/ids", h.ListFavoriteIDs)
+		r.Post("/{restaurant_id}", h.AddFavorite)
+		r.Delete("/{restaurant_id}", h.RemoveFavorite)
 	})
 
 	// Cart
@@ -150,6 +180,9 @@ func main() {
 		r.Use(apiLimiter.PerUser)
 		r.Post("/intent", h.CreatePaymentIntent)
 		r.Post("/confirm", h.ConfirmPayment)
+		// Profile → Payment Methods screen (STPCustomerSheet).
+		r.Get("/customer", h.GetPaymentCustomer)
+		r.Post("/setup-intent", h.CreateSetupIntent)
 	})
 	r.Post("/api/v1/webhooks/stripe", h.StripeWebhook)
 	r.Post("/api/v1/webhooks/checkr", h.CheckrWebhook)
@@ -176,6 +209,9 @@ func main() {
 			r.Put("/items/{id}", h.UpdateMenuItem)
 			r.Delete("/items/{id}", h.DeleteMenuItem)
 			r.Patch("/items/{id}/availability", h.ToggleItemAvailability)
+			r.Post("/items/{itemId}/modifier-groups", h.CreateModifierGroup)
+			r.Put("/modifier-groups/{groupId}", h.UpdateModifierGroup)
+			r.Delete("/modifier-groups/{groupId}", h.DeleteModifierGroup)
 			r.Post("/categories", h.CreateCategory)
 			r.Delete("/categories/{id}", h.DeleteCategory)
 		})
@@ -272,6 +308,10 @@ func main() {
 		r.Get("/addresses", h.ListAddresses)
 		r.Post("/addresses", h.AddAddress)
 		r.Delete("/addresses/{id}", h.DeleteAddress)
+		r.Patch("/addresses/{id}/default", h.SetDefaultAddress)
+		r.Get("/notification-preferences", h.GetNotificationPreferences)
+		r.Put("/notification-preferences", h.UpdateNotificationPreferences)
+		r.Delete("/account", h.DeleteAccount)
 	})
 
 	srv := &http.Server{
@@ -282,12 +322,18 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Start the scheduled-order dispatcher. Sweeps every minute, flipping
-	// any order whose scheduled_for is within the next 30 minutes into
-	// 'pending' so sellers can start preparing.
+	// Start the background scheduler. Three sweeps run every minute:
+	//   (1) scheduled-order promotion — flips future-dated orders to
+	//       'pending' 30 min before their delivery window.
+	//   (2) courier auto-dispatch — assigns a nearest online courier to any
+	//       'ready' order that hasn't been self-claimed within the grace
+	//       period, so orders never sit unassigned indefinitely.
+	//   (3) stale-pending auto-rejection — refunds + rejects any 'pending'
+	//       order the seller never acted on within the SLA, so customers
+	//       aren't stuck watching a dead order.
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 	defer schedulerCancel()
-	scheduler.New(db.Pool).Start(schedulerCtx)
+	scheduler.New(db.Pool, h.Notifier(), h.Stripe()).Start(schedulerCtx)
 
 	go func() {
 		logger.Info("server starting", slog.String("port", cfg.Port))

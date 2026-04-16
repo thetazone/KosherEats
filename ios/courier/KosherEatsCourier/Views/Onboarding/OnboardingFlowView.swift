@@ -101,16 +101,16 @@ private struct PhoneVerifyStep: View {
             Text("Verify your phone")
                 .font(.title2.bold())
                 .foregroundColor(.keTextPrimary)
-            Text("We'll text you a 6-digit code. (Dev stub: any code works.)")
+            Text("We'll text you a 4-digit code. (Dev stub: any code works.)")
                 .foregroundColor(.keTextSecondary)
 
-            TextField("123456", text: $code)
+            TextField("1234", text: $code)
                 .keTextField()
                 .keyboardType(.numberPad)
 
             Button("Verify") {
                 Task {
-                    if await vm.verifyPhone() { onDone() }
+                    if await vm.verifyPhone(code: code) { onDone() }
                 }
             }
             .buttonStyle(KEPrimaryButtonStyle(isEnabled: !code.isEmpty))
@@ -212,17 +212,37 @@ private struct DocumentsStep: View {
             Text("Upload your documents")
                 .font(.title2.bold())
                 .foregroundColor(.keTextPrimary)
-            Text("We review these as part of your background check.")
+            Text("We review these as part of your background check. Tap any uploaded photo to retake.")
                 .foregroundColor(.keTextSecondary)
 
             TextField("Drivers license number", text: $vm.driversLicenseNumber)
                 .keTextField()
                 .autocapitalization(.allCharacters)
 
-            DocumentUploadRow(title: "Drivers license photo", kind: .license, urlBinding: $vm.driversLicenseURL)
-            DocumentUploadRow(title: "Insurance card", kind: .insurance, urlBinding: $vm.insuranceURL)
-            DocumentUploadRow(title: "Vehicle registration", kind: .registration, urlBinding: $vm.registrationURL)
-            DocumentUploadRow(title: "Profile photo (selfie)", kind: .profile, urlBinding: $vm.profilePhotoURL)
+            DocumentUploadRow(title: "Drivers license photo",
+                              kind: .license,
+                              required: vm.documentRequired(.license),
+                              urlBinding: $vm.driversLicenseURL)
+            DocumentUploadRow(title: "Profile photo (selfie)",
+                              kind: .profile,
+                              required: vm.documentRequired(.profile),
+                              urlBinding: $vm.profilePhotoURL)
+
+            // Insurance + registration only show when the vehicle type calls
+            // for them — bike / scooter / walk couriers skip both, matching
+            // industry standard (DoorDash, UberEats).
+            if vm.documentRequired(.insurance) {
+                DocumentUploadRow(title: "Insurance card",
+                                  kind: .insurance,
+                                  required: true,
+                                  urlBinding: $vm.insuranceURL)
+            }
+            if vm.documentRequired(.registration) {
+                DocumentUploadRow(title: "Vehicle registration",
+                                  kind: .registration,
+                                  required: true,
+                                  urlBinding: $vm.registrationURL)
+            }
 
             Button("Submit for review") {
                 Task {
@@ -232,10 +252,31 @@ private struct DocumentsStep: View {
             .buttonStyle(KEPrimaryButtonStyle(isEnabled: vm.documentsFormValid && !vm.isSubmitting))
             .disabled(!vm.documentsFormValid || vm.isSubmitting)
 
+            if !vm.documentsFormValid {
+                Text(missingHint(vm: vm))
+                    .font(.caption)
+                    .foregroundColor(.keTextMuted)
+            }
+
             if let err = vm.errorMessage {
                 Text(err).font(.footnote).foregroundColor(.keError)
             }
         }
+    }
+
+    private func missingHint(vm: OnboardingViewModel) -> String {
+        var missing: [String] = []
+        if vm.driversLicenseNumber.isEmpty { missing.append("license number") }
+        if vm.driversLicenseURL.isEmpty { missing.append("license photo") }
+        if vm.profilePhotoURL.isEmpty { missing.append("selfie") }
+        if vm.documentRequired(.insurance) && vm.insuranceURL.isEmpty {
+            missing.append("insurance")
+        }
+        if vm.documentRequired(.registration) && vm.registrationURL.isEmpty {
+            missing.append("registration")
+        }
+        if missing.isEmpty { return "" }
+        return "Still needed: \(missing.joined(separator: ", "))"
     }
 }
 
@@ -245,6 +286,7 @@ private struct DocumentsStep: View {
 private struct DocumentUploadRow: View {
     let title: String
     let kind: UploadService.UploadKind
+    let required: Bool
     @Binding var urlBinding: String
 
     @State private var pickerItem: PhotosPickerItem?
@@ -259,8 +301,24 @@ private struct DocumentUploadRow: View {
                 HStack {
                     Image(systemName: iconName)
                         .foregroundColor(uploaded ? .keSuccess : .kePrimary)
-                    Text(title)
-                        .foregroundColor(.keTextPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(title)
+                                .foregroundColor(.keTextPrimary)
+                            if !required {
+                                Text("Optional")
+                                    .font(.caption2)
+                                    .foregroundColor(.keTextMuted)
+                            }
+                        }
+                        if uploaded {
+                            // Tap-to-replace hint — without this couriers ask
+                            // why they can't fix a wrong photo.
+                            Text("Tap to replace")
+                                .font(.caption2)
+                                .foregroundColor(.keTextTertiary)
+                        }
+                    }
                     Spacer()
                     if isUploading {
                         ProgressView().tint(.kePrimary)
@@ -302,8 +360,12 @@ private struct DocumentUploadRow: View {
             }
             let publicURL = try await UploadService.shared.uploadImage(image, kind: kind)
             urlBinding = publicURL
+            // Clear the picker selection so picking the same image twice (or
+            // re-selecting a different one) re-fires onChange.
+            pickerItem = nil
         } catch {
             errorText = error.localizedDescription
+            pickerItem = nil
         }
     }
 }

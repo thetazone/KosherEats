@@ -128,7 +128,14 @@ struct PayoutsSetupView: View {
 
     private func refreshStatus() async {
         do {
-            status = try await APIService.shared.getPayoutStatus()
+            let fresh = try await APIService.shared.getPayoutStatus()
+            status = fresh
+            // When Stripe reports the courier is good to go, reload the
+            // top-level profile so the dashboard's "set up payouts" banner
+            // vanishes without requiring a manual pull-to-refresh.
+            if fresh.payoutReady {
+                await auth.loadProfile()
+            }
         } catch {
             // 401 just means we haven't created an account yet — that's fine
             status = nil

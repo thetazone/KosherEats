@@ -230,6 +230,17 @@ type Order struct {
 	CourierPayout int            `json:"courier_payout"`
 	CourierTip    int            `json:"courier_tip"`
 
+	// Populated once the consumer has rated their courier. iOS uses this
+	// to decide whether to present the rating prompt after a delivery.
+	CourierRating *int `json:"courier_rating,omitempty"`
+
+	// Consumer contact (populated for seller + courier views only).
+	CustomerName  string `json:"customer_name,omitempty"`
+	CustomerPhone string `json:"customer_phone,omitempty"`
+
+	// Drop-off photo from courier
+	DeliveryProofURL string `json:"delivery_proof_url,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

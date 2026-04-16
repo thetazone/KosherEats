@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -117,6 +118,47 @@ func (n *Notifier) restaurantOwnerID(ctx context.Context, restaurantID string) (
 	return ownerID, err
 }
 
+// Category matches the user-facing toggles in Profile → Notifications.
+// consumerOptedIn gates dispatch to a consumer recipient — if the toggle is
+// off we return false and the caller skips the push. Sellers/couriers get
+// operational pushes unconditionally (no consumer prefs table row for them
+// means defaults-true, which is correct).
+type Category string
+
+const (
+	CategoryOrderUpdates Category = "order_updates"
+	CategoryChatMessages Category = "chat_messages"
+	CategoryPromotions   Category = "promotions"
+)
+
+func (n *Notifier) consumerOptedIn(ctx context.Context, userID string, cat Category) bool {
+	if userID == "" {
+		return true
+	}
+	var orderUpdates, chatMessages, promotions bool
+	err := n.db.QueryRow(ctx,
+		`SELECT order_updates, chat_messages, promotions
+		   FROM notification_preferences WHERE user_id = $1`,
+		userID,
+	).Scan(&orderUpdates, &chatMessages, &promotions)
+	if err == pgx.ErrNoRows {
+		return true // no row yet = all categories default to enabled
+	}
+	if err != nil {
+		log.Printf("[notify] load prefs user=%s: %v", userID, err)
+		return true // fail open — better to miss a toggle than drop a push
+	}
+	switch cat {
+	case CategoryOrderUpdates:
+		return orderUpdates
+	case CategoryChatMessages:
+		return chatMessages
+	case CategoryPromotions:
+		return promotions
+	}
+	return true
+}
+
 // -------- Semantic events --------
 
 // OrderCreated: a consumer just placed an order. Notify the seller.
@@ -141,13 +183,117 @@ func (n *Notifier) OrderReady(ctx context.Context, orderID, restaurantName strin
 	})
 }
 
+// CourierAutoAssigned: the dispatcher auto-assigned an order to a specific
+// courier (they didn't self-claim from the marketplace broadcast). Notify
+// that courier directly so they know they have a new delivery queued up.
+func (n *Notifier) CourierAutoAssigned(ctx context.Context, orderID, courierUserID, restaurantName string, payout int) {
+	n.dispatch(ctx, n.tokensForUser(ctx, courierUserID, AppCourier), AppCourier, Payload{
+		Title: "New delivery assigned",
+		Body:  restaurantName + " • " + fmtMoney(payout) + " — tap to view",
+		Data:  map[string]string{"order_id": orderID, "type": "auto_assigned"},
+	})
+}
+
+// OrderAutoRejected: a pending order sat too long without seller acceptance
+// and the stale-order sweep rejected + refunded it. Notify the consumer that
+// their order was cancelled and money returned.
+func (n *Notifier) OrderAutoRejected(ctx context.Context, orderID, consumerID, restaurantName string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
+	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
+		Title: "Order cancelled — refund issued",
+		Body:  restaurantName + " didn't confirm in time. You've been refunded.",
+		Data:  map[string]string{"order_id": orderID, "type": "auto_rejected"},
+	})
+}
+
+// ChatMessageSent: a participant sent a message on an order chat. Pushes a
+// preview to every OTHER participant (consumer, seller, courier if assigned)
+// on the app they belong to. Sender is skipped — they just hit send and
+// don't need a buzz in their own pocket.
+//
+// Title is role-aware so the recipient's lockscreen shows meaningful context
+// ("Message from the restaurant") rather than a generic "New message".
+func (n *Notifier) ChatMessageSent(ctx context.Context, orderID, senderUserID, senderRole, text string) {
+	// Resolve the order's three participants in one hop. courier_id can be
+	// NULL (no courier assigned yet) so we scan into a *string.
+	var consumerID, ownerID string
+	var courierID *string
+	err := n.db.QueryRow(ctx, `
+		SELECT o.user_id, rest.owner_id, o.courier_id
+		  FROM orders o
+		  JOIN restaurants rest ON o.restaurant_id = rest.id
+		 WHERE o.id = $1`, orderID,
+	).Scan(&consumerID, &ownerID, &courierID)
+	if err != nil {
+		log.Printf("[notify] chat: resolve participants order=%s: %v", orderID, err)
+		return
+	}
+
+	title := chatTitleFromSender(senderRole)
+	preview := truncateForPush(text, 120)
+	data := map[string]string{
+		"order_id":    orderID,
+		"type":        "chat_message",
+		"sender_role": senderRole,
+	}
+	payload := func(t string) Payload {
+		return Payload{Title: t, Body: preview, Data: data}
+	}
+
+	// Push to every participant except the sender. "Except the sender"
+	// matters when two of the three roles map to the same user (e.g. in dev
+	// a seller might also place an order on their own restaurant). Consumer
+	// chat pushes respect the user's chat_messages toggle; seller/courier
+	// operational chats always fire.
+	if consumerID != "" && consumerID != senderUserID && n.consumerOptedIn(ctx, consumerID, CategoryChatMessages) {
+		n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, payload(title))
+	}
+	if ownerID != "" && ownerID != senderUserID {
+		n.dispatch(ctx, n.tokensForUser(ctx, ownerID, AppSeller), AppSeller, payload(title))
+	}
+	if courierID != nil && *courierID != "" && *courierID != senderUserID {
+		n.dispatch(ctx, n.tokensForUser(ctx, *courierID, AppCourier), AppCourier, payload(title))
+	}
+}
+
+// chatTitleFromSender maps a sender's role to the title recipients see on
+// their lockscreen. Keeps the phrasing natural from the recipient's POV
+// regardless of which app they're in.
+func chatTitleFromSender(senderRole string) string {
+	switch senderRole {
+	case "consumer":
+		return "Message from the customer"
+	case "seller":
+		return "Message from the restaurant"
+	case "courier":
+		return "Message from your courier"
+	default:
+		return "New message"
+	}
+}
+
+// truncateForPush clips a message to max runes and appends an ellipsis so
+// the push body fits cleanly on iOS/Android lockscreens without the system
+// doing its own ugly mid-word cut.
+func truncateForPush(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
+}
+
 // OrderClaimed: a courier claimed an order. Notify the consumer + seller.
 func (n *Notifier) OrderClaimed(ctx context.Context, orderID, consumerID, restaurantID, courierFirstName string) {
-	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
-		Title: "A courier is on the way",
-		Body:  courierFirstName + " is heading to the restaurant to pick up your order",
-		Data:  map[string]string{"order_id": orderID, "type": "courier_assigned"},
-	})
+	if n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
+			Title: "A courier is on the way",
+			Body:  courierFirstName + " is heading to the restaurant to pick up your order",
+			Data:  map[string]string{"order_id": orderID, "type": "courier_assigned"},
+		})
+	}
 
 	if ownerID, err := n.restaurantOwnerID(ctx, restaurantID); err == nil {
 		n.dispatch(ctx, n.tokensForUser(ctx, ownerID, AppSeller), AppSeller, Payload{
@@ -160,6 +306,9 @@ func (n *Notifier) OrderClaimed(ctx context.Context, orderID, consumerID, restau
 
 // OrderPickedUp: courier picked up the food. Notify the consumer.
 func (n *Notifier) OrderPickedUp(ctx context.Context, orderID, consumerID string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
 	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
 		Title: "Your order is on the way",
 		Body:  "Your driver just picked up your food — tap to track",
@@ -169,6 +318,9 @@ func (n *Notifier) OrderPickedUp(ctx context.Context, orderID, consumerID string
 
 // OrderDelivered: courier handed off the food. Notify the consumer.
 func (n *Notifier) OrderDelivered(ctx context.Context, orderID, consumerID string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
 	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
 		Title: "Enjoy your meal!",
 		Body:  "Your order has been delivered.",

@@ -1,3 +1,4 @@
+import PassKit
 import SwiftUI
 import StripePaymentSheet
 
@@ -16,6 +17,10 @@ struct CheckoutView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showAddressPicker = false
     @State private var placedOrder: Order?
+    // Carries the order id we should deep-link to AFTER the confirmation
+    // cover finishes dismissing — prevents the root tab from racing the
+    // fullScreenCover dismissal animation.
+    @State private var pendingTrackOrderId: String?
 
     /// Called when the user finishes with confirmation (Done or Track).
     var onOrderPlaced: (Order) -> Void
@@ -38,6 +43,9 @@ struct CheckoutView: View {
                     )
 
                     if let bundle = vm.bundle {
+                        if let brand = bundle.defaultCardBrand, let last4 = bundle.defaultCardLast4 {
+                            SavedCardCard(brand: brand, last4: last4)
+                        }
                         TotalsCard(bundle: bundle)
                     } else if vm.isLoadingBundle {
                         ProgressView().tint(.kePrimary).padding()
@@ -61,7 +69,6 @@ struct CheckoutView: View {
         }
         .navigationTitle("Checkout")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await vm.loadAddresses()
             await vm.refreshBundle()
@@ -81,7 +88,23 @@ struct CheckoutView: View {
                 Task { await vm.refreshBundle() }
             }
         }
-        .fullScreenCover(item: $placedOrder) { order in
+        .fullScreenCover(
+            item: $placedOrder,
+            onDismiss: {
+                // Fires after the cover has fully dismissed, so the
+                // destination view in the underlying tab is settled and
+                // the tracking push lands cleanly without the old 0.3s
+                // asyncAfter dance.
+                if let id = pendingTrackOrderId {
+                    pendingTrackOrderId = nil
+                    NotificationCenter.default.post(
+                        name: .navigateToOrderTracking,
+                        object: nil,
+                        userInfo: ["order_id": id]
+                    )
+                }
+            }
+        ) { order in
             OrderConfirmationView(
                 order: order,
                 onDone: {
@@ -90,16 +113,10 @@ struct CheckoutView: View {
                     onOrderPlaced(order)
                 },
                 onTrack: {
+                    pendingTrackOrderId = order.id
                     placedOrder = nil
                     Task { await cartVM.loadCart() }
                     onOrderPlaced(order)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        NotificationCenter.default.post(
-                            name: .navigateToOrderTracking,
-                            object: nil,
-                            userInfo: ["order_id": order.id]
-                        )
-                    }
                 }
             )
         }
@@ -110,23 +127,39 @@ struct CheckoutView: View {
     private var payButton: some View {
         VStack(spacing: 0) {
             Divider().background(Color.keDivider)
-            Button {
-                Task { await pay() }
-            } label: {
-                HStack {
-                    if vm.isProcessing {
-                        ProgressView().tint(.white)
-                    } else {
-                        Text("Place Order")
-                        Spacer()
-                        if let bundle = vm.bundle {
-                            Text(format(bundle.total))
+            VStack(spacing: 10) {
+                // Express Apple Pay — skips PaymentSheet when the device has
+                // a card in Wallet. Reads the same bundle as "Place Order"
+                // so totals match what PaymentSheet would have shown.
+                if PKPaymentAuthorizationController.canMakePayments() {
+                    PayWithApplePayButton(.plain) {
+                        Task { await payWithApplePay() }
+                    }
+                    .payWithApplePayButtonStyle(.white)
+                    .frame(height: 50)
+                    .cornerRadius(10)
+                    .disabled(!canPay)
+                    .opacity(canPay ? 1 : 0.5)
+                }
+
+                Button {
+                    Task { await pay() }
+                } label: {
+                    HStack {
+                        if vm.isProcessing {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Place Order")
+                            Spacer()
+                            if let bundle = vm.bundle {
+                                Text(format(bundle.total))
+                            }
                         }
                     }
                 }
+                .buttonStyle(KEPrimaryButtonStyle(isEnabled: canPay))
+                .disabled(!canPay)
             }
-            .buttonStyle(KEPrimaryButtonStyle(isEnabled: canPay))
-            .disabled(!canPay)
             .padding()
             .background(Color.keBackgroundElevated)
         }
@@ -140,6 +173,17 @@ struct CheckoutView: View {
         guard let bundle = vm.bundle, let address = vm.selectedAddress else { return }
         Haptics.impact(.medium)
         await vm.presentAndChargePaymentSheet(bundle: bundle)
+        await finishIfSucceeded(bundle: bundle, address: address)
+    }
+
+    private func payWithApplePay() async {
+        guard let bundle = vm.bundle, let address = vm.selectedAddress else { return }
+        Haptics.impact(.medium)
+        await vm.presentApplePayExpress(bundle: bundle)
+        await finishIfSucceeded(bundle: bundle, address: address)
+    }
+
+    private func finishIfSucceeded(bundle: APIService.PaymentSheetBundle, address: Address) async {
         if vm.paymentSucceeded {
             if let order = await vm.placeOrder(address: address, bundle: bundle) {
                 Haptics.success()
@@ -211,7 +255,7 @@ private struct DeliveryTimeCard: View {
                 )
                 timeOption(
                     title: "Schedule",
-                    subtitle: scheduledFor != nil ? formatted(scheduledFor!) : "Pick a time",
+                    subtitle: scheduledFor.map { formatted($0) } ?? "Pick a time",
                     isSelected: scheduledFor != nil,
                     action: {
                         showPicker = true
@@ -298,6 +342,7 @@ private struct TipSelector: View {
     let selected: CheckoutViewModel.TipChoice
     @Binding var customAmount: String
     let onSelect: (CheckoutViewModel.TipChoice) -> Void
+    @FocusState private var customFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
@@ -321,7 +366,18 @@ private struct TipSelector: View {
             if selected == .custom {
                 TextField("Custom amount", text: $customAmount)
                     .keyboardType(.decimalPad)
+                    .focused($customFieldFocused)
                     .keTextField()
+                    .toolbar {
+                        // .decimalPad has no return key, so users used to get
+                        // stuck — tapping outside was the only way out. Add a
+                        // Done bar above the keyboard to dismiss cleanly.
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { customFieldFocused = false }
+                                .foregroundColor(.kePrimary)
+                        }
+                    }
             }
         }
         .padding()
@@ -348,6 +404,41 @@ private struct TipChip: View {
                         .fill(isSelected ? Color.kePrimary : Color.keBackgroundElevated)
                 )
         }
+    }
+}
+
+// MARK: - Saved card preview
+
+/// Shows the user's default card on file ("Visa •••• 4242") so they know
+/// which payment method PaymentSheet will land on by default. Tapping the
+/// full PaymentSheet still lets them switch or add a new one; this is a
+/// visual affordance so Apple's reviewer + return customers don't have to
+/// open the sheet to verify.
+private struct SavedCardCard: View {
+    let brand: String
+    let last4: String
+
+    var body: some View {
+        HStack(spacing: Theme.spacingSM) {
+            Image(systemName: "creditcard.fill")
+                .foregroundColor(.kePrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Paying with saved card")
+                    .font(.caption)
+                    .foregroundColor(.keTextTertiary)
+                Text("\(brand.capitalized) •••• \(last4)")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.keTextPrimary)
+            }
+            Spacer()
+            Text("Change at checkout")
+                .font(.caption2)
+                .foregroundColor(.keTextMuted)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.keCard)
+        .cornerRadius(Theme.cornerRadiusMedium)
     }
 }
 

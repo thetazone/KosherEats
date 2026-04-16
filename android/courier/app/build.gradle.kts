@@ -45,6 +45,9 @@ android {
 
         // Placeholder is empty in dev — real key goes in via Gradle -P or local.properties before launch.
         manifestPlaceholders["MAPS_API_KEY"] = lp("MAPS_API_KEY")
+        // Expose the same key to runtime code (Directions HTTP API) so the map
+        // screen doesn't have to re-read it from the manifest at runtime.
+        buildConfigField("String", "MAPS_API_KEY", "\"${lp("MAPS_API_KEY")}\"")
     }
 
     buildTypes {
@@ -95,7 +98,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.8.2")
 
     // Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -134,10 +137,12 @@ dependencies {
     // Kotlinx Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
-    // Google Maps (for tracking future work; couriers see the delivery route)
-    implementation("com.google.maps.android:maps-compose:4.3.0")
+    // Google Maps (couriers see the delivery route on the in-app map).
+    // android-maps-utils provides PolyUtil for decoding Directions API polylines.
+    implementation("com.google.maps.android:maps-compose:4.3.3")
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation("com.google.maps.android:android-maps-utils:3.8.2")
 
     // Chrome Custom Tabs (Stripe Connect hosted onboarding)
     implementation("androidx.browser:browser:1.7.0")
@@ -155,7 +160,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
 

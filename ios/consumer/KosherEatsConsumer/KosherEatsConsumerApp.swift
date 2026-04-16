@@ -9,26 +9,24 @@ struct KosherEatsConsumerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if authVM.isAuthenticated {
-                    MainTabView()
-                        .environmentObject(authVM)
-                        .environmentObject(cartVM)
-                } else {
-                    LoginView()
-                        .environmentObject(authVM)
-                }
-            }
-            .preferredColorScheme(.dark)
-            .task(id: authVM.isAuthenticated) {
-                if authVM.isAuthenticated {
+            MainTabView()
+                .environmentObject(authVM)
+                .environmentObject(cartVM)
+                .task {
+                    // Request location permission immediately on launch
+                    LocationManager.shared.requestLocationPermission()
+                    // Request push notification permission immediately on launch
                     await PushNotifications.shared.requestAuthorization()
-                    await PushNotifications.shared.registerPendingTokenIfPossible()
                 }
-            }
-            .onOpenURL { url in
-                GIDSignIn.sharedInstance.handle(url)
-            }
+                .task(id: authVM.isAuthenticated) {
+                    // Register push token with backend once authenticated
+                    if authVM.isAuthenticated {
+                        await PushNotifications.shared.registerPendingTokenIfPossible()
+                    }
+                }
+                .onOpenURL { url in
+                    GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }

@@ -40,12 +40,16 @@ android {
         buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
         buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
 
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
+
         // Placeholder is empty in dev — real key goes in via Gradle -P or local.properties before launch.
         manifestPlaceholders["MAPS_API_KEY"] = lp("MAPS_API_KEY")
     }
 
     buildTypes {
         debug {
+            // Swap to "https://koshereats-api.fly.dev/api/v1/" when testing Stripe
+            // PaymentSheet — real test-mode keys live on Fly, not the local dev backend.
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
         }
         release {
@@ -139,6 +143,15 @@ dependencies {
     // see push/PushBootstrap.kt + FIREBASE.md.
     implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Stripe PaymentSheet — keys come from server via /payments/intent.
+    // Test-mode keys are live in dev; production keys are swapped in on Fly.
+    implementation("com.stripe:stripe-android:20.45.0")
+
+    // Google Sign-In via CredentialManager (modern API, Android 14+ friendly)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/koshereats/backend/internal/models"
 )
 
@@ -11,6 +14,10 @@ type UpdateProfileRequest struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Phone     string `json:"phone"`
+	// Email is optional. When non-empty it replaces the current email —
+	// used by the Apple completion sheet to let users override the
+	// @privaterelay.appleid.com address Apple supplies on first sign-in.
+	Email string `json:"email,omitempty"`
 }
 
 type AddAddressRequest struct {
@@ -51,17 +58,49 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE users SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW()
-		 WHERE id = $4`,
-		req.FirstName, req.LastName, req.Phone, user["user_id"])
+	// Normalize email before persistence so uniqueness checks aren't
+	// defeated by casing. Empty => "don't touch email".
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	ctx := r.Context()
 
-	if err != nil || result.RowsAffected() == 0 {
-		writeError(w, http.StatusBadRequest, "failed to update profile")
+	if email != "" {
+		_, err := h.db.Pool.Exec(ctx,
+			`UPDATE users SET first_name = $1, last_name = $2, phone = $3, email = $4, updated_at = NOW()
+			 WHERE id = $5`,
+			req.FirstName, req.LastName, req.Phone, email, user["user_id"])
+		if err != nil {
+			// 23505 = unique_violation — another account owns this email.
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				writeError(w, http.StatusConflict, "that email is already in use")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "failed to update profile")
+			return
+		}
+	} else {
+		_, err := h.db.Pool.Exec(ctx,
+			`UPDATE users SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW()
+			 WHERE id = $4`,
+			req.FirstName, req.LastName, req.Phone, user["user_id"])
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "failed to update profile")
+			return
+		}
+	}
+
+	var u models.User
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
+		 FROM users WHERE id = $1`, user["user_id"],
+	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.AvatarURL,
+		&u.CreatedAt, &u.UpdatedAt)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	writeJSON(w, http.StatusOK, u)
 }
 
 func (h *Handler) ListAddresses(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +169,79 @@ func (h *Handler) DeleteAddress(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusNotFound, "address not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// SetDefaultAddress flips is_default=true on the target address and clears it
+// on every other address the user owns. Wrapped in a tx so we never end up
+// with zero or two "default" rows if the second UPDATE fails.
+func (h *Handler) SetDefaultAddress(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	addrID := chi.URLParam(r, "id")
+	ctx := r.Context()
+
+	tx, err := h.db.Pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE addresses SET is_default = false WHERE user_id = $1`, user["user_id"]); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear defaults")
+		return
+	}
+
+	result, err := tx.Exec(ctx,
+		`UPDATE addresses SET is_default = true WHERE id = $1 AND user_id = $2`,
+		addrID, user["user_id"])
+	if err != nil || result.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "address not found")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update default")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	uid := user["user_id"]
+	ctx := r.Context()
+
+	tx, err := h.db.Pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Delete related data in dependency order
+	tx.Exec(ctx, `DELETE FROM device_tokens WHERE user_id = $1`, uid)
+	tx.Exec(ctx, `DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id = $1)`, uid)
+	tx.Exec(ctx, `DELETE FROM carts WHERE user_id = $1`, uid)
+	tx.Exec(ctx, `DELETE FROM addresses WHERE user_id = $1`, uid)
+	// Anonymize orders (keep for accounting) rather than deleting
+	tx.Exec(ctx, `UPDATE orders SET user_id = NULL WHERE user_id = $1`, uid)
+	// Delete courier profile if exists
+	tx.Exec(ctx, `DELETE FROM courier_profiles WHERE user_id = $1`, uid)
+	// Delete the user
+	_, err = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, uid)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete account")
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete account")
 		return
 	}
 

@@ -31,7 +31,7 @@ struct RestaurantPickerSheet: View {
                     List {
                         ForEach(restaurants) { rest in
                             Button {
-                                SelectedRestaurant.shared.set(rest.id)
+                                SelectedRestaurant.shared.set(rest.id, name: rest.name)
                                 currentID = rest.id
                                 Haptics.impact(.light)
                                 onChange()
@@ -93,7 +93,17 @@ struct RestaurantPickerSheet: View {
             // anything explicitly — the backend picks it. But if >1 and
             // nothing is set, default to the first one.
             if currentID == nil, let first = restaurants.first {
-                SelectedRestaurant.shared.set(first.id)
+                SelectedRestaurant.shared.set(first.id, name: first.name)
+                currentID = first.id
+            } else if let current = restaurants.first(where: { $0.id == currentID }),
+                      SelectedRestaurant.shared.name != current.name {
+                // Refresh the cached display name if the restaurant was
+                // renamed since we last stored it.
+                SelectedRestaurant.shared.set(current.id, name: current.name)
+            } else if currentID != nil, restaurants.first(where: { $0.id == currentID }) == nil,
+                      let first = restaurants.first {
+                // Stale ID no longer in the list — fall back to first.
+                SelectedRestaurant.shared.set(first.id, name: first.name)
                 currentID = first.id
             }
         } catch {

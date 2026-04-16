@@ -153,7 +153,6 @@ fun PasYisroelBadge(modifier: Modifier = Modifier) {
 @Composable
 fun KosherInfoRow(
     certification: KosherCertification,
-    dietaryType: DietaryType,
     isGlatt: Boolean = false,
     isCholovYisroel: Boolean = false,
     isPasYisroel: Boolean = false,
@@ -165,7 +164,6 @@ fun KosherInfoRow(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         KosherBadge(certification = certification)
-        DietaryBadge(dietaryType = dietaryType)
         if (isGlatt) GlattBadge()
         if (isCholovYisroel) CholovYisroelBadge()
         if (isPasYisroel) PasYisroelBadge()

@@ -252,3 +252,71 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, scanRestaurants(rows))
 }
+
+// --- Favorites ---
+
+func (h *Handler) AddFavorite(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	rid := chi.URLParam(r, "restaurant_id")
+	_, err := h.db.Pool.Exec(r.Context(),
+		`INSERT INTO restaurant_favorites (user_id, restaurant_id) VALUES ($1, $2)
+		 ON CONFLICT DO NOTHING`,
+		user["user_id"], rid)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to favorite")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "favorited"})
+}
+
+func (h *Handler) RemoveFavorite(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	rid := chi.URLParam(r, "restaurant_id")
+	_, _ = h.db.Pool.Exec(r.Context(),
+		`DELETE FROM restaurant_favorites WHERE user_id = $1 AND restaurant_id = $2`,
+		user["user_id"], rid)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
+func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	rows, err := h.db.Pool.Query(r.Context(),
+		`SELECT r.id, r.owner_id, r.name, r.description, r.image_url, r.cover_image_url,
+		        r.phone, r.email, r.street, r.city, r.state, r.zip_code, r.lat, r.lng,
+		        r.kosher_certification, r.certifying_agency, r.is_cholov_yisroel, r.is_pas_yisroel,
+		        r.is_glatt_kosher, r.cuisine_type, r.rating, r.review_count, r.delivery_fee, r.min_order,
+		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.created_at, r.updated_at
+		   FROM restaurant_favorites f
+		   JOIN restaurants r ON f.restaurant_id = r.id
+		  WHERE f.user_id = $1
+		  ORDER BY f.created_at DESC`, user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list favorites")
+		return
+	}
+	defer rows.Close()
+	writeJSON(w, http.StatusOK, scanRestaurants(rows))
+}
+
+func (h *Handler) ListFavoriteIDs(w http.ResponseWriter, r *http.Request) {
+	user := getUserFromContext(r)
+	rows, err := h.db.Pool.Query(r.Context(),
+		`SELECT restaurant_id FROM restaurant_favorites WHERE user_id = $1`,
+		user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load favorites")
+		return
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if ids == nil {
+		ids = []string{}
+	}
+	writeJSON(w, http.StatusOK, ids)
+}

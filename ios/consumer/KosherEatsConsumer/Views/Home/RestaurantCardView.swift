@@ -2,12 +2,28 @@ import SwiftUI
 
 struct RestaurantCardView: View {
     let restaurant: Restaurant
+    var isFavorite: Bool = false
+    var onToggleFavorite: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 14) {
-            RemoteImage(url: restaurant.imageURL)
-                .frame(width: 90, height: 90)
-                .cornerRadius(Theme.cornerRadiusMedium)
+            ZStack(alignment: .topTrailing) {
+                RemoteImage(url: restaurant.imageURL)
+                    .frame(width: 90, height: 90)
+                    .cornerRadius(Theme.cornerRadiusMedium)
+
+                Button {
+                    onToggleFavorite?()
+                } label: {
+                    Image(systemName: isFavorite ? "heart.fill" : "heart")
+                        .font(.system(size: 16))
+                        .foregroundColor(isFavorite ? .red : .gray)
+                        .padding(6)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                }
+                .padding(4)
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {

@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -19,10 +22,16 @@ import (
 )
 
 type SocialLoginRequest struct {
-	Provider  string `json:"provider"`   // "google", "apple"
-	Token     string `json:"token"`      // ID token from provider
-	FirstName string `json:"first_name"` // optional, from provider
-	LastName  string `json:"last_name"`  // optional, from provider
+	Provider  string          `json:"provider"`        // "google", "apple", "facebook"
+	Token     string          `json:"token"`           // ID token or access token from provider
+	FirstName string          `json:"first_name"`      // optional, from provider
+	LastName  string          `json:"last_name"`       // optional, from provider
+	Role      models.UserRole `json:"role"`            // consumer or seller
+	// Nonce is the raw nonce the iOS client generated before requesting the
+	// Apple ID token. Apple bakes SHA256(nonce) into the token's `nonce`
+	// claim; we re-hash and compare here to block token replay attacks.
+	// Only set for Apple sign-in.
+	Nonce string `json:"nonce,omitempty"`
 }
 
 type googleTokenInfo struct {
@@ -37,9 +46,10 @@ type googleTokenInfo struct {
 }
 
 type appleTokenClaims struct {
+	jwt.RegisteredClaims
 	Email         string          `json:"email"`
 	EmailVerified json.RawMessage `json:"email_verified"`
-	jwt.RegisteredClaims
+	Nonce         string          `json:"nonce"`
 }
 
 const (
@@ -74,7 +84,7 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	case "google":
 		email, firstName, lastName, avatarURL, providerID, err = h.verifyGoogleToken(req.Token)
 	case "apple":
-		email, firstName, lastName, providerID, err = h.verifyAppleToken(req.Token, req.FirstName, req.LastName)
+		email, firstName, lastName, providerID, err = h.verifyAppleToken(req.Token, req.FirstName, req.LastName, req.Nonce)
 		avatarURL = ""
 	default:
 		writeError(w, http.StatusBadRequest, "unsupported provider: "+req.Provider)
@@ -91,13 +101,29 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user exists by email
+	// Match the provider identity first (stable per user per provider), then
+	// fall back to email. Email-only lookup breaks the instant the user
+	// updates their email in ProfileCompletionSheet: Apple keeps returning
+	// the original @privaterelay.appleid.com on every sign-in, the email
+	// lookup misses, and we'd otherwise create a brand-new account on every
+	// return visit.
 	var user models.User
-	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
-		 FROM users WHERE email = $1`, email,
-	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-		&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+	err = nil
+	if providerID != "" {
+		err = h.db.Pool.QueryRow(r.Context(),
+			`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
+			 FROM users WHERE auth_provider = $1 AND auth_provider_id = $2`,
+			req.Provider, providerID,
+		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
+			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+	}
+	if err != nil || providerID == "" {
+		err = h.db.Pool.QueryRow(r.Context(),
+			`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
+			 FROM users WHERE email = $1`, email,
+		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
+			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+	}
 
 	if err != nil {
 		// User doesn't exist — create new account
@@ -122,6 +148,35 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 			 auth_provider = $2, auth_provider_id = $3, updated_at = NOW()
 			 WHERE id = $4`,
 			avatarURL, req.Provider, providerID, user.ID)
+
+		// Courier app signed them in — promote a plain consumer to courier
+		// so the reviewer (and any real courier reinstall) isn't permanently
+		// locked out after a prior consumer signup with the same Apple ID.
+		// Admins and sellers are left alone.
+		if req.Role == models.RoleCourier && user.Role == models.RoleConsumer {
+			_, _ = h.db.Pool.Exec(r.Context(),
+				`UPDATE users SET role = 'courier', updated_at = NOW() WHERE id = $1`,
+				user.ID)
+			user.Role = models.RoleCourier
+		}
+	}
+
+	// Couriers need a courier_profiles row or GetCourierProfile 404s and the
+	// iOS courier app spins forever after sign-in. The email signup path
+	// (CourierRegister) creates this in the same tx; the social path never
+	// did, so Apple/Google signups were dead-ends. Idempotent via the
+	// user_id UNIQUE constraint.
+	//
+	// Starts at pending_info so the reviewer walks through the full
+	// onboarding flow (phone → vehicle → docs → background check).
+	// Dev mode auto-approves the background check in ~2s; no Checkr
+	// key needed for App Review.
+	if user.Role == models.RoleCourier {
+		_, _ = h.db.Pool.Exec(r.Context(),
+			`INSERT INTO courier_profiles (user_id, onboarding_status, phone_verified)
+			 VALUES ($1, 'pending_info', false)
+			 ON CONFLICT (user_id) DO NOTHING`,
+			user.ID)
 	}
 
 	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role))
@@ -175,7 +230,7 @@ func (h *Handler) verifyGoogleToken(idToken string) (email, firstName, lastName,
 	return info.Email, info.GivenName, info.FamilyName, info.Picture, info.Sub, nil
 }
 
-func (h *Handler) verifyAppleToken(idToken string, firstName, lastName string) (email, fName, lName, providerID string, err error) {
+func (h *Handler) verifyAppleToken(idToken string, firstName, lastName, rawNonce string) (email, fName, lName, providerID string, err error) {
 	if h.cfg == nil || h.cfg.AppleClientID == "" {
 		return "", "", "", "", fmt.Errorf("apple sign-in is not configured")
 	}
@@ -210,12 +265,21 @@ func (h *Handler) verifyAppleToken(idToken string, firstName, lastName string) (
 		return "", "", "", "", fmt.Errorf("apple token issued-at is invalid")
 	}
 
-	// Apple only sends name on first login — use what the client provides
-	if firstName == "" {
-		firstName = "Apple"
-	}
-	if lastName == "" {
-		lastName = "User"
+	// Replay-attack mitigation. iOS clients on every release going forward
+	// send a raw nonce; we hash it and compare to the JWT's nonce claim
+	// (which Apple sets to whatever hash the client put in the request).
+	// Tokens minted for a different session won't carry our nonce, so they
+	// fail this check even if an attacker exfiltrated the JWT.
+	//
+	// Older clients (pre-nonce) send nonce="" -- we accept those for now to
+	// avoid locking out users on stale builds, but the grace can be removed
+	// once telemetry shows everyone has updated.
+	if rawNonce != "" {
+		sum := sha256.Sum256([]byte(rawNonce))
+		expected := hex.EncodeToString(sum[:])
+		if subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(expected)) != 1 {
+			return "", "", "", "", fmt.Errorf("nonce mismatch in Apple token")
+		}
 	}
 
 	return claims.Email, firstName, lastName, claims.Subject, nil

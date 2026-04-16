@@ -3,9 +3,10 @@ import SwiftUI
 struct EarningsView: View {
     @State private var history: [HistoryOrder] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
 
     private var todayTotal: Int {
-        history.reduce(0) { $0 + $1.deliveryFee + $1.courierTip }
+        history.reduce(0) { $0 + $1.courierPayout }
     }
 
     var body: some View {
@@ -48,7 +49,7 @@ struct EarningsView: View {
                                             .foregroundColor(.keTextTertiary)
                                     }
                                     Spacer()
-                                    Text("$\(String(format: "%.2f", Double(h.deliveryFee + h.courierTip) / 100))")
+                                    Text("$\(String(format: "%.2f", Double(h.courierPayout) / 100))")
                                         .foregroundColor(.keSuccess)
                                 }
                                 .padding(.vertical, Theme.spacingSM)
@@ -62,6 +63,27 @@ struct EarningsView: View {
                 }
                 .padding(Theme.spacingMD)
             }
+            .overlay {
+                if let errorMessage {
+                    VStack(spacing: Theme.spacingMD) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.largeTitle)
+                            .foregroundColor(.keWarning)
+                        Text("Could not load earnings")
+                            .font(.headline)
+                            .foregroundColor(.keTextPrimary)
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            Task { await load() }
+                        }
+                        .buttonStyle(KEPrimaryButtonStyle())
+                    }
+                    .padding(Theme.spacingLG)
+                }
+            }
             .background(Color.keBackground.ignoresSafeArea())
             .navigationTitle("Earnings")
             .task { await load() }
@@ -71,7 +93,13 @@ struct EarningsView: View {
 
     private func load() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
-        history = (try? await APIService.shared.listHistory()) ?? []
+        do {
+            history = try await APIService.shared.listHistory()
+        } catch {
+            history = []
+            errorMessage = error.localizedDescription
+        }
     }
 }

@@ -172,7 +172,6 @@ struct RegisterView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
     private var isFormValid: Bool {

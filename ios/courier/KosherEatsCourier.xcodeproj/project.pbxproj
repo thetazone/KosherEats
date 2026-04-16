@@ -8,33 +8,46 @@
 
 /* Begin PBXBuildFile section */
 		0114C60EBBB389ECA42249EF /* PayoutsSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9864FABBA3A8EEBDDB90A1BB /* PayoutsSetupView.swift */; };
+		0982F5D8DC256BF0F907C239 /* LegalURLs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92BB348D269DD8BFEA0801AC /* LegalURLs.swift */; };
+		134DDBAA8998DEA36D1FA14B /* CourierPhoneOTPView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAE3577F6CAE935B0131579F /* CourierPhoneOTPView.swift */; };
 		1A7ABF974284DD08CD086AC5 /* KosherEatsCourierApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 264EBCE4343355AEDFB472A3 /* KosherEatsCourierApp.swift */; };
 		1C2630E2F2DE634269D3D68D /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D4D5868ABA414F5FE643FF /* OnboardingFlowView.swift */; };
 		1F29899EB894BFDC9F989937 /* SignupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8359B2EC55D6A9B54B38B44 /* SignupView.swift */; };
 		1F7A416B8CEDB02E4E29D201 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65C8CCE624D1C114BD8CD682 /* OnboardingViewModel.swift */; };
+		23ADDF07203DAB8E0ABBE93E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5D3AA4FF9BB8AB1351DE2FD /* Assets.xcassets */; };
 		2ABC79CB72BF72183C443BE2 /* CourierProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A009BFA93B66C3E720BD4339 /* CourierProfileView.swift */; };
 		2CD929405D71FFE660212A5A /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 2EB35A5D31F6CDCA6993D038 /* Localizable.xcstrings */; };
 		409FF36BD74628714622CB88 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4959B270AC339EBF1BFCB3EB /* DashboardView.swift */; };
+		46DA599E9C18192BE6B90B56 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F9838A4ACDD409E2ACBF458F /* GoogleSignInSwift */; };
 		52BC84123F69B160A5548329 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054511725887EEE7B7D99BC1 /* APIService.swift */; };
+		6E5D219F3B5A453AF02D2CBD /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3EC36A2CBEA9FAF1B7290AFD /* AuthenticationServices.framework */; };
 		74E370726A9B6AEF0A415915 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B217AE1F4DF81CE978CDCDFB /* DashboardViewModel.swift */; };
+		7AB9BBEECF2753A0175C87ED /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E1F7297BC1A729A0D09848 /* KeychainHelper.swift */; };
+		82174A5AC42C4125FABECCAB /* Country.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE7379AF689DB9A50DF3C420 /* Country.swift */; };
 		8659C20FAFBBC5E6F0EABF13 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE81BDE66114977569B764C /* PushNotifications.swift */; };
 		86968ECC206EE0EE8F1BAB8F /* OrderChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CBF0CD7E95E2C3849773EFD /* OrderChatView.swift */; };
 		98369DB598855954E2D9DC7A /* EarningsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0006C897EF5894C5B8C25D /* EarningsView.swift */; };
 		B734B2889445133668EBAF38 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C59FAFD792F4FDE451E3FF34 /* AppDelegate.swift */; };
 		C016072E11C05B9A33B48FE5 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3697D3E001B39C174A6DD0B /* RootView.swift */; };
 		C1A946F30F283E6711D6932A /* AuthLandingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300D2322A39F3EBC70FD1851 /* AuthLandingView.swift */; };
+		C7B228CC0A18EA8BD8FDAC18 /* CountryCodePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E57EF9E272DC19878176A06 /* CountryCodePickerSheet.swift */; };
+		CE9C13D901646782EF3A9082 /* DeliveryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF5529108311B4DAFBD5CFB /* DeliveryMapView.swift */; };
+		D4D5053945189B5BBAFD8EE5 /* ProfileCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C5969E694E7E76093F59B0E /* ProfileCompletionSheet.swift */; };
 		D9401B77A41386774C527692 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0407FA655D91800B514A7BC6 /* AuthViewModel.swift */; };
 		E189E3736430DD02B7228655 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 734996522B69773743A97B93 /* LocationManager.swift */; };
 		E1EF3991F4D03AC9E9BA86D4 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1555130D353E99BC01E386CD /* LoginView.swift */; };
 		E1FFDCCBCC8DF4AA3553CCA9 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA5D387D10B77824E89EC60 /* Models.swift */; };
 		E47349C64C3E4D9B47366FD6 /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCEE6851A51FA3004FD6045 /* UploadService.swift */; };
+		EB5CCFF69985CD0AFFD99CE2 /* EmailAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45AACC88B9D4168AA6A99C54 /* EmailAuthView.swift */; };
 		F0C6B2024AFEC9728395676D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25B89003EB069D27F9EFD0BA /* Theme.swift */; };
+		F2DED8B00D31FEC4730DDEC9 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = D1D404F48ED31550BE8667CD /* GoogleSignIn */; };
 		FB79E43B57F30F6FDE73645A /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E779D4007E94D32982EF71D /* ChatMessage.swift */; };
 		FBB055F9888907F082B303FF /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4133640BC8C8725B3DD38BB7 /* Colors.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0407FA655D91800B514A7BC6 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		04E8BAE40F01D5B0ACE8077B /* KosherEatsCourier.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KosherEatsCourier.entitlements; sourceTree = "<group>"; };
 		054511725887EEE7B7D99BC1 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		14EBE1B9CD16CF2098CA8CF5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1555130D353E99BC01E386CD /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
@@ -42,25 +55,48 @@
 		264EBCE4343355AEDFB472A3 /* KosherEatsCourierApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherEatsCourierApp.swift; sourceTree = "<group>"; };
 		2EB35A5D31F6CDCA6993D038 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		300D2322A39F3EBC70FD1851 /* AuthLandingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthLandingView.swift; sourceTree = "<group>"; };
+		3E57EF9E272DC19878176A06 /* CountryCodePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCodePickerSheet.swift; sourceTree = "<group>"; };
 		3E779D4007E94D32982EF71D /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		3EC36A2CBEA9FAF1B7290AFD /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		4133640BC8C8725B3DD38BB7 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		45AACC88B9D4168AA6A99C54 /* EmailAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAuthView.swift; sourceTree = "<group>"; };
 		4959B270AC339EBF1BFCB3EB /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		4DCEE6851A51FA3004FD6045 /* UploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
+		51E1F7297BC1A729A0D09848 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		5A0006C897EF5894C5B8C25D /* EarningsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarningsView.swift; sourceTree = "<group>"; };
+		5CF5529108311B4DAFBD5CFB /* DeliveryMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryMapView.swift; sourceTree = "<group>"; };
 		65C8CCE624D1C114BD8CD682 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
 		6CBF0CD7E95E2C3849773EFD /* OrderChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderChatView.swift; sourceTree = "<group>"; };
 		734996522B69773743A97B93 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		92BB348D269DD8BFEA0801AC /* LegalURLs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalURLs.swift; sourceTree = "<group>"; };
 		9864FABBA3A8EEBDDB90A1BB /* PayoutsSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayoutsSetupView.swift; sourceTree = "<group>"; };
 		98AB9D2719AD66590A53CF76 /* KosherEatsCourier.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KosherEatsCourier.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C5969E694E7E76093F59B0E /* ProfileCompletionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCompletionSheet.swift; sourceTree = "<group>"; };
 		9FE81BDE66114977569B764C /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
 		A009BFA93B66C3E720BD4339 /* CourierProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourierProfileView.swift; sourceTree = "<group>"; };
 		B217AE1F4DF81CE978CDCDFB /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		B3697D3E001B39C174A6DD0B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		B3D4D5868ABA414F5FE643FF /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		B5D3AA4FF9BB8AB1351DE2FD /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BBA5D387D10B77824E89EC60 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		C59FAFD792F4FDE451E3FF34 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		C8359B2EC55D6A9B54B38B44 /* SignupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignupView.swift; sourceTree = "<group>"; };
+		CAE3577F6CAE935B0131579F /* CourierPhoneOTPView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourierPhoneOTPView.swift; sourceTree = "<group>"; };
+		CE7379AF689DB9A50DF3C420 /* Country.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Country.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		67552E22C3AC8F7AE0B54A35 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6E5D219F3B5A453AF02D2CBD /* AuthenticationServices.framework in Frameworks */,
+				F2DED8B00D31FEC4730DDEC9 /* GoogleSignIn in Frameworks */,
+				46DA599E9C18192BE6B90B56 /* GoogleSignInSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0390E23C908255E869C1AEB7 /* Chat */ = {
@@ -106,6 +142,7 @@
 			isa = PBXGroup;
 			children = (
 				054511725887EEE7B7D99BC1 /* APIService.swift */,
+				51E1F7297BC1A729A0D09848 /* KeychainHelper.swift */,
 				734996522B69773743A97B93 /* LocationManager.swift */,
 				9FE81BDE66114977569B764C /* PushNotifications.swift */,
 				4DCEE6851A51FA3004FD6045 /* UploadService.swift */,
@@ -125,7 +162,9 @@
 			isa = PBXGroup;
 			children = (
 				C59FAFD792F4FDE451E3FF34 /* AppDelegate.swift */,
+				B5D3AA4FF9BB8AB1351DE2FD /* Assets.xcassets */,
 				14EBE1B9CD16CF2098CA8CF5 /* Info.plist */,
+				04E8BAE40F01D5B0ACE8077B /* KosherEatsCourier.entitlements */,
 				264EBCE4343355AEDFB472A3 /* KosherEatsCourierApp.swift */,
 				E7A1F97733CF2A16C02EDAF1 /* Models */,
 				C4187BB59077CF06E72D29A2 /* Resources */,
@@ -141,6 +180,7 @@
 			isa = PBXGroup;
 			children = (
 				4133640BC8C8725B3DD38BB7 /* Colors.swift */,
+				92BB348D269DD8BFEA0801AC /* LegalURLs.swift */,
 				25B89003EB069D27F9EFD0BA /* Theme.swift */,
 			);
 			path = Theme;
@@ -150,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				4959B270AC339EBF1BFCB3EB /* DashboardView.swift */,
+				5CF5529108311B4DAFBD5CFB /* DeliveryMapView.swift */,
 			);
 			path = Dashboard;
 			sourceTree = "<group>";
@@ -158,6 +199,7 @@
 			isa = PBXGroup;
 			children = (
 				5BD278876C2013AEEFFB5CE1 /* KosherEatsCourier */,
+				CB751C014707AEAECF9271A0 /* Frameworks */,
 				554EE2B16014E17C66108D64 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -176,6 +218,14 @@
 				2EB35A5D31F6CDCA6993D038 /* Localizable.xcstrings */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		CB751C014707AEAECF9271A0 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3EC36A2CBEA9FAF1B7290AFD /* AuthenticationServices.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		CFC906C5C499661CA503E9A2 /* ViewModels */ = {
@@ -200,7 +250,11 @@
 			isa = PBXGroup;
 			children = (
 				300D2322A39F3EBC70FD1851 /* AuthLandingView.swift */,
+				3E57EF9E272DC19878176A06 /* CountryCodePickerSheet.swift */,
+				CAE3577F6CAE935B0131579F /* CourierPhoneOTPView.swift */,
+				45AACC88B9D4168AA6A99C54 /* EmailAuthView.swift */,
 				1555130D353E99BC01E386CD /* LoginView.swift */,
+				9C5969E694E7E76093F59B0E /* ProfileCompletionSheet.swift */,
 				C8359B2EC55D6A9B54B38B44 /* SignupView.swift */,
 			);
 			path = Auth;
@@ -210,6 +264,7 @@
 			isa = PBXGroup;
 			children = (
 				3E779D4007E94D32982EF71D /* ChatMessage.swift */,
+				CE7379AF689DB9A50DF3C420 /* Country.swift */,
 				BBA5D387D10B77824E89EC60 /* Models.swift */,
 			);
 			path = Models;
@@ -224,6 +279,7 @@
 			buildPhases = (
 				F2743026518E3E67E33E9B04 /* Sources */,
 				AC7A320675100AF72FE836A7 /* Resources */,
+				67552E22C3AC8F7AE0B54A35 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -231,6 +287,8 @@
 			);
 			name = KosherEatsCourier;
 			packageProductDependencies = (
+				D1D404F48ED31550BE8667CD /* GoogleSignIn */,
+				F9838A4ACDD409E2ACBF458F /* GoogleSignInSwift */,
 			);
 			productName = KosherEatsCourier;
 			productReference = 98AB9D2719AD66590A53CF76 /* KosherEatsCourier.app */;
@@ -246,7 +304,7 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					32E5CE833F4B64E335EA5D90 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 4RSM8W4755;
 					};
 				};
 			};
@@ -262,6 +320,9 @@
 			);
 			mainGroup = A4A886690D2EED025D3EA90F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DD47610C1B866E92070E09FD /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
@@ -276,6 +337,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				23ADDF07203DAB8E0ABBE93E /* Assets.xcassets in Resources */,
 				2CD929405D71FFE660212A5A /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -293,11 +355,18 @@
 				D9401B77A41386774C527692 /* AuthViewModel.swift in Sources */,
 				FB79E43B57F30F6FDE73645A /* ChatMessage.swift in Sources */,
 				FBB055F9888907F082B303FF /* Colors.swift in Sources */,
+				82174A5AC42C4125FABECCAB /* Country.swift in Sources */,
+				C7B228CC0A18EA8BD8FDAC18 /* CountryCodePickerSheet.swift in Sources */,
+				134DDBAA8998DEA36D1FA14B /* CourierPhoneOTPView.swift in Sources */,
 				2ABC79CB72BF72183C443BE2 /* CourierProfileView.swift in Sources */,
 				409FF36BD74628714622CB88 /* DashboardView.swift in Sources */,
 				74E370726A9B6AEF0A415915 /* DashboardViewModel.swift in Sources */,
+				CE9C13D901646782EF3A9082 /* DeliveryMapView.swift in Sources */,
 				98369DB598855954E2D9DC7A /* EarningsView.swift in Sources */,
+				EB5CCFF69985CD0AFFD99CE2 /* EmailAuthView.swift in Sources */,
+				7AB9BBEECF2753A0175C87ED /* KeychainHelper.swift in Sources */,
 				1A7ABF974284DD08CD086AC5 /* KosherEatsCourierApp.swift in Sources */,
+				0982F5D8DC256BF0F907C239 /* LegalURLs.swift in Sources */,
 				E189E3736430DD02B7228655 /* LocationManager.swift in Sources */,
 				E1EF3991F4D03AC9E9BA86D4 /* LoginView.swift in Sources */,
 				E1FFDCCBCC8DF4AA3553CCA9 /* Models.swift in Sources */,
@@ -305,6 +374,7 @@
 				1F7A416B8CEDB02E4E29D201 /* OnboardingViewModel.swift in Sources */,
 				86968ECC206EE0EE8F1BAB8F /* OrderChatView.swift in Sources */,
 				0114C60EBBB389ECA42249EF /* PayoutsSetupView.swift in Sources */,
+				D4D5053945189B5BBAFD8EE5 /* ProfileCompletionSheet.swift in Sources */,
 				8659C20FAFBBC5E6F0EABF13 /* PushNotifications.swift in Sources */,
 				C016072E11C05B9A33B48FE5 /* RootView.swift in Sources */,
 				1F29899EB894BFDC9F989937 /* SignupView.swift in Sources */,
@@ -351,7 +421,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -377,6 +447,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = KosherEatsCourier/KosherEatsCourier.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -396,7 +467,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.courier;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -435,7 +506,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -468,6 +539,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = KosherEatsCourier/KosherEatsCourier.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -487,7 +559,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.courier;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -513,6 +585,30 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DD47610C1B866E92070E09FD /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D1D404F48ED31550BE8667CD /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DD47610C1B866E92070E09FD /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		F9838A4ACDD409E2ACBF458F /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DD47610C1B866E92070E09FD /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F030879A37EF297F2F3B89EC /* Project object */;
 }

@@ -5,19 +5,47 @@ import GoogleSignIn
 struct KosherEatsSellerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authVM = AuthViewModel()
+    // Latches when the reviewer/user taps "Not now" on
+    // ProfileCompletionSheet so we don't re-present it on every render.
+    // TEMPORARY — tied to the App Review skip button; remove both together.
+    @State private var profileSheetDismissed = false
 
     var body: some Scene {
         WindowGroup {
             Group {
                 if authVM.isAuthenticated {
-                    MainTabView()
-                        .environmentObject(authVM)
+                    if authVM.hasSellerAccess {
+                        MainTabView()
+                            .environmentObject(authVM)
+                    } else {
+                        // Authenticated via Apple/Google but role != seller.
+                        // Lets App Review's Apple ID reach a working
+                        // end-state and also serves real non-seller users
+                        // who land here by mistake.
+                        SellerOnboardingView()
+                            .environmentObject(authVM)
+                    }
                 } else {
                     SellerLoginView()
                         .environmentObject(authVM)
                 }
             }
             .preferredColorScheme(.dark)
+            .sheet(isPresented: Binding(
+                // Post-Apple-sign-in capture of first/last/email/phone when
+                // Apple returned a nil `fullName` or a @privaterelay forwarder.
+                // Closes automatically when the PUT /user/profile response
+                // flips `needsProfileCompletion` to false, or when the user
+                // taps "Not now" (reviewer escape hatch — see the TEMPORARY
+                // note in ProfileCompletionSheet).
+                get: { authVM.isAuthenticated && authVM.needsProfileCompletion && !profileSheetDismissed },
+                set: { newValue in
+                    if !newValue { profileSheetDismissed = true }
+                }
+            )) {
+                ProfileCompletionSheet()
+                    .environmentObject(authVM)
+            }
             .task(id: authVM.isAuthenticated) {
                 if authVM.isAuthenticated {
                     await PushNotifications.shared.requestAuthorization()

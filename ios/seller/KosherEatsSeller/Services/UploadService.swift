@@ -30,8 +30,9 @@ final class UploadService {
             return presign.publicUrl
         }
 
-        guard let url = URL(string: presign.uploadUrl) else {
-            throw NSError(domain: "upload", code: 2)
+        guard let url = URL(string: presign.uploadUrl),
+              url.scheme == "https" else {
+            throw NSError(domain: "upload", code: 2, userInfo: [NSLocalizedDescriptionKey: "invalid or insecure upload URL"])
         }
 
         var req = URLRequest(url: url)

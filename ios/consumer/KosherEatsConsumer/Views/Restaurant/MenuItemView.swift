@@ -100,11 +100,13 @@ struct KashrusTypeIndicator: View {
 struct AddToCartSheet: View {
     let item: MenuItem
     let restaurantID: String
+    @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
 
     @State private var quantity = 1
     @State private var notes = ""
+    @State private var showLoginSheet = false
     /// Selected modifier ids keyed by group id.
     @State private var selection: [String: Set<String>] = [:]
 
@@ -175,7 +177,6 @@ struct AddToCartSheet: View {
             }
             .navigationTitle("Customize")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Close") { dismiss() }
@@ -258,15 +259,19 @@ struct AddToCartSheet: View {
                 }
 
                 Button {
-                    Task {
-                        await cartVM.addItem(
-                            menuItemID: item.id,
-                            quantity: quantity,
-                            notes: notes.isEmpty ? nil : notes,
-                            restaurantID: restaurantID,
-                            modifierIDs: allSelectedIDs,
-                        )
-                        dismiss()
+                    if authVM.isAuthenticated {
+                        Task {
+                            await cartVM.addItem(
+                                menuItemID: item.id,
+                                quantity: quantity,
+                                notes: notes.isEmpty ? nil : notes,
+                                restaurantID: restaurantID,
+                                modifierIDs: allSelectedIDs,
+                            )
+                            dismiss()
+                        }
+                    } else {
+                        showLoginSheet = true
                     }
                 } label: {
                     HStack {
@@ -280,6 +285,10 @@ struct AddToCartSheet: View {
             }
             .padding()
             .background(Color.keBackgroundElevated)
+        }
+        .sheet(isPresented: $showLoginSheet) {
+            LoginView()
+                .environmentObject(authVM)
         }
     }
 }

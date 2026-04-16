@@ -28,11 +28,16 @@ class HomeViewModel: ObservableObject {
     @Published var restaurants: [Restaurant] = []
     @Published var filteredRestaurants: [Restaurant] = []
     @Published var featuredRestaurants: [Restaurant] = []
+    @Published var favoriteIDs: Set<String> = []
     @Published var searchText = ""
     @Published var selectedCuisine: String?
     @Published var kosherFilters = KosherFilters()
     @Published var isLoading = false
     @Published var errorMessage: String?
+
+    var favoriteRestaurants: [Restaurant] {
+        restaurants.filter { favoriteIDs.contains($0.id) }
+    }
 
     let cuisineFilters = [
         "All", "Israeli", "Middle Eastern", "Pizza", "Sushi",
@@ -54,11 +59,28 @@ class HomeViewModel: ObservableObject {
                     .prefix(5)
             )
             applyFilters()
+            await loadFavorites()
         } catch {
             errorMessage = error.localizedDescription
         }
 
         isLoading = false
+    }
+
+    func loadFavorites() async {
+        if let ids = try? await APIService.shared.listFavoriteIDs() {
+            favoriteIDs = Set(ids)
+        }
+    }
+
+    func toggleFavorite(_ restaurantID: String) async {
+        if favoriteIDs.contains(restaurantID) {
+            favoriteIDs.remove(restaurantID)
+            try? await APIService.shared.removeFavorite(restaurantID: restaurantID)
+        } else {
+            favoriteIDs.insert(restaurantID)
+            try? await APIService.shared.addFavorite(restaurantID: restaurantID)
+        }
     }
 
     func search() async {

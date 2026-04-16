@@ -12,6 +12,8 @@
 	<string>KosherEats uses your location to show nearby kosher restaurants and estimate delivery times.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>KosherEats uses the camera to scan your payment card for faster checkout.</string>
+	<key>GIDClientID</key>
+	<string>98949098353-2pq3fn45qj472ovqng76k6ohfj1sscnh.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

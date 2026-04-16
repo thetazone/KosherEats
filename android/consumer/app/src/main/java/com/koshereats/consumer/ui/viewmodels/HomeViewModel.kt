@@ -3,6 +3,7 @@ package com.koshereats.consumer.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.models.CuisineType
+import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.Restaurant
 import com.koshereats.consumer.data.repository.Resource
 import com.koshereats.consumer.data.repository.RestaurantRepository
@@ -24,6 +25,8 @@ data class HomeUiState(
     val selectedCuisine: CuisineType? = null,
     val filterGlattOnly: Boolean = false,
     val filterCholovYisroelOnly: Boolean = false,
+    val filterPasYisroelOnly: Boolean = false,
+    val filterCertifications: Set<KosherCertification> = emptySet(),
     val error: String? = null,
     val currentPage: Int = 1,
     val hasMore: Boolean = true,
@@ -65,6 +68,7 @@ class HomeViewModel @Inject constructor(
                 cuisine = _uiState.value.selectedCuisine?.name?.lowercase(),
                 isGlattKosher = if (_uiState.value.filterGlattOnly) true else null,
                 isCholovYisroel = if (_uiState.value.filterCholovYisroelOnly) true else null,
+                isPasYisroel = if (_uiState.value.filterPasYisroelOnly) true else null,
             ).collect { result ->
                 when (result) {
                     is Resource.Loading -> {
@@ -72,16 +76,23 @@ class HomeViewModel @Inject constructor(
                     }
                     is Resource.Success -> {
                         _uiState.update { state ->
-                            val newItems = if (page == 1) {
-                                result.data.items
+                            val filtered = if (state.filterCertifications.isEmpty()) {
+                                result.data
                             } else {
-                                state.allRestaurants + result.data.items
+                                result.data.filter { it.kosherCertification in state.filterCertifications }
                             }
+                            val newItems = if (page == 1) {
+                                filtered
+                            } else {
+                                state.allRestaurants + filtered
+                            }
+                            // Backend caps at 50 per call and doesn't expose a cursor;
+                            // treat a short page as "that was the last one".
                             state.copy(
                                 allRestaurants = newItems,
                                 isLoading = false,
                                 currentPage = page,
-                                hasMore = page < result.data.totalPages,
+                                hasMore = result.data.size >= 50,
                             )
                         }
                     }
@@ -136,6 +147,23 @@ class HomeViewModel @Inject constructor(
 
     fun toggleCholovYisroelFilter() {
         _uiState.update { it.copy(filterCholovYisroelOnly = !it.filterCholovYisroelOnly) }
+        loadRestaurants(page = 1)
+    }
+
+    fun applyKosherFilters(
+        glattOnly: Boolean,
+        cholovYisroelOnly: Boolean,
+        pasYisroelOnly: Boolean,
+        certifications: Set<KosherCertification>,
+    ) {
+        _uiState.update {
+            it.copy(
+                filterGlattOnly = glattOnly,
+                filterCholovYisroelOnly = cholovYisroelOnly,
+                filterPasYisroelOnly = pasYisroelOnly,
+                filterCertifications = certifications,
+            )
+        }
         loadRestaurants(page = 1)
     }
 

@@ -4,7 +4,8 @@
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES">
+      buildImplicitDependencies = "YES"
+      runPostActionsOnFailure = "NO">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -14,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0681E9AEA4EF5541F31A1477"
-               BuildableName = "KosherEatsConsumer.app"
-               BlueprintName = "KosherEatsConsumer"
-               ReferencedContainer = "container:KosherEatsConsumer.xcodeproj">
+               BlueprintIdentifier = "32E5CE833F4B64E335EA5D90"
+               BuildableName = "KosherEatsCourier.app"
+               BlueprintName = "KosherEatsCourier"
+               ReferencedContainer = "container:KosherEatsCourier.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -27,7 +28,20 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
-      shouldAutocreateTestPlan = "YES">
+      onlyGenerateCoverageForSpecifiedTargets = "NO">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "32E5CE833F4B64E335EA5D90"
+            BuildableName = "KosherEatsCourier.app"
+            BlueprintName = "KosherEatsCourier"
+            ReferencedContainer = "container:KosherEatsCourier.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
+      <Testables>
+      </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -43,12 +57,14 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0681E9AEA4EF5541F31A1477"
-            BuildableName = "KosherEatsConsumer.app"
-            BlueprintName = "KosherEatsConsumer"
-            ReferencedContainer = "container:KosherEatsConsumer.xcodeproj">
+            BlueprintIdentifier = "32E5CE833F4B64E335EA5D90"
+            BuildableName = "KosherEatsCourier.app"
+            BlueprintName = "KosherEatsCourier"
+            ReferencedContainer = "container:KosherEatsCourier.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -60,12 +76,14 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0681E9AEA4EF5541F31A1477"
-            BuildableName = "KosherEatsConsumer.app"
-            BlueprintName = "KosherEatsConsumer"
-            ReferencedContainer = "container:KosherEatsConsumer.xcodeproj">
+            BlueprintIdentifier = "32E5CE833F4B64E335EA5D90"
+            BuildableName = "KosherEatsCourier.app"
+            BlueprintName = "KosherEatsCourier"
+            ReferencedContainer = "container:KosherEatsCourier.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

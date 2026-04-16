@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/models"
 )
 
@@ -56,7 +59,8 @@ func (h *Handler) SetCourierOnline(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT o.id, o.restaurant_id, rest.name, o.status, o.subtotal, o.delivery_fee,
-		        o.service_fee, o.tax, o.total, o.delivery_address, o.delivery_lat, o.delivery_lng,
+		        o.service_fee, o.tax, o.total, o.courier_tip, o.delivery_address,
+		        o.delivery_lat, o.delivery_lng,
 		        rest.lat, rest.lng, o.est_delivery_time, o.created_at, o.updated_at
 		   FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
@@ -80,7 +84,7 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 		var d AvailableDelivery
 		if err := rows.Scan(&d.ID, &d.RestaurantID, &d.RestaurantName, &d.Status,
 			&d.Subtotal, &d.DeliveryFee, &d.ServiceFee, &d.Tax, &d.Total,
-			&d.DeliveryAddress, &d.DeliveryLat, &d.DeliveryLng,
+			&d.CourierTip, &d.DeliveryAddress, &d.DeliveryLat, &d.DeliveryLng,
 			&d.RestaurantLat, &d.RestaurantLng,
 			&d.EstDeliveryTime, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			continue
@@ -166,6 +170,12 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	user := getUserFromContext(r)
 	orderID := chi.URLParam(r, "id")
 
+	var req struct {
+		ProofURL string `json:"proof_url"`
+	}
+	// Body is optional — courier app sends proof URL when a photo was taken.
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
 	tx, err := h.db.Pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to begin tx")
@@ -173,9 +183,6 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	// The courier's payout for this order is the delivery fee + any tip.
-	// We compute it here (not at order creation) so tip changes made after
-	// delivery can still be captured.
 	var deliveryFee, tip int
 	if err := tx.QueryRow(r.Context(),
 		`SELECT delivery_fee, courier_tip FROM orders WHERE id = $1`, orderID,
@@ -188,9 +195,10 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	result, err := tx.Exec(r.Context(),
 		`UPDATE orders
 		   SET status = 'delivered', delivered_at = NOW(),
-		       courier_payout = $1, updated_at = NOW()
+		       courier_payout = $1, delivery_proof_url = COALESCE(NULLIF($4, ''), delivery_proof_url),
+		       updated_at = NOW()
 		 WHERE id = $2 AND courier_id = $3 AND status = 'picked_up'`,
-		payout, orderID, user["user_id"])
+		payout, orderID, user["user_id"], req.ProofURL)
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot mark this order delivered")
 		return
@@ -206,20 +214,31 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fire off the courier payout via Stripe Connect. We don't block the
-	// response on this — if it fails, a nightly sweep can retry (TODO).
+	// Enqueue the courier payout for durable, retryable processing. The
+	// background scheduler's payout sweep picks up this row on the next
+	// tick (within ~60s) and fires the Stripe transfer; on failure it
+	// reschedules with exponential backoff. Happy path has a small delay
+	// vs the old inline attempt, but we never silently drop a payout.
 	var connectID string
 	_ = h.db.Pool.QueryRow(r.Context(),
 		`SELECT stripe_connect_id FROM courier_profiles WHERE user_id = $1`,
 		user["user_id"]).Scan(&connectID)
 	if connectID != "" && payout > 0 {
-		go func() {
-			if err := h.stripe.TransferToCourier(connectID, payout, orderID); err != nil {
-				// Stripe transfer failure is logged but non-fatal — retry later.
-				// Intentionally not bubbling up so the courier's delivery still succeeds.
-				_ = err
-			}
-		}()
+		_, err := h.db.Pool.Exec(r.Context(), `
+			INSERT INTO courier_payout_queue
+			    (order_id, courier_id, stripe_connect_id, amount_cents)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (order_id) DO NOTHING`,
+			orderID, user["user_id"], connectID, payout)
+		if err != nil {
+			// Delivery is already committed — log so ops can reconcile,
+			// but don't fail the request. Courier can contact support if
+			// payout doesn't land.
+			slog.Error("failed to enqueue courier payout",
+				slog.String("order_id", orderID),
+				slog.String("courier_id", user["user_id"]),
+				slog.String("error", err.Error()))
+		}
 	}
 
 	var consumerID string
@@ -266,6 +285,18 @@ func (h *Handler) UpdateCourierLocation(w http.ResponseWriter, r *http.Request) 
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
 		user["user_id"], activeOrderID, req.Lat, req.Lng, req.Heading, req.Speed)
 
+	// Fan out to any consumer SSE streams watching this order.
+	if activeOrderID != nil && *activeOrderID != "" {
+		h.location.Publish(broker.LocationEvent{
+			OrderID: *activeOrderID,
+			Lat:     req.Lat,
+			Lng:     req.Lng,
+			Heading: req.Heading,
+			Speed:   req.Speed,
+			At:      time.Now().UTC(),
+		})
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -277,9 +308,12 @@ func (h *Handler) ListCourierActiveOrders(w http.ResponseWriter, r *http.Request
 		`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
 		        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
 		        o.delivery_address, o.delivery_lat, o.delivery_lng,
-		        o.claimed_at, o.picked_up_at, o.created_at, o.updated_at
+		        rest.lat, rest.lng, rest.phone,
+		        o.claimed_at, o.picked_up_at, o.created_at, o.updated_at,
+		        consumer.first_name, consumer.phone
 		   FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
+		   LEFT JOIN users consumer ON o.user_id = consumer.id
 		  WHERE o.courier_id = $1 AND o.status IN ('ready', 'picked_up')
 		  ORDER BY o.claimed_at DESC`, user["user_id"])
 	if err != nil {
@@ -291,12 +325,17 @@ func (h *Handler) ListCourierActiveOrders(w http.ResponseWriter, r *http.Request
 	var list []models.Order
 	for rows.Next() {
 		var o models.Order
+		var restPhone, consumerFirst, consumerPhone *string
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
 			&o.Subtotal, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 			&o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
-			&o.ClaimedAt, &o.PickedUpAt, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&o.RestaurantLat, &o.RestaurantLng, &restPhone,
+			&o.ClaimedAt, &o.PickedUpAt, &o.CreatedAt, &o.UpdatedAt,
+			&consumerFirst, &consumerPhone); err != nil {
 			continue
 		}
+		o.CustomerName = strOr(consumerFirst, "")
+		o.CustomerPhone = strOr(consumerPhone, "")
 		list = append(list, o)
 	}
 	if list == nil {

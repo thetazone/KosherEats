@@ -42,7 +42,6 @@ struct AddressPickerSheet: View {
             }
             .navigationTitle("Delivery Address")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -58,18 +57,12 @@ struct AddressPickerSheet: View {
                 }
             }
             .sheet(isPresented: $showAddForm) {
-                AddAddressForm { newAddress in
+                AddressFormSheet { newAddress in
                     selected = newAddress
                     Task { await load() }
                 }
             }
             .task { await load() }
-            .onAppear {
-                // If no saved addresses, jump straight to the add form.
-                if addresses.isEmpty && !isLoading {
-                    showAddForm = true
-                }
-            }
         }
     }
 
@@ -139,97 +132,3 @@ struct AddressPickerSheet: View {
     }
 }
 
-// MARK: - Add address form
-
-private struct AddAddressForm: View {
-    let onSaved: (Address) -> Void
-    @Environment(\.dismiss) var dismiss
-
-    @State private var label = "Home"
-    @State private var street = ""
-    @State private var apt = ""
-    @State private var city = ""
-    @State private var state = ""
-    @State private var zip = ""
-    @State private var isDefault = true
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    private var formValid: Bool {
-        !street.isEmpty && !city.isEmpty && !state.isEmpty && !zip.isEmpty
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.keBackground.ignoresSafeArea()
-                ScrollView {
-                    VStack(spacing: Theme.spacingMD) {
-                        field("Label (e.g. Home, Work)", text: $label)
-                        field("Street address", text: $street)
-                        field("Apt / Suite (optional)", text: $apt)
-                        field("City", text: $city)
-                        HStack(spacing: 12) {
-                            field("State", text: $state)
-                                .frame(maxWidth: 100)
-                            field("Zip", text: $zip)
-                        }
-
-                        Toggle("Make this my default", isOn: $isDefault)
-                            .tint(.kePrimary)
-                            .foregroundColor(.keTextPrimary)
-
-                        if let err = errorMessage {
-                            Text(err)
-                                .font(.caption)
-                                .foregroundColor(.keError)
-                        }
-
-                        Button { Task { await save() } } label: {
-                            if isSaving { ProgressView().tint(.white) } else { Text("Save address") }
-                        }
-                        .buttonStyle(KEPrimaryButtonStyle(isEnabled: formValid && !isSaving))
-                        .disabled(!formValid || isSaving)
-                        .padding(.top, 8)
-                    }
-                    .padding()
-                }
-            }
-            .navigationTitle("Add address")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(.kePrimary)
-                }
-            }
-        }
-    }
-
-    private func field(_ placeholder: String, text: Binding<String>) -> some View {
-        TextField(placeholder, text: text)
-            .keTextField()
-    }
-
-    private func save() async {
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-
-        // Lat/lng are stubbed 0,0 in dev — prod would geocode via MKLocalSearch
-        // or Google Places before submission so delivery radius math works.
-        let draft = Address(
-            id: "", userID: "", label: label, street: street,
-            apt: apt.isEmpty ? nil : apt, city: city, state: state, zipCode: zip,
-            lat: 0, lng: 0, isDefault: isDefault,
-        )
-        do {
-            let saved = try await APIService.shared.addAddress(draft)
-            onSaved(saved)
-            dismiss()
-        } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-}

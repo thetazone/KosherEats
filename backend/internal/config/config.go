@@ -33,8 +33,9 @@ type Config struct {
 	S3PublicURL string // optional CDN prefix (e.g. cloudfront)
 
 	// Checkr (courier background checks)
-	CheckrAPIKey  string
-	CheckrPackage string // e.g. "driver_pro". Package slug couriers get invited to.
+	CheckrAPIKey     string
+	CheckrPackage    string // e.g. "driver_pro". Package slug couriers get invited to.
+	CheckrWebhookSec string
 
 	// FCM (Android push notifications)
 	// Service account JSON as a single string (the full file contents). The
@@ -43,6 +44,12 @@ type Config struct {
 	// logged, not sent) — same pattern as APNs.
 	FCMServiceAccountJSON string
 	FCMProjectID          string // e.g. "koshereats-prod"; passed to the /v1/projects/{id}/messages:send URL
+
+	// Twilio Verify (phone-number OTP login). Empty → dev stub mode
+	// (accepts a fixed code, see internal/sms/twilio.go).
+	TwilioAccountSID       string
+	TwilioAuthToken        string
+	TwilioVerifyServiceSID string
 }
 
 func Load() *Config {
@@ -73,11 +80,16 @@ func Load() *Config {
 		S3Region:    getEnv("S3_REGION", "us-east-1"),
 		S3PublicURL: getEnv("S3_PUBLIC_URL", ""),
 
-		CheckrAPIKey:  getEnv("CHECKR_API_KEY", ""),
-		CheckrPackage: getEnv("CHECKR_PACKAGE", "driver_pro"),
+		CheckrAPIKey:     getEnv("CHECKR_API_KEY", ""),
+		CheckrPackage:    getEnv("CHECKR_PACKAGE", "driver_pro"),
+		CheckrWebhookSec: getEnv("CHECKR_WEBHOOK_SECRET", ""),
 
 		FCMServiceAccountJSON: getEnv("FCM_SERVICE_ACCOUNT_JSON", ""),
 		FCMProjectID:          getEnv("FCM_PROJECT_ID", ""),
+
+		TwilioAccountSID:       getEnv("TWILIO_ACCOUNT_SID", ""),
+		TwilioAuthToken:        getEnv("TWILIO_AUTH_TOKEN", ""),
+		TwilioVerifyServiceSID: getEnv("TWILIO_VERIFY_SERVICE_SID", ""),
 	}
 }
 

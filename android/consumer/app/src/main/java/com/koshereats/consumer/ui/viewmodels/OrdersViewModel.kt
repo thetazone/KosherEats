@@ -42,12 +42,12 @@ class OrdersViewModel @Inject constructor(
                     }
                     is Resource.Success -> {
                         _uiState.update { state ->
-                            val newItems = if (page == 1) result.data.items else state.orders + result.data.items
+                            val newItems = if (page == 1) result.data else state.orders + result.data
                             state.copy(
                                 orders = newItems,
                                 isLoading = false,
                                 currentPage = page,
-                                hasMore = page < result.data.totalPages,
+                                hasMore = result.data.size >= 50,
                             )
                         }
                     }

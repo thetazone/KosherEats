@@ -2,6 +2,9 @@ import SwiftUI
 
 struct DashboardView: View {
     @StateObject private var vm = DashboardViewModel()
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var showingPicker = false
+    @State private var pickerSelectionID: String? = SelectedRestaurant.shared.id
 
     var body: some View {
         NavigationStack {
@@ -36,11 +39,40 @@ struct DashboardView: View {
                         }
                     }
                     .padding()
+                    .adaptiveContentWidth(900)
                 }
             }
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                // Surface the restaurant picker only when the seller owns
+                // more than one restaurant — otherwise there's nothing to
+                // switch between and the button would be dead weight.
+                if vm.restaurantCount > 1 {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            showingPicker = true
+                        } label: {
+                            Image(systemName: "storefront.fill")
+                                .foregroundColor(.kePrimary)
+                        }
+                        .accessibilityLabel("Switch restaurant")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingPicker) {
+                RestaurantPickerSheet(
+                    isPresented: $showingPicker,
+                    currentID: $pickerSelectionID,
+                    onChange: {
+                        // Re-fetch everything under the new restaurant context.
+                        // All seller endpoints key off SelectedRestaurant.shared,
+                        // which the sheet has already updated.
+                        Task { await vm.load() }
+                    }
+                )
+            }
             .refreshable {
                 Haptics.impact(.light)
                 await vm.load()
@@ -88,10 +120,13 @@ struct DashboardView: View {
     // MARK: - Stats Grid
 
     private var statsGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible(), spacing: 12),
-            GridItem(.flexible(), spacing: 12)
-        ], spacing: 12) {
+        // 4 columns on iPad (regular size class) so stats cards breathe,
+        // 2 columns on iPhone where they'd be too narrow otherwise.
+        let columns: [GridItem] = SizeClass.isRegular(h: sizeClass)
+            ? Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+            : Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
+
+        return LazyVGrid(columns: columns, spacing: 12) {
             StatCard(
                 title: "Active Orders",
                 value: "\(vm.stats.activeOrders)",

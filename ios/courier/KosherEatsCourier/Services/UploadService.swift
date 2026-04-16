@@ -16,6 +16,7 @@ final class UploadService {
         case insurance = "courier/insurance"
         case registration = "courier/registration"
         case profile = "courier/profile"
+        case deliveryProof = "delivery_proof"
     }
 
     struct PresignResponse: Decodable {

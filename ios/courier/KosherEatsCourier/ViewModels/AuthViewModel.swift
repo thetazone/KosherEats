@@ -1,12 +1,19 @@
+import AuthenticationServices
 import Foundation
+import GoogleSignIn
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AuthViewModel: ObservableObject {
     @Published var isAuthenticated: Bool = false
+    @Published var user: User?
     @Published var profile: CourierProfile?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
+    /// Set when a profile load fails for a reason that isn't 401. RootView
+    /// reads this to swap the infinite spinner for a retry screen.
+    @Published var profileError: String?
 
     private let api = APIService.shared
 
@@ -43,20 +50,250 @@ final class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
-    func loadProfile() async {
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async {
+        isLoading = true
+        errorMessage = nil
         do {
-            profile = try await api.getProfile()
+            _ = try await api.socialLogin(provider: provider, token: token, firstName: firstName, lastName: lastName)
+            isAuthenticated = true
+            await loadProfile()
         } catch {
-            // If profile fetch fails on a stale token, log out.
-            if case APIError.unauthorized = error {
-                logout()
-            }
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+        isLoading = false
+    }
+
+    // MARK: - Phone OTP login
+
+    /// Fires Twilio Verify SMS for `phone` (E.164). Returns true on success so
+    /// the caller can transition to the code-entry screen. Mirrors the seller's
+    /// start/verify split.
+    func startPhoneLogin(phone: String) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await api.startPhoneLogin(phone: phone)
+            return true
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    /// Verifies the SMS code and signs the courier in. Returns true iff
+    /// authenticated. Surfaces "no account" (404) and "not a courier" (403)
+    /// with distinct messages so the user knows whether to retry or sign up.
+    func verifyPhoneLogin(phone: String, code: String) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            _ = try await api.verifyPhoneLogin(phone: phone, code: code)
+            isAuthenticated = true
+            await loadProfile()
+            return true
+        } catch APIError.unauthorized {
+            errorMessage = "Invalid or expired code."
+            return false
+        } catch APIError.httpError(let status, let msg) where status == 404 {
+            errorMessage = msg.isEmpty ? "No account found for this phone number." : msg
+            return false
+        } catch APIError.httpError(let status, let msg) where status == 403 {
+            errorMessage = msg.isEmpty ? "This phone number is not registered as a courier account." : msg
+            return false
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    func loadProfile() async {
+        profileError = nil
+        do {
+            // Load both the generic user record (name / email / phone — the
+            // "who are you") and the courier-specific profile (vehicle,
+            // onboarding status, etc.) in parallel. Needed so the completion
+            // sheet can gate on missing name / @privaterelay email.
+            async let userTask = api.getUser()
+            async let profileTask = api.getProfile()
+            user = try await userTask
+            profile = try await profileTask
+        } catch APIError.unauthorized {
+            logout()
+        } catch {
+            // Non-401 failure: network blip, backend cold-start that outlived
+            // the retry, whatever. Previously we silently swallowed this and
+            // left profile=nil while isAuthenticated=true, which pinned RootView
+            // on its loading spinner with no recovery path. Surface it instead
+            // so RootView can render a retry state.
+            profileError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func updateUserProfile(firstName: String, lastName: String, phone: String, email: String? = nil) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            user = try await api.updateUserProfile(firstName: firstName, lastName: lastName, phone: phone, email: email)
+            return true
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    /// True iff the signed-in courier hasn't filled in basic identity details.
+    /// Apple sign-in leaves `first/last` empty on everything but the first
+    /// authorization, and the @privaterelay.appleid.com addresses are opaque
+    /// forwarders — both trigger the completion sheet.
+    var needsProfileCompletion: Bool {
+        guard let u = user else { return false }
+        if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+        if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+        if u.email.lowercased().hasSuffix("@privaterelay.appleid.com") { return true }
+        return false
     }
 
     func logout() {
         api.logout()
         isAuthenticated = false
         profile = nil
+        user = nil
+    }
+
+    func deleteAccount() async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            try await api.deleteAccount()
+            logout()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    // MARK: - Google Sign-In
+
+    func signInWithGoogle() {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        guard let rootVC = activeScene?.windows.first(where: \.isKeyWindow)?.rootViewController
+                ?? activeScene?.windows.first?.rootViewController else {
+            errorMessage = "Google sign-in failed. Please try again."
+            return
+        }
+
+        GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { [weak self] result, error in
+            guard let self else { return }
+            if let error {
+                Task { @MainActor in
+                    let nsError = error as NSError
+                    if nsError.domain == "com.google.GIDSignIn" && nsError.code == -5 {
+                        return
+                    }
+                    self.errorMessage = "Google sign-in failed. Please try again."
+                }
+                return
+            }
+            guard let idToken = result?.user.idToken?.tokenString else {
+                Task { @MainActor in
+                    self.errorMessage = "Google sign-in failed. Please try again."
+                }
+                return
+            }
+            let firstName = result?.user.profile?.givenName ?? ""
+            let lastName = result?.user.profile?.familyName ?? ""
+            Task {
+                await self.socialLogin(provider: "google", token: idToken, firstName: firstName, lastName: lastName)
+            }
+        }
+    }
+
+    // MARK: - Apple Sign-In
+
+    func signInWithApple() {
+        let provider = ASAuthorizationAppleIDProvider()
+        let request = provider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+
+        let coordinator = AppleSignInCoordinator { [weak self] result in
+            guard let self else { return }
+            Task { @MainActor in
+                defer {
+                    self.appleSignInCoordinator = nil
+                    self.appleSignInController = nil
+                }
+                switch result {
+                case .success(let (token, firstName, lastName)):
+                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName)
+                case .failure(let error):
+                    if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                        return
+                    }
+                    self.errorMessage = "Apple sign-in failed. Please try again."
+                }
+            }
+        }
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = coordinator
+        controller.presentationContextProvider = coordinator
+
+        // ASAuthorizationController does NOT self-retain during performRequests().
+        // Hold both the coordinator (delegate) and the controller for the
+        // duration of the system flow or the callback drops on the floor.
+        self.appleSignInCoordinator = coordinator
+        self.appleSignInController = controller
+
+        controller.performRequests()
+    }
+
+    private var appleSignInCoordinator: AppleSignInCoordinator?
+    private var appleSignInController: ASAuthorizationController?
+}
+
+// MARK: - Apple Sign-In Coordinator
+
+class AppleSignInCoordinator: NSObject,
+                              ASAuthorizationControllerDelegate,
+                              ASAuthorizationControllerPresentationContextProviding {
+    private let completion: (Result<(String, String, String), Error>) -> Void
+
+    init(completion: @escaping (Result<(String, String, String), Error>) -> Void) {
+        self.completion = completion
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+              let identityTokenData = credential.identityToken,
+              let identityToken = String(data: identityTokenData, encoding: .utf8) else {
+            completion(.failure(NSError(
+                domain: "AppleSignIn", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve Apple identity token."]
+            )))
+            return
+        }
+
+        let firstName = credential.fullName?.givenName ?? ""
+        let lastName = credential.fullName?.familyName ?? ""
+        completion(.success((identityToken, firstName, lastName)))
+    }
+
+    func authorizationController(controller: ASAuthorizationController,
+                                 didCompleteWithError error: Error) {
+        completion(.failure(error))
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        return activeScene?.windows.first(where: \.isKeyWindow)
+            ?? activeScene?.windows.first
+            ?? ASPresentationAnchor()
     }
 }

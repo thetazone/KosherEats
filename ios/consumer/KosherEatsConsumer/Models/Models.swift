@@ -6,6 +6,12 @@ enum UserRole: String, Codable {
     case consumer
     case seller
     case admin
+    // `.courier` must decode even though the consumer app only treats
+    // consumer accounts as first-class — a tester's Apple ID may have
+    // been promoted to role=courier by the courier social-login flow.
+    // Without this case, decoding throws DecodingError.dataCorrupted
+    // and the user sees the opaque "Data error: …" toast on sign-in.
+    case courier
 }
 
 enum KosherCertification: String, Codable, CaseIterable {
@@ -35,6 +41,10 @@ enum KosherCertification: String, Codable, CaseIterable {
 }
 
 enum OrderStatus: String, Codable {
+    // `scheduled` is set by the backend for orders booked >30 min in the future
+    // (orders.go ~L95). The dispatcher flips it to `pending` near the delivery
+    // window. If this case is missing, decoding ANY orders list containing a
+    // scheduled order will throw and the screen goes blank.
     case scheduled
     case pending
     case accepted
@@ -424,8 +434,8 @@ struct CourierPublic: Codable {
     let licensePlate: String?
     let rating: Double
     let totalDeliveries: Int
-    let lat: Double
-    let lng: Double
+    var lat: Double
+    var lng: Double
 
     enum CodingKeys: String, CodingKey {
         case id, phone, rating, lat, lng
@@ -467,6 +477,7 @@ struct Order: Codable, Identifiable {
     var createdAt: Date
     var updatedAt: Date
     var courier: CourierPublic?
+    var courierRating: Int?
 
     var totalFormatted: String {
         "$\(String(format: "%.2f", Double(total) / 100))"
@@ -504,6 +515,7 @@ struct Order: Codable, Identifiable {
         case estDeliveryTime = "est_delivery_time"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case courierRating = "courier_rating"
     }
 }
 
@@ -571,9 +583,12 @@ struct SocialLoginRequest: Codable {
     let token: String
     let firstName: String
     let lastName: String
+    /// Apple Sign In only — raw nonce we generated client-side. Backend
+    /// hashes it and compares to the JWT's nonce claim to block token replay.
+    let nonce: String?
 
     enum CodingKeys: String, CodingKey {
-        case provider, token
+        case provider, token, nonce
         case firstName = "first_name"
         case lastName = "last_name"
     }

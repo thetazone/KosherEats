@@ -39,6 +39,8 @@ android {
         buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_SELLER_APP_ID")}\"")
         buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
         buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
     }
 
     buildTypes {
@@ -87,7 +89,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.8.2")
 
     // Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -133,11 +135,16 @@ dependencies {
     // coroutines-play-services for FirebaseMessaging.token.await()
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
+    // Google Sign-In via CredentialManager (modern API, Android 14+ friendly)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.01.00"))
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

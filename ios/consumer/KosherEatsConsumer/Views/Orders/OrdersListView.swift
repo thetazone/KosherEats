@@ -2,7 +2,9 @@ import SwiftUI
 
 struct OrdersListView: View {
     @StateObject private var vm = OrderViewModel()
+    @EnvironmentObject var cartVM: CartViewModel
     @State private var selectedSegment = 0
+    @State private var showReorderToast = false
     // Deep-link state: when a navigation notification arrives, we set one
     // of these so a NavigationLink(isActive:) pushes the right screen.
     @State private var deepLinkOrderId: String?
@@ -58,7 +60,25 @@ struct OrdersListView: View {
                             LazyVStack(spacing: 12) {
                                 ForEach(displayOrders) { order in
                                     NavigationLink(destination: OrderDetailView(orderID: order.id)) {
-                                        OrderRowView(order: order)
+                                        OrderRowView(
+                                            order: order,
+                                            onReorder: order.status == .delivered ? {
+                                                Task {
+                                                    for item in order.items {
+                                                        await cartVM.addItem(
+                                                            menuItemID: item.menuItemID,
+                                                            quantity: item.quantity,
+                                                            notes: item.notes,
+                                                            restaurantID: order.restaurantID,
+                                                            modifierIDs: item.selectedModifiers?.map(\.id) ?? []
+                                                        )
+                                                    }
+                                                    showReorderToast = true
+                                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                                    showReorderToast = false
+                                                }
+                                            } : nil
+                                        )
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -68,9 +88,23 @@ struct OrdersListView: View {
                     }
                 }
             }
+            .overlay(alignment: .bottom) {
+                if showReorderToast {
+                    Text("Items added to cart!")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Color.kePrimary)
+                        .cornerRadius(25)
+                        .shadow(radius: 4)
+                        .padding(.bottom, 32)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut, value: showReorderToast)
+                }
+            }
             .navigationTitle("Orders")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
                 await vm.loadOrders()
             }
@@ -109,6 +143,7 @@ struct OrdersListView: View {
 
 struct OrderRowView: View {
     let order: Order
+    var onReorder: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -148,6 +183,23 @@ struct OrderRowView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12))
                         .foregroundColor(.keTextMuted)
+                }
+            }
+
+            if order.status == .delivered {
+                Button {
+                    onReorder?()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bag.fill")
+                        Text("Order Again")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.kePrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.kePrimary.opacity(0.1))
+                    .cornerRadius(10)
                 }
             }
         }

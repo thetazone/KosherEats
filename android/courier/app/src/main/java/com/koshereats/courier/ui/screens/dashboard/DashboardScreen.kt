@@ -16,16 +16,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
-import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -41,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.courier.data.models.AvailableDelivery
-import com.koshereats.courier.data.models.CourierOrder
+import com.koshereats.courier.ui.screens.delivery.DeliveryMapScreen
 import com.koshereats.courier.ui.theme.BackgroundBlack
 import com.koshereats.courier.ui.theme.Orange
 import com.koshereats.courier.ui.theme.SurfaceDark
@@ -60,6 +56,18 @@ fun DashboardScreen(
 
     LaunchedEffect(Unit) { vm.refresh() }
 
+    val activeOrder = state.active.firstOrNull()
+    if (activeOrder != null) {
+        // Full-screen delivery map takes over the content area — the bottom
+        // nav from CourierNavHost's Scaffold is still visible around it.
+        DeliveryMapScreen(
+            order = activeOrder,
+            viewModel = vm,
+            onOpenChat = onOpenChat,
+        )
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -70,16 +78,10 @@ fun DashboardScreen(
     ) {
         OnlineToggleCard(state.isOnline, onToggle = { vm.toggleOnline() })
 
-        val activeOrder = state.active.firstOrNull()
-        when {
-            activeOrder != null -> ActiveDeliveryCard(
-                order = activeOrder,
-                onPickup = { vm.pickup(it) },
-                onDeliver = { vm.deliver(it) },
-                onOpenChat = onOpenChat,
-            )
-            state.isOnline -> AvailableSection(state.available, state.isLoading, onAccept = { vm.claim(it) })
-            else -> OfflineHero()
+        if (state.isOnline) {
+            AvailableSection(state.available, state.isLoading, onAccept = { vm.claim(it) })
+        } else {
+            OfflineHero()
         }
     }
 }
@@ -164,63 +166,6 @@ private fun AvailableDeliveryCard(d: AvailableDelivery, onAccept: () -> Unit) {
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Orange),
         ) { Text("Accept", color = Color.White, fontWeight = FontWeight.SemiBold) }
-    }
-}
-
-@Composable
-private fun ActiveDeliveryCard(
-    order: CourierOrder,
-    onPickup: (CourierOrder) -> Unit,
-    onDeliver: (CourierOrder) -> Unit,
-    onOpenChat: (String) -> Unit,
-) {
-    val phase = if (order.status == "ready") "Heading to restaurant" else "Delivering"
-    val actionLabel = if (order.status == "ready") "I've picked it up" else "Mark delivered"
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SurfaceDark, shape = RoundedCornerShape(12.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // Header row: phase label on the left, chat shortcut on the right.
-        // Matches the iOS courier DashboardView where the message button
-        // sits alongside the status chip on the active order card.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                phase.uppercase(),
-                color = Orange,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f),
-            )
-            IconButton(onClick = { onOpenChat(order.id) }) {
-                Icon(
-                    imageVector = Icons.Filled.ChatBubble,
-                    contentDescription = "Open chat",
-                    tint = Orange,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-
-        Column {
-            Text("Pickup", color = TextTertiary, fontSize = 11.sp)
-            Text(order.restaurantName, color = TextWhite)
-        }
-        Divider(color = SurfaceDark)
-        Column {
-            Text("Dropoff", color = TextTertiary, fontSize = 11.sp)
-            Text(order.deliveryAddress, color = TextWhite)
-        }
-
-        Button(
-            onClick = { if (order.status == "ready") onPickup(order) else onDeliver(order) },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Orange),
-        ) { Text(actionLabel, color = Color.White, fontWeight = FontWeight.SemiBold) }
     }
 }
 

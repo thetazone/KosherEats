@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// Matches the backend's pendingOrderTTL in scheduler/dispatcher.go. After
+/// this much time in 'pending' the backend auto-rejects and refunds, so the
+/// card shows a live countdown to that deadline to pressure the seller.
+private let pendingOrderTTL: TimeInterval = 10 * 60
+
+/// Time-remaining threshold at which the pending timer flips to error color
+/// ("less than 2 min left"). Purely visual; the auto-reject itself is
+/// backend-driven.
+private let pendingUrgentThreshold: TimeInterval = 2 * 60
+
 struct ActiveOrderCard: View {
     let order: Order
 
@@ -65,16 +75,11 @@ struct ActiveOrderCard: View {
                     .foregroundColor(.kePrimary)
             }
 
-            // Action hint
-            if order.status == .pending {
-                HStack {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundColor(.keWarning)
-                    Text("Needs your attention")
-                        .font(.caption.bold())
-                        .foregroundColor(.keWarning)
-                }
-                .padding(.top, 4)
+            // Action hint — live countdown for pending orders so the seller
+            // sees how close they are to the auto-reject deadline.
+            if order.status == .pending, let placedAt = order.createdAtDate {
+                PendingCountdown(placedAt: placedAt)
+                    .padding(.top, 4)
             }
         }
         .padding()
@@ -111,5 +116,41 @@ struct ActiveOrderCard: View {
         case "error": return .keError
         default: return .keTextSecondary
         }
+    }
+}
+
+/// Live countdown showing how long until the backend will auto-reject + refund
+/// this pending order. Driven by a 1-second `TimelineView` so it updates in
+/// place without the parent having to re-render. Flips from warning → error
+/// color in the last `pendingUrgentThreshold` seconds.
+private struct PendingCountdown: View {
+    let placedAt: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            let elapsed = ctx.date.timeIntervalSince(placedAt)
+            let remaining = max(0, pendingOrderTTL - elapsed)
+            let urgent = remaining <= pendingUrgentThreshold
+            let expired = remaining <= 0
+
+            HStack(spacing: 6) {
+                Image(systemName: expired ? "xmark.octagon.fill" : "clock.fill")
+                Text(label(elapsed: elapsed, remaining: remaining, expired: expired))
+                    .font(.caption.bold())
+            }
+            .foregroundColor(expired || urgent ? .keError : .keWarning)
+        }
+    }
+
+    private func label(elapsed: TimeInterval, remaining: TimeInterval, expired: Bool) -> String {
+        if expired {
+            return "Auto-rejecting…"
+        }
+        return "Respond in \(format(remaining)) • pending \(format(elapsed))"
+    }
+
+    private func format(_ seconds: TimeInterval) -> String {
+        let s = Int(seconds)
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 }

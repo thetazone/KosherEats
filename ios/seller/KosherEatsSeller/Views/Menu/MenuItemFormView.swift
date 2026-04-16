@@ -114,6 +114,43 @@ struct MenuItemFormView: View {
                             }
                         }
 
+                        // Modifiers — only available for already-saved items
+                        // because modifier groups belong to a menu_item.id that
+                        // doesn't exist until after the first save.
+                        if let item = existingItem {
+                            formSection("Options & Extras") {
+                                NavigationLink {
+                                    ModifierGroupsEditorView(itemID: item.id, itemName: item.name)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "slider.horizontal.3")
+                                            .foregroundColor(.kePrimary)
+                                            .frame(width: 24)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Modifier Groups")
+                                                .foregroundColor(.keTextPrimary)
+                                                .font(.subheadline)
+                                            Text("\((item.modifierGroups ?? []).count) group(s)")
+                                                .foregroundColor(.keTextMuted)
+                                                .font(.caption)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(.keTextMuted)
+                                    }
+                                    .padding()
+                                    .background(Color.keCard)
+                                    .cornerRadius(12)
+                                }
+                            }
+                        } else {
+                            Text("Save this item first, then add options & extras.")
+                                .font(.caption)
+                                .foregroundColor(.keTextMuted)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
                         // Save Button
                         Button {
                             // priceText is dollars as typed; convert to cents.
@@ -228,11 +265,13 @@ struct MenuItemFormView: View {
     }
 
     private var canSave: Bool {
-        !name.isEmpty &&
-        !selectedCategoryId.isEmpty &&
-        (Double(priceText) ?? 0) > 0 &&
-        (isMeat || isDairy || isPareve) &&
-        !isUploading
+        let priceCents = Int(round((Double(priceText) ?? 0) * 100))
+        return !name.isEmpty &&
+            !selectedCategoryId.isEmpty &&
+            priceCents > 0 && priceCents <= 999_999 &&
+            (isMeat || isDairy || isPareve) &&
+            !isUploading &&
+            uploadError == nil
     }
 
     // MARK: - Photo picker

@@ -2,6 +2,24 @@ import SwiftUI
 
 struct SellerOrdersView: View {
     @StateObject private var vm = OrdersViewModel()
+    @ObservedObject private var selectedRestaurant = SelectedRestaurant.shared
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    // Order cards stack vertically on iPhone (single column) but show in a
+    // 2-column grid on iPad so reviewers see more orders at a glance.
+    private var orderGridColumns: [GridItem] {
+        SizeClass.isRegular(h: sizeClass)
+            ? [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            : [GridItem(.flexible())]
+    }
+
+    private var todayOrders: [Order] {
+        let cal = Calendar.current
+        return vm.orders.filter { cal.isDateInToday($0.createdAtDate ?? .distantPast) }
+    }
+    private var todayRevenue: Int {
+        todayOrders.reduce(0) { $0 + $1.total }
+    }
 
     var body: some View {
         NavigationStack {
@@ -9,19 +27,33 @@ struct SellerOrdersView: View {
                 Color.keBackground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
+                    if let pollErr = vm.pollHealthError {
+                        pollErrorBanner(pollErr)
+                    }
+
+                    if let name = selectedRestaurant.name {
+                        restaurantIndicator(name)
+                    }
+
                     // Filter Tabs
                     filterTabs
                         .padding(.horizontal)
                         .padding(.vertical, 12)
+                        .adaptiveContentWidth(900)
+
+                    if !todayOrders.isEmpty {
+                        todayTicker
+                    }
 
                     if vm.isLoading && vm.orders.isEmpty {
                         ScrollView {
-                            LazyVStack(spacing: 12) {
-                                ForEach(0..<3, id: \.self) { _ in
+                            LazyVGrid(columns: orderGridColumns, spacing: 12) {
+                                ForEach(0..<4, id: \.self) { _ in
                                     ActiveOrderCardSkeleton()
                                 }
                             }
                             .padding()
+                            .adaptiveContentWidth(900)
                         }
                     } else if let err = vm.errorMessage, vm.orders.isEmpty {
                         ErrorStateView(
@@ -34,7 +66,7 @@ struct SellerOrdersView: View {
                         Spacer()
                     } else {
                         ScrollView {
-                            LazyVStack(spacing: 12) {
+                            LazyVGrid(columns: orderGridColumns, spacing: 12) {
                                 ForEach(vm.filteredOrders) { order in
                                     NavigationLink(destination: SellerOrderDetailView(order: order)) {
                                         OrderRowView(order: order)
@@ -43,6 +75,7 @@ struct SellerOrdersView: View {
                                 }
                             }
                             .padding()
+                            .adaptiveContentWidth(900)
                         }
                     }
                 }
@@ -55,7 +88,7 @@ struct SellerOrdersView: View {
                 await vm.load()
             }
             .task {
-                await vm.load()
+                await vm.loadAndAutoRefresh()
             }
         }
     }
@@ -84,6 +117,64 @@ struct SellerOrdersView: View {
             }
             Spacer()
         }
+    }
+
+    /// Small pill naming the currently-selected restaurant. Keeps multi-
+    /// restaurant sellers oriented when they switch — otherwise "Orders"
+    /// looks the same for every restaurant they own.
+    private func restaurantIndicator(_ name: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "storefront.fill")
+                .font(.caption2)
+                .foregroundColor(.kePrimary)
+            Text("Showing: \(name)")
+                .font(.caption.bold())
+                .foregroundColor(.keTextSecondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+    }
+
+    /// Shown when the poll loop has failed ≥3 times. Red and dismissible via
+    /// pull-to-refresh — if the next refresh succeeds, the banner clears.
+    private func pollErrorBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+                .foregroundColor(.white)
+            Text(message)
+                .font(.caption.bold())
+                .foregroundColor(.white)
+            Spacer()
+            Button("Retry") {
+                Task { await vm.load() }
+            }
+            .font(.caption.bold())
+            .foregroundColor(.white)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .background(Color.keError)
+    }
+
+    private var todayTicker: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "chart.bar.fill")
+                .foregroundColor(.kePrimary)
+            Text("\(todayOrders.count) orders today")
+                .font(.subheadline.bold())
+                .foregroundColor(.keTextPrimary)
+            Text("\u{2022}")
+                .foregroundColor(.keTextMuted)
+            Text(String(format: "$%.2f", Double(todayRevenue) / 100))
+                .font(.subheadline.bold())
+                .foregroundColor(.kePrimary)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.keCard)
     }
 
     private var emptyState: some View {
@@ -127,9 +218,7 @@ struct OrderRowView: View {
                     .font(.caption)
                     .foregroundColor(.keTextSecondary)
 
-                Text(order.formattedDate)
-                    .font(.caption2)
-                    .foregroundColor(.keTextMuted)
+                timestampLine
             }
 
             Spacer()
@@ -139,13 +228,7 @@ struct OrderRowView: View {
                     .font(.subheadline.bold())
                     .foregroundColor(.keTextPrimary)
 
-                Text(order.status.displayName)
-                    .font(.caption2.bold())
-                    .foregroundColor(statusColor)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(statusColor.opacity(0.15))
-                    .cornerRadius(6)
+                statusPill
             }
 
             Image(systemName: "chevron.right")
@@ -164,6 +247,68 @@ struct OrderRowView: View {
         case "warning": return .keWarning
         case "error": return .keError
         default: return .keTextSecondary
+        }
+    }
+
+    /// For orders still in the kitchen's lane (pending → ready), show a
+    /// ticking "Waiting 8:23" counter so the seller can see at a glance
+    /// which tickets are getting stale. Flips red once past 15 min so the
+    /// pain point is immediately obvious. Finished orders just show the
+    /// usual date string.
+    @ViewBuilder
+    private var timestampLine: some View {
+        let showCounter = order.status == .pending
+            || order.status == .accepted
+            || order.status == .preparing
+            || order.status == .ready
+        if showCounter, let created = order.createdAtDate {
+            TimelineView(.periodic(from: .now, by: 10)) { context in
+                let elapsed = max(0, Int(context.date.timeIntervalSince(created)))
+                let mins = elapsed / 60
+                let secs = elapsed % 60
+                let overdue = elapsed >= 15 * 60
+                HStack(spacing: 4) {
+                    Image(systemName: overdue ? "exclamationmark.triangle.fill" : "clock.fill")
+                        .font(.system(size: 9))
+                    Text("Waiting \(mins):\(String(format: "%02d", secs))")
+                        .monospacedDigit()
+                }
+                .font(.caption2.bold())
+                .foregroundColor(overdue ? .keError : .keTextMuted)
+            }
+        } else {
+            Text(order.formattedDate)
+                .font(.caption2)
+                .foregroundColor(.keTextMuted)
+        }
+    }
+
+    /// Default pill shows the status name. For `.pickedUp` specifically we
+    /// swap in an "Out for delivery" badge with a bike glyph so the seller
+    /// can tell at a glance which orders have left the kitchen — they share
+    /// the Active tab with still-preparing orders now.
+    @ViewBuilder
+    private var statusPill: some View {
+        if order.status == .pickedUp {
+            HStack(spacing: 4) {
+                Image(systemName: "bicycle")
+                    .font(.caption2.bold())
+                Text("Out for delivery")
+                    .font(.caption2.bold())
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.kePrimary)
+            .cornerRadius(6)
+        } else {
+            Text(order.status.displayName)
+                .font(.caption2.bold())
+                .foregroundColor(statusColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(statusColor.opacity(0.15))
+                .cornerRadius(6)
         }
     }
 }

@@ -6,6 +6,7 @@ struct SellerOrderDetailView: View {
     @State var order: Order
     @State private var showRejectAlert = false
     @State private var rejectReason = ""
+    @State private var isActing = false
 
     var body: some View {
         ZStack {
@@ -22,6 +23,11 @@ struct SellerOrderDetailView: View {
                     // Delivery Info
                     deliverySection
 
+                    // Customer contact
+                    if let name = order.customerName, !name.isEmpty {
+                        customerSection(name: name, phone: order.customerPhone)
+                    }
+
                     // Price Breakdown
                     priceSection
 
@@ -29,6 +35,7 @@ struct SellerOrderDetailView: View {
                     actionButtons
                 }
                 .padding()
+                .adaptiveContentWidth(720)
             }
         }
         .navigationTitle("Order #\(String(order.id.prefix(8)))")
@@ -39,10 +46,12 @@ struct SellerOrderDetailView: View {
             Button("Cancel", role: .cancel) { }
             Button("Reject", role: .destructive) {
                 Task {
+                    vm.errorMessage = nil
                     await vm.rejectOrder(
                         id: order.id,
                         reason: rejectReason.isEmpty ? nil : rejectReason
                     )
+                    if vm.errorMessage == nil { order.status = .rejected }
                     dismiss()
                 }
             }
@@ -102,6 +111,12 @@ struct SellerOrderDetailView: View {
                             Text(item.name)
                                 .font(.subheadline)
                                 .foregroundColor(.keTextPrimary)
+
+                            if let mods = item.modifierSummary {
+                                Text(mods)
+                                    .font(.caption)
+                                    .foregroundColor(.keTextSecondary)
+                            }
 
                             if let notes = item.notes, !notes.isEmpty {
                                 Text(notes)
@@ -166,6 +181,50 @@ struct SellerOrderDetailView: View {
         }
     }
 
+    // MARK: - Customer
+
+    private func customerSection(name: String, phone: String?) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("Customer", icon: "person.fill")
+
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(Color.keBorder)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Text(String(name.prefix(1)).uppercased())
+                            .font(.headline)
+                            .foregroundColor(.kePrimary)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keTextPrimary)
+                    if let phone, !phone.isEmpty {
+                        Text(phone)
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                    }
+                }
+                Spacer()
+                if let phone, !phone.isEmpty,
+                   let encoded = phone.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "tel:\(encoded)") {
+                    Link(destination: url) {
+                        Image(systemName: "phone.fill")
+                            .foregroundColor(.kePrimary)
+                            .padding(10)
+                            .background(Color.keBorder)
+                            .clipShape(Circle())
+                    }
+                }
+            }
+            .padding()
+            .background(Color.keCard)
+            .cornerRadius(14)
+        }
+    }
+
     // MARK: - Price
 
     private var priceSection: some View {
@@ -205,12 +264,16 @@ struct SellerOrderDetailView: View {
         case .pending:
             VStack(spacing: 10) {
                 actionButton("Accept Order", icon: "checkmark.circle.fill", color: .keSuccess) {
-                    Haptics.success()
+                    guard !isActing else { return }
+                    isActing = true
                     Task {
+                        vm.errorMessage = nil
                         await vm.acceptOrder(id: order.id)
-                        order.status = .accepted
+                        if vm.errorMessage == nil { order.status = .accepted; Haptics.success() }
+                        isActing = false
                     }
                 }
+                .disabled(isActing)
 
                 actionButton("Reject Order", icon: "xmark.circle.fill", color: .keError) {
                     Haptics.warning()
@@ -220,21 +283,29 @@ struct SellerOrderDetailView: View {
 
         case .accepted:
             actionButton("Start Preparing", icon: "flame.fill", color: .kePrimary) {
-                Haptics.impact(.medium)
+                guard !isActing else { return }
+                isActing = true
                 Task {
+                    vm.errorMessage = nil
                     await vm.markPreparing(id: order.id)
-                    order.status = .preparing
+                    if vm.errorMessage == nil { order.status = .preparing; Haptics.impact(.medium) }
+                    isActing = false
                 }
             }
+            .disabled(isActing)
 
         case .preparing:
             actionButton("Mark as Ready for Pickup", icon: "bag.fill", color: .keSuccess) {
-                Haptics.success()
+                guard !isActing else { return }
+                isActing = true
                 Task {
+                    vm.errorMessage = nil
                     await vm.markReady(id: order.id)
-                    order.status = .ready
+                    if vm.errorMessage == nil { order.status = .ready; Haptics.success() }
+                    isActing = false
                 }
             }
+            .disabled(isActing)
 
         case .ready, .pickedUp:
             // Courier now owns the handoff. Show who's handling delivery
@@ -284,7 +355,8 @@ struct SellerOrderDetailView: View {
                             .foregroundColor(.keTextMuted)
                     }
                     Spacer()
-                    if let url = URL(string: "tel:\(courier.phone)") {
+                    if let encoded = courier.phone.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                       let url = URL(string: "tel:\(encoded)") {
                         Link(destination: url) {
                             Image(systemName: "phone.fill")
                                 .foregroundColor(.kePrimary)

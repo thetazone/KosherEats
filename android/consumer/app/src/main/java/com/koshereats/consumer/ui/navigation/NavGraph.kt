@@ -10,6 +10,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -27,10 +28,14 @@ import androidx.navigation.navArgument
 import com.koshereats.consumer.ui.screens.auth.LoginScreen
 import com.koshereats.consumer.ui.screens.auth.RegisterScreen
 import com.koshereats.consumer.ui.screens.cart.CartScreen
+import com.koshereats.consumer.ui.screens.checkout.CheckoutScreen
+import com.koshereats.consumer.ui.screens.checkout.OrderConfirmationScreen
 import com.koshereats.consumer.ui.screens.home.HomeScreen
+import com.koshereats.consumer.ui.screens.map.NearbyMapScreen
 import com.koshereats.consumer.ui.screens.orders.OrdersScreen
 import com.koshereats.consumer.ui.screens.profile.ProfileScreen
 import com.koshereats.consumer.ui.screens.restaurant.RestaurantDetailScreen
+import com.koshereats.consumer.ui.screens.tracking.OrderTrackingScreen
 import com.koshereats.consumer.ui.theme.BackgroundBlack
 import com.koshereats.consumer.ui.theme.BackgroundDark
 import com.koshereats.consumer.ui.theme.Orange
@@ -137,6 +142,14 @@ fun KosherEatsNavHost() {
                 )
             }
 
+            composable(Screen.NearbyMap.route) {
+                NearbyMapScreen(
+                    onRestaurantClick = { restaurantId ->
+                        navController.navigate(Screen.Restaurant.createRoute(restaurantId))
+                    },
+                )
+            }
+
             composable(
                 route = Screen.Restaurant.route,
                 arguments = listOf(navArgument("restaurantId") { type = NavType.StringType }),
@@ -151,19 +164,62 @@ fun KosherEatsNavHost() {
             composable(Screen.Cart.route) {
                 CartScreen(
                     onBackClick = { navController.popBackStack() },
-                    onOrderPlaced = {
-                        navController.navigate(Screen.Orders.route) {
+                    onCheckoutClick = { navController.navigate(Screen.Checkout.route) },
+                    cartViewModel = cartViewModel,
+                )
+            }
+
+            composable(Screen.Checkout.route) {
+                val cartState by cartViewModel.uiState.collectAsState()
+                CheckoutScreen(
+                    localCart = cartState.cart.items,
+                    restaurantId = cartState.cart.restaurantId,
+                    onBack = { navController.popBackStack() },
+                    onOrderPlaced = { order ->
+                        cartViewModel.clearCart()
+                        navController.navigate(Screen.OrderConfirmation.createRoute(order.id)) {
                             popUpTo(Screen.Home.route)
                         }
                     },
-                    cartViewModel = cartViewModel,
+                )
+            }
+
+            composable(
+                route = Screen.OrderConfirmation.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+                OrderConfirmationScreen(
+                    orderId = orderId,
+                    onDone = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) { inclusive = true }
+                        }
+                    },
+                    onTrack = { id ->
+                        navController.navigate(Screen.OrderTracking.createRoute(id)) {
+                            popUpTo(Screen.Home.route)
+                        }
+                    },
+                )
+            }
+
+            composable(
+                route = Screen.OrderTracking.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+                OrderTrackingScreen(
+                    orderId = orderId,
+                    onBack = { navController.popBackStack() },
+                    onChat = { id -> navController.navigate(Screen.Chat.createRoute(id)) },
                 )
             }
 
             composable(Screen.Orders.route) {
                 OrdersScreen(
                     onOrderClick = { orderId ->
-                        navController.navigate(Screen.Chat.createRoute(orderId))
+                        navController.navigate(Screen.OrderTracking.createRoute(orderId))
                     },
                     onReorderClick = { restaurantId ->
                         navController.navigate(Screen.Restaurant.createRoute(restaurantId))

@@ -13,7 +13,8 @@ for anything that applies to both apps (signing, Apple Dev account, etc.).
 - [ ] Same `DEVELOPMENT_TEAM` as consumer (blank in project.yml today).
 - [ ] Provisioning profile for `com.koshereats.seller` in Apple Dev portal.
 - [ ] Enable Push Notifications capability (sellers get pushes on new orders).
-- [ ] Enable Sign in with Apple (required since Google is offered).
+- [x] Sign in with Apple (required since Google sign-in is also offered — both
+      live in `SellerLoginView`).
 
 ## 2. Privacy + permissions
 
@@ -36,7 +37,9 @@ for anything that applies to both apps (signing, Apple Dev account, etc.).
 
 ## 4. Third-party SDKs
 
-- [ ] Replace Google placeholder ID in `Info.plist` (same as consumer).
+- [x] Google OAuth iOS Client ID wired into `Info.plist` (`GIDClientID` +
+      reversed URL scheme). Seller-specific client registered under bundle
+      `com.koshereats.seller`.
 - Sellers don't need Stripe SDK client-side — payouts are handled
   server-side via Stripe Connect (separate from consumer Stripe).
 

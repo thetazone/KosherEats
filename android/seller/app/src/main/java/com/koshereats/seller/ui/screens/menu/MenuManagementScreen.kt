@@ -131,6 +131,8 @@ fun MenuManagementScreen(
                         border = FilterChipDefaults.filterChipBorder(
                             borderColor = SurfaceDark,
                             selectedBorderColor = Orange.copy(alpha = 0.5f),
+                            enabled = true,
+                            selected = state.selectedCategory == category,
                         ),
                     )
                 }

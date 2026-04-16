@@ -8,6 +8,11 @@ class OrderViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let api = APIService.shared
+    /// Handle for the in-flight poll loop started by `startPolling`. Storing
+    /// it so we can cancel on view disappear / before launching a new poll —
+    /// otherwise re-entering OrderDetailView stacks a fresh 10s poller on
+    /// every visit against the same order id.
+    private var pollTask: Task<Void, Never>?
 
     var activeOrders: [Order] {
         orders.filter { $0.status.isActive }
@@ -49,6 +54,7 @@ class OrderViewModel: ObservableObject {
         lng: Double,
         paymentIntentId: String,
         tip: Int,
+        scheduledFor: Date? = nil,
     ) async -> Order? {
         isLoading = true
         errorMessage = nil
@@ -57,6 +63,7 @@ class OrderViewModel: ObservableObject {
             let order = try await api.createOrder(
                 deliveryAddress: deliveryAddress, lat: lat, lng: lng,
                 paymentIntentId: paymentIntentId, tip: tip,
+                scheduledFor: scheduledFor,
             )
             currentOrder = order
             isLoading = false
@@ -71,8 +78,9 @@ class OrderViewModel: ObservableObject {
     func cancelOrder(id: String) async {
         do {
             currentOrder = try await api.cancelOrder(id: id)
-            if let index = orders.firstIndex(where: { $0.id == id }) {
-                orders[index] = currentOrder!
+            if let index = orders.firstIndex(where: { $0.id == id }),
+               let updated = currentOrder {
+                orders[index] = updated
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -80,11 +88,25 @@ class OrderViewModel: ObservableObject {
     }
 
     func startPolling(orderID: String) {
-        Task {
-            while currentOrder?.status.isActive == true {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            // Fetch immediately so callers see fresh data without a 10s lag.
+            await self?.loadOrder(id: orderID)
+            while !Task.isCancelled {
+                guard let self = self else { break }
+                if let order = self.currentOrder, !order.status.isActive { break }
                 try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s
-                await loadOrder(id: orderID)
+                await self.loadOrder(id: orderID)
             }
         }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
+    deinit {
+        pollTask?.cancel()
     }
 }

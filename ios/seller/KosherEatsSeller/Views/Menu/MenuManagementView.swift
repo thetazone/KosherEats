@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuManagementView: View {
     @StateObject private var vm = MenuViewModel()
+    @ObservedObject private var selectedRestaurant = SelectedRestaurant.shared
     @State private var showAddItem = false
     @State private var editingItem: MenuItem?
     @State private var showAddCategory = false
@@ -33,6 +34,23 @@ struct MenuManagementView: View {
                     menuList
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let name = selectedRestaurant.name {
+                    HStack(spacing: 6) {
+                        Image(systemName: "storefront.fill")
+                            .font(.caption2)
+                            .foregroundColor(.kePrimary)
+                        Text("Showing: \(name)")
+                            .font(.caption.bold())
+                            .foregroundColor(.keTextSecondary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .background(Color.keBackground)
+                }
+            }
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -62,6 +80,7 @@ struct MenuManagementView: View {
                 await vm.load()
             }
             .task {
+                vm.startObservingRestaurant()
                 await vm.load()
             }
             .sheet(isPresented: $showAddItem) {
@@ -135,6 +154,7 @@ struct MenuManagementView: View {
                 }
             }
             .padding()
+            .adaptiveContentWidth(800)
         }
     }
 
@@ -185,7 +205,7 @@ struct MenuManagementView: View {
                         .lineLimit(2)
                 }
 
-                Text(String(format: "$%.2f", item.price))
+                Text(item.priceFormatted)
                     .font(.subheadline.bold())
                     .foregroundColor(.kePrimary)
             }

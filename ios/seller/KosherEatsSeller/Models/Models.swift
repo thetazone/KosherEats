@@ -3,7 +3,15 @@ import Foundation
 // MARK: - Enums
 
 enum UserRole: String, Codable {
-    case consumer, seller, admin
+    // `.courier` must decode here even though the seller app doesn't grant
+    // access to courier accounts — the App Review tester's Apple ID may
+    // already be role=courier from signing into the courier app first.
+    // Access is still gated by `hasSellerAccess` in AuthViewModel, which
+    // only admits seller/admin. Without this case, decoding throws
+    // DecodingError.dataCorrupted ("The data couldn't be read because it
+    // isn't in the correct format.") and the user sees "Data error: …"
+    // with no path forward.
+    case consumer, seller, admin, courier
 }
 
 enum KosherCertification: String, Codable, CaseIterable, Identifiable {
@@ -32,7 +40,13 @@ enum KosherCertification: String, Codable, CaseIterable, Identifiable {
 }
 
 enum OrderStatus: String, Codable, CaseIterable, Identifiable {
-    case scheduled, pending, accepted, preparing, ready
+    // `scheduled` is set by the backend when a consumer schedules an order
+    // more than 30 minutes in the future (orders.go ~L95). The background
+    // dispatcher flips it to `pending` close to the delivery window. Without
+    // this case, decoding the seller orders list would throw for the whole
+    // batch as soon as a single scheduled order shows up.
+    case scheduled
+    case pending, accepted, preparing, ready
     case pickedUp = "picked_up"
     case delivered, cancelled, rejected
 
@@ -54,7 +68,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .scheduled: return "clock.badge"
+        case .scheduled: return "calendar"
         case .pending: return "clock"
         case .accepted: return "checkmark.circle"
         case .preparing: return "flame"
@@ -68,7 +82,8 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var color: String {
         switch self {
-        case .scheduled, .pending: return "warning"
+        case .scheduled: return "primary"
+        case .pending: return "warning"
         case .accepted, .preparing: return "primary"
         case .ready: return "success"
         case .pickedUp, .delivered: return "success"
@@ -78,7 +93,10 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var isActive: Bool {
         switch self {
-        case .scheduled, .pending, .accepted, .preparing, .ready:
+        // `.pickedUp` belongs here too: the seller needs to see orders that
+        // have left the kitchen but aren't delivered yet, otherwise they lose
+        // visibility into deliveries en route once the courier grabs the bag.
+        case .pending, .accepted, .preparing, .ready, .pickedUp:
             return true
         default:
             return false
@@ -134,8 +152,12 @@ struct Restaurant: Codable, Identifiable {
     var cuisineType: [String]
     var rating: Double
     var reviewCount: Int
-    var deliveryFee: Double
-    var minOrder: Double
+    /// Cents — matches backend (restaurants.delivery_fee is INTEGER). UI converts
+    /// to dollars with `Double(deliveryFee) / 100`. Previously decoded as Double,
+    /// which made a $3.99 fee render as "399.00" in Settings.
+    var deliveryFee: Int
+    /// Cents — matches backend. See deliveryFee note.
+    var minOrder: Int
     var estDeliveryMin: Int
     var estDeliveryMax: Int
     var isOpen: Bool
@@ -190,6 +212,11 @@ struct MenuItem: Codable, Identifiable, Equatable {
     var isDairy: Bool
     var isPareve: Bool
     var isAvailable: Bool
+    /// Modifier groups attached to this item (options, extras, size choices).
+    /// Optional because pre-modifier items and the POST/PUT responses return
+    /// items without the groups array — the seller editor loads them
+    /// separately after creating a brand-new item.
+    var modifierGroups: [ModifierGroup]?
 
     var priceFormatted: String { String(format: "$%.2f", Double(price) / 100) }
 
@@ -202,6 +229,7 @@ struct MenuItem: Codable, Identifiable, Equatable {
         case isDairy = "is_dairy"
         case isPareve = "is_pareve"
         case isAvailable = "is_available"
+        case modifierGroups = "modifier_groups"
     }
 
     var kosherTag: String {
@@ -213,6 +241,101 @@ struct MenuItem: Codable, Identifiable, Equatable {
 
     static func == (lhs: MenuItem, rhs: MenuItem) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+struct ModifierGroup: Codable, Identifiable, Equatable {
+    let id: String
+    let menuItemId: String
+    var name: String
+    var description: String
+    var isRequired: Bool
+    var minSelections: Int
+    var maxSelections: Int
+    var sortOrder: Int
+    var modifiers: [Modifier]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, modifiers
+        case menuItemId = "menu_item_id"
+        case isRequired = "is_required"
+        case minSelections = "min_selections"
+        case maxSelections = "max_selections"
+        case sortOrder = "sort_order"
+    }
+
+    init(id: String = "", menuItemId: String = "", name: String = "", description: String = "",
+         isRequired: Bool = false, minSelections: Int = 0, maxSelections: Int = 1,
+         sortOrder: Int = 0, modifiers: [Modifier] = []) {
+        self.id = id
+        self.menuItemId = menuItemId
+        self.name = name
+        self.description = description
+        self.isRequired = isRequired
+        self.minSelections = minSelections
+        self.maxSelections = maxSelections
+        self.sortOrder = sortOrder
+        self.modifiers = modifiers
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.menuItemId = try c.decode(String.self, forKey: .menuItemId)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        self.isRequired = try c.decode(Bool.self, forKey: .isRequired)
+        self.minSelections = try c.decode(Int.self, forKey: .minSelections)
+        self.maxSelections = try c.decode(Int.self, forKey: .maxSelections)
+        self.sortOrder = try c.decode(Int.self, forKey: .sortOrder)
+        self.modifiers = try c.decodeIfPresent([Modifier].self, forKey: .modifiers) ?? []
+    }
+}
+
+struct Modifier: Codable, Identifiable, Equatable {
+    let id: String
+    let groupId: String
+    var name: String
+    var priceDelta: Int
+    var isDefault: Bool
+    var isAvailable: Bool
+    var sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case groupId = "group_id"
+        case priceDelta = "price_delta"
+        case isDefault = "is_default"
+        case isAvailable = "is_available"
+        case sortOrder = "sort_order"
+    }
+
+    init(id: String = "", groupId: String = "", name: String = "", priceDelta: Int = 0,
+         isDefault: Bool = false, isAvailable: Bool = true, sortOrder: Int = 0) {
+        self.id = id
+        self.groupId = groupId
+        self.name = name
+        self.priceDelta = priceDelta
+        self.isDefault = isDefault
+        self.isAvailable = isAvailable
+        self.sortOrder = sortOrder
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.groupId = try c.decode(String.self, forKey: .groupId)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.priceDelta = try c.decode(Int.self, forKey: .priceDelta)
+        self.isDefault = try c.decode(Bool.self, forKey: .isDefault)
+        self.isAvailable = try c.decode(Bool.self, forKey: .isAvailable)
+        self.sortOrder = try c.decode(Int.self, forKey: .sortOrder)
+    }
+
+    var priceDeltaFormatted: String {
+        let abs = Double(Swift.abs(priceDelta)) / 100
+        if priceDelta == 0 { return "" }
+        return String(format: "%@$%.2f", priceDelta < 0 ? "-" : "+", abs)
     }
 }
 
@@ -268,6 +391,8 @@ struct Order: Codable, Identifiable {
     let createdAt: String
     let updatedAt: String
     let courier: CourierPublic?
+    let customerName: String?
+    let customerPhone: String?
 
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, total, courier
@@ -280,6 +405,8 @@ struct Order: Codable, Identifiable {
         case estDeliveryTime = "est_delivery_time"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case customerName = "customer_name"
+        case customerPhone = "customer_phone"
     }
 
     /// Dollars display for the total. Every UI using $%.2f on order.total
@@ -291,15 +418,19 @@ struct Order: Codable, Identifiable {
     var taxFormatted: String { String(format: "$%.2f", Double(tax) / 100) }
 
     var formattedDate: String {
+        guard let date = createdAtDate else { return createdAt }
+        return Self.displayFormatter.string(from: date)
+    }
+
+    /// Parsed `createdAt` as a Date, or nil if the backend sent something
+    /// we can't decode. Tries fractional-seconds ISO8601 first (Postgres
+    /// TIMESTAMPTZ default) then falls back to plain ISO8601.
+    var createdAtDate: Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: createdAt) else {
-            // Try without fractional seconds
-            formatter.formatOptions = [.withInternetDateTime]
-            guard let date = formatter.date(from: createdAt) else { return createdAt }
-            return Self.displayFormatter.string(from: date)
-        }
-        return Self.displayFormatter.string(from: date)
+        if let d = formatter.date(from: createdAt) { return d }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: createdAt)
     }
 
     private static let displayFormatter: DateFormatter = {

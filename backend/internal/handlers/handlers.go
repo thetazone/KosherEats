@@ -5,34 +5,49 @@ import (
 	"net/http"
 
 	"github.com/koshereats/backend/internal/background"
+	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/config"
 	"github.com/koshereats/backend/internal/database"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
+	"github.com/koshereats/backend/internal/sms"
 	"github.com/koshereats/backend/internal/storage"
 )
 
 type Handler struct {
-	db      *database.DB
-	cfg     *config.Config
-	notify  *notify.Notifier
-	stripe  *payments.Client
-	storage *storage.Client
-	checkr  *background.Checkr
+	db       *database.DB
+	cfg      *config.Config
+	notify   *notify.Notifier
+	stripe   *payments.Client
+	storage  *storage.Client
+	checkr   *background.Checkr
+	location *broker.Broker
+	sms      *sms.Client
 }
 
 func New(db *database.DB, cfg *config.Config) *Handler {
 	apns := notify.New(cfg)
 	fcm := notify.NewFCM(cfg)
 	return &Handler{
-		db:      db,
-		cfg:     cfg,
-		notify:  notify.NewNotifier(db.Pool, apns, fcm),
-		stripe:  payments.New(cfg),
-		storage: storage.New(cfg),
-		checkr:  background.New(cfg, db.Pool),
+		db:       db,
+		cfg:      cfg,
+		notify:   notify.NewNotifier(db.Pool, apns, fcm),
+		stripe:   payments.New(cfg),
+		storage:  storage.New(cfg),
+		checkr:   background.New(cfg, db.Pool),
+		location: broker.New(),
+		sms:      sms.New(cfg),
 	}
 }
+
+// Notifier exposes the shared push-notification facade so background workers
+// (like the scheduler's auto-dispatch sweep) can fire the same semantic events
+// that HTTP handlers do.
+func (h *Handler) Notifier() *notify.Notifier { return h.notify }
+
+// Stripe exposes the shared Stripe client so background workers (like the
+// stale-order sweep) can issue refunds without constructing a second client.
+func (h *Handler) Stripe() *payments.Client { return h.stripe }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

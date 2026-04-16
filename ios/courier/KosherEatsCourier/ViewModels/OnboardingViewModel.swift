@@ -39,8 +39,33 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
+    /// What documents are required depends on the vehicle type — bike/walk
+    /// couriers don't need insurance or vehicle registration, but cars and
+    /// motorcycles do (matches DoorDash/UberEats requirements). License +
+    /// profile photo are universal.
     var documentsFormValid: Bool {
-        !driversLicenseNumber.isEmpty && !driversLicenseURL.isEmpty
+        let basics = !driversLicenseNumber.isEmpty
+            && !driversLicenseURL.isEmpty
+            && !profilePhotoURL.isEmpty
+        switch vehicleType {
+        case .car, .motorcycle:
+            return basics && !insuranceURL.isEmpty && !registrationURL.isEmpty
+        case .bike, .scooter, .walk:
+            return basics
+        }
+    }
+
+    /// Drives the per-row "required vs. optional" label in DocumentsStep so
+    /// bike/walk couriers don't waste time hunting for an insurance card.
+    func documentRequired(_ kind: UploadService.UploadKind) -> Bool {
+        switch kind {
+        case .license, .profile:
+            return true
+        case .insurance, .registration:
+            return vehicleType == .car || vehicleType == .motorcycle
+        case .deliveryProof:
+            return false
+        }
     }
 
     func submitVehicle() async -> CourierProfile? {
@@ -85,9 +110,9 @@ final class OnboardingViewModel: ObservableObject {
         }
     }
 
-    func verifyPhone() async -> Bool {
+    func verifyPhone(code: String) async -> Bool {
         do {
-            try await api.verifyPhone()
+            try await api.verifyPhone(code: code)
             return true
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

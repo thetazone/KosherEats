@@ -152,11 +152,11 @@ private fun PhoneVerifyStep(vm: OnboardingViewModel, onDone: () -> Unit) {
     val state by vm.state.collectAsState()
 
     Text("Verify your phone", color = TextWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-    Text("We'll text you a 6-digit code. (Dev stub: any code works.)", color = TextSecondary)
+    Text("We'll text you a 4-digit code. (Dev stub: any code works.)", color = TextSecondary)
 
     OutlinedTextField(
         value = code, onValueChange = { code = it },
-        label = { Text("123456") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+        label = { Text("1234") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
     )
 

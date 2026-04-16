@@ -26,6 +26,11 @@ struct HomeView: View {
                             featuredSection
                         }
 
+                        // Favorites Section
+                        if !vm.favoriteRestaurants.isEmpty {
+                            favoritesSection
+                        }
+
                         // All Restaurants
                         allRestaurantsSection
                     }
@@ -159,6 +164,31 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Favorites
+
+    private var favoritesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Favorites")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(.keTextPrimary)
+                .padding(.horizontal)
+
+            LazyVStack(spacing: 12) {
+                ForEach(vm.favoriteRestaurants) { restaurant in
+                    NavigationLink(destination: RestaurantDetailView(restaurantID: restaurant.id)) {
+                        RestaurantCardView(
+                            restaurant: restaurant,
+                            isFavorite: true,
+                            onToggleFavorite: { Task { await vm.toggleFavorite(restaurant.id) } }
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+
     // MARK: - All Restaurants
 
     private var allRestaurantsSection: some View {
@@ -186,7 +216,11 @@ struct HomeView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(vm.filteredRestaurants) { restaurant in
                         NavigationLink(destination: RestaurantDetailView(restaurantID: restaurant.id)) {
-                            RestaurantCardView(restaurant: restaurant)
+                            RestaurantCardView(
+                                restaurant: restaurant,
+                                isFavorite: vm.favoriteIDs.contains(restaurant.id),
+                                onToggleFavorite: { Task { await vm.toggleFavorite(restaurant.id) } }
+                            )
                         }
                         .buttonStyle(.plain)
                     }

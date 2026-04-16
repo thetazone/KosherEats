@@ -43,13 +43,19 @@ final class APIService: ObservableObject {
     #endif
 
     private var token: String? {
-        get { UserDefaults.standard.string(forKey: "courier_auth_token") }
-        set { UserDefaults.standard.set(newValue, forKey: "courier_auth_token") }
+        get { KeychainHelper.load(forKey: "courier_auth_token") }
+        set {
+            if let v = newValue { KeychainHelper.save(v, forKey: "courier_auth_token") }
+            else { KeychainHelper.delete(forKey: "courier_auth_token") }
+        }
     }
 
     private var refreshToken: String? {
-        get { UserDefaults.standard.string(forKey: "courier_refresh_token") }
-        set { UserDefaults.standard.set(newValue, forKey: "courier_refresh_token") }
+        get { KeychainHelper.load(forKey: "courier_refresh_token") }
+        set {
+            if let v = newValue { KeychainHelper.save(v, forKey: "courier_refresh_token") }
+            else { KeychainHelper.delete(forKey: "courier_refresh_token") }
+        }
     }
 
     private let decoder: JSONDecoder = {
@@ -94,6 +100,12 @@ final class APIService: ObservableObject {
 
     // MARK: - Core request
 
+    /// Retry once on 502/503/504. These come from Fly.io cold-starting the
+    /// backend machine after idle — a claim/pickup call that fails here would
+    /// otherwise leave the courier stuck on "Server error 503" with no recovery
+    /// path but a manual retry. Matches the seller/consumer behavior.
+    private let maxRetries = 1
+
     private func request<T: Decodable>(
         method: String,
         path: String,
@@ -116,31 +128,160 @@ final class APIService: ObservableObject {
             req.httpBody = try encoder.encode(body)
         }
 
-        let (data, response): (Data, URLResponse)
+        for attempt in 0...maxRetries {
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await URLSession.shared.data(for: req)
+            } catch {
+                throw APIError.networkError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+
+            // Fly cold-start retry window.
+            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+                try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
+                continue
+            }
+
+            if httpResponse.statusCode == 401 {
+                // Try once to refresh with the stored refresh token; if it
+                // works, replay the original request with the new access
+                // token. Only do this when the caller was authenticated and
+                // a refresh token is actually available, and break out of
+                // the cold-start retry loop either way — the refresh path
+                // has its own semantics.
+                if authenticated, refreshToken != nil {
+                    if await performTokenRefresh() {
+                        return try await request(method: method, path: path, body: body, authenticated: authenticated)
+                    }
+                }
+                throw APIError.unauthorized
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let msg = (try? decoder.decode(APIErrorResponse.self, from: data))?.error ?? "Unknown error"
+                throw APIError.httpError(httpResponse.statusCode, msg)
+            }
+
+            do {
+                return try decoder.decode(T.self, from: data)
+            } catch {
+                throw APIError.decodingError(error)
+            }
+        }
+        // Unreachable — the loop either returns or throws on every iteration.
+        throw APIError.invalidResponse
+    }
+
+    private var isRefreshing = false
+
+    private func performTokenRefresh() async -> Bool {
+        if isRefreshing { return token != nil }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        guard let refresh = refreshToken,
+              let url = URL(string: "\(baseURL)/auth/refresh") else { return false }
+
+        struct RefreshBody: Encodable {
+            let refreshToken: String
+            enum CodingKeys: String, CodingKey { case refreshToken = "refresh_token" }
+        }
+        struct RefreshResponse: Decodable {
+            let token: String
+            let refreshToken: String
+            enum CodingKeys: String, CodingKey {
+                case token
+                case refreshToken = "refresh_token"
+            }
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
-            (data, response) = try await URLSession.shared.data(for: req)
+            req.httpBody = try encoder.encode(RefreshBody(refreshToken: refresh))
         } catch {
-            throw APIError.networkError(error)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        if httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
-        }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let msg = (try? decoder.decode(APIErrorResponse.self, from: data))?.error ?? "Unknown error"
-            throw APIError.httpError(httpResponse.statusCode, msg)
+            print("[APIService] Failed to encode refresh body: \(error)")
+            return false
         }
 
         do {
-            return try decoder.decode(T.self, from: data)
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse,
+                  (200...299).contains(http.statusCode) else { return false }
+            let decoded = try decoder.decode(RefreshResponse.self, from: data)
+            setToken(decoded.token, refresh: decoded.refreshToken)
+            return true
         } catch {
-            throw APIError.decodingError(error)
+            return false
         }
+    }
+
+    // MARK: - Void request
+    //
+    // Some endpoints (e.g. DELETE /user/account) return an empty body or a
+    // non-decodable shape. We don't want to force a dummy struct on every
+    // caller just to satisfy the generic.
+    private func requestVoid(
+        method: String,
+        path: String,
+        body: (any Encodable)? = nil,
+        authenticated: Bool = true
+    ) async throws {
+        guard let url = URL(string: "\(baseURL)\(path)") else {
+            throw APIError.invalidURL
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if authenticated, let token = token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if let body = body {
+            req.httpBody = try encoder.encode(body)
+        }
+
+        for attempt in 0...maxRetries {
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await URLSession.shared.data(for: req)
+            } catch {
+                throw APIError.networkError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+
+            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                continue
+            }
+
+            if httpResponse.statusCode == 401 {
+                if authenticated, refreshToken != nil {
+                    if await performTokenRefresh() {
+                        try await requestVoid(method: method, path: path, body: body, authenticated: authenticated)
+                        return
+                    }
+                }
+                throw APIError.unauthorized
+            }
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let msg = (try? decoder.decode(APIErrorResponse.self, from: data))?.error ?? "Unknown error"
+                throw APIError.httpError(httpResponse.statusCode, msg)
+            }
+
+            return
+        }
+        throw APIError.invalidResponse
     }
 
     // MARK: - Auth
@@ -180,15 +321,139 @@ final class APIService: ObservableObject {
 
     func logout() { clearToken() }
 
+    // MARK: - Email existence check (for unified email entry UI)
+
+    struct EmailCheckBody: Encodable { let email: String }
+    struct EmailCheckResponse: Decodable { let exists: Bool; let role: String }
+
+    func checkEmail(_ email: String) async throws -> EmailCheckResponse {
+        try await request(method: "POST", path: "/auth/email/check",
+                          body: EmailCheckBody(email: email), authenticated: false)
+    }
+
+    // MARK: - Phone OTP login
+    //
+    // Backend: Twilio Verify. /auth/phone/start triggers the SMS,
+    // /auth/phone/verify trades a valid code for a JWT. Phone must be E.164
+    // ("+15551234567"); the caller builds it from the country picker.
+    //
+    // The verify call sends role="courier" so the backend knows how to
+    // (a) create a new courier account if this phone has never been seen,
+    // and (b) promote an existing consumer → courier. Cross-role promotion
+    // (seller ↔ courier) is refused server-side, so the role guard below
+    // still blocks a seller's phone from slipping into the courier app.
+
+    struct PhoneStartBody: Encodable { let phone: String }
+    struct PhoneVerifyBody: Encodable {
+        let phone: String
+        let code: String
+        let role: String
+        let firstName: String?
+        let lastName: String?
+        enum CodingKeys: String, CodingKey {
+            case phone, code, role
+            case firstName = "first_name"
+            case lastName = "last_name"
+        }
+    }
+
+    func startPhoneLogin(phone: String) async throws {
+        let _: [String: String] = try await request(
+            method: "POST", path: "/auth/phone/start",
+            body: PhoneStartBody(phone: phone), authenticated: false)
+    }
+
+    func verifyPhoneLogin(phone: String, code: String,
+                          firstName: String? = nil, lastName: String? = nil) async throws -> AuthResponse {
+        let res: AuthResponse = try await request(
+            method: "POST", path: "/auth/phone/verify",
+            body: PhoneVerifyBody(phone: phone, code: code, role: "courier",
+                                  firstName: firstName, lastName: lastName),
+            authenticated: false)
+        // Role guard still matters: the backend only promotes consumer →
+        // courier, so a seller/admin phone will come back with a non-courier
+        // role. Don't persist the token in that case — otherwise we'd land
+        // on a cryptic 403 the moment the app hits /courier/*.
+        guard res.user.role == "courier" else {
+            throw APIError.httpError(403, "This phone number is not registered as a courier account.")
+        }
+        setToken(res.token, refresh: res.refreshToken)
+        return res
+    }
+
+    // MARK: - Social auth
+
+    struct SocialLoginBody: Encodable {
+        let provider: String
+        let token: String
+        let firstName: String
+        let lastName: String
+        // Courier accounts get created with role=courier when the backend
+        // doesn't find an existing user by email. Without this, the backend's
+        // `/auth/social` handler falls back to `consumer` and the courier app
+        // would then reject the login for role mismatch.
+        let role: String
+        enum CodingKeys: String, CodingKey {
+            case provider, token, role
+            case firstName = "first_name"
+            case lastName = "last_name"
+        }
+    }
+
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async throws -> AuthResponse {
+        let body = SocialLoginBody(
+            provider: provider, token: token,
+            firstName: firstName, lastName: lastName, role: "courier"
+        )
+        // The backend handles role promotion + auto-approval when `role:
+        // "courier"` is sent from this app (see SocialLogin in
+        // backend/internal/handlers/social_auth.go). No role guard here —
+        // rejecting client-side would lock out the App Review tester's
+        // Apple ID, which may already exist as a consumer.
+        let res: AuthResponse = try await request(method: "POST", path: "/auth/social", body: body, authenticated: false)
+        setToken(res.token, refresh: res.refreshToken)
+        return res
+    }
+
+    // MARK: - Account deletion (App Store requirement)
+
+    func deleteAccount() async throws {
+        try await requestVoid(method: "DELETE", path: "/user/account")
+    }
+
+    // MARK: - User profile (generic)
+
+    func getUser() async throws -> User {
+        try await request(method: "GET", path: "/user/profile")
+    }
+
+    struct UpdateProfileBody: Encodable {
+        let firstName: String
+        let lastName: String
+        let phone: String
+        let email: String?
+        enum CodingKeys: String, CodingKey {
+            case firstName = "first_name"
+            case lastName = "last_name"
+            case phone, email
+        }
+    }
+
+    func updateUserProfile(firstName: String, lastName: String, phone: String, email: String? = nil) async throws -> User {
+        try await request(method: "PUT", path: "/user/profile",
+            body: UpdateProfileBody(firstName: firstName, lastName: lastName, phone: phone, email: email))
+    }
+
     // MARK: - Courier profile / onboarding
 
     func getProfile() async throws -> CourierProfile {
         try await request(method: "GET", path: "/courier/profile")
     }
 
-    func verifyPhone() async throws {
-        struct Empty: Encodable {}
-        let _: [String: Bool] = try await request(method: "POST", path: "/courier/onboarding/phone/verify", body: Empty())
+    struct PhoneVerifyCodeBody: Encodable { let code: String }
+
+    func verifyPhone(code: String) async throws {
+        let _: [String: Bool] = try await request(method: "POST", path: "/courier/onboarding/phone/verify", body: PhoneVerifyCodeBody(code: code))
     }
 
     struct VehicleBody: Encodable {
@@ -268,16 +533,30 @@ final class APIService: ObservableObject {
 
     struct EmptyBody: Encodable {}
 
+    private func validateOrderId(_ id: String) throws {
+        guard id.range(of: "^[a-zA-Z0-9_-]+$", options: .regularExpression) != nil else {
+            throw APIError.invalidURL
+        }
+    }
+
     func claim(orderId: String) async throws {
+        try validateOrderId(orderId)
         let _: [String: String] = try await request(method: "POST", path: "/courier/orders/\(orderId)/claim", body: EmptyBody())
     }
 
     func pickup(orderId: String) async throws {
+        try validateOrderId(orderId)
         let _: [String: String] = try await request(method: "POST", path: "/courier/orders/\(orderId)/pickup", body: EmptyBody())
     }
 
-    func deliver(orderId: String) async throws {
-        let _: [String: String] = try await request(method: "POST", path: "/courier/orders/\(orderId)/deliver", body: EmptyBody())
+    func deliver(orderId: String, proofURL: String? = nil) async throws {
+        try validateOrderId(orderId)
+        struct DeliverBody: Encodable {
+            let proofUrl: String?
+            enum CodingKeys: String, CodingKey { case proofUrl = "proof_url" }
+        }
+        let _: [String: String] = try await request(method: "POST", path: "/courier/orders/\(orderId)/deliver",
+                                                      body: DeliverBody(proofUrl: proofURL))
     }
 
     // MARK: - Device tokens (push)

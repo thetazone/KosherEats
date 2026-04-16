@@ -14,10 +14,8 @@ class RestaurantViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            async let restaurantTask = api.getRestaurant(id: restaurantID)
-            async let menuTask = api.getMenu(restaurantID: restaurantID)
-
-            let (rest, menu) = try await (restaurantTask, menuTask)
+            let rest = try await api.getRestaurant(id: restaurantID)
+            let menu = try await api.getMenu(restaurantID: restaurantID)
             restaurant = rest
             menuCategories = menu.sorted { $0.sortOrder < $1.sortOrder }
         } catch {
