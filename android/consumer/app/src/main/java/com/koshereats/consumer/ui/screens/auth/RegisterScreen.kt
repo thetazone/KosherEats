@@ -133,22 +133,6 @@ fun RegisterScreen(
             Text("Continue with Apple", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Button(
-            onClick = { viewModel.signInWithFacebook() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF1877F2),
-                contentColor = Color.White,
-            ),
-        ) {
-            Text("Continue with Facebook", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        }
-
         Spacer(modifier = Modifier.height(24.dp))
 
         // "or" divider

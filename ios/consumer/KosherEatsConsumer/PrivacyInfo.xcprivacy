@@ -6,8 +6,8 @@
          since May 2024. Declares which Required Reason APIs we touch and what
          user data we collect. -->
 
-    <!-- We do not track users across apps/websites. Google + Facebook sign-in
-         are used only for authentication, not for tracking. -->
+    <!-- We do not track users across apps/websites. Google sign-in
+         is used only for authentication, not for tracking. -->
     <key>NSPrivacyTracking</key>
     <false/>
 

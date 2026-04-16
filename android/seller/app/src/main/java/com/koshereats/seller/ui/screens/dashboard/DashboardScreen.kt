@@ -43,7 +43,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.data.models.formatPriceWhole
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
@@ -142,14 +141,14 @@ fun DashboardScreen(
             ) {
                 StatCard(
                     title = "Today's Orders",
-                    value = "${state.stats.totalOrdersToday}",
+                    value = "${state.stats.todayOrders}",
                     icon = Icons.Filled.ShoppingBag,
                     iconTint = Orange,
                     modifier = Modifier.weight(1f),
                 )
                 StatCard(
                     title = "Revenue",
-                    value = state.stats.revenueToday.formatPriceWhole(),
+                    value = state.stats.todayRevenue.formatPriceWhole(),
                     icon = Icons.Filled.AttachMoney,
                     iconTint = SuccessGreen,
                     modifier = Modifier.weight(1f),
@@ -171,56 +170,11 @@ fun DashboardScreen(
                 )
                 StatCard(
                     title = "Avg Prep Time",
-                    value = "${state.stats.averagePrepTime} min",
+                    value = "${state.stats.avgPrepTime.toInt()} min",
                     icon = Icons.Filled.AccessTime,
                     iconTint = StatusPreparing,
                     modifier = Modifier.weight(1f),
                 )
-            }
-        }
-
-        // Weekly summary
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column {
-                        Text(
-                            text = "This Week",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = TextMuted,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "${state.stats.totalOrdersWeek} orders",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextWhite,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "Weekly Revenue",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = TextMuted,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = state.stats.revenueWeek.formatPrice(),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = SuccessGreen,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
             }
         }
 

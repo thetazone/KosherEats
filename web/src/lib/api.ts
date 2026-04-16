@@ -84,6 +84,12 @@ export const orders = {
     fetchAPI(`/orders/${id}/cancel`, { method: "PATCH", token }),
 };
 
+// Payments
+export const payments = {
+  createIntent: (token: string, data: { tip?: number } = {}) =>
+    fetchAPI("/payments/intent", { method: "POST", token, body: JSON.stringify(data) }),
+};
+
 // User
 export const user = {
   getProfile: (token: string) => fetchAPI("/user/profile", { token }),

@@ -32,7 +32,7 @@ enum KosherCertification: String, Codable, CaseIterable, Identifiable {
 }
 
 enum OrderStatus: String, Codable, CaseIterable, Identifiable {
-    case pending, accepted, preparing, ready
+    case scheduled, pending, accepted, preparing, ready
     case pickedUp = "picked_up"
     case delivered, cancelled, rejected
 
@@ -40,6 +40,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .scheduled: return "Scheduled"
         case .pending: return "Pending"
         case .accepted: return "Accepted"
         case .preparing: return "Preparing"
@@ -53,6 +54,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .scheduled: return "clock.badge"
         case .pending: return "clock"
         case .accepted: return "checkmark.circle"
         case .preparing: return "flame"
@@ -66,7 +68,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var color: String {
         switch self {
-        case .pending: return "warning"
+        case .scheduled, .pending: return "warning"
         case .accepted, .preparing: return "primary"
         case .ready: return "success"
         case .pickedUp, .delivered: return "success"
@@ -76,7 +78,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
 
     var isActive: Bool {
         switch self {
-        case .pending, .accepted, .preparing, .ready:
+        case .scheduled, .pending, .accepted, .preparing, .ready:
             return true
         default:
             return false

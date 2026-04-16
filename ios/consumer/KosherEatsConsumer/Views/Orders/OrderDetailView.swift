@@ -163,7 +163,7 @@ struct OrderDetailView: View {
 
     private func statusColor(_ status: OrderStatus) -> Color {
         switch status {
-        case .pending: return .keWarning
+        case .scheduled, .pending: return .keWarning
         case .accepted, .preparing: return .kePrimary
         case .ready, .pickedUp: return .keDairy
         case .delivered: return .keSuccess

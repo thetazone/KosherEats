@@ -135,11 +135,6 @@ class AuthViewModel @Inject constructor(
         // socialLogin("apple", identityToken, firstName, lastName)
     }
 
-    fun signInWithFacebook() {
-        // TODO: Integrate Facebook Login SDK, obtain access token, then call:
-        // socialLogin("facebook", accessToken, firstName, lastName)
-    }
-
     fun logout() {
         viewModelScope.launch {
             clearAuth()

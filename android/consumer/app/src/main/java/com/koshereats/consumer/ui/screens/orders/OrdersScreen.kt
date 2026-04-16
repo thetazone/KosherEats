@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Pending
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -224,6 +225,7 @@ private fun OrderCard(
 @Composable
 private fun OrderStatusBadge(status: OrderStatus) {
     val (color, icon) = when (status) {
+        OrderStatus.SCHEDULED -> InfoBlue to Icons.Filled.Schedule
         OrderStatus.PENDING -> Orange to Icons.Filled.Pending
         OrderStatus.CONFIRMED -> InfoBlue to Icons.Filled.CheckCircle
         OrderStatus.PREPARING -> WarningYellow to Icons.Filled.Restaurant

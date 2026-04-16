@@ -22,7 +22,7 @@ items marked `[x]` are already handled in the codebase.
 - [ ] Create an App ID + provisioning profile in Apple Developer portal for
       `com.koshereats.consumer`. Enable the Push Notifications capability.
 - [ ] Enable Sign in with Apple capability in Xcode (required because the app
-      offers Google/Facebook social sign-in — Apple requires parity).
+      offers Google social sign-in — Apple requires parity).
 
 ## 2. Privacy + permissions
 
@@ -50,13 +50,11 @@ items marked `[x]` are already handled in the codebase.
 
 ## 4. Third-party SDK configuration
 
-The project has placeholder Google/Facebook/Stripe keys that will fail at
+The project has placeholder Google/Stripe keys that will fail at
 runtime. Before you submit:
 
 - [ ] **Google Sign-In:** Replace `com.googleusercontent.apps.YOUR_CLIENT_ID`
       in `Info.plist` with the real client ID from Google Cloud Console.
-- [ ] **Facebook Login:** Replace `YOUR_FACEBOOK_APP_ID` + `YOUR_FACEBOOK_CLIENT_TOKEN`
-      in `Info.plist` with real values from Meta for Developers.
 - [ ] **Stripe:** Set `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` in the
       backend `.env` to real **live** keys (not test) before App Store release.
       Test keys are fine for TestFlight.

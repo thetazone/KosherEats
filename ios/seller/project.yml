@@ -10,9 +10,6 @@ packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: "7.0.0"
-  FacebookLogin:
-    url: https://github.com/facebook/facebook-ios-sdk
-    from: "17.0.0"
 
 settings:
   base:
@@ -41,6 +38,4 @@ targets:
     dependencies:
       - package: GoogleSignIn
         product: GoogleSignIn
-      - package: FacebookLogin
-        product: FacebookLogin
       - sdk: AuthenticationServices.framework

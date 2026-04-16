@@ -137,12 +137,10 @@ data class LoginResponse(
 
 @JsonClass(generateAdapter = true)
 data class DashboardStats(
-    @Json(name = "total_orders_today") val totalOrdersToday: Int = 0,
-    @Json(name = "revenue_today") val revenueToday: Int = 0,
+    @Json(name = "today_orders") val todayOrders: Int = 0,
+    @Json(name = "today_revenue") val todayRevenue: Int = 0,
     @Json(name = "active_orders") val activeOrders: Int = 0,
-    @Json(name = "average_prep_time") val averagePrepTime: Int = 0,
-    @Json(name = "total_orders_week") val totalOrdersWeek: Int = 0,
-    @Json(name = "revenue_week") val revenueWeek: Int = 0,
+    @Json(name = "avg_prep_time") val avgPrepTime: Double = 0.0,
 )
 
 // --- Device tokens (push notifications) ---

@@ -223,10 +223,6 @@ class AuthViewModel @Inject constructor(
         _uiState.update { it.copy(error = "Apple Sign-In not yet configured") }
     }
 
-    fun signInWithFacebook() {
-        _uiState.update { it.copy(error = "Facebook Sign-In not yet configured") }
-    }
-
     fun logout() {
         viewModelScope.launch {
             try {

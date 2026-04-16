@@ -353,7 +353,14 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+	order, err := h.loadOrderWithCourier(r, id, "user_id", user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reload cancelled order")
+		return
+	}
+	order.Items = h.loadOrderItems(r, id)
+
+	writeJSON(w, http.StatusOK, order)
 }
 
 // Seller order handlers

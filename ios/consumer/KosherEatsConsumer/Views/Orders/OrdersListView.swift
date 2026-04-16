@@ -164,7 +164,7 @@ struct OrderStatusBadge: View {
 
     private var color: Color {
         switch status {
-        case .pending: return .keWarning
+        case .scheduled, .pending: return .keWarning
         case .accepted, .preparing: return .kePrimary
         case .ready, .pickedUp: return .keDairy
         case .delivered: return .keSuccess

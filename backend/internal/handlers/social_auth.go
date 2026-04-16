@@ -19,8 +19,8 @@ import (
 )
 
 type SocialLoginRequest struct {
-	Provider  string `json:"provider"`   // "google", "apple", "facebook"
-	Token     string `json:"token"`      // ID token or access token from provider
+	Provider  string `json:"provider"`   // "google", "apple"
+	Token     string `json:"token"`      // ID token from provider
 	FirstName string `json:"first_name"` // optional, from provider
 	LastName  string `json:"last_name"`  // optional, from provider
 }
@@ -33,18 +33,7 @@ type googleTokenInfo struct {
 	FamilyName    string `json:"family_name"`
 	Picture       string `json:"picture"`
 	Sub           string `json:"sub"`
-}
-
-type facebookUser struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Picture   struct {
-		Data struct {
-			URL string `json:"url"`
-		} `json:"data"`
-	} `json:"picture"`
+	Aud           string `json:"aud"`
 }
 
 type appleTokenClaims struct {
@@ -60,6 +49,11 @@ const (
 )
 
 var appleJWKs = newAppleJWKCache()
+
+var (
+	googleTokenInfoURL = "https://oauth2.googleapis.com/tokeninfo"
+	googleHTTPClient   = &http.Client{Timeout: 5 * time.Second}
+)
 
 func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	var req SocialLoginRequest
@@ -82,8 +76,6 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	case "apple":
 		email, firstName, lastName, providerID, err = h.verifyAppleToken(req.Token, req.FirstName, req.LastName)
 		avatarURL = ""
-	case "facebook":
-		email, firstName, lastName, avatarURL, providerID, err = h.verifyFacebookToken(req.Token)
 	default:
 		writeError(w, http.StatusBadRequest, "unsupported provider: "+req.Provider)
 		return
@@ -146,7 +138,11 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) verifyGoogleToken(idToken string) (email, firstName, lastName, avatarURL, providerID string, err error) {
-	resp, err := http.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + url.QueryEscape(idToken))
+	if h.cfg == nil || h.cfg.GoogleClientID == "" {
+		return "", "", "", "", "", fmt.Errorf("google sign-in is not configured")
+	}
+
+	resp, err := googleHTTPClient.Get(googleTokenInfoURL + "?id_token=" + url.QueryEscape(idToken))
 	if err != nil {
 		return "", "", "", "", "", fmt.Errorf("failed to verify google token")
 	}
@@ -159,6 +155,21 @@ func (h *Handler) verifyGoogleToken(idToken string) (email, firstName, lastName,
 	var info googleTokenInfo
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return "", "", "", "", "", fmt.Errorf("failed to decode google response")
+	}
+
+	audienceMatched := false
+	for _, audience := range strings.Split(h.cfg.GoogleClientID, ",") {
+		if info.Aud == strings.TrimSpace(audience) {
+			audienceMatched = true
+			break
+		}
+	}
+	if !audienceMatched {
+		return "", "", "", "", "", fmt.Errorf("invalid google token")
+	}
+
+	if info.EmailVerified != "true" || info.Email == "" {
+		return "", "", "", "", "", fmt.Errorf("invalid google token")
 	}
 
 	return info.Email, info.GivenName, info.FamilyName, info.Picture, info.Sub, nil
@@ -208,25 +219,6 @@ func (h *Handler) verifyAppleToken(idToken string, firstName, lastName string) (
 	}
 
 	return claims.Email, firstName, lastName, claims.Subject, nil
-}
-
-func (h *Handler) verifyFacebookToken(accessToken string) (email, firstName, lastName, avatarURL, providerID string, err error) {
-	resp, err := http.Get("https://graph.facebook.com/me?fields=id,email,first_name,last_name,picture.type(large)&access_token=" + url.QueryEscape(accessToken))
-	if err != nil {
-		return "", "", "", "", "", fmt.Errorf("failed to verify facebook token")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", "", "", "", "", fmt.Errorf("invalid facebook token")
-	}
-
-	var fbUser facebookUser
-	if err := json.NewDecoder(resp.Body).Decode(&fbUser); err != nil {
-		return "", "", "", "", "", fmt.Errorf("failed to decode facebook response")
-	}
-
-	return fbUser.Email, fbUser.FirstName, fbUser.LastName, fbUser.Picture.Data.URL, fbUser.ID, nil
 }
 
 func (c appleTokenClaims) emailVerified() bool {

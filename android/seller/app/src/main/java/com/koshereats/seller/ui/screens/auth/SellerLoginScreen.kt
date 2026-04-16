@@ -169,30 +169,6 @@ fun SellerLoginScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Continue with Facebook
-            Button(
-                onClick = { viewModel.signInWithFacebook() },
-                enabled = !state.isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF1877F2),
-                    contentColor = Color.White,
-                    disabledContainerColor = Color(0xFF1877F2).copy(alpha = 0.4f),
-                    disabledContentColor = Color.White.copy(alpha = 0.6f),
-                ),
-            ) {
-                Text(
-                    text = "Continue with Facebook",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-
             Spacer(modifier = Modifier.height(24.dp))
 
             // "or" divider

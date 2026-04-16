@@ -100,6 +100,7 @@ struct OrderTrackingView: View {
 
     private func phaseText(for status: OrderStatus) -> String {
         switch status {
+        case .scheduled: return "Scheduled for later"
         case .pending: return "Waiting for the restaurant"
         case .accepted: return "Restaurant accepted your order"
         case .preparing: return "Your food is being prepared"

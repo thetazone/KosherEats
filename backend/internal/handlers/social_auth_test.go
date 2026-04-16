@@ -4,12 +4,105 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/koshereats/backend/internal/config"
 )
+
+func TestVerifyGoogleTokenAcceptsMatchingAudience(t *testing.T) {
+	restoreURL := swapGoogleTokenInfoURLForTest("https://tokeninfo.test")
+	defer restoreURL()
+
+	restoreClient := swapGoogleHTTPClientForTest(newGoogleTokenInfoClient(t, http.StatusOK, googleTokenInfo{
+		Email:         "user@example.com",
+		EmailVerified: "true",
+		GivenName:     "Test",
+		FamilyName:    "User",
+		Picture:       "https://example.com/avatar.png",
+		Sub:           "google-user-123",
+		Aud:           "web-client-id",
+	}))
+	defer restoreClient()
+
+	handler := &Handler{
+		cfg: &config.Config{GoogleClientID: "web-client-id"},
+	}
+
+	email, firstName, lastName, avatarURL, providerID, err := handler.verifyGoogleToken("good-token")
+	if err != nil {
+		t.Fatalf("verify google token: %v", err)
+	}
+
+	if email != "user@example.com" {
+		t.Fatalf("unexpected email: %s", email)
+	}
+	if firstName != "Test" || lastName != "User" {
+		t.Fatalf("unexpected names: %s %s", firstName, lastName)
+	}
+	if avatarURL != "https://example.com/avatar.png" {
+		t.Fatalf("unexpected avatar url: %s", avatarURL)
+	}
+	if providerID != "google-user-123" {
+		t.Fatalf("unexpected provider id: %s", providerID)
+	}
+}
+
+func TestVerifyGoogleTokenRejectsMismatchedAudience(t *testing.T) {
+	restoreURL := swapGoogleTokenInfoURLForTest("https://tokeninfo.test")
+	defer restoreURL()
+
+	restoreClient := swapGoogleHTTPClientForTest(newGoogleTokenInfoClient(t, http.StatusOK, googleTokenInfo{
+		Email:         "user@example.com",
+		EmailVerified: "true",
+		Sub:           "google-user-123",
+		Aud:           "different-client-id",
+	}))
+	defer restoreClient()
+
+	handler := &Handler{
+		cfg: &config.Config{GoogleClientID: "web-client-id"},
+	}
+
+	if _, _, _, _, _, err := handler.verifyGoogleToken("wrong-audience-token"); err == nil {
+		t.Fatal("expected mismatched google audience to be rejected")
+	}
+}
+
+func TestVerifyGoogleTokenRejectsWhenGoogleSignInUnconfigured(t *testing.T) {
+	handler := &Handler{
+		cfg: &config.Config{},
+	}
+
+	if _, _, _, _, _, err := handler.verifyGoogleToken("token"); err == nil {
+		t.Fatal("expected unconfigured google sign-in to be rejected")
+	}
+}
+
+func TestVerifyGoogleTokenRejectsUnverifiedEmail(t *testing.T) {
+	restoreURL := swapGoogleTokenInfoURLForTest("https://tokeninfo.test")
+	defer restoreURL()
+
+	restoreClient := swapGoogleHTTPClientForTest(newGoogleTokenInfoClient(t, http.StatusOK, googleTokenInfo{
+		Email:         "user@example.com",
+		EmailVerified: "false",
+		Sub:           "google-user-123",
+		Aud:           "web-client-id",
+	}))
+	defer restoreClient()
+
+	handler := &Handler{
+		cfg: &config.Config{GoogleClientID: "web-client-id"},
+	}
+
+	if _, _, _, _, _, err := handler.verifyGoogleToken("unverified-email-token"); err == nil {
+		t.Fatal("expected unverified google email to be rejected")
+	}
+}
 
 func TestVerifyAppleTokenAcceptsValidSignedToken(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -150,5 +243,53 @@ func swapAppleJWKCacheForTest(cache *appleJWKCache) func() {
 	appleJWKs = cache
 	return func() {
 		appleJWKs = previous
+	}
+}
+
+func newGoogleTokenInfoClient(t *testing.T, statusCode int, payload googleTokenInfo) *http.Client {
+	t.Helper()
+
+	return &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if got := r.URL.Query().Get("id_token"); got == "" {
+				t.Errorf("expected id_token query param to be set")
+			}
+			if got := r.URL.Scheme + "://" + r.URL.Host + r.URL.Path; got != "https://tokeninfo.test" {
+				t.Errorf("unexpected tokeninfo url: %s", got)
+			}
+
+			body, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatalf("marshal tokeninfo payload: %v", err)
+			}
+
+			return &http.Response{
+				StatusCode: statusCode,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(string(body))),
+			}, nil
+		}),
+	}
+}
+
+func swapGoogleHTTPClientForTest(client *http.Client) func() {
+	previous := googleHTTPClient
+	googleHTTPClient = client
+	return func() {
+		googleHTTPClient = previous
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func swapGoogleTokenInfoURLForTest(tokenInfoURL string) func() {
+	previous := googleTokenInfoURL
+	googleTokenInfoURL = tokenInfoURL
+	return func() {
+		googleTokenInfoURL = previous
 	}
 }

@@ -23,6 +23,7 @@ enum class DietaryType(val displayName: String) {
 }
 
 enum class OrderStatus(val displayName: String) {
+    @SerializedName("scheduled") SCHEDULED("Scheduled"),
     @SerializedName("pending") PENDING("Pending"),
     @SerializedName("confirmed") CONFIRMED("Confirmed"),
     @SerializedName("preparing") PREPARING("Preparing"),

@@ -68,23 +68,6 @@ struct SellerLoginView: View {
                             .background(Color.black)
                             .cornerRadius(12)
                         }
-
-                        // Continue with Facebook
-                        Button {
-                            authVM.signInWithFacebook()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Text("f")
-                                    .font(.system(size: 22, weight: .bold))
-                                Text("Continue with Facebook")
-                                    .font(.system(size: 16, weight: .medium))
-                            }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(Color(red: 0.094, green: 0.467, blue: 0.949))
-                            .cornerRadius(12)
-                        }
                     }
                     .padding(.horizontal, 24)
 

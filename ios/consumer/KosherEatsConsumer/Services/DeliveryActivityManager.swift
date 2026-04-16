@@ -75,6 +75,7 @@ final class DeliveryActivityManager {
 
     private func statusText(for status: OrderStatus) -> String {
         switch status {
+        case .scheduled: return "Scheduled for later"
         case .pending: return "Waiting for restaurant"
         case .accepted: return "Restaurant accepted"
         case .preparing: return "Your food is being prepared"

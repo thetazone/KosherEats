@@ -19,8 +19,6 @@ type Config struct {
 	AppleTeamID        string
 	AppleKeyID         string
 	ApplePrivateKey    string
-	FacebookAppID      string
-	FacebookAppSecret  string
 
 	// APNs (push notifications)
 	APNsKeyID      string // Apple Developer key id (e.g. "ABC123DEFG")
@@ -64,8 +62,6 @@ func Load() *Config {
 		AppleTeamID:        getEnv("APPLE_TEAM_ID", ""),
 		AppleKeyID:         getEnv("APPLE_KEY_ID", ""),
 		ApplePrivateKey:    getEnv("APPLE_PRIVATE_KEY", ""),
-		FacebookAppID:      getEnv("FACEBOOK_APP_ID", ""),
-		FacebookAppSecret:  getEnv("FACEBOOK_APP_SECRET", ""),
 
 		APNsKeyID:      getEnv("APNS_KEY_ID", ""),
 		APNsTeamID:     getEnv("APNS_TEAM_ID", ""),

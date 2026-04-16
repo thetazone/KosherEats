@@ -177,9 +177,12 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	// We compute it here (not at order creation) so tip changes made after
 	// delivery can still be captured.
 	var deliveryFee, tip int
-	_ = tx.QueryRow(r.Context(),
+	if err := tx.QueryRow(r.Context(),
 		`SELECT delivery_fee, courier_tip FROM orders WHERE id = $1`, orderID,
-	).Scan(&deliveryFee, &tip)
+	).Scan(&deliveryFee, &tip); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load order payout fields")
+		return
+	}
 	payout := deliveryFee + tip
 
 	result, err := tx.Exec(r.Context(),

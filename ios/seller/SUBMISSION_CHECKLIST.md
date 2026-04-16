@@ -13,7 +13,7 @@ for anything that applies to both apps (signing, Apple Dev account, etc.).
 - [ ] Same `DEVELOPMENT_TEAM` as consumer (blank in project.yml today).
 - [ ] Provisioning profile for `com.koshereats.seller` in Apple Dev portal.
 - [ ] Enable Push Notifications capability (sellers get pushes on new orders).
-- [ ] Enable Sign in with Apple (required since Google + Facebook are offered).
+- [ ] Enable Sign in with Apple (required since Google is offered).
 
 ## 2. Privacy + permissions
 
@@ -36,8 +36,7 @@ for anything that applies to both apps (signing, Apple Dev account, etc.).
 
 ## 4. Third-party SDKs
 
-- [ ] Replace Google + Facebook placeholder IDs in `Info.plist` (same as
-      consumer).
+- [ ] Replace Google placeholder ID in `Info.plist` (same as consumer).
 - Sellers don't need Stripe SDK client-side — payouts are handled
   server-side via Stripe Connect (separate from consumer Stripe).
 

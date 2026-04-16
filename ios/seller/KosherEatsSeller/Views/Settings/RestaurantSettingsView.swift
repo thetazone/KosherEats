@@ -308,7 +308,7 @@ struct RestaurantSettingsView: View {
         city = r.city
         state = r.state
         zipCode = r.zipCode
-        deliveryFee = String(format: "%.2f", r.deliveryFee)
+        deliveryFee = String(format: "%.2f", r.deliveryFee / 100.0)
         minOrder = String(format: "%.2f", r.minOrder)
         estDeliveryMin = "\(r.estDeliveryMin)"
         estDeliveryMax = "\(r.estDeliveryMax)"
@@ -332,7 +332,7 @@ struct RestaurantSettingsView: View {
         restaurant.city = city
         restaurant.state = state
         restaurant.zipCode = zipCode
-        restaurant.deliveryFee = Double(deliveryFee) ?? 0
+        restaurant.deliveryFee = ((Double(deliveryFee) ?? 0) * 100).rounded()
         restaurant.minOrder = Double(minOrder) ?? 0
         restaurant.estDeliveryMin = Int(estDeliveryMin) ?? 20
         restaurant.estDeliveryMax = Int(estDeliveryMax) ?? 45
