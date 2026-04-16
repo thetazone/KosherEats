@@ -1,23 +1,28 @@
 package handlers
 
 import (
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/koshereats/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/sync/singleflight"
 )
 
 type SocialLoginRequest struct {
-	Provider    string          `json:"provider"`    // "google", "apple", "facebook"
-	Token       string          `json:"token"`       // ID token or access token from provider
-	FirstName   string          `json:"first_name"`  // optional, from provider
-	LastName    string          `json:"last_name"`   // optional, from provider
-	Role        models.UserRole `json:"role"`        // consumer or seller
+	Provider  string `json:"provider"`   // "google", "apple", "facebook"
+	Token     string `json:"token"`      // ID token or access token from provider
+	FirstName string `json:"first_name"` // optional, from provider
+	LastName  string `json:"last_name"`  // optional, from provider
 }
 
 type googleTokenInfo struct {
@@ -43,9 +48,18 @@ type facebookUser struct {
 }
 
 type appleTokenClaims struct {
-	Email string `json:"email"`
-	Sub   string `json:"sub"`
+	Email         string          `json:"email"`
+	EmailVerified json.RawMessage `json:"email_verified"`
+	jwt.RegisteredClaims
 }
+
+const (
+	appleJWKCacheTTL         = time.Hour
+	appleJWKFetchTimeout     = 5 * time.Second
+	appleTokenIssuedAtLeeway = 5 * time.Minute
+)
+
+var appleJWKs = newAppleJWKCache()
 
 func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	var req SocialLoginRequest
@@ -57,10 +71,6 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	if req.Token == "" || req.Provider == "" {
 		writeError(w, http.StatusBadRequest, "provider and token are required")
 		return
-	}
-
-	if req.Role == "" {
-		req.Role = models.RoleConsumer
 	}
 
 	var email, firstName, lastName, avatarURL, providerID string
@@ -105,7 +115,7 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 			`INSERT INTO users (email, password_hash, first_name, last_name, role, avatar_url, auth_provider, auth_provider_id)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 RETURNING id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at`,
-			email, string(dummyHash), firstName, lastName, req.Role, avatarURL, req.Provider, providerID,
+			email, string(dummyHash), firstName, lastName, models.RoleConsumer, avatarURL, req.Provider, providerID,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
 			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 
@@ -155,31 +165,38 @@ func (h *Handler) verifyGoogleToken(idToken string) (email, firstName, lastName,
 }
 
 func (h *Handler) verifyAppleToken(idToken string, firstName, lastName string) (email, fName, lName, providerID string, err error) {
-	// Decode the JWT payload (Apple ID tokens are JWTs)
-	parts := strings.Split(idToken, ".")
-	if len(parts) != 3 {
-		return "", "", "", "", fmt.Errorf("invalid apple token format")
-	}
-
-	// Decode payload
-	payload := parts[1]
-	// Add padding if needed
-	switch len(payload) % 4 {
-	case 2:
-		payload += "=="
-	case 3:
-		payload += "="
-	}
-
-	decoded, err := io.ReadAll(strings.NewReader(payload))
-	if err != nil {
-		return "", "", "", "", fmt.Errorf("failed to decode apple token")
+	if h.cfg == nil || h.cfg.AppleClientID == "" {
+		return "", "", "", "", fmt.Errorf("apple sign-in is not configured")
 	}
 
 	var claims appleTokenClaims
-	// In production: verify signature against Apple's public keys at https://appleid.apple.com/auth/keys
-	if err := json.Unmarshal(decoded, &claims); err != nil {
-		return "", "", "", "", fmt.Errorf("failed to parse apple token claims")
+	_, err = jwt.ParseWithClaims(
+		idToken,
+		&claims,
+		appleJWKs.resolveKey,
+		jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}),
+		jwt.WithIssuer("https://appleid.apple.com"),
+		jwt.WithAudience(h.cfg.AppleClientID),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("invalid apple token")
+	}
+
+	if claims.Subject == "" {
+		return "", "", "", "", fmt.Errorf("apple token missing subject")
+	}
+
+	if claims.Email == "" {
+		return "", "", "", "", fmt.Errorf("apple token missing verified email")
+	}
+
+	if !claims.emailVerified() {
+		return "", "", "", "", fmt.Errorf("apple email is not verified")
+	}
+
+	if claims.IssuedAt != nil && claims.IssuedAt.Time.After(time.Now().Add(appleTokenIssuedAtLeeway)) {
+		return "", "", "", "", fmt.Errorf("apple token issued-at is invalid")
 	}
 
 	// Apple only sends name on first login — use what the client provides
@@ -190,7 +207,7 @@ func (h *Handler) verifyAppleToken(idToken string, firstName, lastName string) (
 		lastName = "User"
 	}
 
-	return claims.Email, firstName, lastName, claims.Sub, nil
+	return claims.Email, firstName, lastName, claims.Subject, nil
 }
 
 func (h *Handler) verifyFacebookToken(accessToken string) (email, firstName, lastName, avatarURL, providerID string, err error) {
@@ -210,4 +227,184 @@ func (h *Handler) verifyFacebookToken(accessToken string) (email, firstName, las
 	}
 
 	return fbUser.Email, fbUser.FirstName, fbUser.LastName, fbUser.Picture.Data.URL, fbUser.ID, nil
+}
+
+func (c appleTokenClaims) emailVerified() bool {
+	var verifiedBool bool
+	if err := json.Unmarshal(c.EmailVerified, &verifiedBool); err == nil {
+		return verifiedBool
+	}
+
+	var verifiedString string
+	if err := json.Unmarshal(c.EmailVerified, &verifiedString); err == nil {
+		return strings.EqualFold(verifiedString, "true")
+	}
+
+	return false
+}
+
+type appleJWKResponse struct {
+	Keys []appleJWK `json:"keys"`
+}
+
+type appleJWK struct {
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Alg string `json:"alg"`
+	Use string `json:"use"`
+	N   string `json:"n"`
+	E   string `json:"e"`
+}
+
+type appleJWKCache struct {
+	mu        sync.RWMutex
+	keys      map[string]*rsa.PublicKey
+	expiresAt time.Time
+	client    *http.Client
+	group     singleflight.Group
+	jwksURL   string
+	now       func() time.Time
+}
+
+func newAppleJWKCache() *appleJWKCache {
+	return &appleJWKCache{
+		keys: make(map[string]*rsa.PublicKey),
+		client: &http.Client{
+			Timeout: appleJWKFetchTimeout,
+		},
+		jwksURL: "https://appleid.apple.com/auth/keys",
+		now:     time.Now,
+	}
+}
+
+func (c *appleJWKCache) resolveKey(token *jwt.Token) (interface{}, error) {
+	if token.Method == nil || token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
+		return nil, fmt.Errorf("unexpected apple signing method")
+	}
+
+	kid, _ := token.Header["kid"].(string)
+	if kid == "" {
+		return nil, fmt.Errorf("apple token missing key id")
+	}
+
+	if key, ok := c.cachedKey(kid); ok {
+		return key, nil
+	}
+
+	keys, err := c.refresh()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load apple signing keys")
+	}
+
+	key := keys[kid]
+	if key == nil {
+		return nil, fmt.Errorf("apple signing key not found")
+	}
+
+	return key, nil
+}
+
+func (c *appleJWKCache) cachedKey(kid string) (*rsa.PublicKey, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.now().After(c.expiresAt) {
+		return nil, false
+	}
+
+	key := c.keys[kid]
+	return key, key != nil
+}
+
+func (c *appleJWKCache) refresh() (map[string]*rsa.PublicKey, error) {
+	result, err, _ := c.group.Do("apple-jwks-refresh", func() (interface{}, error) {
+		keys, err := c.fetch()
+		if err != nil {
+			return nil, err
+		}
+
+		c.mu.Lock()
+		c.keys = keys
+		c.expiresAt = c.now().Add(appleJWKCacheTTL)
+		c.mu.Unlock()
+
+		return keys, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.(map[string]*rsa.PublicKey), nil
+}
+
+func (c *appleJWKCache) fetch() (map[string]*rsa.PublicKey, error) {
+	resp, err := c.client.Get(c.jwksURL)
+	if err != nil {
+		return nil, fmt.Errorf("fetch apple jwks: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("apple jwks returned status %d", resp.StatusCode)
+	}
+
+	var jwkResponse appleJWKResponse
+	if err := json.NewDecoder(resp.Body).Decode(&jwkResponse); err != nil {
+		return nil, fmt.Errorf("decode apple jwks: %w", err)
+	}
+
+	keys := make(map[string]*rsa.PublicKey, len(jwkResponse.Keys))
+	for _, jwk := range jwkResponse.Keys {
+		if jwk.Kid == "" || jwk.Kty != "RSA" {
+			continue
+		}
+		if jwk.Use != "" && jwk.Use != "sig" {
+			continue
+		}
+		if jwk.Alg != "" && jwk.Alg != jwt.SigningMethodRS256.Alg() {
+			continue
+		}
+
+		key, err := parseAppleRSAPublicKey(jwk)
+		if err != nil {
+			return nil, err
+		}
+		keys[jwk.Kid] = key
+	}
+
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("apple jwks contained no usable keys")
+	}
+
+	return keys, nil
+}
+
+func parseAppleRSAPublicKey(jwk appleJWK) (*rsa.PublicKey, error) {
+	modulusBytes, err := base64.RawURLEncoding.DecodeString(jwk.N)
+	if err != nil {
+		return nil, fmt.Errorf("decode apple jwk modulus: %w", err)
+	}
+
+	exponentBytes, err := base64.RawURLEncoding.DecodeString(jwk.E)
+	if err != nil {
+		return nil, fmt.Errorf("decode apple jwk exponent: %w", err)
+	}
+
+	exponent := 0
+	for _, b := range exponentBytes {
+		exponent = (exponent << 8) | int(b)
+	}
+	if exponent <= 0 {
+		return nil, fmt.Errorf("apple jwk exponent is invalid")
+	}
+
+	modulus := new(big.Int).SetBytes(modulusBytes)
+	if modulus.Sign() <= 0 {
+		return nil, fmt.Errorf("apple jwk modulus is invalid")
+	}
+
+	return &rsa.PublicKey{
+		N: modulus,
+		E: exponent,
+	}, nil
 }

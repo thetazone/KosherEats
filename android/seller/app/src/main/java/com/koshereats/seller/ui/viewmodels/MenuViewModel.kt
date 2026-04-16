@@ -43,11 +43,20 @@ class MenuViewModel @Inject constructor(
                 selectedCategory = category,
             )
             try {
-                val categoryStr = category?.name?.lowercase()
-                val response = apiService.getMenuItems(category = categoryStr)
+                val response = apiService.getSellerMenu()
                 if (response.isSuccessful) {
+                    val items = response.body().orEmpty().let { categories ->
+                        if (category == null) {
+                            categories.flatMap { it.items }
+                        } else {
+                            val categoryName = category.name.lowercase()
+                            categories
+                                .filter { it.name.equals(categoryName, ignoreCase = true) }
+                                .flatMap { it.items }
+                        }
+                    }
                     _state.value = _state.value.copy(
-                        items = response.body() ?: emptyList(),
+                        items = items,
                         isLoading = false,
                     )
                 } else {
@@ -69,13 +78,37 @@ class MenuViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val response = apiService.getMenuItem(itemId)
-                if (response.isSuccessful) {
-                    _state.value = _state.value.copy(
-                        selectedItem = response.body(),
-                        isLoading = false,
-                    )
+                var selectedItem = _state.value.items.firstOrNull { it.id == itemId }
+                if (selectedItem == null) {
+                    val response = apiService.getSellerMenu()
+                    if (response.isSuccessful) {
+                        selectedItem = response.body().orEmpty()
+                            .flatMap { it.items }
+                            .firstOrNull { it.id == itemId }
+                        _state.value = _state.value.copy(
+                            items = response.body().orEmpty().let { categories ->
+                                val selectedCategory = _state.value.selectedCategory
+                                if (selectedCategory == null) {
+                                    categories.flatMap { it.items }
+                                } else {
+                                    val categoryName = selectedCategory.name.lowercase()
+                                    categories
+                                        .filter { it.name.equals(categoryName, ignoreCase = true) }
+                                        .flatMap { it.items }
+                                }
+                            },
+                            selectedItem = selectedItem,
+                            isLoading = false,
+                            error = if (selectedItem == null) "Failed to load item" else null,
+                        )
+                        return@launch
+                    }
                 }
+                _state.value = _state.value.copy(
+                    selectedItem = selectedItem,
+                    isLoading = false,
+                    error = if (selectedItem == null) "Failed to load item" else null,
+                )
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

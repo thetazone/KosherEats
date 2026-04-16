@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.models.OrderStatus
+import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.OrdersViewModel
 
@@ -189,7 +190,7 @@ private fun OrderCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "$${String.format("%.2f", order.total)}",
+                    text = order.total.formatPrice(),
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,

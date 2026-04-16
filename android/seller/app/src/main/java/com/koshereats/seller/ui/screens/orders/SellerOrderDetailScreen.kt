@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocalShipping
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.OrderStatus
+import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.screens.dashboard.OrderStatusBadge
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
@@ -83,7 +83,7 @@ fun SellerOrderDetailScreen(
         TopAppBar(
             title = {
                 Text(
-                    text = if (order != null) "Order #${order.orderNumber}" else "Order Detail",
+                    text = if (order != null) "Order #${order.id.take(8)}" else "Order Detail",
                     style = MaterialTheme.typography.titleLarge,
                     color = TextWhite,
                 )
@@ -131,60 +131,31 @@ fun SellerOrderDetailScreen(
                             OrderStatusBadge(status = order.status)
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Divider(color = DividerColor, thickness = 0.5.dp)
-                        Spacer(modifier = Modifier.height(16.dp))
+                        if (order.deliveryAddress.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Divider(color = DividerColor, thickness = 0.5.dp)
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        // Customer info
-                        Text(
-                            text = "Customer",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = TextMuted,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Restaurant,
-                                contentDescription = null,
-                                tint = Orange,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = order.customerName,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextWhite,
+                                text = "Delivery Address",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextMuted,
                             )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.Phone,
-                                contentDescription = null,
-                                tint = TextMuted,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = order.customerPhone,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary,
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.LocalShipping,
-                                contentDescription = null,
-                                tint = TextMuted,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = order.deliveryAddress,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextSecondary,
-                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Filled.LocalShipping,
+                                    contentDescription = null,
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = order.deliveryAddress,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary,
+                                )
+                            }
                         }
                     }
                 }
@@ -235,7 +206,7 @@ fun SellerOrderDetailScreen(
                                     }
                                 }
                                 Text(
-                                    text = "$${String.format("%.2f", item.totalPrice)}",
+                                    text = item.totalPrice.formatPrice(),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = TextWhite,
                                 )
@@ -267,35 +238,10 @@ fun SellerOrderDetailScreen(
                                 color = TextWhite,
                             )
                             Text(
-                                text = "$${String.format("%.2f", order.total)}",
+                                text = order.total.formatPrice(),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Orange,
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Special instructions
-            if (order.specialInstructions.isNotBlank()) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Special Instructions",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextMuted,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = order.specialInstructions,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextWhite,
                             )
                         }
                     }
@@ -308,7 +254,7 @@ fun SellerOrderDetailScreen(
                     status = order.status,
                     isUpdating = state.isUpdating,
                     onAccept = {
-                        viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED, estimatedPrepTime = 25)
+                        viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED)
                     },
                     onStartPreparing = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.PREPARING)
@@ -331,7 +277,7 @@ fun SellerOrderDetailScreen(
 }
 
 @Composable
-private fun PriceRow(label: String, amount: Double) {
+private fun PriceRow(label: String, amount: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -342,7 +288,7 @@ private fun PriceRow(label: String, amount: Double) {
             color = TextMuted,
         )
         Text(
-            text = "$${String.format("%.2f", amount)}",
+            text = amount.formatPrice(),
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
         )

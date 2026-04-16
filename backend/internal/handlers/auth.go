@@ -16,12 +16,11 @@ type contextKey string
 const userContextKey contextKey = "user"
 
 type RegisterRequest struct {
-	Email     string          `json:"email"`
-	Password  string          `json:"password"`
-	FirstName string          `json:"first_name"`
-	LastName  string          `json:"last_name"`
-	Phone     string          `json:"phone"`
-	Role      models.UserRole `json:"role"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Phone     string `json:"phone"`
 }
 
 type LoginRequest struct {
@@ -47,10 +46,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Role == "" {
-		req.Role = models.RoleConsumer
-	}
-
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to hash password")
@@ -62,7 +57,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, email, first_name, last_name, phone, role, created_at, updated_at`,
-		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, req.Role,
+		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, models.RoleConsumer,
 	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {

@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
+
+	"github.com/stripe/stripe-go/v78/webhook"
 )
 
 // CreatePaymentIntent computes the authoritative total server-side (cart +
@@ -88,32 +92,41 @@ func (h *Handler) ConfirmPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
-	// Minimal webhook handler. We're interested in account.updated from
-	// Stripe Connect so we can flip courier_profiles.payout_ready when a
-	// courier finishes KYC without them having to reopen the app.
-	//
-	// Signature verification is skipped in dev stub mode (no key configured);
-	// production must verify via StripeWebhookSec before trusting anything.
-	var event struct {
-		Type string `json:"type"`
-		Data struct {
-			Object struct {
-				ID               string `json:"id"`
-				PayoutsEnabled   bool   `json:"payouts_enabled"`
-				DetailsSubmitted bool   `json:"details_submitted"`
-			} `json:"object"`
-		} `json:"data"`
+	// Verify the Stripe signature before trusting any webhook payload. This
+	// handler updates courier payout readiness from Stripe Connect's
+	// account.updated events, so it must fail closed when misconfigured.
+	if h.cfg.StripeWebhookSec == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
-	if err := readJSON(r, &event); err != nil {
-		w.WriteHeader(http.StatusOK) // never fail open to Stripe
+
+	payload, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	event, err := webhook.ConstructEvent(payload, r.Header.Get("Stripe-Signature"), h.cfg.StripeWebhookSec)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	if event.Type == "account.updated" {
-		ready := event.Data.Object.PayoutsEnabled && event.Data.Object.DetailsSubmitted
+		var account struct {
+			ID               string `json:"id"`
+			PayoutsEnabled   bool   `json:"payouts_enabled"`
+			DetailsSubmitted bool   `json:"details_submitted"`
+		}
+		if err := json.Unmarshal(event.Data.Raw, &account); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		ready := account.PayoutsEnabled && account.DetailsSubmitted
 		_, _ = h.db.Pool.Exec(r.Context(),
 			`UPDATE courier_profiles SET payout_ready = $1, updated_at = NOW()
-			 WHERE stripe_connect_id = $2`, ready, event.Data.Object.ID)
+			 WHERE stripe_connect_id = $2`, ready, account.ID)
 	}
 
 	w.WriteHeader(http.StatusOK)

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koshereats.consumer.data.models.CartItem
+import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
 
@@ -177,7 +178,7 @@ fun CartScreen(
                             .padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf(0.0, 2.0, 3.0, 5.0, 8.0).forEach { tipAmount ->
+                        listOf(0, 200, 300, 500, 800).forEach { tipAmount ->
                             val isSelected = state.tip == tipAmount
                             Box(
                                 modifier = Modifier
@@ -194,7 +195,7 @@ fun CartScreen(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
-                                    text = if (tipAmount == 0.0) "None" else "$${tipAmount.toInt()}",
+                                    text = if (tipAmount == 0) "None" else "$${tipAmount / 100}",
                                     color = if (isSelected) TextWhite else TextSecondary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -240,7 +241,7 @@ fun CartScreen(
                                     fontSize = 18.sp,
                                 )
                                 Text(
-                                    text = "$${String.format("%.2f", state.total)}",
+                                    text = state.total.formatPrice(),
                                     color = TextWhite,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
@@ -256,8 +257,10 @@ fun CartScreen(
             Button(
                 onClick = {
                     cartViewModel.placeOrder(
-                        deliveryAddressId = "default",
-                        paymentMethodId = "default",
+                        deliveryAddress = "",
+                        deliveryLat = 0.0,
+                        deliveryLng = 0.0,
+                        paymentIntentId = "",
                     )
                 },
                 modifier = Modifier
@@ -272,7 +275,7 @@ fun CartScreen(
                     CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
                 } else {
                     Text(
-                        text = "Place Order - $${String.format("%.2f", state.total)}",
+                        text = "Place Order - ${state.total.formatPrice()}",
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
@@ -323,7 +326,7 @@ private fun CartItemRow(
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "$${String.format("%.2f", cartItem.totalPrice)}",
+                    text = cartItem.totalPrice.formatPrice(),
                     color = Orange,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
@@ -381,14 +384,14 @@ private fun CartItemRow(
 }
 
 @Composable
-private fun PriceRow(label: String, amount: Double) {
+private fun PriceRow(label: String, amount: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(text = label, color = TextTertiary, fontSize = 14.sp)
         Text(
-            text = "$${String.format("%.2f", amount)}",
+            text = amount.formatPrice(),
             color = TextSecondary,
             fontSize = 14.sp,
         )

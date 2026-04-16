@@ -126,10 +126,10 @@ data class Restaurant(
     @SerializedName("is_yoshon") val isYoshon: Boolean = false,
     @SerializedName("dietary_type") val dietaryType: DietaryType = DietaryType.MEAT,
     @SerializedName("is_open") val isOpen: Boolean = true,
-    @SerializedName("delivery_fee") val deliveryFee: Double = 0.0,
+    @SerializedName("delivery_fee") val deliveryFee: Int = 0,
     @SerializedName("delivery_time_min") val deliveryTimeMin: Int = 0,
     @SerializedName("delivery_time_max") val deliveryTimeMax: Int = 0,
-    @SerializedName("minimum_order") val minimumOrder: Double = 0.0,
+    @SerializedName("minimum_order") val minimumOrder: Int = 0,
     @SerializedName("operating_hours") val operatingHours: List<OperatingHour> = emptyList(),
     @SerializedName("is_shabbat_closed") val isShabbatClosed: Boolean = true,
     val distance: Double? = null,
@@ -158,7 +158,7 @@ data class MenuItem(
     @SerializedName("category_id") val categoryId: String = "",
     val name: String = "",
     val description: String = "",
-    val price: Double = 0.0,
+    val price: Int = 0,
     @SerializedName("image_url") val imageUrl: String? = null,
     @SerializedName("is_available") val isAvailable: Boolean = true,
     @SerializedName("is_popular") val isPopular: Boolean = false,
@@ -187,7 +187,7 @@ data class MenuItemCustomization(
 data class CustomizationOption(
     val id: String = "",
     val name: String = "",
-    @SerializedName("price_modifier") val priceModifier: Double = 0.0,
+    @SerializedName("price_modifier") val priceModifier: Int = 0,
 )
 
 // ── Cart ──────────────────────────────────────────────────
@@ -197,7 +197,7 @@ data class Cart(
     @SerializedName("restaurant_name") val restaurantName: String = "",
     val items: List<CartItem> = emptyList(),
 ) {
-    val subtotal: Double get() = items.sumOf { it.totalPrice }
+    val subtotal: Int get() = items.sumOf { it.totalPrice }
     val itemCount: Int get() = items.sumOf { it.quantity }
 }
 
@@ -208,7 +208,7 @@ data class CartItem(
     @SerializedName("special_instructions") val specialInstructions: String? = null,
     @SerializedName("selected_customizations") val selectedCustomizations: List<SelectedCustomization> = emptyList(),
 ) {
-    val totalPrice: Double
+    val totalPrice: Int
         get() {
             val basePrice = menuItem.price
             val customizationPrice = selectedCustomizations
@@ -234,12 +234,12 @@ data class Order(
     @SerializedName("restaurant_image_url") val restaurantImageUrl: String? = null,
     val status: OrderStatus = OrderStatus.PENDING,
     val items: List<OrderItem> = emptyList(),
-    val subtotal: Double = 0.0,
-    @SerializedName("delivery_fee") val deliveryFee: Double = 0.0,
-    @SerializedName("service_fee") val serviceFee: Double = 0.0,
-    val tax: Double = 0.0,
-    val tip: Double = 0.0,
-    val total: Double = 0.0,
+    val subtotal: Int = 0,
+    @SerializedName("delivery_fee") val deliveryFee: Int = 0,
+    @SerializedName("service_fee") val serviceFee: Int = 0,
+    val tax: Int = 0,
+    val tip: Int = 0,
+    val total: Int = 0,
     @SerializedName("delivery_address") val deliveryAddress: Address = Address(),
     @SerializedName("estimated_delivery_time") val estimatedDeliveryTime: String? = null,
     @SerializedName("created_at") val createdAt: String = "",
@@ -250,17 +250,17 @@ data class OrderItem(
     val id: String = "",
     val name: String = "",
     val quantity: Int = 1,
-    val price: Double = 0.0,
+    val price: Int = 0,
     @SerializedName("special_instructions") val specialInstructions: String? = null,
 )
 
 data class CreateOrderRequest(
     @SerializedName("restaurant_id") val restaurantId: String,
-    val items: List<CreateOrderItem>,
-    @SerializedName("delivery_address_id") val deliveryAddressId: String,
-    val tip: Double = 0.0,
-    @SerializedName("payment_method_id") val paymentMethodId: String,
-    @SerializedName("special_instructions") val specialInstructions: String? = null,
+    @SerializedName("delivery_address") val deliveryAddress: String,
+    @SerializedName("delivery_lat") val deliveryLat: Double,
+    @SerializedName("delivery_lng") val deliveryLng: Double,
+    @SerializedName("payment_intent_id") val paymentIntentId: String,
+    val tip: Int = 0,
     /**
      * Scheduled delivery time as RFC-3339. `null` means deliver ASAP. When
      * set more than 30 minutes in the future the backend flags the order
@@ -268,13 +268,6 @@ data class CreateOrderRequest(
      * the delivery window approaches.
      */
     @SerializedName("scheduled_for") val scheduledFor: String? = null,
-)
-
-data class CreateOrderItem(
-    @SerializedName("menu_item_id") val menuItemId: String,
-    val quantity: Int,
-    @SerializedName("special_instructions") val specialInstructions: String? = null,
-    val customizations: List<SelectedCustomization> = emptyList(),
 )
 
 // ── API Responses ─────────────────────────────────────────

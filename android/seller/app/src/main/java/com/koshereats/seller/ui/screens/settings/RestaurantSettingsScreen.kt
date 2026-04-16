@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.Restaurant
+import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -251,7 +252,7 @@ fun RestaurantSettingsScreen(
                         Column {
                             Text("Delivery Fee", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             Text(
-                                "$${String.format("%.2f", restaurant.deliveryFee)}",
+                                restaurant.deliveryFee.formatPrice(),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextWhite,
                                 fontWeight = FontWeight.SemiBold,
@@ -260,7 +261,7 @@ fun RestaurantSettingsScreen(
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Minimum Order", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             Text(
-                                "$${String.format("%.2f", restaurant.minimumOrder)}",
+                                restaurant.minimumOrder.formatPrice(),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TextWhite,
                                 fontWeight = FontWeight.SemiBold,

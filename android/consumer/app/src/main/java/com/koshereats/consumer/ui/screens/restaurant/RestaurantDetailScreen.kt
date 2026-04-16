@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.MenuItem
+import com.koshereats.consumer.data.models.formatPrice
+import com.koshereats.consumer.data.models.formatPriceWhole
 import com.koshereats.consumer.ui.components.KosherInfoRow
 import com.koshereats.consumer.ui.components.MenuItemDietaryDot
 import com.koshereats.consumer.ui.theme.*
@@ -228,8 +230,8 @@ fun RestaurantDetailScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = if (restaurant.deliveryFee == 0.0) "Free" else "$${String.format("%.2f", restaurant.deliveryFee)}",
-                                    color = if (restaurant.deliveryFee == 0.0) SuccessGreen else TextWhite,
+                                    text = if (restaurant.deliveryFee == 0) "Free" else restaurant.deliveryFee.formatPrice(),
+                                    color = if (restaurant.deliveryFee == 0) SuccessGreen else TextWhite,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                 )
@@ -237,7 +239,7 @@ fun RestaurantDetailScreen(
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
-                                    text = "$${String.format("%.0f", restaurant.minimumOrder)}",
+                                    text = restaurant.minimumOrder.formatPriceWhole(),
                                     color = TextWhite,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
@@ -383,7 +385,7 @@ fun RestaurantDetailScreen(
                             )
                         }
                         Text(
-                            text = "$${String.format("%.2f", cartState.subtotal)}",
+                            text = cartState.subtotal.formatPrice(),
                             color = TextWhite,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -451,7 +453,7 @@ fun MenuItemCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = "$${String.format("%.2f", menuItem.price)}",
+                        text = menuItem.price.formatPrice(),
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp,

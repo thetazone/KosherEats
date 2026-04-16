@@ -11,15 +11,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import java.util.UUID
 import javax.inject.Inject
 
 data class CartUiState(
     val cart: Cart = Cart(),
-    val deliveryFee: Double = 3.99,
-    val serviceFee: Double = 2.49,
+    val deliveryFee: Int = 399,
+    val serviceFee: Int = 249,
     val taxRate: Double = 0.08875,
-    val tip: Double = 0.0,
+    val tip: Int = 0,
     /**
      * Scheduled delivery time. `null` = deliver ASAP (the default). Any
      * future value gets serialized to RFC-3339 and sent on CreateOrderRequest;
@@ -31,9 +32,9 @@ data class CartUiState(
     val orderPlaced: Order? = null,
     val error: String? = null,
 ) {
-    val subtotal: Double get() = cart.subtotal
-    val tax: Double get() = subtotal * taxRate
-    val total: Double get() = subtotal + deliveryFee + serviceFee + tax + tip
+    val subtotal: Int get() = cart.subtotal
+    val tax: Int get() = (subtotal * taxRate).roundToInt()
+    val total: Int get() = subtotal + deliveryFee + serviceFee + tax + tip
     val isEmpty: Boolean get() = cart.items.isEmpty()
     val itemCount: Int get() = cart.itemCount
 }
@@ -111,7 +112,7 @@ class CartViewModel @Inject constructor(
         }
     }
 
-    fun updateTip(amount: Double) {
+    fun updateTip(amount: Int) {
         _uiState.update { it.copy(tip = amount) }
     }
 
@@ -124,7 +125,12 @@ class CartViewModel @Inject constructor(
         _uiState.update { it.copy(cart = Cart()) }
     }
 
-    fun placeOrder(deliveryAddressId: String, paymentMethodId: String) {
+    fun placeOrder(
+        deliveryAddress: String,
+        deliveryLat: Double,
+        deliveryLng: Double,
+        paymentIntentId: String,
+    ) {
         val state = _uiState.value
         if (state.isEmpty) return
 
@@ -140,17 +146,11 @@ class CartViewModel @Inject constructor(
 
         val request = CreateOrderRequest(
             restaurantId = state.cart.restaurantId,
-            items = state.cart.items.map { cartItem ->
-                CreateOrderItem(
-                    menuItemId = cartItem.menuItem.id,
-                    quantity = cartItem.quantity,
-                    specialInstructions = cartItem.specialInstructions,
-                    customizations = cartItem.selectedCustomizations,
-                )
-            },
-            deliveryAddressId = deliveryAddressId,
+            deliveryAddress = deliveryAddress,
+            deliveryLat = deliveryLat,
+            deliveryLng = deliveryLng,
+            paymentIntentId = paymentIntentId,
             tip = state.tip,
-            paymentMethodId = paymentMethodId,
             scheduledFor = scheduledFor,
         )
 

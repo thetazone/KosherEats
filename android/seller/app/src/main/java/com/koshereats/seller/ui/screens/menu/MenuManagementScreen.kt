@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
+import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.SuccessGreen
@@ -240,7 +241,7 @@ private fun MenuItemCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "$${String.format("%.2f", item.price)}",
+                        text = item.price.formatPrice(),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = Orange,

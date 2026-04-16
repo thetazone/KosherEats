@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.koshereats.seller.data.models.formatPrice
+import com.koshereats.seller.data.models.formatPriceWhole
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.StatusAccepted
@@ -147,7 +149,7 @@ fun DashboardScreen(
                 )
                 StatCard(
                     title = "Revenue",
-                    value = "$${String.format("%.0f", state.stats.revenueToday)}",
+                    value = state.stats.revenueToday.formatPriceWhole(),
                     icon = Icons.Filled.AttachMoney,
                     iconTint = SuccessGreen,
                     modifier = Modifier.weight(1f),
@@ -212,7 +214,7 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "$${String.format("%.2f", state.stats.revenueWeek)}",
+                            text = state.stats.revenueWeek.formatPrice(),
                             style = MaterialTheme.typography.titleMedium,
                             color = SuccessGreen,
                             fontWeight = FontWeight.Bold,

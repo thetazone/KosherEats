@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.Restaurant
+import com.koshereats.consumer.data.models.formatPrice
+import com.koshereats.consumer.data.models.formatPriceWhole
 import com.koshereats.consumer.ui.components.DietaryBadge
 import com.koshereats.consumer.ui.components.KosherBadge
 import com.koshereats.consumer.ui.theme.*
@@ -184,15 +186,15 @@ fun RestaurantCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (restaurant.deliveryFee == 0.0) "Free delivery" else "$${String.format("%.2f", restaurant.deliveryFee)}",
-                        color = if (restaurant.deliveryFee == 0.0) SuccessGreen else TextTertiary,
+                        text = if (restaurant.deliveryFee == 0) "Free delivery" else restaurant.deliveryFee.formatPrice(),
+                        color = if (restaurant.deliveryFee == 0) SuccessGreen else TextTertiary,
                         fontSize = 12.sp,
-                        fontWeight = if (restaurant.deliveryFee == 0.0) FontWeight.SemiBold else FontWeight.Normal,
+                        fontWeight = if (restaurant.deliveryFee == 0) FontWeight.SemiBold else FontWeight.Normal,
                     )
 
                     if (restaurant.minimumOrder > 0) {
                         Text(
-                            text = "  -  Min $${String.format("%.0f", restaurant.minimumOrder)}",
+                            text = "  -  Min ${restaurant.minimumOrder.formatPriceWhole()}",
                             color = TextMuted,
                             fontSize = 12.sp,
                         )

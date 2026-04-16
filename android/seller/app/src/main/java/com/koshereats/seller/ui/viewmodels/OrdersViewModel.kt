@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
-import com.koshereats.seller.data.models.UpdateOrderStatusRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,15 +89,31 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
-    fun updateOrderStatus(orderId: String, newStatus: OrderStatus, estimatedPrepTime: Int? = null) {
+    fun updateOrderStatus(orderId: String, newStatus: OrderStatus) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isUpdating = true, error = null, updateSuccess = null)
             try {
-                val request = UpdateOrderStatusRequest(
-                    status = newStatus.name.lowercase(),
-                    estimatedPrepTime = estimatedPrepTime,
-                )
-                val response = apiService.updateOrderStatus(orderId, request)
+                if (newStatus == OrderStatus.COMPLETED) {
+                    _state.value = _state.value.copy(isUpdating = false)
+                    return@launch
+                }
+
+                val response = when (newStatus) {
+                    OrderStatus.ACCEPTED -> apiService.acceptOrder(orderId)
+                    OrderStatus.PREPARING -> apiService.markOrderPreparing(orderId)
+                    OrderStatus.READY -> apiService.markOrderReady(orderId)
+                    OrderStatus.CANCELLED -> apiService.rejectOrder(orderId)
+                    else -> null
+                }
+
+                if (response == null) {
+                    _state.value = _state.value.copy(
+                        isUpdating = false,
+                        error = "This order transition is not available",
+                    )
+                    return@launch
+                }
+
                 if (response.isSuccessful) {
                     val updatedOrder = response.body()
                     _state.value = _state.value.copy(

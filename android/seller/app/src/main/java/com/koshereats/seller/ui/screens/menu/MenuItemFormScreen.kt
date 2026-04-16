@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
+import java.util.Locale
+import kotlin.math.roundToInt
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -86,7 +88,9 @@ fun MenuItemFormScreen(
 
     // Load existing item data
     LaunchedEffect(itemId) {
-        if (itemId != null) {
+        if (itemId == null) {
+            viewModel.setSelectedItem(null)
+        } else {
             viewModel.loadMenuItem(itemId)
         }
     }
@@ -95,7 +99,7 @@ fun MenuItemFormScreen(
         state.selectedItem?.let { item ->
             name = item.name
             description = item.description
-            price = item.price.toString()
+            price = String.format(Locale.US, "%.2f", item.price / 100.0)
             category = item.category
             imageUrl = item.imageUrl
             prepTime = item.preparationTime.toString()
@@ -328,10 +332,11 @@ fun MenuItemFormScreen(
             // Save button
             Button(
                 onClick = {
+                    val dollars = price.toDoubleOrNull() ?: 0.0
                     val request = UpdateMenuItemRequest(
                         name = name.trim(),
                         description = description.trim(),
-                        price = price.toDoubleOrNull() ?: 0.0,
+                        price = (dollars * 100.0).roundToInt(),
                         category = category.name.lowercase(),
                         imageUrl = imageUrl.trim().ifBlank { null },
                         isKosherPareve = isPareve,

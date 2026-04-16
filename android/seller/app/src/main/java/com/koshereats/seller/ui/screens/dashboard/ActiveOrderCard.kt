@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -31,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
+import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.StatusAccepted
@@ -67,7 +66,7 @@ fun ActiveOrderCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "#${order.orderNumber}",
+                        text = "#${order.id.take(8)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite,
@@ -86,24 +85,6 @@ fun ActiveOrderCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Customer info
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.Person,
-                    contentDescription = null,
-                    tint = TextMuted,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = order.customerName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             // Items summary
             Text(
                 text = "${order.items.size} item${if (order.items.size != 1) "s" else ""} " +
@@ -119,26 +100,11 @@ fun ActiveOrderCard(
             // Footer
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Filled.AccessTime,
-                        contentDescription = null,
-                        tint = Orange,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "${order.estimatedPrepTime} min",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Orange,
-                    )
-                }
-
                 Text(
-                    text = "$${String.format("%.2f", order.total)}",
+                    text = order.total.formatPrice(),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextWhite,

@@ -24,6 +24,18 @@ enum APIError: LocalizedError {
 final class APIService: ObservableObject {
     static let shared = APIService()
 
+    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    nonisolated(unsafe) private static let iso8601Plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     #if DEBUG
     private var baseURL = "http://localhost:8080/api/v1"
     #else
@@ -42,7 +54,23 @@ final class APIService: ObservableObject {
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+
+            if let date = APIService.iso8601Fractional.date(from: value) {
+                return date
+            }
+
+            if let date = APIService.iso8601Plain.date(from: value) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO8601 date: \(value)"
+            )
+        }
         return d
     }()
 
