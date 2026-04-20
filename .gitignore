@@ -5,12 +5,10 @@
 # Go
 backend/koshereats-api
 backend/vendor/
-
 # Node
 web/node_modules/
 web/.next/
 web/out/
-
 # iOS
 ios/**/*.xcworkspace
 ios/**/xcuserdata/
@@ -19,7 +17,6 @@ ios/**/*.xcodeproj/project.xcworkspace/
 ios/**/Pods/
 ios/**/.build/
 ios/**/build/
-
 # Android
 android/**/build/
 android/**/.gradle/
@@ -30,20 +27,16 @@ android/**/*.iml
 firebase-adminsdk*.json
 *.p8
 ios/**/firebase*.json
-
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
-
 # OS
 .DS_Store
 Thumbs.db
-ios/**/firebase*.json
 ios/koshereats-c463e-firebase-adminsdk-fbsvc-c484c84a3c.json
-
 # Go build cache — do not commit. Added 2026-04-16 after bug-hunt ISS-004 escalated
 # due to 265MB of backend/.gocache/ being scooped by `git add -A`.
 backend/.gocache/
