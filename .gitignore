@@ -10,10 +10,14 @@ web/node_modules/
 web/.next/
 web/out/
 # iOS
-ios/**/*.xcworkspace
+# NOTE: don't add `ios/**/*.xcworkspace` — that matches `project.xcworkspace/`
+# inside xcodeproj bundles too, which hides the SPM Package.resolved that
+# Xcode Cloud needs (automatic SPM resolution is off by default there).
 ios/**/xcuserdata/
 ios/**/DerivedData/
-ios/**/*.xcodeproj/project.xcworkspace/
+ios/**/*.xcodeproj/project.xcworkspace/xcuserdata/
+ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+ios/**/*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
 ios/**/Pods/
 ios/**/.build/
 ios/**/build/
@@ -24,6 +28,8 @@ android/**/local.properties
 android/**/google-services*.json
 google-services*.json
 android/**/*.iml
+android/**/*.jks
+android/**/*.keystore
 firebase-adminsdk*.json
 *.p8
 ios/**/firebase*.json
