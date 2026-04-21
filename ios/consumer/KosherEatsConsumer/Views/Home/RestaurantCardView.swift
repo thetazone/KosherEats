@@ -41,7 +41,7 @@ struct RestaurantCardView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(Color.keError.opacity(0.15))
-                            .cornerRadius(4)
+                            .cornerRadius(Theme.cornerRadiusSmall)
                     }
                 }
 

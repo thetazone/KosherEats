@@ -19,7 +19,7 @@ struct KEPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundColor(.white)
+            .foregroundColor(.keTextOnAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(
@@ -42,6 +42,28 @@ struct KESecondaryButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
                     .stroke(Color.kePrimary, lineWidth: 1.5)
             )
+    }
+}
+
+struct KEAuthButtonStyle: ButtonStyle {
+    var isEnabled: Bool = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.headline)
+            .foregroundColor(isEnabled ? .keTextPrimary : .keTextMuted)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
+                    .fill(Color.keCard)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.cornerRadiusMedium)
+                    .stroke(isEnabled ? Color.kePrimaryDark : Color.keTextMuted, lineWidth: 1.5)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 

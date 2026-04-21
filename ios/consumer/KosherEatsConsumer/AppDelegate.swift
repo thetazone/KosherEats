@@ -2,8 +2,8 @@ import UIKit
 import UserNotifications
 
 // Consumer app delegate. Forwards APNs registration callbacks into
-// PushNotifications.shared, and routes push notification taps into the app
-// via NotificationCenter events that MainTabView listens to.
+// PushNotifications.shared, and routes push notification taps into the app's
+// typed router so MainTabView can handle navigation centrally.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -28,11 +28,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     // MARK: - UNUserNotificationCenterDelegate
 
     // Foreground: show the banner + sound. iOS 14+ lets us opt into banners.
+    // Also fan the order-event userInfo out via NotificationCenter so any
+    // open OrderTrackingView refreshes immediately instead of waiting for
+    // its 30s poll tick.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void,
     ) {
+        PushEvents.postIfOrderEvent(notification.request.content.userInfo)
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -52,15 +56,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             // "delivered" → open order detail (no more tracking to do).
             // Default → detail.
             let trackingTypes: Set<String> = ["courier_assigned", "picked_up"]
-            let notificationName: Notification.Name =
-                trackingTypes.contains(type) ? .navigateToOrderTracking : .navigateToOrderDetail
+            let route: AppRoute =
+                trackingTypes.contains(type) ? .tracking(orderID: orderId) : .detail(orderID: orderId)
 
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: notificationName,
-                    object: nil,
-                    userInfo: ["order_id": orderId],
-                )
+            Task { @MainActor in
+                AppRouter.shared.navigate(route)
             }
         }
         completionHandler()

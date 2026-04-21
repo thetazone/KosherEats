@@ -35,7 +35,7 @@ struct KEPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundColor(.white)
+            .foregroundColor(.keTextOnAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(

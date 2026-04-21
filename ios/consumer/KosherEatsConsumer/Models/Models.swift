@@ -52,6 +52,7 @@ enum OrderStatus: String, Codable {
     case ready
     case pickedUp = "picked_up"
     case delivered
+    case completed
     case cancelled
     case rejected
 
@@ -64,6 +65,7 @@ enum OrderStatus: String, Codable {
         case .ready: return "Ready"
         case .pickedUp: return "Picked Up"
         case .delivered: return "Delivered"
+        case .completed: return "Completed"
         case .cancelled: return "Cancelled"
         case .rejected: return "Rejected"
         }
@@ -77,7 +79,7 @@ enum OrderStatus: String, Codable {
         case .preparing: return "flame.fill"
         case .ready: return "bag.fill"
         case .pickedUp: return "car.fill"
-        case .delivered: return "house.fill"
+        case .delivered, .completed: return "house.fill"
         case .cancelled: return "xmark.circle.fill"
         case .rejected: return "exclamationmark.circle.fill"
         }
@@ -100,7 +102,7 @@ enum OrderStatus: String, Codable {
         case .preparing: return 2
         case .ready: return 3
         case .pickedUp: return 4
-        case .delivered: return 5
+        case .delivered, .completed: return 5
         case .cancelled, .rejected: return -1
         }
     }
@@ -478,6 +480,11 @@ struct Order: Codable, Identifiable {
     var updatedAt: Date
     var courier: CourierPublic?
     var courierRating: Int?
+    var courierTip: Int?
+    var deliveryProofURL: String?
+    var claimedAt: Date?
+    var pickedUpAt: Date?
+    var deliveredAt: Date?
 
     var totalFormatted: String {
         "$\(String(format: "%.2f", Double(total) / 100))"
@@ -516,6 +523,11 @@ struct Order: Codable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case courierRating = "courier_rating"
+        case courierTip = "courier_tip"
+        case deliveryProofURL = "delivery_proof_url"
+        case claimedAt = "claimed_at"
+        case pickedUpAt = "picked_up_at"
+        case deliveredAt = "delivered_at"
     }
 }
 
@@ -559,9 +571,14 @@ struct AuthResponse: Codable {
     }
 }
 
+// Backend uniqueness on users is now scoped by role (see migration 019).
+// Each app's auth requests carry the app's role so the backend lookup finds
+// the correct (identifier, role) row — the consumer app sends "consumer".
+
 struct LoginRequest: Codable {
     let email: String
     let password: String
+    let role: String
 }
 
 struct RegisterRequest: Codable {
@@ -570,9 +587,10 @@ struct RegisterRequest: Codable {
     let firstName: String
     let lastName: String
     let phone: String
+    let role: String
 
     enum CodingKeys: String, CodingKey {
-        case email, password, phone
+        case email, password, phone, role
         case firstName = "first_name"
         case lastName = "last_name"
     }
@@ -583,12 +601,13 @@ struct SocialLoginRequest: Codable {
     let token: String
     let firstName: String
     let lastName: String
+    let role: String
     /// Apple Sign In only — raw nonce we generated client-side. Backend
     /// hashes it and compares to the JWT's nonce claim to block token replay.
     let nonce: String?
 
     enum CodingKeys: String, CodingKey {
-        case provider, token, nonce
+        case provider, token, role, nonce
         case firstName = "first_name"
         case lastName = "last_name"
     }

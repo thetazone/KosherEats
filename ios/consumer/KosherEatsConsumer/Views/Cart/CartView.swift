@@ -3,6 +3,7 @@ import SwiftUI
 struct CartView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var cartVM: CartViewModel
+    @EnvironmentObject var router: AppRouter
     @Environment(\.dismiss) var dismiss
     @State private var showCheckout = false
     @State private var showLoginSheet = false
@@ -52,12 +53,20 @@ struct CartView: View {
                     }
                 }
             }
+            .alert("Cart Error", isPresented: Binding(
+                get: { cartVM.errorMessage != nil },
+                set: { if !$0 { cartVM.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(cartVM.errorMessage ?? "")
+            }
             .navigationDestination(isPresented: $showCheckout) {
                 CheckoutView(onOrderPlaced: { _ in
                     // Order was placed and user dismissed confirmation.
                     // Dismiss the cart sheet and go to orders tab.
                     dismiss()
-                    NotificationCenter.default.post(name: .navigateToOrdersTab, object: nil)
+                    router.navigate(.ordersTab)
                 })
                 .environmentObject(cartVM)
             }
@@ -71,20 +80,20 @@ struct CartView: View {
             Image(systemName: "cart")
                 .font(.system(size: 64))
                 .foregroundColor(.keTextMuted)
-            Text("Your cart is empty")
+            Text(String(localized: "Your cart is empty"))
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.keTextPrimary)
-            Text("Add items from a restaurant to get started")
+            Text(String(localized: "Add items from a restaurant to get started"))
                 .font(.body)
                 .foregroundColor(.keTextSecondary)
                 .multilineTextAlignment(.center)
             Button {
                 dismiss()
             } label: {
-                Text("Browse Restaurants")
+                Text(String(localized: "Browse Restaurants"))
             }
             .buttonStyle(KEPrimaryButtonStyle())
-            .frame(width: 220)
+            .frame(maxWidth: 320)
         }
     }
 
@@ -136,8 +145,9 @@ struct CartView: View {
             .background(Color.keBackgroundElevated)
         }
         .sheet(isPresented: $showLoginSheet) {
-            LoginView()
+            LoginView(dismissLabel: "Back")
                 .environmentObject(authVM)
+                .presentationDetents([.medium, .large])
         }
     }
 }
@@ -181,6 +191,7 @@ struct CartItemRow: View {
             // Quantity controls
             HStack(spacing: 12) {
                 Button {
+                    Haptics.impact(.light)
                     Task {
                         await cartVM.updateQuantity(itemID: item.id, quantity: item.quantity - 1)
                     }
@@ -192,13 +203,16 @@ struct CartItemRow: View {
                         .background(Color.keCardHover)
                         .cornerRadius(8)
                 }
+                .accessibilityLabel(item.quantity == 1 ? "Remove item" : "Decrease quantity")
 
                 Text("\(item.quantity)")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.keTextPrimary)
                     .frame(width: 24)
+                    .accessibilityLabel("\(item.quantity)")
 
                 Button {
+                    Haptics.impact(.light)
                     Task {
                         await cartVM.updateQuantity(itemID: item.id, quantity: item.quantity + 1)
                     }
@@ -210,6 +224,7 @@ struct CartItemRow: View {
                         .background(Color.kePrimary.opacity(0.15))
                         .cornerRadius(8)
                 }
+                .accessibilityLabel("Increase quantity")
             }
         }
         .padding(14)

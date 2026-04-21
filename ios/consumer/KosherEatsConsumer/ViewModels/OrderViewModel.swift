@@ -13,6 +13,7 @@ class OrderViewModel: ObservableObject {
     /// otherwise re-entering OrderDetailView stacks a fresh 10s poller on
     /// every visit against the same order id.
     private var pollTask: Task<Void, Never>?
+    private var pollGeneration = 0
 
     var activeOrders: [Order] {
         orders.filter { $0.status.isActive }
@@ -89,13 +90,18 @@ class OrderViewModel: ObservableObject {
 
     func startPolling(orderID: String) {
         pollTask?.cancel()
+        pollGeneration &+= 1
+        let gen = pollGeneration
         pollTask = Task { [weak self] in
             // Fetch immediately so callers see fresh data without a 10s lag.
             await self?.loadOrder(id: orderID)
             while !Task.isCancelled {
-                guard let self = self else { break }
+                guard let self else { break }
+                guard self.pollGeneration == gen else { break }
                 if let order = self.currentOrder, !order.status.isActive { break }
                 try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s
+                guard !Task.isCancelled else { break }
+                guard self.pollGeneration == gen else { break }
                 await self.loadOrder(id: orderID)
             }
         }

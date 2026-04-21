@@ -34,13 +34,13 @@ struct ErrorStateView: View {
                         Text("Try again")
                     }
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.keTextOnAccent)
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
                     .background(Color.kePrimary)
                     .cornerRadius(12)
                 }
-                .frame(width: 220)
+                .frame(maxWidth: 320)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

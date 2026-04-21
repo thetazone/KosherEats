@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LoginView: View {
+    var dismissLabel: String = "Continue as Guest"
     @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) var dismiss
     // Phone login
@@ -32,11 +33,11 @@ struct LoginView: View {
                                     .foregroundColor(.kePrimary)
                             }
 
-                            Text("Welcome to KosherEats")
+                            Text(String(localized: "Welcome to KosherEats"))
                                 .font(.system(size: 28, weight: .bold))
                                 .foregroundColor(.keTextPrimary)
 
-                            Text("Kosher food delivery,\ndone right.")
+                            Text(String(localized: "Kosher food delivery,\ndone right."))
                                 .font(.body)
                                 .foregroundColor(.keTextSecondary)
                                 .multilineTextAlignment(.center)
@@ -48,7 +49,7 @@ struct LoginView: View {
                         // this is a unified sign-in / sign-up path — no
                         // separate flow needed.
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Mobile number")
+                            Text(String(localized: "Mobile number"))
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.keTextPrimary)
 
@@ -67,7 +68,7 @@ struct LoginView: View {
                                     .padding(.horizontal, 14)
                                     .frame(height: 50)
                                     .background(Color.keCard)
-                                    .cornerRadius(12)
+                                    .cornerRadius(Theme.cornerRadiusMedium)
                                 }
 
                                 TextField("Mobile number", text: $phoneDigits)
@@ -77,7 +78,17 @@ struct LoginView: View {
                                     .padding(.horizontal, 14)
                                     .frame(height: 50)
                                     .background(Color.keCard)
-                                    .cornerRadius(12)
+                                    .cornerRadius(Theme.cornerRadiusMedium)
+                                    .toolbar {
+                                        ToolbarItemGroup(placement: .keyboard) {
+                                            Spacer()
+                                            Button("Done") {
+                                                UIApplication.shared.sendAction(
+                                                    #selector(UIResponder.resignFirstResponder),
+                                                    to: nil, from: nil, for: nil)
+                                            }
+                                        }
+                                    }
                                     .onChange(of: phoneDigits) { _, newValue in
                                         let digits = newValue.filter(\.isNumber)
                                         if digits != newValue { phoneDigits = digits }
@@ -95,15 +106,15 @@ struct LoginView: View {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     } else {
-                                        Text("Continue")
+                                        Text(String(localized: "Continue"))
                                             .font(.headline)
                                     }
                                 }
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 50)
                                 .background(isPhoneValid ? Color.kePrimary : Color.kePrimary.opacity(0.4))
-                                .cornerRadius(12)
+                                .cornerRadius(Theme.cornerRadiusMedium)
                             }
                             .disabled(!isPhoneValid || authVM.isLoading)
                         }
@@ -137,9 +148,9 @@ struct LoginView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .background(Color.keCard)
-                                .cornerRadius(12)
+                                .cornerRadius(Theme.cornerRadiusMedium)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(Color.kePrimary, lineWidth: 1.5)
@@ -158,9 +169,9 @@ struct LoginView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .background(Color.keCard)
-                                .cornerRadius(12)
+                                .cornerRadius(Theme.cornerRadiusMedium)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(Color.kePrimary, lineWidth: 1.5)
@@ -180,9 +191,9 @@ struct LoginView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .background(Color.keCard)
-                                .cornerRadius(12)
+                                .cornerRadius(Theme.cornerRadiusMedium)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(Color.kePrimary, lineWidth: 1.5)
@@ -198,12 +209,12 @@ struct LoginView: View {
                             Button {
                                 dismiss()
                             } label: {
-                                Text("Continue as Guest")
+                                Text(dismissLabel)
                                     .font(.system(size: 16, weight: .semibold))
                                     .frame(maxWidth: .infinity, minHeight: 50)
                                     .foregroundColor(.kePrimary)
                                     .background(Color.keCard)
-                                    .cornerRadius(12)
+                                    .cornerRadius(Theme.cornerRadiusMedium)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
                                             .stroke(Color.kePrimary, lineWidth: 1.5)

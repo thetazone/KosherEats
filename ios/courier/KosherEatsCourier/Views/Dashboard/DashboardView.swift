@@ -19,6 +19,7 @@ struct DashboardView: View {
                 .tag(Tab.deliveries)
 
             EarningsView()
+                .environmentObject(vm)
                 .tabItem { Label("Earnings", systemImage: "dollarsign.circle.fill") }
                 .tag(Tab.earnings)
 
@@ -29,13 +30,15 @@ struct DashboardView: View {
         .tint(.kePrimary)
         .task {
             location.requestPermission()
-            location.startTracking()
             await vm.refresh()
-            vm.resumeIfActive(location: location)
+            await vm.resumeIfActive(location: location)
             await vm.loadTodayEarnings()
         }
         .onChange(of: vm.forceLogout) { _, shouldLogout in
             if shouldLogout { auth.logout() }
+        }
+        .onChange(of: location.needsReauth) { _, needs in
+            if needs { auth.logout() }
         }
     }
 
@@ -47,6 +50,10 @@ struct DashboardView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: Theme.spacingMD) {
+                            if location.permissionDenied {
+                                locationPermissionDeniedBanner
+                            }
+
                             if location.locationUpdateFailing {
                                 locationFailingBanner
                             }
@@ -63,6 +70,23 @@ struct DashboardView: View {
                             }
 
                             OnlineToggleCard(vm: vm, location: location)
+
+                            if let msg = vm.errorMessage, !msg.isEmpty {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.circle.fill")
+                                        .foregroundColor(.keWarning)
+                                    Text(msg)
+                                        .font(.subheadline)
+                                        .foregroundColor(.keTextPrimary)
+                                    Spacer()
+                                    Button("Dismiss") { vm.errorMessage = nil }
+                                        .font(.caption.bold())
+                                        .foregroundColor(.kePrimary)
+                                }
+                                .padding()
+                                .background(Color.keWarning.opacity(0.12))
+                                .cornerRadius(Theme.cornerRadiusMedium)
+                            }
 
                             if vm.todayEarnings > 0 {
                                 todayEarningsPill
@@ -83,8 +107,32 @@ struct DashboardView: View {
                 }
             }
             .background(Color.keBackground.ignoresSafeArea())
-            .navigationTitle("KosherEats Driver")
+            .navigationTitle("KosherEats Courier")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var locationPermissionDeniedBanner: some View {
+        Button {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            HStack {
+                Image(systemName: "location.slash.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Location access denied")
+                        .font(.subheadline.bold())
+                    Text("Tap to open Settings and enable location.")
+                        .font(.caption)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+            }
+            .foregroundColor(.keTextOnAccent)
+            .padding()
+            .background(Color.red.cornerRadius(8))
+            .padding(.horizontal)
         }
     }
 
@@ -93,7 +141,7 @@ struct DashboardView: View {
             Image(systemName: "location.slash.fill")
             Text("Location updates failing \u{2014} customers can\u{2019}t track you")
         }
-        .foregroundColor(.white)
+        .foregroundColor(.keTextOnAccent)
         .padding()
         .background(Color.red.cornerRadius(8))
         .padding(.horizontal)
@@ -155,6 +203,23 @@ struct DashboardView: View {
                     AvailableDeliveryCard(delivery: d, currentLocation: location.currentLocation) {
                         Task { await vm.claim(d) }
                     }
+                    .disabled(vm.isClaiming)
+                    .opacity(vm.isClaiming ? 0.6 : 1)
+                }
+            }
+
+            // Coming up — orders the seller is preparing but hasn't yet
+            // marked ready. Couriers can't claim these (UpcomingDeliveryCard
+            // omits the claim button + the backend rejects), but seeing them
+            // lets a courier head toward the restaurant ahead of the kitchen
+            // finishing.
+            if !vm.upcoming.isEmpty {
+                Text("Coming up")
+                    .font(.headline)
+                    .foregroundColor(.keTextPrimary)
+                    .padding(.top, Theme.spacingMD)
+                ForEach(vm.upcoming) { d in
+                    UpcomingDeliveryCard(delivery: d, currentLocation: location.currentLocation)
                 }
             }
         }
@@ -218,6 +283,7 @@ private struct OnlineToggleCard: View {
             ))
             .labelsHidden()
             .tint(.kePrimary)
+            .disabled(vm.isTogglingOnline)
         }
         .padding()
         .background(Color.keCard)
@@ -270,7 +336,7 @@ struct AvailableDeliveryCard: View {
                     .lineLimit(2)
             }
 
-            Button("Accept") { onAccept() }
+            Button("Accept") { Haptics.impact(.medium); onAccept() }
                 .buttonStyle(KEPrimaryButtonStyle())
                 .padding(.top, Theme.spacingSM)
         }
@@ -283,6 +349,66 @@ struct AvailableDeliveryCard: View {
         guard let me = currentLocation else { return nil }
         let pickup = CLLocation(latitude: delivery.restaurantLat, longitude: delivery.restaurantLng)
         return me.distance(from: pickup) / 1609.34 // meters -> miles
+    }
+}
+
+// MARK: - Upcoming delivery card
+
+/// Same shape as AvailableDeliveryCard but no Accept button (claim endpoint
+/// rejects until status='ready') and no delivery address (the courier hasn't
+/// claimed yet, so we don't expose customer-side data). Status badge tells
+/// the courier why this isn't claimable.
+struct UpcomingDeliveryCard: View {
+    let delivery: AvailableDelivery
+    let currentLocation: CLLocation?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.spacingSM) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("$\(String(format: "%.2f", Double(delivery.deliveryFee + delivery.courierTip) / 100))")
+                    .font(.title2.bold())
+                    .foregroundColor(.keTextSecondary)
+                Text(statusLabel)
+                    .font(.caption.bold())
+                    .foregroundColor(.kePrimary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.kePrimary.opacity(0.15))
+                    .cornerRadius(6)
+                Spacer()
+                if let pickupDistance = distanceFromMe {
+                    Label(String(format: "%.1f mi", pickupDistance),
+                          systemImage: "location.fill")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keTextSecondary)
+                }
+            }
+
+            Label(delivery.restaurantName, systemImage: "fork.knife")
+                .font(.title3.bold())
+                .foregroundColor(.keTextPrimary)
+
+            Text("Available to claim once the restaurant marks it ready.")
+                .font(.caption)
+                .foregroundColor(.keTextMuted)
+        }
+        .padding()
+        .background(Color.keCard.opacity(0.55))
+        .cornerRadius(Theme.cornerRadiusMedium)
+    }
+
+    private var statusLabel: String {
+        switch delivery.status {
+        case "accepted": return "JUST ACCEPTED"
+        case "preparing": return "PREPARING"
+        default: return delivery.status.uppercased()
+        }
+    }
+
+    private var distanceFromMe: Double? {
+        guard let me = currentLocation else { return nil }
+        let pickup = CLLocation(latitude: delivery.restaurantLat, longitude: delivery.restaurantLng)
+        return me.distance(from: pickup) / 1609.34
     }
 }
 

@@ -1,8 +1,32 @@
 import AuthenticationServices
+import CryptoKit
 import Foundation
 import GoogleSignIn
 import SwiftUI
 import UIKit
+
+// Apple Sign-In replay-attack mitigation. Client generates a random nonce,
+// sends SHA256(nonce) in the request, and Apple echoes the hash into the
+// returned JWT's `nonce` claim. Backend re-hashes the raw value we POST and
+// matches against the claim — a stolen JWT bound to a different nonce fails.
+enum AppleSignInNonce {
+    static func generate() -> (raw: String, hashed: String) {
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remaining = 32
+        while remaining > 0 {
+            var random: UInt8 = 0
+            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            if random < charset.count {
+                result.append(charset[Int(random)])
+                remaining -= 1
+            }
+        }
+        let hash = SHA256.hash(data: Data(result.utf8))
+        let hex = hash.map { String(format: "%02x", $0) }.joined()
+        return (result, hex)
+    }
+}
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -50,11 +74,11 @@ final class AuthViewModel: ObservableObject {
         isLoading = false
     }
 
-    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async {
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async {
         isLoading = true
         errorMessage = nil
         do {
-            _ = try await api.socialLogin(provider: provider, token: token, firstName: firstName, lastName: lastName)
+            _ = try await api.socialLogin(provider: provider, token: token, firstName: firstName, lastName: lastName, nonce: nonce)
             isAuthenticated = true
             await loadProfile()
         } catch {
@@ -117,16 +141,18 @@ final class AuthViewModel: ObservableObject {
             // sheet can gate on missing name / @privaterelay email.
             async let userTask = api.getUser()
             async let profileTask = api.getProfile()
-            user = try await userTask
-            profile = try await profileTask
+            let (u, p) = try await (userTask, profileTask)
+            user = u
+            profile = p
         } catch APIError.unauthorized {
             logout()
+        } catch let APIError.httpError(code, _) where code == 403 {
+            // 403 on /courier/profile means this account isn't a courier —
+            // likely a seller/admin Apple ID that got promoted to the wrong role.
+            // Hard logout so the user isn't trapped on the retry screen.
+            profileError = "This account does not have courier access."
+            logout()
         } catch {
-            // Non-401 failure: network blip, backend cold-start that outlived
-            // the retry, whatever. Previously we silently swallowed this and
-            // left profile=nil while isAuthenticated=true, which pinned RootView
-            // on its loading spinner with no recovery path. Surface it instead
-            // so RootView can render a retry state.
             profileError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -151,9 +177,11 @@ final class AuthViewModel: ObservableObject {
     /// forwarders — both trigger the completion sheet.
     var needsProfileCompletion: Bool {
         guard let u = user else { return false }
+        let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if u.email.lowercased().hasSuffix("@privaterelay.appleid.com") { return true }
+        if email.hasSuffix("@privaterelay.appleid.com") { return true }
+        if email.hasSuffix("@phone.koshereats.local") { return true }
         return false
     }
 
@@ -216,11 +244,13 @@ final class AuthViewModel: ObservableObject {
     // MARK: - Apple Sign-In
 
     func signInWithApple() {
+        let (rawNonce, hashedNonce) = AppleSignInNonce.generate()
         let provider = ASAuthorizationAppleIDProvider()
         let request = provider.createRequest()
         request.requestedScopes = [.fullName, .email]
+        request.nonce = hashedNonce
 
-        let coordinator = AppleSignInCoordinator { [weak self] result in
+        let coordinator = AppleSignInCoordinator(rawNonce: rawNonce) { [weak self] result in
             guard let self else { return }
             Task { @MainActor in
                 defer {
@@ -228,8 +258,8 @@ final class AuthViewModel: ObservableObject {
                     self.appleSignInController = nil
                 }
                 switch result {
-                case .success(let (token, firstName, lastName)):
-                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName)
+                case .success(let (token, firstName, lastName, nonce)):
+                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName, nonce: nonce)
                 case .failure(let error):
                     if let authError = error as? ASAuthorizationError, authError.code == .canceled {
                         return
@@ -261,9 +291,12 @@ final class AuthViewModel: ObservableObject {
 class AppleSignInCoordinator: NSObject,
                               ASAuthorizationControllerDelegate,
                               ASAuthorizationControllerPresentationContextProviding {
-    private let completion: (Result<(String, String, String), Error>) -> Void
+    private let rawNonce: String
+    private let completion: (Result<(String, String, String, String), Error>) -> Void
 
-    init(completion: @escaping (Result<(String, String, String), Error>) -> Void) {
+    init(rawNonce: String,
+         completion: @escaping (Result<(String, String, String, String), Error>) -> Void) {
+        self.rawNonce = rawNonce
         self.completion = completion
     }
 
@@ -281,7 +314,7 @@ class AppleSignInCoordinator: NSObject,
 
         let firstName = credential.fullName?.givenName ?? ""
         let lastName = credential.fullName?.familyName ?? ""
-        completion(.success((identityToken, firstName, lastName)))
+        completion(.success((identityToken, firstName, lastName, rawNonce)))
     }
 
     func authorizationController(controller: ASAuthorizationController,

@@ -24,16 +24,34 @@ struct OrderDetailView: View {
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                 }
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .padding()
                                 .background(Color.kePrimary)
                                 .cornerRadius(Theme.cornerRadiusMedium)
                                 .padding(.horizontal)
                             }
+                            .simultaneousGesture(TapGesture().onEnded { Haptics.impact(.light) })
                         }
 
                         // Status tracker
                         statusTracker(order: order)
+
+                        if order.status == .rejected {
+                            VStack(spacing: 8) {
+                                Text("Restaurant couldn't take this order")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.keTextPrimary)
+                                Text("Your payment has been refunded to your original payment method.")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.keTextSecondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.keError.opacity(0.1))
+                            .cornerRadius(Theme.cornerRadiusMedium)
+                            .padding(.horizontal)
+                        }
 
                         // Restaurant info
                         restaurantHeader(order: order)
@@ -137,7 +155,7 @@ struct OrderDetailView: View {
                         if index < currentStep {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 7, weight: .bold))
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                         } else if index == currentStep {
                             Circle()
                                 .fill(Color.white)
@@ -168,6 +186,10 @@ struct OrderDetailView: View {
         case .ready, .pickedUp: return .keDairy
         case .delivered: return .keSuccess
         case .cancelled, .rejected: return .keError
+        case .completed:
+            fallthrough
+        default:
+            return .clear
         }
     }
 
@@ -187,7 +209,7 @@ struct OrderDetailView: View {
                 Text(order.restaurantName)
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.keTextPrimary)
-                Text(order.createdAt.formatted(date: .abbreviated, time: .shortened))
+                Text(order.createdAt.formatted(date: .long, time: .shortened))
                     .font(.system(size: 13))
                     .foregroundColor(.keTextMuted)
             }

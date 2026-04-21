@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>KE Driver</string>
+	<string>KE Courier</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleDisplayName</key>
-	<string>KosherEats Driver</string>
+	<string>KosherEats Courier</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>KosherEats Driver uses your location to show nearby deliveries and navigate to pickups.</string>
+	<string>KosherEats Courier uses your location to show nearby deliveries and navigate to pickups.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>KosherEats Driver needs background location to keep customers updated on delivery progress.</string>
+	<string>KosherEats Courier needs background location to keep customers updated on delivery progress.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>KosherEats Driver needs camera access to capture your drivers license and vehicle documents.</string>
+	<string>KosherEats Courier needs camera access to capture your drivers license and vehicle documents.</string>
 	<key>GIDClientID</key>
 	<string>98949098353-8568fbvmkbgers6ug8o9henrji87g2ku.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
@@ -26,6 +26,19 @@
 				<string>com.googleusercontent.apps.98949098353-8568fbvmkbgers6ug8o9henrji87g2ku</string>
 			</array>
 		</dict>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

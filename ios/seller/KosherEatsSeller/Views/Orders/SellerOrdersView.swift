@@ -15,10 +15,14 @@ struct SellerOrdersView: View {
 
     private var todayOrders: [Order] {
         let cal = Calendar.current
-        return vm.orders.filter { cal.isDateInToday($0.createdAtDate ?? .distantPast) }
+        return vm.orders.filter { order in
+            guard let date = order.createdAtDate else { return false }
+            guard order.status != .cancelled && order.status != .rejected else { return false }
+            return cal.isDateInToday(date)
+        }
     }
     private var todayRevenue: Int {
-        todayOrders.reduce(0) { $0 + $1.total }
+        todayOrders.reduce(0) { $0 + $1.subtotal }
     }
 
     var body: some View {
@@ -68,7 +72,7 @@ struct SellerOrdersView: View {
                         ScrollView {
                             LazyVGrid(columns: orderGridColumns, spacing: 12) {
                                 ForEach(vm.filteredOrders) { order in
-                                    NavigationLink(destination: SellerOrderDetailView(order: order)) {
+                                    NavigationLink(destination: SellerOrderDetailView(vm: vm, order: order)) {
                                         OrderRowView(order: order)
                                     }
                                     .buttonStyle(.plain)
@@ -82,13 +86,18 @@ struct SellerOrdersView: View {
             }
             .navigationTitle("Orders")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .refreshable {
                 Haptics.impact(.light)
                 await vm.load()
             }
-            .task {
+            .task(id: selectedRestaurant.id) {
                 await vm.loadAndAutoRefresh()
+            }
+            .onReceive(PushNotifications.shared.$shouldRefreshOrders) { should in
+                if should {
+                    Task { await vm.load() }
+                    PushNotifications.shared.shouldRefreshOrders = false
+                }
             }
         }
     }
@@ -142,16 +151,16 @@ struct SellerOrdersView: View {
     private func pollErrorBanner(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "wifi.exclamationmark")
-                .foregroundColor(.white)
+                .foregroundColor(.keTextOnAccent)
             Text(message)
                 .font(.caption.bold())
-                .foregroundColor(.white)
+                .foregroundColor(.keTextOnAccent)
             Spacer()
             Button("Retry") {
                 Task { await vm.load() }
             }
             .font(.caption.bold())
-            .foregroundColor(.white)
+            .foregroundColor(.keTextOnAccent)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
@@ -167,7 +176,7 @@ struct SellerOrdersView: View {
                 .foregroundColor(.keTextPrimary)
             Text("\u{2022}")
                 .foregroundColor(.keTextMuted)
-            Text(String(format: "$%.2f", Double(todayRevenue) / 100))
+            Text("\(CurrencyFormat.string(fromCents: todayRevenue)) food sales")
                 .font(.subheadline.bold())
                 .foregroundColor(.kePrimary)
             Spacer()
@@ -207,6 +216,7 @@ struct OrderRowView: View {
                     .font(.body.bold())
                     .foregroundColor(statusColor)
             }
+            .accessibilityLabel("Status: \(order.status.displayName)")
 
             // Details
             VStack(alignment: .leading, spacing: 4) {
@@ -296,7 +306,7 @@ struct OrderRowView: View {
                 Text("Out for delivery")
                     .font(.caption2.bold())
             }
-            .foregroundColor(.white)
+            .foregroundColor(.keTextOnAccent)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Color.kePrimary)

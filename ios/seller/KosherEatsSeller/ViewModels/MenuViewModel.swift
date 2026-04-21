@@ -9,11 +9,13 @@ class MenuViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
+    @Published var togglingItemIDs: Set<String> = []
 
     /// Watches `SelectedRestaurant` so a switch in the picker reloads the
     /// menu tab in place — otherwise sellers would see the previous
     /// restaurant's items until they relaunch.
     private var restaurantSubscription: AnyCancellable?
+    private var isReloading = false
 
     func startObservingRestaurant() {
         guard restaurantSubscription == nil else { return }
@@ -28,6 +30,9 @@ class MenuViewModel: ObservableObject {
     }
 
     func load() async {
+        guard !isReloading else { return }
+        isReloading = true
+        defer { isReloading = false }
         isLoading = true
         errorMessage = nil
 
@@ -69,8 +74,8 @@ class MenuViewModel: ObservableObject {
         )
 
         do {
-            let _ = try await APIService.shared.createMenuItem(request)
-            successMessage = "Item created successfully"
+            _ = try await APIService.shared.createMenuItem(request)
+            flash("Item created successfully")
             await load()
             return true
         } catch {
@@ -108,8 +113,8 @@ class MenuViewModel: ObservableObject {
         )
 
         do {
-            let _ = try await APIService.shared.updateMenuItem(id: id, request)
-            successMessage = "Item updated successfully"
+            _ = try await APIService.shared.updateMenuItem(id: id, request)
+            flash("Item updated successfully")
             await load()
             return true
         } catch {
@@ -121,7 +126,7 @@ class MenuViewModel: ObservableObject {
     func deleteItem(id: String) async {
         do {
             try await APIService.shared.deleteMenuItem(id: id)
-            successMessage = "Item deleted"
+            flash("Item deleted")
             await load()
         } catch {
             errorMessage = error.localizedDescription
@@ -129,14 +134,47 @@ class MenuViewModel: ObservableObject {
     }
 
     func toggleAvailability(item: MenuItem) async {
+        guard !togglingItemIDs.contains(item.id) else { return }
+        togglingItemIDs.insert(item.id)
+        defer { togglingItemIDs.remove(item.id) }
+
+        let newValue = !item.isAvailable
+        setAvailability(id: item.id, newValue)
+
         do {
-            let _ = try await APIService.shared.toggleItemAvailability(
+            _ = try await APIService.shared.toggleItemAvailability(
                 id: item.id,
-                available: !item.isAvailable
+                available: newValue
             )
-            await load()
         } catch {
             errorMessage = error.localizedDescription
+            // Refetch from server rather than in-place rollback — if load()
+            // ran between the optimistic write and this catch, the local
+            // categories array is already replaced and the rollback would no-op.
+            await load()
+        }
+    }
+
+    private func flash(_ message: String) {
+        successMessage = message
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if self?.successMessage == message {
+                self?.successMessage = nil
+            }
+        }
+    }
+
+    private func setAvailability(id: String, _ value: Bool) {
+        for i in categories.indices {
+            guard var items = categories[i].items else { continue }
+            if let j = items.firstIndex(where: { $0.id == id }) {
+                items[j].isAvailable = value
+                categories[i].items = items
+            }
+        }
+        if let k = allItems.firstIndex(where: { $0.id == id }) {
+            allItems[k].isAvailable = value
         }
     }
 
@@ -155,7 +193,7 @@ class MenuViewModel: ObservableObject {
             return
         }
         do {
-            let _ = try await APIService.shared.createCategory(trimmed)
+            _ = try await APIService.shared.createCategory(trimmed)
             await load()
         } catch {
             errorMessage = error.localizedDescription

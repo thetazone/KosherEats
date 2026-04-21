@@ -150,6 +150,9 @@ private struct VehicleStep: View {
                     TextField("Make (e.g. Toyota)", text: $vm.vehicleMake).keTextField()
                     TextField("Model (e.g. Camry)", text: $vm.vehicleModel).keTextField()
                     TextField("Year", text: $vm.vehicleYear).keTextField().keyboardType(.numberPad)
+                        .onChange(of: vm.vehicleYear) { _, val in
+                            vm.vehicleYear = String(val.filter(\.isNumber).prefix(4))
+                        }
                     TextField("Color", text: $vm.vehicleColor).keTextField()
                     TextField("License plate", text: $vm.licensePlate).keTextField().autocapitalization(.allCharacters)
                 }
@@ -215,11 +218,19 @@ private struct DocumentsStep: View {
             Text("We review these as part of your background check. Tap any uploaded photo to retake.")
                 .foregroundColor(.keTextSecondary)
 
-            TextField("Drivers license number", text: $vm.driversLicenseNumber)
-                .keTextField()
-                .autocapitalization(.allCharacters)
+            // Drivers license number is only collected for car/motorcycle —
+            // bike/scooter/walk couriers upload a government ID photo with no
+            // accompanying number field. The DB column is shared (and stays
+            // nullable) so we can branch UI without a schema change.
+            if vm.requiresVehicleDetails {
+                TextField("Drivers license number", text: $vm.driversLicenseNumber)
+                    .keTextField()
+                    .autocapitalization(.allCharacters)
+            }
 
-            DocumentUploadRow(title: "Drivers license photo",
+            DocumentUploadRow(title: vm.requiresVehicleDetails
+                                ? "Drivers license photo"
+                                : "Government-issued ID photo",
                               kind: .license,
                               required: vm.documentRequired(.license),
                               urlBinding: $vm.driversLicenseURL)

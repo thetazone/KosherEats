@@ -34,7 +34,8 @@ final class DeliveryActivityManager {
             )
             currentActivity = activity
         } catch {
-            print("[LiveActivity] Failed to start: \(error)")
+            // LiveActivity start failed — non-critical; tracking view
+            // still works via polling. Swallow silently in production.
         }
     }
 
@@ -84,6 +85,8 @@ final class DeliveryActivityManager {
         case .delivered: return "Delivered — enjoy!"
         case .cancelled: return "Order cancelled"
         case .rejected: return "Order rejected"
+        case .completed: return "Order completed"
+        @unknown default: return "Unknown status"
         }
     }
 

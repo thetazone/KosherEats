@@ -82,7 +82,7 @@ struct RestaurantDetailView: View {
                     .overlay(
                         Text("Currently Closed")
                             .font(.title2.bold())
-                            .foregroundColor(.white),
+                            .foregroundColor(.keTextOnAccent),
                     )
             }
         }
@@ -190,9 +190,18 @@ struct RestaurantDetailView: View {
                 .padding(.horizontal)
 
             if vm.menuCategories.isEmpty {
-                Text("Menu not available")
-                    .foregroundColor(.keTextMuted)
-                    .frame(maxWidth: .infinity, minHeight: 100)
+                VStack(spacing: Theme.spacingMD) {
+                    Image(systemName: "menucard")
+                        .font(.system(size: 48))
+                        .foregroundColor(.keTextMuted)
+                    Text("Menu not available")
+                        .font(.headline)
+                        .foregroundColor(.keTextPrimary)
+                    Text("This restaurant hasn't published a menu yet.")
+                        .font(.subheadline)
+                        .foregroundColor(.keTextSecondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 100)
             } else {
                 ForEach(vm.menuCategories) { category in
                     VStack(alignment: .leading, spacing: 10) {

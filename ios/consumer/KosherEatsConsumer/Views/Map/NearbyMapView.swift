@@ -2,7 +2,7 @@ import SwiftUI
 import MapKit
 
 struct NearbyMapView: View {
-    @StateObject private var vm = HomeViewModel()
+    @EnvironmentObject var vm: RestaurantStore
     @ObservedObject private var location = LocationManager.shared
     @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var selectedRestaurant: Restaurant?
@@ -16,7 +16,7 @@ struct NearbyMapView: View {
                 Map(position: $position) {
                     UserAnnotation()
 
-                    ForEach(vm.filteredRestaurants) { restaurant in
+                    ForEach(mapRestaurants) { restaurant in
                         Annotation(
                             restaurant.name,
                             coordinate: CLLocationCoordinate2D(
@@ -83,11 +83,19 @@ struct NearbyMapView: View {
             // fallback globe view until the user pans.
             location.requestLocationPermission()
             location.startUpdatingLocation()
-            await vm.loadRestaurants()
+            await vm.ensureRestaurantsLoaded()
         }
         .onDisappear {
             location.stopUpdatingLocation()
         }
+    }
+
+    private var mapRestaurants: [Restaurant] {
+        vm.filteredRestaurants(
+            searchText: "",
+            selectedCuisine: nil,
+            kosherFilters: KosherFilters()
+        )
     }
 }
 
@@ -117,7 +125,7 @@ struct RestaurantMapPin: View {
 
             Text(restaurant.name)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(.keTextOnAccent)
                 .lineLimit(1)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)

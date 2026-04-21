@@ -3,17 +3,12 @@ import MapKit
 
 // OrderTrackingView is the "where's my food" screen consumers open from an
 // active order. Shows a MapKit map with three pins (restaurant, courier,
-// delivery address) plus a status header and a courier info card.
-//
-// It polls GET /orders/:id every 8s so the courier pin moves in near
-// real-time. We'd switch to a push-driven WebSocket later, but polling is
-// plenty for v1 and matches what UberEats consumer actually does.
+// delivery address) plus a status header and a courier info card, while the
+// view model owns the polling and SSE location stream lifecycle.
 struct OrderTrackingView: View {
     let orderId: String
+    @StateObject private var vm: OrderTrackingViewModel
 
-    @State private var order: Order?
-    @State private var pollTask: Task<Void, Never>?
-    @State private var locationStreamTask: Task<Void, Never>?
     @State private var cameraPosition: MapCameraPosition = .automatic
     // Flip true once we've fit the camera to the order's pins. Prevents the
     // streaming courier position (arrives every ~1s via SSE) from constantly
@@ -26,9 +21,14 @@ struct OrderTrackingView: View {
     @State private var showRatingSheet = false
     @State private var ratingPrompted = false
 
+    init(orderId: String) {
+        self.orderId = orderId
+        _vm = StateObject(wrappedValue: OrderTrackingViewModel(orderID: orderId))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if let order = order {
+            if let order = vm.order {
                 map(for: order)
                     .frame(maxWidth: .infinity)
                     .frame(height: 420)
@@ -44,33 +44,59 @@ struct OrderTrackingView: View {
                     }
                     .padding(Theme.spacingMD)
                 }
+            } else if vm.errorMessage != nil {
+                VStack(spacing: Theme.spacingMD) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.system(size: 40))
+                        .foregroundColor(.keTextSecondary)
+                    Text("Couldn't load order")
+                        .font(.title3.bold())
+                        .foregroundColor(.keTextPrimary)
+                    Button("Retry") {
+                        Task { await vm.refresh() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.kePrimary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView()
                     .tint(.kePrimary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .overlay(alignment: .top) {
+            if vm.order != nil, vm.errorMessage != nil {
+                HStack(spacing: Theme.spacingSM) {
+                    Image(systemName: "wifi.exclamationmark").font(.caption)
+                    Text("Unable to update — showing last known status").font(.caption)
+                }
+                .foregroundColor(.keTextOnAccent)
+                .padding(.horizontal, Theme.spacingMD)
+                .padding(.vertical, Theme.spacingSM)
+                .background(Color.keWarning.opacity(0.9))
+                .cornerRadius(Theme.cornerRadiusMedium)
+                .padding(.top, Theme.spacingSM)
+            }
+        }
         .background(Color.keBackground.ignoresSafeArea())
         .navigationTitle("Tracking")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            await loadOnce()
-            startPolling()
-            startLocationStream()
+        .task(id: orderId) {
+            await vm.start()
+        }
+        .onDisappear {
+            vm.stop()
         }
         .refreshable {
             Haptics.impact(.light)
-            await loadOnce()
+            await vm.refresh()
         }
-        .onDisappear {
-            pollTask?.cancel()
-            locationStreamTask?.cancel()
-        }
-        .onChange(of: order?.status) { _, newStatus in
+        .onChange(of: vm.order?.status) { _, newStatus in
             maybePromptForRating(newStatus: newStatus)
         }
         .sheet(isPresented: $showRatingSheet) {
-            if let o = order, let courier = o.courier {
+            if let o = vm.order, let courier = o.courier {
                 CourierRatingSheet(
                     orderId: o.id,
                     courierFirstName: courier.firstName,
@@ -79,7 +105,7 @@ struct OrderTrackingView: View {
                         // loop doesn't re-prompt; the next GetOrder response
                         // will also carry it, but this keeps the UI honest
                         // while that's in flight.
-                        order?.courierRating = stars
+                        vm.markCourierRatingSubmitted(stars: stars)
                         showRatingSheet = false
                     },
                     onDismiss: {
@@ -95,7 +121,7 @@ struct OrderTrackingView: View {
     private func maybePromptForRating(newStatus: OrderStatus?) {
         guard !ratingPrompted,
               newStatus == .delivered,
-              let o = order,
+              let o = vm.order,
               o.courier != nil,
               o.courierRating == nil else {
             return
@@ -208,22 +234,37 @@ struct OrderTrackingView: View {
         case .ready: return "Waiting for a courier"
         case .pickedUp: return "Your order is on the way"
         case .delivered: return "Delivered — enjoy!"
-        case .cancelled, .rejected: return "Order was " + status.displayName.lowercased()
+        case .cancelled, .rejected:
+            return "Order was " + status.displayName.lowercased()
+        case .completed:
+            return "Order completed"
         }
     }
 
     private func phaseSubtext(for status: OrderStatus) -> String {
         switch status {
-        case .pending: return "We've sent your order to the restaurant."
-        case .accepted: return "They'll start cooking any moment."
-        case .preparing: return "Arriving soon."
-        case .ready: return "A courier will claim your order shortly."
-        case .pickedUp: return "Your courier is heading to you."
-        case .delivered: return ""
-        default: return ""
+        case .scheduled:
+            return "Your order is queued and will move into the kitchen closer to the scheduled time."
+        case .pending:
+            return "The restaurant is reviewing the order and will confirm it shortly."
+        case .accepted:
+            return "The kitchen has the order and will begin preparing it."
+        case .preparing:
+            return "Your meal is being cooked and packed for pickup."
+        case .ready:
+            return "The order is ready and we're matching it with a courier."
+        case .pickedUp:
+            return "Your courier has the order and is heading to your delivery address."
+        case .delivered:
+            return "The dropoff is complete."
+        case .completed:
+            return "This order has been closed."
+        case .cancelled:
+            return "The order will not be fulfilled."
+        case .rejected:
+            return "The restaurant could not accept this order."
         }
     }
-
     /// 6-step timeline stepper: Ordered → Accepted → Preparing → Ready → En route → Delivered.
     /// Completed steps show a filled kePrimary circle with a check, the active
     /// step pulses to signal "this is where you are right now", and future
@@ -305,96 +346,6 @@ struct OrderTrackingView: View {
         .cornerRadius(Theme.cornerRadiusMedium)
     }
 
-    // MARK: - Polling
-
-    private func loadOnce() async {
-        do {
-            let fetched = try await APIService.shared.getOrder(id: orderId)
-            let isFirst = order == nil
-            order = fetched
-
-            // Live Activity management
-            if isFirst && fetched.status.isActive {
-                DeliveryActivityManager.shared.startTracking(order: fetched)
-            } else if fetched.status.isActive {
-                DeliveryActivityManager.shared.update(order: fetched)
-            } else {
-                DeliveryActivityManager.shared.endTracking(order: fetched)
-            }
-        } catch {
-            print("[tracking] fetch error: \(error)")
-        }
-    }
-
-    private func startPolling() {
-        pollTask?.cancel()
-        pollTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 8_000_000_000)
-                if Task.isCancelled { break }
-                await loadOnce()
-                if let status = order?.status, !status.isActive { break }
-            }
-        }
-    }
-
-    // startLocationStream subscribes to the backend SSE stream so courier
-    // position updates arrive in real time instead of waiting on the 8s poll.
-    // We keep the poll running for status transitions + as a reconnect safety
-    // net; the stream only mutates the courier's lat/lng in-place.
-    private func startLocationStream() {
-        locationStreamTask?.cancel()
-        locationStreamTask = Task {
-            // Reconnect loop: SSE streams die naturally (server restart, brief
-            // network blip, cellular handoff) and there's no cost to just
-            // reopening. Backoff grows on consecutive failures so a downed
-            // backend doesn't get hammered every 3s; resets on each success.
-            var consecutiveFailures = 0
-            while !Task.isCancelled {
-                var sawAuthFailure = false
-                do {
-                    let stream = APIService.shared.streamOrderLocation(id: orderId)
-                    for try await event in stream {
-                        if Task.isCancelled { return }
-                        consecutiveFailures = 0
-                        guard event.lat >= -90 && event.lat <= 90
-                              && event.lng >= -180 && event.lng <= 180
-                              && event.lat != 0 && event.lng != 0 else {
-                            continue
-                        }
-                        if var current = order, var courier = current.courier {
-                            courier.lat = event.lat
-                            courier.lng = event.lng
-                            current.courier = courier
-                            order = current
-                            DeliveryActivityManager.shared.update(order: current)
-                        }
-                    }
-                } catch APIError.unauthorized {
-                    // Token expired mid-stream. The next request<T> call from
-                    // the polling loop will refresh; we just need to wait so
-                    // the new token is in the keychain before reconnecting.
-                    sawAuthFailure = true
-                    print("[tracking] stream 401 — waiting for poll-driven token refresh")
-                } catch {
-                    print("[tracking] location stream error: \(error)")
-                }
-                if Task.isCancelled { break }
-                if let status = order?.status, !status.isActive { break }
-
-                consecutiveFailures += 1
-                let delaySeconds: Double
-                if sawAuthFailure {
-                    // Give the polling refresh a beat to complete before we
-                    // reopen with what would otherwise be the same dead token.
-                    delaySeconds = 2
-                } else {
-                    delaySeconds = min(3 * pow(2, Double(consecutiveFailures - 1)), 60)
-                }
-                try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
-            }
-        }
-    }
 }
 
 // A small reusable map pin. SwiftUI's Map uses Annotation for custom content.
@@ -453,7 +404,7 @@ struct DeliveryTimeline: View {
             HStack(spacing: 0) {
                 ForEach(Array(steps.enumerated()), id: \.offset) { (i, step) in
                     Text(step.label)
-                        .font(.system(size: 9, weight: i == stepIndex ? .bold : .regular))
+                        .font(.system(.caption2, weight: i == stepIndex ? .bold : .regular))
                         .foregroundColor(i <= stepIndex ? .keTextPrimary : .keTextMuted)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity)
@@ -480,12 +431,12 @@ struct DeliveryTimeline: View {
 
             if isDone {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.white)
+                    .font(.system(.caption, weight: .bold))
+                    .foregroundColor(.keTextOnAccent)
             } else if isActive {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
+                    .font(.system(.caption2, weight: .bold))
+                    .foregroundColor(.keTextOnAccent)
             }
 
             if isActive {

@@ -1,11 +1,12 @@
 import SwiftUI
+import Combine
 
 struct MainTabView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var cartVM: CartViewModel
-    @State private var selectedTab = 0
-    @State private var pendingTrackingOrderId: String?
-    @State private var pendingDetailOrderId: String?
+    @EnvironmentObject var router: AppRouter
+    @StateObject private var restaurantVM = RestaurantStore()
+    @StateObject private var keyboard = KeyboardObserver()
     @State private var showLoginSheet = false
     // Latches when the user taps "Not now" on ProfileCompletionSheet. Without
     // this the sheet would re-present immediately because needsProfileCompletion
@@ -18,31 +19,44 @@ struct MainTabView: View {
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $router.selectedTab) {
+            // Icon-only tabs per design: bottom nav reads as a row of glyphs,
+            // no labels. Each .tabItem uses just an Image instead of a Label
+            // so the title slot stays empty.
             HomeView()
+                .environmentObject(restaurantVM)
                 .tabItem { Image(systemName: "house.fill") }
-                .tag(0)
+                .tag(AppTab.home)
 
             NearbyMapView()
+                .environmentObject(restaurantVM)
                 .tabItem { Image(systemName: "map.fill") }
-                .tag(1)
+                .tag(AppTab.nearby)
 
             SearchView()
+                .environmentObject(restaurantVM)
                 .tabItem { Image(systemName: "magnifyingglass") }
-                .tag(2)
+                .tag(AppTab.search)
 
+            // Cart slot — the "what's happening now" tab. Currently maps to
+            // OrdersListView's Active segment (in-flight deliveries). Past
+            // orders moved into Profile → My Orders. A future iteration can
+            // make this tab show the pre-checkout cart contents inline so the
+            // floating cart button can go away entirely.
             Group {
                 if authVM.isAuthenticated {
-                    OrdersListView()
+                    OrdersListView(
+                        pendingTrackingOrderId: $router.pendingTrackingOrderId,
+                        pendingDetailOrderId: $router.pendingDetailOrderId
+                    )
                 } else {
-                    AuthRequiredView(title: "Your Orders", message: "Sign in to view your order history and track deliveries.") {
+                    AuthRequiredView(title: "Cart", message: "Sign in to track your active deliveries and review past orders.") {
                         showLoginSheet = true
                     }
                 }
             }
             .tabItem { Image(systemName: "cart.fill") }
-            .badge(cartVM.itemCount)
-            .tag(3)
+            .tag(AppTab.orders)
 
             Group {
                 if authVM.isAuthenticated {
@@ -54,7 +68,7 @@ struct MainTabView: View {
                 }
             }
             .tabItem { Image(systemName: "person.fill") }
-            .tag(4)
+            .tag(AppTab.profile)
         }
         .sheet(isPresented: $showLoginSheet, onDismiss: {
             // Any path out of the welcome sheet counts as "seen" — signed in,
@@ -63,6 +77,7 @@ struct MainTabView: View {
         }) {
             LoginView()
                 .environmentObject(authVM)
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: Binding(
             // Triggered when an authenticated user is still missing core
@@ -77,6 +92,7 @@ struct MainTabView: View {
         )) {
             ProfileCompletionSheet()
                 .environmentObject(authVM)
+                .presentationDetents([.medium, .large])
         }
         .tint(.kePrimary)
         .onAppear {
@@ -90,25 +106,8 @@ struct MainTabView: View {
         .overlay(alignment: .bottom) {
             if !cartVM.isEmpty {
                 CartFloatingButton(itemCount: cartVM.itemCount)
-                    .padding(.bottom, 56)
-            }
-        }
-        // App-wide navigation event listeners. Checkout completion and push
-        // notification taps all land here — this is the one place in the app
-        // that owns cross-tab navigation.
-        .onReceive(NotificationCenter.default.publisher(for: .navigateToOrdersTab)) { _ in
-            selectedTab = 3
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderTracking)) { note in
-            if let id = note.userInfo?["order_id"] as? String {
-                selectedTab = 3
-                pendingTrackingOrderId = id
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderDetail)) { note in
-            if let id = note.userInfo?["order_id"] as? String {
-                selectedTab = 3
-                pendingDetailOrderId = id
+                    .padding(.bottom, keyboard.height > 0 ? keyboard.height + 8 : 56)
+                    .animation(.easeOut(duration: 0.25), value: keyboard.height)
             }
         }
     }
@@ -123,6 +122,39 @@ struct MainTabView: View {
         appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: UIColor(Color.kePrimary)]
         UITabBar.appearance().standardAppearance = appearance
         UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
+}
+
+@MainActor
+private final class KeyboardObserver: ObservableObject {
+    @Published private(set) var height: CGFloat = 0
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init(notificationCenter: NotificationCenter = .default) {
+        let changeFrame = notificationCenter.publisher(for: UIResponder.keyboardWillChangeFrameNotification)
+        let willHide = notificationCenter.publisher(for: UIResponder.keyboardWillHideNotification)
+
+        changeFrame
+            .merge(with: willHide)
+            .compactMap(Self.keyboardHeight(from:))
+            .receive(on: RunLoop.main)
+            .sink { [weak self] height in
+                self?.height = height
+            }
+            .store(in: &cancellables)
+    }
+
+    private static func keyboardHeight(from notification: Notification) -> CGFloat? {
+        if notification.name == UIResponder.keyboardWillHideNotification {
+            return 0
+        }
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+            return nil
+        }
+        // Use overlap with the screen instead of raw frame.height so split,
+        // floating, and undocked keyboards don't push the cart button too far.
+        return max(UIScreen.main.bounds.maxY - frame.minY, 0)
     }
 }
 
@@ -149,7 +181,7 @@ struct CartFloatingButton: View {
                     .background(Color.white.opacity(0.2))
                     .cornerRadius(12)
             }
-            .foregroundColor(.white)
+            .foregroundColor(.keTextOnAccent)
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
             .background(Color.kePrimary)
@@ -157,6 +189,7 @@ struct CartFloatingButton: View {
             .shadow(color: Color.kePrimary.opacity(0.4), radius: 12, y: 4)
         }
         .padding(.horizontal, Theme.spacingMD)
+        .accessibilityLabel("View Cart, \(itemCount) item\(itemCount == 1 ? "" : "s")")
         .sheet(isPresented: $showCart) {
             CartView()
         }
@@ -166,8 +199,11 @@ struct CartFloatingButton: View {
 // MARK: - Search Tab View
 
 struct SearchView: View {
-    @StateObject private var vm = HomeViewModel()
+    @EnvironmentObject var vm: RestaurantStore
     @State private var searchText = ""
+    @State private var searchResults: [Restaurant]? = nil
+    @State private var isSearching = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -183,14 +219,13 @@ struct SearchView: View {
                             .foregroundColor(.keTextPrimary)
                             .autocorrectionDisabled()
                             .onSubmit {
-                                vm.searchText = searchText
-                                Task { await vm.search() }
+                                Task { await runSearch() }
                             }
                         if !searchText.isEmpty {
                             Button {
                                 searchText = ""
-                                vm.searchText = ""
-                                Task { await vm.loadRestaurants() }
+                                searchResults = nil
+                                errorMessage = nil
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.keTextMuted)
@@ -203,7 +238,24 @@ struct SearchView: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
 
-                    if vm.filteredRestaurants.isEmpty && !vm.isLoading {
+                    if isSearching || vm.isLoading {
+                        Spacer()
+                        ProgressView().tint(.kePrimary)
+                        Spacer()
+                    } else if let errorMessage {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(.keError)
+                            Text(errorMessage)
+                                .font(.body)
+                                .foregroundColor(.keTextSecondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+                        Spacer()
+                    } else if visibleRestaurants.isEmpty {
                         Spacer()
                         VStack(spacing: 12) {
                             Image(systemName: "magnifyingglass")
@@ -218,7 +270,7 @@ struct SearchView: View {
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 12) {
-                                ForEach(vm.filteredRestaurants) { restaurant in
+                                ForEach(visibleRestaurants) { restaurant in
                                     NavigationLink(destination: RestaurantDetailView(restaurantID: restaurant.id)) {
                                         RestaurantCardView(restaurant: restaurant)
                                     }
@@ -234,7 +286,36 @@ struct SearchView: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .task {
-            await vm.loadRestaurants()
+            await vm.ensureRestaurantsLoaded()
+        }
+    }
+
+    private var visibleRestaurants: [Restaurant] {
+        searchResults
+            ?? vm.filteredRestaurants(
+                searchText: "",
+                selectedCuisine: nil,
+                kosherFilters: KosherFilters()
+            )
+    }
+
+    private func runSearch() async {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            searchResults = nil
+            errorMessage = nil
+            return
+        }
+
+        isSearching = true
+        errorMessage = nil
+        defer { isSearching = false }
+
+        do {
+            searchResults = try await vm.searchRestaurants(query: query)
+        } catch {
+            errorMessage = error.localizedDescription
+            searchResults = nil
         }
     }
 }
@@ -267,8 +348,8 @@ struct AuthRequiredView: View {
                     Button(action: onSignIn) {
                         Text("Sign In")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white)
-                            .frame(width: 200, height: 48)
+                            .foregroundColor(.keTextOnAccent)
+                            .frame(maxWidth: 320, minHeight: 48)
                             .background(Color.kePrimary)
                             .cornerRadius(Theme.cornerRadiusMedium)
                     }

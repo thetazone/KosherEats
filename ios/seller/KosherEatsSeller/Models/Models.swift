@@ -1,5 +1,22 @@
 import Foundation
 
+// MARK: - Currency Formatting
+
+/// Locale-aware currency formatter for cents → display string.
+/// Uses the device locale so "$12.34" renders correctly in all regions.
+enum CurrencyFormat {
+    private static let formatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f
+    }()
+
+    static func string(fromCents cents: Int) -> String {
+        formatter.string(from: NSNumber(value: Double(cents) / 100)) ?? "$0.00"
+    }
+}
+
 // MARK: - Enums
 
 enum UserRole: String, Codable {
@@ -48,7 +65,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
     case scheduled
     case pending, accepted, preparing, ready
     case pickedUp = "picked_up"
-    case delivered, cancelled, rejected
+    case delivered, completed, cancelled, rejected
 
     var id: String { rawValue }
 
@@ -60,7 +77,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .preparing: return "Preparing"
         case .ready: return "Ready"
         case .pickedUp: return "Picked Up"
-        case .delivered: return "Delivered"
+        case .delivered, .completed: return "Delivered"
         case .cancelled: return "Cancelled"
         case .rejected: return "Rejected"
         }
@@ -74,7 +91,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .preparing: return "flame"
         case .ready: return "bag.fill"
         case .pickedUp: return "car"
-        case .delivered: return "checkmark.seal.fill"
+        case .delivered, .completed: return "checkmark.seal.fill"
         case .cancelled: return "xmark.circle"
         case .rejected: return "xmark.octagon"
         }
@@ -86,7 +103,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .pending: return "warning"
         case .accepted, .preparing: return "primary"
         case .ready: return "success"
-        case .pickedUp, .delivered: return "success"
+        case .pickedUp, .delivered, .completed: return "success"
         case .cancelled, .rejected: return "error"
         }
     }
@@ -218,7 +235,7 @@ struct MenuItem: Codable, Identifiable, Equatable {
     /// separately after creating a brand-new item.
     var modifierGroups: [ModifierGroup]?
 
-    var priceFormatted: String { String(format: "$%.2f", Double(price) / 100) }
+    var priceFormatted: String { CurrencyFormat.string(fromCents: price) }
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, price
@@ -393,6 +410,15 @@ struct Order: Codable, Identifiable {
     let courier: CourierPublic?
     let customerName: String?
     let customerPhone: String?
+    let courierTip: Int?
+    let courierPayout: Int?
+    /// "delivery" (default) or "pickup". Drives the seller UI's branching for
+    /// pickup-shaped orders — no courier card, "Mark Picked Up" button at
+    /// status='ready'. Decoded from the backend's `fulfillment_type` column
+    /// (migration 021); defaults to "delivery" when older responses omit it.
+    let fulfillmentType: String
+
+    var isPickup: Bool { fulfillmentType == "pickup" }
 
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, total, courier
@@ -407,15 +433,45 @@ struct Order: Codable, Identifiable {
         case updatedAt = "updated_at"
         case customerName = "customer_name"
         case customerPhone = "customer_phone"
+        case courierTip = "courier_tip"
+        case courierPayout = "courier_payout"
+        case fulfillmentType = "fulfillment_type"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        userId = try c.decode(String.self, forKey: .userId)
+        restaurantId = try c.decode(String.self, forKey: .restaurantId)
+        restaurantName = try c.decode(String.self, forKey: .restaurantName)
+        status = try c.decode(OrderStatus.self, forKey: .status)
+        items = try c.decode([OrderItem].self, forKey: .items)
+        subtotal = try c.decode(Int.self, forKey: .subtotal)
+        deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
+        serviceFee = try c.decode(Int.self, forKey: .serviceFee)
+        tax = try c.decode(Int.self, forKey: .tax)
+        total = try c.decode(Int.self, forKey: .total)
+        deliveryAddress = try c.decode(String.self, forKey: .deliveryAddress)
+        estDeliveryTime = try c.decodeIfPresent(String.self, forKey: .estDeliveryTime)
+        createdAt = try c.decode(String.self, forKey: .createdAt)
+        updatedAt = try c.decode(String.self, forKey: .updatedAt)
+        courier = try c.decodeIfPresent(CourierPublic.self, forKey: .courier)
+        customerName = try c.decodeIfPresent(String.self, forKey: .customerName)
+        customerPhone = try c.decodeIfPresent(String.self, forKey: .customerPhone)
+        courierTip = try c.decodeIfPresent(Int.self, forKey: .courierTip)
+        courierPayout = try c.decodeIfPresent(Int.self, forKey: .courierPayout)
+        // Default to "delivery" so responses from pre-migration-021 backends
+        // (or any handler that doesn't yet emit the field) still decode.
+        fulfillmentType = (try c.decodeIfPresent(String.self, forKey: .fulfillmentType)) ?? "delivery"
     }
 
     /// Dollars display for the total. Every UI using $%.2f on order.total
     /// should use this instead.
-    var totalFormatted: String { String(format: "$%.2f", Double(total) / 100) }
-    var subtotalFormatted: String { String(format: "$%.2f", Double(subtotal) / 100) }
-    var deliveryFeeFormatted: String { String(format: "$%.2f", Double(deliveryFee) / 100) }
-    var serviceFeeFormatted: String { String(format: "$%.2f", Double(serviceFee) / 100) }
-    var taxFormatted: String { String(format: "$%.2f", Double(tax) / 100) }
+    var totalFormatted: String { CurrencyFormat.string(fromCents: total) }
+    var subtotalFormatted: String { CurrencyFormat.string(fromCents: subtotal) }
+    var deliveryFeeFormatted: String { CurrencyFormat.string(fromCents: deliveryFee) }
+    var serviceFeeFormatted: String { CurrencyFormat.string(fromCents: serviceFee) }
+    var taxFormatted: String { CurrencyFormat.string(fromCents: tax) }
 
     var formattedDate: String {
         guard let date = createdAtDate else { return createdAt }
@@ -456,7 +512,7 @@ struct OrderItem: Codable, Identifiable {
     let selectedModifiers: [SelectedModifier]?
 
     var lineTotalFormatted: String {
-        String(format: "$%.2f", Double(price * quantity) / 100)
+        CurrencyFormat.string(fromCents: price * quantity)
     }
 
     var modifierSummary: String? {
@@ -497,6 +553,38 @@ struct AuthResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case token, user
         case refreshToken = "refresh_token"
+    }
+}
+
+// MARK: - Linked Providers (Account Linking)
+
+struct LinkedProvider: Codable, Identifiable {
+    let provider: String
+    let createdAt: String
+
+    var id: String { provider }
+
+    var displayName: String {
+        switch provider {
+        case "apple": return "Apple"
+        case "google": return "Google"
+        case "phone": return "Phone"
+        default: return provider.capitalized
+        }
+    }
+
+    var iconName: String {
+        switch provider {
+        case "apple": return "apple.logo"
+        case "google": return "g.circle.fill"
+        case "phone": return "phone.fill"
+        default: return "person.fill"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case createdAt = "created_at"
     }
 }
 

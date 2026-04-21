@@ -51,7 +51,7 @@ struct MenuItemView: View {
                         Spacer()
 
                         if !item.isAvailable {
-                            Text("Unavailable")
+                            Text(String(localized: "Unavailable"))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.keError)
                         } else {
@@ -62,7 +62,7 @@ struct MenuItemView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(Theme.spacingSM)
             .background(Color.keCard)
             .cornerRadius(Theme.cornerRadiusMedium)
             .opacity(item.isAvailable ? 1.0 : 0.6)
@@ -84,7 +84,7 @@ struct KashrusTypeIndicator: View {
     var body: some View {
         Text(type)
             .font(.system(size: 11, weight: .heavy))
-            .foregroundColor(.white)
+            .foregroundColor(.keTextOnAccent)
             .frame(width: 22, height: 22)
             .background(color)
             .cornerRadius(6)
@@ -100,13 +100,11 @@ struct KashrusTypeIndicator: View {
 struct AddToCartSheet: View {
     let item: MenuItem
     let restaurantID: String
-    @EnvironmentObject var authVM: AuthViewModel
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
 
     @State private var quantity = 1
     @State private var notes = ""
-    @State private var showLoginSheet = false
     /// Selected modifier ids keyed by group id.
     @State private var selection: [String: Set<String>] = [:]
 
@@ -134,6 +132,21 @@ struct AddToCartSheet: View {
     private var allSelectedIDs: [String] {
         (item.modifierGroups ?? []).flatMap { group in
             (selection[group.id] ?? []).sorted()
+        }
+    }
+
+    private var resolvedModifiers: [SelectedModifier] {
+        (item.modifierGroups ?? []).flatMap { group in
+            (selection[group.id] ?? []).compactMap { id in
+                guard let mod = group.modifiers.first(where: { $0.id == id }) else { return nil }
+                return SelectedModifier(
+                    id: mod.id,
+                    groupID: group.id,
+                    groupName: group.name,
+                    name: mod.name,
+                    priceDelta: mod.priceDelta
+                )
+            }
         }
     }
 
@@ -259,36 +272,36 @@ struct AddToCartSheet: View {
                 }
 
                 Button {
-                    if authVM.isAuthenticated {
-                        Task {
-                            await cartVM.addItem(
-                                menuItemID: item.id,
-                                quantity: quantity,
-                                notes: notes.isEmpty ? nil : notes,
-                                restaurantID: restaurantID,
-                                modifierIDs: allSelectedIDs,
-                            )
-                            dismiss()
-                        }
-                    } else {
-                        showLoginSheet = true
+                    Task {
+                        await cartVM.addItem(
+                            menuItemID: item.id,
+                            quantity: quantity,
+                            notes: notes.isEmpty ? nil : notes,
+                            restaurantID: restaurantID,
+                            modifierIDs: allSelectedIDs,
+                            itemName: item.name,
+                            unitPrice: item.price,
+                            selectedModifiers: resolvedModifiers
+                        )
+                        dismiss()
                     }
                 } label: {
-                    HStack {
-                        Text(canAdd ? "Add to Cart" : "Select required options")
-                        Spacer()
-                        Text(totalPrice)
+                    if cartVM.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        HStack {
+                            Text(canAdd ? "Add to Cart" : "Select required options")
+                            Spacer()
+                            Text(totalPrice)
+                        }
                     }
                 }
-                .buttonStyle(KEPrimaryButtonStyle(isEnabled: canAdd))
-                .disabled(!canAdd)
+                .buttonStyle(KEPrimaryButtonStyle(isEnabled: canAdd && !cartVM.isLoading))
+                .disabled(!canAdd || cartVM.isLoading)
             }
             .padding()
             .background(Color.keBackgroundElevated)
-        }
-        .sheet(isPresented: $showLoginSheet) {
-            LoginView()
-                .environmentObject(authVM)
         }
     }
 }
@@ -414,7 +427,7 @@ private struct ModifierRow: View {
                         .frame(width: 20, height: 20)
                     Image(systemName: "checkmark")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.keTextOnAccent)
                         .opacity(isSelected ? 1 : 0)
                 }
             }

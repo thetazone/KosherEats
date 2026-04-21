@@ -1,7 +1,31 @@
 import Foundation
 import SwiftUI
 import AuthenticationServices
+import CryptoKit
 import GoogleSignIn
+
+// Apple Sign-In replay-attack mitigation. Client generates a random nonce,
+// sends SHA256(nonce) in the request, and Apple echoes the hash into the
+// returned JWT's `nonce` claim. Backend re-hashes the raw value we POST and
+// matches against the claim — a stolen JWT bound to a different nonce fails.
+enum AppleSignInNonce {
+    static func generate() -> (raw: String, hashed: String) {
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remaining = 32
+        while remaining > 0 {
+            var random: UInt8 = 0
+            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            if random < charset.count {
+                result.append(charset[Int(random)])
+                remaining -= 1
+            }
+        }
+        let hash = SHA256.hash(data: Data(result.utf8))
+        let hex = hash.map { String(format: "%02x", $0) }.joined()
+        return (result, hex)
+    }
+}
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -12,6 +36,7 @@ class AuthViewModel: ObservableObject {
 
     private let tokenKey = "ke_seller_token"
     private let refreshTokenKey = "ke_seller_refresh_token"
+    private var restoreTask: Task<Void, Never>?
 
     // Only seller/admin accounts can access the seller dashboard. Consumer
     // accounts (created via Apple/Google social login on this app) are still
@@ -25,16 +50,11 @@ class AuthViewModel: ObservableObject {
     }
 
     init() {
-        if let token = KeychainHelper.load(forKey: tokenKey) {
-            Task {
-                await APIService.shared.setToken(token)
-                // Hydrate the refresh token into the actor too — otherwise a
-                // 401 in the middle of a session can't self-heal and the
-                // seller gets booted back to login despite a valid refresh
-                // token sitting right there in UserDefaults.
-                if let refresh = KeychainHelper.load(forKey: refreshTokenKey) {
-                    await APIService.shared.setRefreshToken(refresh)
-                }
+        // APIService.init() pre-loads tokens from Keychain synchronously, so
+        // they are set before any concurrent API call can fire. This Task only
+        // needs to validate the token and restore the user profile.
+        if KeychainHelper.load(forKey: tokenKey) != nil {
+            restoreTask = Task {
                 // Restore both the token AND the user on cold start. Without
                 // loading the profile here, `self.user` stays nil and
                 // `hasSellerAccess` returns false, which routes a real seller
@@ -197,7 +217,7 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async {
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async {
         isLoading = true
         errorMessage = nil
 
@@ -206,7 +226,8 @@ class AuthViewModel: ObservableObject {
                 provider: provider,
                 token: token,
                 firstName: firstName,
-                lastName: lastName
+                lastName: lastName,
+                nonce: nonce
             )
 
             // Non-sellers are allowed to authenticate on the seller app — they
@@ -283,11 +304,13 @@ class AuthViewModel: ObservableObject {
     // nonce-match check. Until then, a client-side nonce is cosmetic.
 
     func signInWithApple() {
+        let (rawNonce, hashedNonce) = AppleSignInNonce.generate()
         let provider = ASAuthorizationAppleIDProvider()
         let request = provider.createRequest()
         request.requestedScopes = [.fullName, .email]
+        request.nonce = hashedNonce
 
-        let coordinator = AppleSignInCoordinator { [weak self] result in
+        let coordinator = AppleSignInCoordinator(rawNonce: rawNonce) { [weak self] result in
             guard let self else { return }
             Task { @MainActor in
                 defer {
@@ -298,8 +321,8 @@ class AuthViewModel: ObservableObject {
                     self.appleSignInController = nil
                 }
                 switch result {
-                case .success(let (token, firstName, lastName)):
-                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName)
+                case .success(let (token, firstName, lastName, nonce)):
+                    await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName, nonce: nonce)
                 case .failure(let error):
                     // User tapping "Cancel" is not an error — don't flash an
                     // alarming toast. Only surface real failures.
@@ -329,6 +352,8 @@ class AuthViewModel: ObservableObject {
     private var appleSignInController: ASAuthorizationController?
 
     func logout() {
+        restoreTask?.cancel()
+        restoreTask = nil
         KeychainHelper.delete(forKey: tokenKey)
         KeychainHelper.delete(forKey: refreshTokenKey)
         Task {
@@ -337,6 +362,7 @@ class AuthViewModel: ObservableObject {
         }
         user = nil
         isAuthenticated = false
+        PushNotifications.shared.pendingToken = nil
     }
 
     func deleteAccount() async {
@@ -372,9 +398,11 @@ class AuthViewModel: ObservableObject {
     /// a @privaterelay.appleid.com address we'd rather replace.
     var needsProfileCompletion: Bool {
         guard let u = user else { return false }
+        let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if u.email.lowercased().hasSuffix("@privaterelay.appleid.com") { return true }
+        if email.hasSuffix("@privaterelay.appleid.com") { return true }
+        if email.hasSuffix("@phone.koshereats.local") { return true }
         return false
     }
 }
@@ -387,9 +415,12 @@ class AuthViewModel: ObservableObject {
 class AppleSignInCoordinator: NSObject,
                               ASAuthorizationControllerDelegate,
                               ASAuthorizationControllerPresentationContextProviding {
-    private let completion: (Result<(String, String, String), Error>) -> Void
+    private let rawNonce: String
+    private let completion: (Result<(String, String, String, String), Error>) -> Void
 
-    init(completion: @escaping (Result<(String, String, String), Error>) -> Void) {
+    init(rawNonce: String,
+         completion: @escaping (Result<(String, String, String, String), Error>) -> Void) {
+        self.rawNonce = rawNonce
         self.completion = completion
     }
 
@@ -409,7 +440,7 @@ class AppleSignInCoordinator: NSObject,
 
         let firstName = credential.fullName?.givenName ?? ""
         let lastName = credential.fullName?.familyName ?? ""
-        completion(.success((identityToken, firstName, lastName)))
+        completion(.success((identityToken, firstName, lastName, rawNonce)))
     }
 
     func authorizationController(controller: ASAuthorizationController,

@@ -4,9 +4,7 @@ import SwiftUI
 /// new one. Presented from CheckoutView when the user taps "Change" — or
 /// automatically when they have zero saved addresses at checkout time.
 ///
-/// Kept intentionally simple: label/street/apt/city/state/zip fields,
-/// hardcoded lat/lng of 0,0 in dev (we'd geocode with MKLocalSearch or the
-/// Google Places API in prod).
+/// TODO: geocode addresses with MKLocalSearch instead of submitting lat/lng 0,0.
 struct AddressPickerSheet: View {
     @Binding var selected: Address?
     @Environment(\.dismiss) var dismiss
@@ -23,6 +21,22 @@ struct AddressPickerSheet: View {
 
                 if isLoading {
                     ProgressView().tint(.kePrimary)
+                } else if let error = errorMessage, addresses.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "wifi.slash")
+                            .font(.system(size: 40))
+                            .foregroundColor(.keError)
+                        Text(error)
+                            .font(.body)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            errorMessage = nil
+                            Task { await load() }
+                        }
+                        .buttonStyle(KEPrimaryButtonStyle())
+                    }
+                    .padding()
                 } else if addresses.isEmpty {
                     emptyState
                 } else {
@@ -44,8 +58,15 @@ struct AddressPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    // "Done" not "Cancel" — `selected` is bound from the
+                    // caller and gets set on row-tap or on first load. There's
+                    // no way to discard the selection from this sheet, so
+                    // labeling the button "Cancel" was misleading: users left
+                    // it alone, expecting to confirm the address with a
+                    // separate button that doesn't exist.
+                    Button("Done") { dismiss() }
                         .foregroundColor(.kePrimary)
+                        .fontWeight(.semibold)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -57,10 +78,13 @@ struct AddressPickerSheet: View {
                 }
             }
             .sheet(isPresented: $showAddForm) {
-                AddressFormSheet { newAddress in
-                    selected = newAddress
-                    Task { await load() }
-                }
+                AddressFormSheet(
+                    onSaved: { newAddress in
+                        selected = newAddress
+                        Task { await load() }
+                    },
+                    onWarning: { errorMessage = $0 }
+                )
             }
             .task { await load() }
         }
@@ -84,7 +108,7 @@ struct AddressPickerSheet: View {
                 Text("Add Address")
             }
             .buttonStyle(KEPrimaryButtonStyle())
-            .frame(width: 220)
+            .frame(maxWidth: 320)
         }
     }
 
@@ -120,6 +144,7 @@ struct AddressPickerSheet: View {
 
     private func load() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             addresses = try await APIService.shared.listAddresses()
@@ -131,4 +156,3 @@ struct AddressPickerSheet: View {
         }
     }
 }
-

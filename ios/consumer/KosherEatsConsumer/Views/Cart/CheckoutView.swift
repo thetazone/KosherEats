@@ -13,10 +13,12 @@ import StripePaymentSheet
 /// client never computes money locally — the backend is the source of truth.
 struct CheckoutView: View {
     @EnvironmentObject var cartVM: CartViewModel
+    @EnvironmentObject var router: AppRouter
     @StateObject private var vm = CheckoutViewModel()
     @Environment(\.dismiss) var dismiss
     @State private var showAddressPicker = false
     @State private var placedOrder: Order?
+    @State private var bundleRefreshTask: Task<Void, Never>?
     // Carries the order id we should deep-link to AFTER the confirmation
     // cover finishes dismissing — prevents the root tab from racing the
     // fullScreenCover dismissal animation.
@@ -31,22 +33,38 @@ struct CheckoutView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: Theme.spacingLG) {
-                    AddressCard(address: vm.selectedAddress, onChange: { showAddressPicker = true })
-
-                    DeliveryTimeCard(scheduledFor: $vm.scheduledFor)
-
-                    TipSelector(
-                        subtotal: vm.bundle?.subtotal ?? 0,
-                        selected: vm.tipSelection,
-                        customAmount: $vm.customTipText,
-                        onSelect: { choice in vm.selectTip(choice) },
+                    FulfillmentPicker(
+                        selected: $vm.fulfillmentType
                     )
+
+                    if vm.fulfillmentType == "delivery" {
+                        AddressCard(address: vm.selectedAddress, onChange: { showAddressPicker = true })
+                    }
+
+                    DeliveryTimeCard(scheduledFor: $vm.scheduledFor, isPickup: vm.fulfillmentType == "pickup")
+
+                    // No courier on pickup orders → no tip slot.
+                    if vm.fulfillmentType == "delivery" {
+                        TipSelector(
+                            subtotal: vm.bundle?.subtotal ?? 0,
+                            selected: vm.tipSelection,
+                            customAmount: $vm.customTipText,
+                            onSelect: { choice in vm.selectTip(choice) },
+                        )
+                    }
 
                     if let bundle = vm.bundle {
                         if let brand = bundle.defaultCardBrand, let last4 = bundle.defaultCardLast4 {
                             SavedCardCard(brand: brand, last4: last4)
                         }
-                        TotalsCard(bundle: bundle)
+                        ZStack(alignment: .topTrailing) {
+                            TotalsCard(bundle: bundle)
+                            if vm.isLoadingBundle {
+                                ProgressView()
+                                    .tint(.kePrimary)
+                                    .padding(12)
+                            }
+                        }
                     } else if vm.isLoadingBundle {
                         ProgressView().tint(.kePrimary).padding()
                     }
@@ -72,8 +90,10 @@ struct CheckoutView: View {
         .task {
             await vm.loadAddresses()
             await vm.refreshBundle()
-            // If the user has no saved address, immediately open the picker.
-            if vm.selectedAddress == nil {
+            // If the user has no saved address AND they're checking out for
+            // delivery, immediately open the picker. Pickup orders skip this
+            // since the address card is hidden in pickup mode anyway.
+            if vm.selectedAddress == nil && vm.fulfillmentType == "delivery" {
                 showAddressPicker = true
             }
         }
@@ -81,12 +101,37 @@ struct CheckoutView: View {
             AddressPickerSheet(selected: $vm.selectedAddress)
         }
         .onChange(of: vm.tipSelection) { _, _ in
-            Task { await vm.refreshBundle() }
+            bundleRefreshTask?.cancel()
+            bundleRefreshTask = Task { await vm.refreshBundle() }
         }
-        .onChange(of: vm.customTipText) { _, newValue in
+        .onChange(of: vm.customTipText) { _, _ in
             if vm.tipSelection == .custom {
-                Task { await vm.refreshBundle() }
+                bundleRefreshTask?.cancel()
+                bundleRefreshTask = Task { await vm.refreshBundle() }
             }
+        }
+        .alert("Payment Received — Order Failed", isPresented: $vm.orderCreationFailed) {
+            Button("Retry") {
+                Task {
+                    guard let bundle = vm.bundle, let addr = vm.selectedAddress else { return }
+                    if let order = await vm.placeOrder(address: addr, bundle: bundle) {
+                        Haptics.success()
+                        showAddressPicker = false
+                        placedOrder = order
+                    } else {
+                        Haptics.error()
+                        vm.orderCreationFailed = true
+                    }
+                }
+            }
+            Button("Contact Support") {
+                if let url = URL(string: "mailto:support@koshereats.com") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Dismiss", role: .cancel) {}
+        } message: {
+            Text("Your payment was received but we couldn't create your order. You have not been double-charged. Please retry or contact support.")
         }
         .fullScreenCover(
             item: $placedOrder,
@@ -97,11 +142,7 @@ struct CheckoutView: View {
                 // asyncAfter dance.
                 if let id = pendingTrackOrderId {
                     pendingTrackOrderId = nil
-                    NotificationCenter.default.post(
-                        name: .navigateToOrderTracking,
-                        object: nil,
-                        userInfo: ["order_id": id]
-                    )
+                    router.navigate(.tracking(orderID: id))
                 }
             }
         ) { order in
@@ -147,7 +188,7 @@ struct CheckoutView: View {
                 } label: {
                     HStack {
                         if vm.isProcessing {
-                            ProgressView().tint(.white)
+                            ProgressView().tint(.keTextOnAccent)
                         } else {
                             Text("Place Order")
                             Spacer()
@@ -166,31 +207,69 @@ struct CheckoutView: View {
     }
 
     private var canPay: Bool {
-        vm.bundle != nil && vm.selectedAddress != nil && !vm.isProcessing
+        guard vm.bundle != nil, !vm.isProcessing, !vm.isLoadingBundle else { return false }
+        // Pickup orders don't need an address; delivery orders do.
+        if vm.fulfillmentType == "pickup" { return true }
+        return vm.selectedAddress != nil
     }
 
     private func pay() async {
-        guard let bundle = vm.bundle, let address = vm.selectedAddress else { return }
+        guard let bundle = vm.bundle else { return }
+        if vm.fulfillmentType == "delivery", vm.selectedAddress == nil { return }
         Haptics.impact(.medium)
         await vm.presentAndChargePaymentSheet(bundle: bundle)
-        await finishIfSucceeded(bundle: bundle, address: address)
+        await finishIfSucceeded(bundle: bundle, address: vm.selectedAddress)
     }
 
     private func payWithApplePay() async {
-        guard let bundle = vm.bundle, let address = vm.selectedAddress else { return }
+        guard let bundle = vm.bundle else { return }
+        if vm.fulfillmentType == "delivery", vm.selectedAddress == nil { return }
         Haptics.impact(.medium)
         await vm.presentApplePayExpress(bundle: bundle)
-        await finishIfSucceeded(bundle: bundle, address: address)
+        await finishIfSucceeded(bundle: bundle, address: vm.selectedAddress)
     }
 
-    private func finishIfSucceeded(bundle: APIService.PaymentSheetBundle, address: Address) async {
+    private func finishIfSucceeded(bundle: APIService.PaymentSheetBundle, address: Address?) async {
         if vm.paymentSucceeded {
             if let order = await vm.placeOrder(address: address, bundle: bundle) {
                 Haptics.success()
+                showAddressPicker = false
                 placedOrder = order
             } else {
                 Haptics.error()
+                vm.orderCreationFailed = true
             }
+        }
+    }
+}
+
+/// Two-button segment letting the consumer pick delivery (default) vs
+/// self-pickup. Triggers a bundle refresh via the VM's didSet so totals
+/// update immediately when the user toggles.
+private struct FulfillmentPicker: View {
+    @Binding var selected: String
+
+    var body: some View {
+        HStack(spacing: 0) {
+            tile(title: "Delivery", systemImage: "bicycle", value: "delivery")
+            tile(title: "Pickup", systemImage: "bag.fill", value: "pickup")
+        }
+        .background(Color.keCard)
+        .cornerRadius(Theme.cornerRadiusMedium)
+    }
+
+    private func tile(title: String, systemImage: String, value: String) -> some View {
+        let isSelected = selected == value
+        return Button { selected = value } label: {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .font(.subheadline.bold())
+            .foregroundColor(isSelected ? .keTextOnAccent : .keTextSecondary)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(isSelected ? Color.kePrimary : Color.clear)
+            .cornerRadius(Theme.cornerRadiusMedium)
         }
     }
 }
@@ -237,19 +316,23 @@ private struct AddressCard: View {
 /// kitchen has time to prepare.
 private struct DeliveryTimeCard: View {
     @Binding var scheduledFor: Date?
+    /// When true, header reads "Pickup time" and ASAP subtext reads
+    /// "Pickup as soon as possible" — same picker, just relabeled so the
+    /// copy matches the consumer's actual fulfillment choice.
+    var isPickup: Bool = false
     @State private var showPicker = false
     @State private var draftDate = Date().addingTimeInterval(60 * 60)
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.spacingSM) {
-            Text("Delivery time")
+            Text(isPickup ? "Pickup time" : "Delivery time")
                 .font(.headline)
                 .foregroundColor(.keTextPrimary)
 
             HStack(spacing: 8) {
                 timeOption(
                     title: "ASAP",
-                    subtitle: "Deliver as soon as possible",
+                    subtitle: isPickup ? "Pickup as soon as possible" : "Deliver as soon as possible",
                     isSelected: scheduledFor == nil,
                     action: { scheduledFor = nil },
                 )
@@ -258,10 +341,8 @@ private struct DeliveryTimeCard: View {
                     subtitle: scheduledFor.map { formatted($0) } ?? "Pick a time",
                     isSelected: scheduledFor != nil,
                     action: {
+                        draftDate = Date().addingTimeInterval(3600)
                         showPicker = true
-                        if scheduledFor == nil {
-                            scheduledFor = draftDate
-                        }
                     },
                 )
             }
@@ -274,7 +355,7 @@ private struct DeliveryTimeCard: View {
             NavigationStack {
                 VStack {
                     DatePicker(
-                        "Deliver at",
+                        isPickup ? "Pickup at" : "Deliver at",
                         selection: Binding(
                             get: { scheduledFor ?? draftDate },
                             set: { scheduledFor = $0; draftDate = $0 },
@@ -288,7 +369,7 @@ private struct DeliveryTimeCard: View {
                 }
                 .padding()
                 .background(Color.keBackground)
-                .navigationTitle("Delivery time")
+                .navigationTitle(isPickup ? "Pickup time" : "Delivery time")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
@@ -404,6 +485,8 @@ private struct TipChip: View {
                         .fill(isSelected ? Color.kePrimary : Color.keBackgroundElevated)
                 )
         }
+        .accessibilityLabel("Tip \(label)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -452,7 +535,12 @@ private struct TotalsCard: View {
             totalsRow("Subtotal", bundle.subtotal)
             totalsRow("Tax", bundle.tax)
             totalsRow("Service fee", bundle.serviceFee)
-            totalsRow("Delivery fee", bundle.deliveryFee)
+            // Pickup orders have no delivery fee — hide the row entirely
+            // instead of showing "Delivery fee $0.00" which is dead weight
+            // and slightly confusing on a pickup receipt.
+            if bundle.deliveryFee > 0 {
+                totalsRow("Delivery fee", bundle.deliveryFee)
+            }
             if bundle.tip > 0 {
                 totalsRow("Driver tip", bundle.tip)
             }

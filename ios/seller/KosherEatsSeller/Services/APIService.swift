@@ -24,6 +24,11 @@ actor APIService {
     private let baseURL: String
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        return URLSession(configuration: config)
+    }()
     private var token: String?
     /// Held inside the actor so request/refresh can coordinate without
     /// reaching into UserDefaults on every call. AuthViewModel still owns
@@ -33,6 +38,10 @@ actor APIService {
 
     private init() {
         self.baseURL = "https://koshereats-api.fly.dev/api/v1"
+        // Pre-load synchronously so any API call that races the AuthViewModel
+        // init Task still carries an Authorization header and refresh token.
+        self.token = KeychainHelper.load(forKey: "ke_seller_token")
+        self.refreshToken = KeychainHelper.load(forKey: "ke_seller_refresh_token")
 
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
@@ -56,7 +65,8 @@ actor APIService {
     private func request<T: Decodable>(
         _ method: String,
         path: String,
-        body: Encodable? = nil
+        body: Encodable? = nil,
+        headers: [String: String]? = nil
     ) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -70,6 +80,12 @@ actor APIService {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
+        if let headers {
+            for (key, value) in headers {
+                req.setValue(value, forHTTPHeaderField: key)
+            }
+        }
+
         if let body = body {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
@@ -78,7 +94,11 @@ actor APIService {
         for attempt in 0...maxRetries {
             let (data, response): (Data, URLResponse)
             do {
-                (data, response) = try await URLSession.shared.data(for: req)
+                (data, response) = try await session.data(for: req)
+            } catch let urlError as URLError where attempt < maxRetries &&
+                [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                continue
             } catch {
                 throw APIError.networkError(error.localizedDescription)
             }
@@ -125,41 +145,46 @@ actor APIService {
     /// Swaps the stored refresh token for a fresh access + refresh pair. A
     /// `false` return means the refresh token itself is expired — the caller
     /// should treat that as a hard 401 and route the user back to login.
-    private var isRefreshing = false
+    private var refreshTask: Task<Bool, Never>?
 
     private func performTokenRefresh() async -> Bool {
-        if isRefreshing { return token != nil }
-        isRefreshing = true
-        defer { isRefreshing = false }
+        if let task = refreshTask { return await task.value }
+        let task = Task<Bool, Never> {
+            defer { self.refreshTask = nil }
 
-        guard let refresh = refreshToken,
-              let url = URL(string: "\(baseURL)/auth/refresh") else { return false }
+            guard let refresh = self.refreshToken,
+                  let url = URL(string: "\(self.baseURL)/auth/refresh") else { return false }
 
-        struct RefreshResponse: Decodable {
-            let token: String
-            let refreshToken: String
-            enum CodingKeys: String, CodingKey {
-                case token
-                case refreshToken = "refresh_token"
+            struct RefreshResponse: Decodable {
+                let token: String
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey {
+                    case token
+                    case refreshToken = "refresh_token"
+                }
+            }
+
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": refresh])
+
+            do {
+                let (data, response) = try await session.data(for: req)
+                guard let http = response as? HTTPURLResponse,
+                      (200...299).contains(http.statusCode) else { return false }
+                let decoded = try self.decoder.decode(RefreshResponse.self, from: data)
+                self.token = decoded.token
+                self.refreshToken = decoded.refreshToken
+                KeychainHelper.save(decoded.token, forKey: "ke_seller_token")
+                KeychainHelper.save(decoded.refreshToken, forKey: "ke_seller_refresh_token")
+                return true
+            } catch {
+                return false
             }
         }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": refresh])
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode) else { return false }
-            let decoded = try decoder.decode(RefreshResponse.self, from: data)
-            self.token = decoded.token
-            self.refreshToken = decoded.refreshToken
-            return true
-        } catch {
-            return false
-        }
+        refreshTask = task
+        return await task.value
     }
 
     private func requestVoid(
@@ -187,7 +212,11 @@ actor APIService {
         for attempt in 0...maxRetries {
             let (data, response): (Data, URLResponse)
             do {
-                (data, response) = try await URLSession.shared.data(for: req)
+                (data, response) = try await session.data(for: req)
+            } catch let urlError as URLError where attempt < maxRetries &&
+                [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                continue
             } catch {
                 throw APIError.networkError(error.localizedDescription)
             }
@@ -226,16 +255,15 @@ actor APIService {
 
     // MARK: - Auth
 
+    // All auth requests send role="seller" so the backend's scoped lookups
+    // (see migration 019) find or create the seller-side account specifically,
+    // not a consumer account that happens to share the same email/phone.
+
     func login(email: String, password: String) async throws -> AuthResponse {
-        let body = ["email": email, "password": password]
+        let body = ["email": email, "password": password, "role": "seller"]
         return try await request("POST", path: "/auth/login", body: body)
     }
 
-    /// Creates a consumer account via /auth/register. The seller app funnels
-    /// new email users into SellerOnboardingView afterward (same path as a
-    /// non-seller Apple/Google sign-up) — there's no public self-service
-    /// seller-role signup, so the reviewer pass-through and any curious
-    /// drop-ins end up on the "become a seller" screen.
     func register(email: String, password: String, firstName: String, lastName: String) async throws -> AuthResponse {
         let body = [
             "email": email,
@@ -243,6 +271,7 @@ actor APIService {
             "first_name": firstName,
             "last_name": lastName,
             "phone": "",
+            "role": "seller",
         ]
         return try await request("POST", path: "/auth/register", body: body)
     }
@@ -250,7 +279,7 @@ actor APIService {
     struct EmailCheckResponse: Decodable { let exists: Bool; let role: String }
 
     func checkEmail(_ email: String) async throws -> EmailCheckResponse {
-        let body = ["email": email]
+        let body = ["email": email, "role": "seller"]
         return try await request("POST", path: "/auth/email/check", body: body)
     }
 
@@ -279,13 +308,15 @@ actor APIService {
         return try await request("PUT", path: "/user/profile", body: body)
     }
 
-    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async throws -> AuthResponse {
-        let body: [String: String] = [
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async throws -> AuthResponse {
+        var body: [String: String] = [
             "provider": provider,
             "token": token,
             "first_name": firstName,
-            "last_name": lastName
+            "last_name": lastName,
+            "role": "seller",
         ]
+        if let nonce { body["nonce"] = nonce }
         return try await request("POST", path: "/auth/social", body: body)
     }
 
@@ -295,10 +326,9 @@ actor APIService {
     // SMS, /auth/phone/verify trades a valid code for a JWT. Phone must be
     // E.164 ("+15551234567"); the caller formats it that way before sending.
     //
-    // The verify call advertises role="seller" so the backend can create a
-    // brand-new seller account or promote an existing consumer → seller.
-    // Cross-role promotion (courier ↔ seller) is not applied server-side, so
-    // AuthViewModel still enforces a role guard on the response.
+    // The verify call advertises role="seller" so the backend can validate
+    // seller access. Public seller creation/promotion is intentionally not
+    // performed here; AuthViewModel still enforces a role guard on success.
 
     struct PhoneVerifyBody: Encodable {
         let phone: String
@@ -332,7 +362,7 @@ actor APIService {
     // seller application. Remove once a self-serve demo path ships.
 
     func reviewerSellerLogin() async throws -> AuthResponse {
-        try await request("POST", path: "/auth/reviewer/seller")
+        try await request("POST", path: "/auth/reviewer/seller", headers: ["X-Reviewer-Secret": "ke-review-2026"])
     }
 
     // MARK: - Restaurant
@@ -351,6 +381,40 @@ actor APIService {
     /// Every restaurant this seller owns. Drives the restaurant picker sheet.
     func listRestaurants() async throws -> [Restaurant] {
         try await request("GET", path: "/seller/restaurants")
+    }
+
+    /// Body the seller submits via the first-restaurant onboarding form.
+    /// Mirrors the backend's CreateRestaurantRequest field-for-field.
+    struct CreateRestaurantBody: Encodable {
+        let name: String
+        let description: String
+        let phone: String
+        let email: String
+        let street: String
+        let city: String
+        let state: String
+        let zipCode: String
+        let kosherCertification: String
+        let certifyingAgency: String
+        let cuisineType: [String]
+        let isCholovYisroel: Bool
+        let isPasYisroel: Bool
+        let isGlattKosher: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case name, description, phone, email, street, city, state
+            case zipCode = "zip_code"
+            case kosherCertification = "kosher_certification"
+            case certifyingAgency = "certifying_agency"
+            case cuisineType = "cuisine_type"
+            case isCholovYisroel = "is_cholov_yisroel"
+            case isPasYisroel = "is_pas_yisroel"
+            case isGlattKosher = "is_glatt_kosher"
+        }
+    }
+
+    func createRestaurant(_ body: CreateRestaurantBody) async throws -> Restaurant {
+        try await request("POST", path: "/seller/restaurants", body: body)
     }
 
     func getRestaurant() async throws -> Restaurant {
@@ -415,6 +479,27 @@ actor APIService {
         try await requestVoid("DELETE", path: await sellerPath("/seller/menu/modifier-groups/\(groupID)"))
     }
 
+    // MARK: - Linked Providers (Account Linking)
+
+    func listLinkedProviders() async throws -> [LinkedProvider] {
+        try await request("GET", path: "/user/linked-providers")
+    }
+
+    func linkProvider(provider: String, token: String, nonce: String? = nil) async throws {
+        var body: [String: String] = ["provider": provider, "token": token]
+        if let nonce { body["nonce"] = nonce }
+        try await requestVoid("POST", path: "/user/linked-providers", body: body)
+    }
+
+    func linkPhone(phone: String, code: String) async throws {
+        let body: [String: String] = ["provider": "phone", "phone": phone, "code": code]
+        try await requestVoid("POST", path: "/user/linked-providers", body: body)
+    }
+
+    func unlinkProvider(_ provider: String) async throws {
+        try await requestVoid("DELETE", path: "/user/linked-providers/\(provider)")
+    }
+
     // MARK: - Account
 
     func deleteAccount() async throws {
@@ -450,8 +535,18 @@ actor APIService {
         try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/ready"))
     }
 
-    // NOTE: Sellers no longer mark orders delivered. Once status == 'ready', a
-    // courier claims the order and drives it through picked_up -> delivered.
+    /// Marks a pickup-fulfillment order completed when the customer arrives
+    /// to collect it. No-op for delivery orders — the courier owns the
+    /// picked_up → delivered transition. Backend's CompleteOrder handler
+    /// enforces status='ready' so a misfire on a non-pickup order will 400.
+    func markOrderCompleted(id: String) async throws -> Order {
+        try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/complete"))
+    }
+
+    // NOTE: Sellers no longer mark delivery orders delivered. Once
+    // status == 'ready' on a delivery order, a courier claims it and drives
+    // it through picked_up -> delivered. Pickup orders use markOrderCompleted
+    // above instead.
 
     // MARK: - Dashboard
 

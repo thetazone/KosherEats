@@ -32,258 +32,297 @@ struct RestaurantSettingsView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.keBackground.ignoresSafeArea()
+        ZStack {
+            Color.keBackground.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Restaurant Info
-                        settingsSection("Restaurant Info", icon: "storefront.fill") {
-                            settingsField("Name", text: $name)
-                            settingsField("Description", text: $description)
-                            settingsField("Phone", text: $phone, keyboard: .phonePad)
-                            settingsField("Email", text: $email, keyboard: .emailAddress)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Restaurant Info
+                    settingsSection("Restaurant Info", icon: "storefront.fill") {
+                        settingsField("Name", text: $name)
+                        settingsField("Description", text: $description)
+                        settingsField("Phone", text: $phone, keyboard: .phonePad)
+                        settingsField("Email", text: $email, keyboard: .emailAddress)
+                    }
+
+                    // Address
+                    settingsSection("Address", icon: "mappin.and.ellipse") {
+                        settingsField("Street", text: $street)
+                        HStack(spacing: 12) {
+                            settingsField("City", text: $city)
+                            settingsField("State", text: $state)
+                                .frame(width: 80)
                         }
+                        settingsField("ZIP Code", text: $zipCode, keyboard: .numberPad)
+                    }
 
-                        // Address
-                        settingsSection("Address", icon: "mappin.and.ellipse") {
-                            settingsField("Street", text: $street)
-                            HStack(spacing: 12) {
-                                settingsField("City", text: $city)
-                                settingsField("State", text: $state)
-                                    .frame(width: 80)
-                            }
-                            settingsField("ZIP Code", text: $zipCode, keyboard: .numberPad)
-                        }
-
-                        // Delivery Settings
-                        settingsSection("Delivery", icon: "car.fill") {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Delivery Fee")
-                                        .font(.caption)
-                                        .foregroundColor(.keTextSecondary)
-                                    HStack {
-                                        Text("$")
-                                            .foregroundColor(.keTextMuted)
-                                        TextField("0.00", text: $deliveryFee)
-                                            .keyboardType(.decimalPad)
-                                            .foregroundColor(.keTextPrimary)
-                                    }
-                                    .padding()
-                                    .background(Color.keCard)
-                                    .cornerRadius(10)
-                                }
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Min Order")
-                                        .font(.caption)
-                                        .foregroundColor(.keTextSecondary)
-                                    HStack {
-                                        Text("$")
-                                            .foregroundColor(.keTextMuted)
-                                        TextField("0.00", text: $minOrder)
-                                            .keyboardType(.decimalPad)
-                                            .foregroundColor(.keTextPrimary)
-                                    }
-                                    .padding()
-                                    .background(Color.keCard)
-                                    .cornerRadius(10)
-                                }
-                            }
-
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Est. Min (min)")
-                                        .font(.caption)
-                                        .foregroundColor(.keTextSecondary)
-                                    TextField("20", text: $estDeliveryMin)
-                                        .keyboardType(.numberPad)
-                                        .foregroundColor(.keTextPrimary)
-                                        .padding()
-                                        .background(Color.keCard)
-                                        .cornerRadius(10)
-                                }
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Est. Max (min)")
-                                        .font(.caption)
-                                        .foregroundColor(.keTextSecondary)
-                                    TextField("45", text: $estDeliveryMax)
-                                        .keyboardType(.numberPad)
-                                        .foregroundColor(.keTextPrimary)
-                                        .padding()
-                                        .background(Color.keCard)
-                                        .cornerRadius(10)
-                                }
-                            }
-                        }
-
-                        // Kosher Certification
-                        settingsSection("Kosher Certification", icon: "checkmark.seal.fill") {
+                    // Delivery Settings
+                    settingsSection("Delivery", icon: "car.fill") {
+                        HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Certification")
+                                Text("Delivery Fee")
                                     .font(.caption)
                                     .foregroundColor(.keTextSecondary)
+                                HStack {
+                                    Text("$")
+                                        .foregroundColor(.keTextMuted)
+                                    TextField("0.00", text: $deliveryFee)
+                                        .keyboardType(.decimalPad)
+                                        .foregroundColor(.keTextPrimary)
+                                        .onChange(of: deliveryFee) { _, val in
+                                            deliveryFee = val.filter { $0.isNumber || $0 == "." }
+                                        }
+                                }
+                                .padding()
+                                .background(Color.keCard)
+                                .cornerRadius(10)
+                            }
 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(KosherCertification.allCases) { cert in
-                                            Button {
-                                                kosherCert = cert
-                                            } label: {
-                                                Text(cert.displayName)
-                                                    .font(.caption.bold())
-                                                    .foregroundColor(
-                                                        kosherCert == cert ? .white : .keTextSecondary
-                                                    )
-                                                    .padding(.horizontal, 14)
-                                                    .padding(.vertical, 8)
-                                                    .background(
-                                                        kosherCert == cert ? Color.kePrimary : Color.keCard
-                                                    )
-                                                    .cornerRadius(8)
-                                            }
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Min Order")
+                                    .font(.caption)
+                                    .foregroundColor(.keTextSecondary)
+                                HStack {
+                                    Text("$")
+                                        .foregroundColor(.keTextMuted)
+                                    TextField("0.00", text: $minOrder)
+                                        .keyboardType(.decimalPad)
+                                        .foregroundColor(.keTextPrimary)
+                                        .onChange(of: minOrder) { _, val in
+                                            minOrder = val.filter { $0.isNumber || $0 == "." }
+                                        }
+                                }
+                                .padding()
+                                .background(Color.keCard)
+                                .cornerRadius(10)
+                            }
+                        }
+
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Est. Min (min)")
+                                    .font(.caption)
+                                    .foregroundColor(.keTextSecondary)
+                                TextField("20", text: $estDeliveryMin)
+                                    .keyboardType(.numberPad)
+                                    .foregroundColor(.keTextPrimary)
+                                    .padding()
+                                    .background(Color.keCard)
+                                    .cornerRadius(10)
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Est. Max (min)")
+                                    .font(.caption)
+                                    .foregroundColor(.keTextSecondary)
+                                TextField("45", text: $estDeliveryMax)
+                                    .keyboardType(.numberPad)
+                                    .foregroundColor(.keTextPrimary)
+                                    .padding()
+                                    .background(Color.keCard)
+                                    .cornerRadius(10)
+                            }
+                        }
+                    }
+
+                    // Kosher Certification
+                    settingsSection("Kosher Certification", icon: "checkmark.seal.fill") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Certification")
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(Array(KosherCertification.allCases), id: \.rawValue) { cert in
+                                        Button {
+                                            kosherCert = cert
+                                        } label: {
+                                    Text(cert.displayName)
+                                                .font(.caption.bold())
+                                                .foregroundColor(
+                                                    kosherCert == cert ? .white : .keTextSecondary
+                                                )
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 8)
+                                                .background(
+                                                    kosherCert == cert ? Color.kePrimary : Color.keCard
+                                                )
+                                                .cornerRadius(8)
                                         }
                                     }
                                 }
                             }
-
-                            settingsField("Certifying Agency", text: $certifyingAgency)
-
-                            kosherToggleRow("Cholov Yisroel", isOn: $isCholovYisroel)
-                            kosherToggleRow("Pas Yisroel", isOn: $isPasYisroel)
-                            kosherToggleRow("Glatt Kosher", isOn: $isGlattKosher)
                         }
 
-                        // Save Button
-                        Button {
-                            Task { await save() }
-                        } label: {
-                            Group {
-                                if isSaving {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                } else {
-                                    Text("Save Changes")
-                                        .font(.headline)
-                                }
-                            }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(Color.kePrimary)
-                            .cornerRadius(14)
-                        }
-                        .disabled(isSaving)
+                        settingsField("Certifying Agency", text: $certifyingAgency)
 
-                        if let error = errorMessage {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.keError)
-                        }
+                        kosherToggleRow("Cholov Yisroel", isOn: $isCholovYisroel)
+                        kosherToggleRow("Pas Yisroel", isOn: $isPasYisroel)
+                        kosherToggleRow("Glatt Kosher", isOn: $isGlattKosher)
+                    }
 
-                        // Legal — required in-app by App Store Review
-                        // (guideline 5.1.1). External URLs open in Safari
-                        // so we don't have to host an in-app webview.
-                        VStack(spacing: 0) {
-                            legalLinkRow("Privacy Policy", icon: "shield.fill") {
-                                openURL(LegalURLs.privacyPolicy)
-                            }
-                            Divider().background(Color.keBorder)
-                            legalLinkRow("Terms of Service", icon: "doc.text.fill") {
-                                openURL(LegalURLs.termsOfService)
-                            }
-                            Divider().background(Color.keBorder)
-                            legalLinkRow("Help & Support", icon: "questionmark.circle.fill") {
-                                openURL(LegalURLs.supportEmail)
+                    // Save Button
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        Group {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Text("Save Changes")
+                                    .font(.headline)
                             }
                         }
+                        .foregroundColor(.keTextOnAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Color.kePrimary)
+                        .cornerRadius(14)
+                    }
+                    .disabled(isSaving)
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.keError)
+                    }
+
+                    // Connected Accounts
+                    NavigationLink {
+                        ConnectedAccountsView()
+                            .environmentObject(authVM)
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "person.crop.circle.badge.plus")
+                                .font(.system(size: 16))
+                                .foregroundColor(.kePrimary)
+                                .frame(width: 24)
+                            Text("Connected Accounts")
+                                .font(.system(size: 15))
+                                .foregroundColor(.keTextPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13))
+                                .foregroundColor(.keTextMuted)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
                         .background(Color.keCard)
                         .cornerRadius(12)
-
-                        // Logout
-                        Button {
-                            showLogoutConfirm = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                Text("Log Out")
-                            }
-                            .font(.subheadline.bold())
-                            .foregroundColor(.keError)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(Color.keError.opacity(0.1))
-                            .cornerRadius(12)
-                        }
-
-                        // Delete Account
-                        Button {
-                            showDeleteConfirm = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "trash")
-                                Text("Delete Account")
-                            }
-                            .font(.subheadline.bold())
-                            .foregroundColor(.keError)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(Color.keError.opacity(0.1))
-                            .cornerRadius(12)
-                        }
-
-                        Spacer().frame(height: 20)
                     }
-                    .padding()
-                    .adaptiveContentWidth(700)
-                }
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .task {
-                await dashVM.load()
-                populateFields()
-            }
-            .alert("Log Out", isPresented: $showLogoutConfirm) {
-                Button("Cancel", role: .cancel) { }
-                Button("Log Out", role: .destructive) {
-                    authVM.logout()
-                }
-            } message: {
-                Text("Are you sure you want to log out?")
-            }
-            .alert("Delete Account", isPresented: $showDeleteConfirm) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    Task { await authVM.deleteAccount() }
-                }
-            } message: {
-                Text("This will permanently delete your account and all associated data. This action cannot be undone.")
-            }
-            .overlay {
-                if showSaved {
-                    VStack {
-                        Spacer()
-                        Text("Settings saved")
-                            .font(.subheadline.bold())
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.keSuccess)
-                            .cornerRadius(12)
-                            .padding(.bottom, 20)
-                    }
-                    .transition(.move(edge: .bottom))
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation { showSaved = false }
+
+                    // Legal — required in-app by App Store Review
+                    // (guideline 5.1.1). External URLs open in Safari
+                    // so we don't have to host an in-app webview.
+                    VStack(spacing: 0) {
+                        legalLinkRow("Privacy Policy", icon: "shield.fill") {
+                            openURL(LegalURLs.privacyPolicy)
                         }
+                        Divider().background(Color.keBorder)
+                        legalLinkRow("Terms of Service", icon: "doc.text.fill") {
+                            openURL(LegalURLs.termsOfService)
+                        }
+                        Divider().background(Color.keBorder)
+                        legalLinkRow("Help & Support", icon: "questionmark.circle.fill") {
+                            openURL(LegalURLs.supportEmail)
+                        }
+                    }
+                    .background(Color.keCard)
+                    .cornerRadius(12)
+
+                    // Logout
+                    Button {
+                        showLogoutConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Log Out")
+                        }
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keError)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.keError.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+
+                    // Delete Account
+                    Button {
+                        showDeleteConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash")
+                            Text("Delete Account")
+                        }
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keError)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.keError.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+
+                    Spacer().frame(height: 20)
+                }
+                .padding()
+                .adaptiveContentWidth(700)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Text("Settings")
+                    .font(.largeTitle.bold())
+                    .foregroundColor(.keTextPrimary)
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .background(Color.keBackground)
+        }
+        .task {
+            await dashVM.load()
+            populateFields()
+        }
+        .alert("Log Out", isPresented: $showLogoutConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Log Out", role: .destructive) {
+                authVM.logout()
+            }
+        } message: {
+            Text("Are you sure you want to log out?")
+        }
+        .alert("Delete Account", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                Task { await authVM.deleteAccount() }
+            }
+        } message: {
+            Text("This will permanently delete your account and all associated data. This action cannot be undone.")
+        }
+        .overlay {
+            if showSaved {
+                VStack {
+                    Spacer()
+                    Text("Settings saved")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keTextOnAccent)
+                        .padding()
+                        .background(Color.keSuccess)
+                        .cornerRadius(12)
+                        .padding(.bottom, 20)
+                }
+                .transition(.move(edge: .bottom))
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        withAnimation { showSaved = false }
                     }
                 }
             }
         }
+        } // NavigationStack
     }
 
     // MARK: - Helpers

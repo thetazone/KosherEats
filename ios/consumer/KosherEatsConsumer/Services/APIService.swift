@@ -36,8 +36,12 @@ class APIService: ObservableObject {
         return formatter
     }()
 
+    // Pointing DEBUG at prod Fly temporarily so the simulator builds round-trip
+    // through the same backend the seller/courier apps use (and the same Stripe
+    // creds). Switch back to "http://localhost:8080/api/v1" when running a
+    // local backend stack with its own Stripe keys.
     #if DEBUG
-    private var baseURL = "http://localhost:8080/api/v1"
+    private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #else
     private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #endif
@@ -112,7 +116,8 @@ class APIService: ObservableObject {
         method: String,
         path: String,
         body: (any Encodable)? = nil,
-        authenticated: Bool = false
+        authenticated: Bool = false,
+        allowAuthRefresh: Bool = true
     ) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -143,10 +148,27 @@ class APIService: ObservableObject {
 
         if httpResponse.statusCode == 401 {
             // Try token refresh
-            if authenticated, let _ = refreshToken {
-                let refreshed = try? await performTokenRefresh()
-                if refreshed == true {
-                    return try await request(method: method, path: path, body: body, authenticated: authenticated)
+            guard path != "/auth/refresh" else {
+                logout()
+                throw APIError.unauthorized
+            }
+            if allowAuthRefresh, authenticated, refreshToken != nil {
+                do {
+                    let refreshed = try await performTokenRefresh()
+                    if refreshed {
+                        return try await request(
+                            method: method,
+                            path: path,
+                            body: body,
+                            authenticated: authenticated,
+                            allowAuthRefresh: false
+                        )
+                    }
+                } catch APIError.unauthorized {
+                    // Refresh token itself is dead — fall through to throw
+                } catch {
+                    // Transient error (5xx, network) — don't logout, propagate
+                    throw error
                 }
             }
             throw APIError.unauthorized
@@ -168,7 +190,8 @@ class APIService: ObservableObject {
         method: String,
         path: String,
         body: (any Encodable)? = nil,
-        authenticated: Bool = false
+        authenticated: Bool = false,
+        allowAuthRefresh: Bool = true
     ) async throws {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -202,11 +225,27 @@ class APIService: ObservableObject {
         // the user back to login with a perfectly refreshable token still
         // sitting in UserDefaults.
         if httpResponse.statusCode == 401 {
-            if authenticated, refreshToken != nil {
-                let refreshed = try? await performTokenRefresh()
-                if refreshed == true {
-                    try await requestVoid(method: method, path: path, body: body, authenticated: authenticated)
-                    return
+            guard path != "/auth/refresh" else {
+                logout()
+                throw APIError.unauthorized
+            }
+            if allowAuthRefresh, authenticated, refreshToken != nil {
+                do {
+                    let refreshed = try await performTokenRefresh()
+                    if refreshed {
+                        try await requestVoid(
+                            method: method,
+                            path: path,
+                            body: body,
+                            authenticated: authenticated,
+                            allowAuthRefresh: false
+                        )
+                        return
+                    }
+                } catch APIError.unauthorized {
+                    // Refresh token dead — fall through
+                } catch {
+                    throw error
                 }
             }
             throw APIError.unauthorized
@@ -218,22 +257,43 @@ class APIService: ObservableObject {
         }
     }
 
-    private var isRefreshing = false
+    private var refreshTask: Task<Bool, Error>?
 
-    private func performTokenRefresh() async throws -> Bool {
-        if isRefreshing { return token != nil }
-        isRefreshing = true
-        defer { isRefreshing = false }
-        guard let refresh = refreshToken else { return false }
-
-        struct RefreshBody: Encodable { let refreshToken: String
-            enum CodingKeys: String, CodingKey { case refreshToken = "refresh_token" }
+    func performTokenRefresh() async throws -> Bool {
+        // Coalesce concurrent refresh attempts into a single in-flight request.
+        // Since this class is @MainActor, the check-then-set below is safe —
+        // no suspension point between reading refreshTask and assigning it.
+        if let existing = refreshTask {
+            return try await existing.value
         }
-
-        let body = RefreshBody(refreshToken: refresh)
-        let response: AuthResponse = try await request(method: "POST", path: "/auth/refresh", body: body)
-        setToken(response.token, refresh: response.refreshToken)
-        return true
+        let task = Task { @MainActor in
+            defer { self.refreshTask = nil }
+            struct RefreshBody: Encodable {
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey { case refreshToken = "refresh_token" }
+            }
+            // The backend's /auth/refresh returns just `{token, refresh_token}`,
+            // not a full AuthResponse with a `user` field. Decoding into
+            // AuthResponse blew up on the missing `user` key, the refresh
+            // appeared to fail to the caller, and every authenticated request
+            // afterwards stayed 401 with a misleading "decoding error" message.
+            struct RefreshResponse: Decodable {
+                let token: String
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey {
+                    case token
+                    case refreshToken = "refresh_token"
+                }
+            }
+            guard let refresh = self.refreshToken else { return false }
+            let response: RefreshResponse = try await self.request(
+                method: "POST", path: "/auth/refresh",
+                body: RefreshBody(refreshToken: refresh))
+            self.setToken(response.token, refresh: response.refreshToken)
+            return true
+        }
+        refreshTask = task
+        return try await task.value
     }
 
     // MARK: - Auth
@@ -243,31 +303,31 @@ class APIService: ObservableObject {
         let role: String
     }
 
-    /// Returns `exists=true` iff an account with this email is already in the
-    /// database. Used by the unified email-entry flow to decide between
-    /// sign-in and sign-up without making the user pick first.
+    /// Returns `exists=true` iff a consumer account with this email is already
+    /// in the database. Scoped by role since (email, role) is the new unique
+    /// key — a seller-side account with the same email won't false-positive.
     func checkEmail(_ email: String) async throws -> EmailCheckResponse {
-        struct Body: Encodable { let email: String }
+        struct Body: Encodable { let email: String; let role: String }
         return try await request(method: "POST", path: "/auth/email/check",
-            body: Body(email: email), authenticated: false)
+            body: Body(email: email, role: "consumer"), authenticated: false)
     }
 
     func login(email: String, password: String) async throws -> AuthResponse {
-        let body = LoginRequest(email: email, password: password)
+        let body = LoginRequest(email: email, password: password, role: "consumer")
         let response: AuthResponse = try await request(method: "POST", path: "/auth/login", body: body)
         setToken(response.token, refresh: response.refreshToken)
         return response
     }
 
     func register(email: String, password: String, firstName: String, lastName: String, phone: String) async throws -> AuthResponse {
-        let body = RegisterRequest(email: email, password: password, firstName: firstName, lastName: lastName, phone: phone)
+        let body = RegisterRequest(email: email, password: password, firstName: firstName, lastName: lastName, phone: phone, role: "consumer")
         let response: AuthResponse = try await request(method: "POST", path: "/auth/register", body: body)
         setToken(response.token, refresh: response.refreshToken)
         return response
     }
 
     func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async throws -> AuthResponse {
-        let body = SocialLoginRequest(provider: provider, token: token, firstName: firstName, lastName: lastName, nonce: nonce)
+        let body = SocialLoginRequest(provider: provider, token: token, firstName: firstName, lastName: lastName, role: "consumer", nonce: nonce)
         let response: AuthResponse = try await request(method: "POST", path: "/auth/social", body: body)
         setToken(response.token, refresh: response.refreshToken)
         return response
@@ -395,6 +455,7 @@ class APIService: ObservableObject {
         paymentIntentId: String,
         tip: Int,
         scheduledFor: Date? = nil,
+        fulfillmentType: String = "delivery"
     ) async throws -> Order {
         struct Body: Encodable {
             let deliveryAddress: String
@@ -403,6 +464,7 @@ class APIService: ObservableObject {
             let paymentIntentId: String
             let tip: Int
             let scheduledFor: Date?
+            let fulfillmentType: String
             enum CodingKeys: String, CodingKey {
                 case deliveryAddress = "delivery_address"
                 case deliveryLat = "delivery_lat"
@@ -410,10 +472,12 @@ class APIService: ObservableObject {
                 case paymentIntentId = "payment_intent_id"
                 case tip
                 case scheduledFor = "scheduled_for"
+                case fulfillmentType = "fulfillment_type"
             }
         }
         let body = Body(deliveryAddress: deliveryAddress, deliveryLat: lat, deliveryLng: lng,
-                        paymentIntentId: paymentIntentId, tip: tip, scheduledFor: scheduledFor)
+                        paymentIntentId: paymentIntentId, tip: tip, scheduledFor: scheduledFor,
+                        fulfillmentType: fulfillmentType)
         return try await request(method: "POST", path: "/orders", body: body, authenticated: true)
     }
 
@@ -450,10 +514,17 @@ class APIService: ObservableObject {
         var isStub: Bool { paymentIntentSecret.hasPrefix("pi_stub_") }
     }
 
-    func createPaymentSheet(tip: Int) async throws -> PaymentSheetBundle {
-        struct Body: Encodable { let tip: Int }
+    func createPaymentSheet(tip: Int, fulfillmentType: String = "delivery") async throws -> PaymentSheetBundle {
+        struct Body: Encodable {
+            let tip: Int
+            let fulfillmentType: String
+            enum CodingKeys: String, CodingKey {
+                case tip
+                case fulfillmentType = "fulfillment_type"
+            }
+        }
         return try await request(method: "POST", path: "/payments/intent",
-                                 body: Body(tip: tip), authenticated: true)
+                                 body: Body(tip: tip, fulfillmentType: fulfillmentType), authenticated: true)
     }
 
     // CustomerSheet bundle — used by Profile → Payment Methods to let the
@@ -538,13 +609,15 @@ class APIService: ObservableObject {
     // network error and burning into an exponential-backoff hole.
     func streamOrderLocation(id: String) -> AsyncThrowingStream<CourierLocationEvent, Error> {
         let url = URL(string: "\(baseURL)/orders/\(id)/location/stream")
+        let authToken = self.token
+        let decoder = self.decoder
         return AsyncThrowingStream { continuation in
             let task = Task {
                 guard let url = url else {
                     continuation.finish(throwing: APIError.invalidURL)
                     return
                 }
-                guard let authToken = await self.token else {
+                guard let authToken else {
                     continuation.finish(throwing: APIError.unauthorized)
                     return
                 }
@@ -556,8 +629,6 @@ class APIService: ObservableObject {
                 // greatestFiniteMagnitude meant a silent cellular drop would
                 // freeze the courier pin until the user backgrounded the app.
                 req.timeoutInterval = 60
-
-                let decoder = await self.decoder
 
                 do {
                     let (bytes, response) = try await URLSession.shared.bytes(for: req)
@@ -700,4 +771,3 @@ class APIService: ObservableObject {
                                  body: Body(text: text), authenticated: true)
     }
 }
-

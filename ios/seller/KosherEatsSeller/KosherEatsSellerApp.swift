@@ -9,19 +9,19 @@ struct KosherEatsSellerApp: App {
     // ProfileCompletionSheet so we don't re-present it on every render.
     // TEMPORARY — tied to the App Review skip button; remove both together.
     @State private var profileSheetDismissed = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             Group {
                 if authVM.isAuthenticated {
                     if authVM.hasSellerAccess {
-                        MainTabView()
+                        SellerRootGate()
                             .environmentObject(authVM)
                     } else {
                         // Authenticated via Apple/Google but role != seller.
-                        // Lets App Review's Apple ID reach a working
-                        // end-state and also serves real non-seller users
-                        // who land here by mistake.
+                        // Rare after Phase 2 (each app's auth call now creates
+                        // a role-scoped account), but kept for safety.
                         SellerOnboardingView()
                             .environmentObject(authVM)
                     }
@@ -45,6 +45,7 @@ struct KosherEatsSellerApp: App {
             )) {
                 ProfileCompletionSheet()
                     .environmentObject(authVM)
+                    .presentationDetents([.medium, .large])
             }
             .task(id: authVM.isAuthenticated) {
                 if authVM.isAuthenticated {
@@ -54,6 +55,11 @@ struct KosherEatsSellerApp: App {
             }
             .onOpenURL { url in
                 GIDSignIn.sharedInstance.handle(url)
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    UNUserNotificationCenter.current().setBadgeCount(0)
+                }
             }
         }
     }

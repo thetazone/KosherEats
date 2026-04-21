@@ -28,9 +28,9 @@ struct LoginView: View {
             Button {
                 Task { await auth.login(email: email, password: password) }
             } label: {
-                if auth.isLoading { ProgressView().tint(.white) } else { Text("Log in") }
+                if auth.isLoading { ProgressView().tint(.keTextOnAccent) } else { Text("Log in") }
             }
-            .buttonStyle(KEPrimaryButtonStyle(isEnabled: !email.isEmpty && !password.isEmpty && !auth.isLoading))
+            .buttonStyle(KEAuthButtonStyle(isEnabled: !email.isEmpty && !password.isEmpty && !auth.isLoading))
             .disabled(email.isEmpty || password.isEmpty || auth.isLoading)
 
             Spacer()

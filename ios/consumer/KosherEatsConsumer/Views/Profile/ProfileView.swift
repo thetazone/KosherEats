@@ -5,6 +5,8 @@ struct ProfileView: View {
     @Environment(\.openURL) private var openURL
     @State private var showEditProfile = false
     @State private var showDeleteConfirmation = false
+    @State private var pendingTrackingOrderId: String?
+    @State private var pendingDetailOrderId: String?
 
     var body: some View {
         NavigationStack {
@@ -20,6 +22,14 @@ struct ProfileView: View {
                         VStack(spacing: 2) {
                             ProfileMenuItem(icon: "person.fill", title: "Edit Profile", color: .kePrimary) {
                                 showEditProfile = true
+                            }
+                            NavigationLink {
+                                OrdersListView(
+                                    pendingTrackingOrderId: $pendingTrackingOrderId,
+                                    pendingDetailOrderId: $pendingDetailOrderId
+                                )
+                            } label: {
+                                ProfileMenuRow(icon: "bag.fill", title: "My Orders", color: .kePrimary)
                             }
                             NavigationLink {
                                 SavedAddressesView()
@@ -124,7 +134,7 @@ struct ProfileView: View {
 
                 Text(initials)
                     .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.keTextOnAccent)
             }
 
             if let user = authVM.user {
@@ -232,7 +242,7 @@ struct EditProfileView: View {
                     } label: {
                         HStack {
                             if authVM.isLoading {
-                                ProgressView().tint(.white)
+                                ProgressView().tint(.keTextOnAccent)
                             } else {
                                 Text("Save Changes")
                             }

@@ -82,17 +82,21 @@ struct AuthLandingView: View {
                             Group {
                                 if authVM.isLoading && !navigateToOTP {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .keTextPrimary))
                                 } else {
                                     Text("Continue")
                                         .font(.headline)
                                 }
                             }
-                            .foregroundColor(.white)
+                            .foregroundColor(isPhoneValid ? .keTextPrimary : .keTextMuted)
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
-                            .background(isPhoneValid ? Color.kePrimary : Color.kePrimary.opacity(0.4))
+                            .background(Color.keCard)
                             .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(isPhoneValid ? Color.kePrimaryDark : Color.keTextMuted, lineWidth: 1.5)
+                            )
                         }
                         .disabled(!isPhoneValid || authVM.isLoading)
                     }
@@ -119,9 +123,13 @@ struct AuthLandingView: View {
                                     .font(.system(size: 16, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity, minHeight: 52)
-                            .foregroundColor(.white)
-                            .background(Color.black)
+                            .foregroundColor(.keTextPrimary)
+                            .background(Color.keCard)
                             .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.kePrimaryDark, lineWidth: 1.5)
+                            )
                         }
 
                         Button {
@@ -130,7 +138,7 @@ struct AuthLandingView: View {
                             HStack(spacing: 10) {
                                 Text("G")
                                     .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.red)
+                                    .foregroundColor(.kePrimaryDark)
                                 Text("Continue with Google")
                                     .font(.system(size: 16, weight: .semibold))
                             }
@@ -140,7 +148,7 @@ struct AuthLandingView: View {
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.kePrimary, lineWidth: 1.5)
+                                    .stroke(Color.kePrimaryDark, lineWidth: 1.5)
                             )
                         }
 
@@ -151,7 +159,7 @@ struct AuthLandingView: View {
                             authVM.errorMessage = nil
                             showEmailAuth = true
                         }
-                        .buttonStyle(KEPrimaryButtonStyle())
+                        .buttonStyle(KEAuthButtonStyle())
 
                         if let error = authVM.errorMessage, !navigateToOTP {
                             Text(error)
@@ -178,6 +186,7 @@ struct AuthLandingView: View {
                     selected: $selectedCountry,
                     isPresented: $showCountryPicker
                 )
+                .presentationDetents([.medium, .large])
             }
         }
     }

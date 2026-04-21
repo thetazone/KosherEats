@@ -206,6 +206,8 @@ class AuthViewModel: ObservableObject {
         api.logout()
         user = nil
         isAuthenticated = false
+        PushNotifications.shared.pendingToken = nil
+        AppRouter.shared.clearPendingRoutes()
     }
 
     func loadProfile() async {
@@ -215,6 +217,18 @@ class AuthViewModel: ObservableObject {
             if case APIError.unauthorized = error {
                 logout()
             }
+        }
+    }
+
+    @discardableResult
+    func refreshToken() async -> Bool {
+        do {
+            let refreshed = try await api.performTokenRefresh()
+            if !refreshed { logout() }
+            return refreshed
+        } catch {
+            logout()
+            return false
         }
     }
 
@@ -235,13 +249,19 @@ class AuthViewModel: ObservableObject {
     }
 
     /// True iff the currently-signed-in user still needs to fill in basic
-    /// profile info — we only ever see this post-Apple-sign-in when Apple
-    /// returned no name and/or a @privaterelay.appleid.com email.
+    /// profile info. Triggers ProfileCompletionSheet on:
+    /// - Empty first or last name
+    /// - Apple's @privaterelay.appleid.com email forwarder (real email hidden)
+    /// - The phone-OTP synthesized email (backend creates `<phone>@phone.koshereats.local`
+    ///   when phone signup didn't include name/email — every fresh phone user
+    ///   matches this until they fill in real details).
     var needsProfileCompletion: Bool {
         guard let u = user else { return false }
+        let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if u.email.lowercased().hasSuffix("@privaterelay.appleid.com") { return true }
+        if email.hasSuffix("@privaterelay.appleid.com") { return true }
+        if email.hasSuffix("@phone.koshereats.local") { return true }
         return false
     }
 

@@ -6,7 +6,7 @@ import SwiftUI
 /// that actually matches YOUR kashrus standards."
 ///
 /// Pattern matches UberEats's filter sheets — buttons toggle, "Show X
-/// results" live-updates at the bottom, Apply commits to the HomeViewModel.
+/// results" live-updates at the bottom, Apply commits to the shared restaurant store.
 struct KosherFilterSheet: View {
     @Binding var isPresented: Bool
     let allRestaurants: [Restaurant]

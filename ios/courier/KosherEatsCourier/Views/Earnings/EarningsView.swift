@@ -1,12 +1,43 @@
 import SwiftUI
 
 struct EarningsView: View {
+    @EnvironmentObject private var dashVM: DashboardViewModel
     @State private var history: [HistoryOrder] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private var todayTotal: Int {
-        history.reduce(0) { $0 + $1.courierPayout }
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f
+    }()
+
+    private func formatDeliveredAt(_ raw: String?) -> String {
+        guard let raw else { return "" }
+        let date = Self.isoFractional.date(from: raw) ?? Self.isoPlain.date(from: raw)
+        guard let date else { return raw }
+        return Self.timeFormatter.string(from: date)
+    }
+
+    private var todayTotal: Int { dashVM.todayEarnings }
+    private var todayDeliveryCount: Int {
+        let cal = Calendar.current
+        return history.filter { order in
+            guard let raw = order.deliveredAt,
+                  let date = Self.isoFractional.date(from: raw) ?? Self.isoPlain.date(from: raw)
+            else { return false }
+            return cal.isDateInToday(date)
+        }.count
     }
 
     var body: some View {
@@ -14,13 +45,13 @@ struct EarningsView: View {
             ScrollView {
                 VStack(spacing: Theme.spacingLG) {
                     VStack(spacing: Theme.spacingXS) {
-                        Text("Total earned")
+                        Text("Today's earnings")
                             .font(.caption)
                             .foregroundColor(.keTextTertiary)
                         Text("$\(String(format: "%.2f", Double(todayTotal) / 100))")
                             .font(.system(size: 48, weight: .bold))
                             .foregroundColor(.kePrimary)
-                        Text("\(history.count) deliveries")
+                        Text("\(todayDeliveryCount) deliver\(todayDeliveryCount == 1 ? "y" : "ies") today")
                             .font(.caption)
                             .foregroundColor(.keTextSecondary)
                     }
@@ -34,7 +65,12 @@ struct EarningsView: View {
                             .font(.headline)
                             .foregroundColor(.keTextPrimary)
 
-                        if history.isEmpty {
+                        if isLoading && history.isEmpty {
+                            ProgressView()
+                                .tint(.kePrimary)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        } else if history.isEmpty {
                             Text("No completed deliveries yet.")
                                 .font(.subheadline)
                                 .foregroundColor(.keTextMuted)
@@ -44,7 +80,7 @@ struct EarningsView: View {
                                     VStack(alignment: .leading) {
                                         Text(h.restaurantName)
                                             .foregroundColor(.keTextPrimary)
-                                        Text(h.deliveredAt ?? "")
+                                        Text(formatDeliveredAt(h.deliveredAt))
                                             .font(.caption)
                                             .foregroundColor(.keTextTertiary)
                                     }
@@ -86,8 +122,8 @@ struct EarningsView: View {
             }
             .background(Color.keBackground.ignoresSafeArea())
             .navigationTitle("Earnings")
-            .task { await load() }
-            .refreshable { await load() }
+            .task { await load(); await dashVM.loadTodayEarnings() }
+            .refreshable { await load(); await dashVM.loadTodayEarnings() }
         }
     }
 
@@ -97,8 +133,10 @@ struct EarningsView: View {
         defer { isLoading = false }
         do {
             history = try await APIService.shared.listHistory()
+            errorMessage = nil
         } catch {
-            history = []
+            // Don't wipe already-loaded history on a transient refresh error —
+            // the courier keeps their existing data visible.
             errorMessage = error.localizedDescription
         }
     }

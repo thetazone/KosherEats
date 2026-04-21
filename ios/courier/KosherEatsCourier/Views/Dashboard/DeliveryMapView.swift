@@ -19,8 +19,15 @@ struct DeliveryMapView: View {
     @State private var showDeliveryProofCamera = false
     @State private var showCameraSheet = false
     @State private var deliveryProofImage: UIImage?
+    @State private var uploadCandidate: UIImage?
     @State private var isUploading = false
     @State private var uploadError: String?
+    @State private var showCancellationAlert = false
+    @State private var cancellationAlertTriggered = false
+    @State private var didDeliver = false
+    @State private var uploadTask: Task<Void, Never>?
+    @State private var isFetchingRoute = false
+    @Environment(\.dismiss) private var dismiss
 
     /// Live order looked up from the ViewModel's active array so the view
     /// reacts to status changes pushed by polling. The passed-in `order` is
@@ -34,6 +41,8 @@ struct DeliveryMapView: View {
         switch liveOrder.status {
         case "picked_up":
             return CLLocationCoordinate2D(latitude: liveOrder.deliveryLat, longitude: liveOrder.deliveryLng)
+        case "ready":
+            return CLLocationCoordinate2D(latitude: liveOrder.restaurantLat, longitude: liveOrder.restaurantLng)
         default:
             return CLLocationCoordinate2D(latitude: liveOrder.restaurantLat, longitude: liveOrder.restaurantLng)
         }
@@ -71,12 +80,28 @@ struct DeliveryMapView: View {
             }
             .mapStyle(.standard(elevation: .realistic))
             .ignoresSafeArea(edges: [.top, .horizontal])
+            .overlay(alignment: .top) {
+                if isFetchingRoute {
+                    ProgressView()
+                        .padding(8)
+                        .background(.thinMaterial)
+                        .clipShape(Circle())
+                        .padding(.top, 60)
+                }
+            }
 
             bottomCard
                 .padding(Theme.spacingMD)
         }
         .background(Color.keBackground.ignoresSafeArea())
         .task(id: liveOrder.status) {
+            guard liveOrder.status == "ready" || liveOrder.status == "picked_up" else {
+                if !cancellationAlertTriggered && !didDeliver {
+                    cancellationAlertTriggered = true
+                    showCancellationAlert = true
+                }
+                return
+            }
             await fetchRoute()
             fitCamera()
         }
@@ -91,9 +116,23 @@ struct DeliveryMapView: View {
             Button("Cancel", role: .cancel) {}
         }
         .confirmationDialog("Delivery proof", isPresented: $showDeliveryProofCamera, titleVisibility: .visible) {
-            Button("Take Photo") { showCameraSheet = true }
+            Button("Take Photo") {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    showCameraSheet = true
+                } else {
+                    // No camera available — fall through to deliver without proof
+                    Task {
+                        didDeliver = true
+                        await vm.deliver(liveOrder)
+                        if vm.errorMessage != nil { didDeliver = false }
+                    }
+                }
+            }
             Button("Skip & Deliver") {
-                Task { await vm.deliver(liveOrder) }
+                Task {
+                    await vm.deliver(liveOrder)
+                    if !vm.active.contains(where: { $0.id == order.id }) { didDeliver = true }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -101,36 +140,85 @@ struct DeliveryMapView: View {
         }
         .sheet(isPresented: $showCameraSheet) {
             CameraView(image: $deliveryProofImage)
+                .presentationDetents([.large])
         }
         .onChange(of: deliveryProofImage) { _, newImage in
             guard let image = newImage else { return }
-            Task {
+            uploadCandidate = image
+            uploadTask?.cancel()
+            uploadTask = Task {
                 isUploading = true
                 defer { isUploading = false }
                 do {
-                    let proofURL = try await UploadService.shared.uploadImage(image, kind: .deliveryProof)
+                    let proofURL = try await uploadImageWithTimeout(image)
+                    didDeliver = true
                     await vm.deliver(liveOrder, proofURL: proofURL)
+                    if vm.errorMessage != nil { didDeliver = false }
+                } catch is UploadTimedOut {
+                    guard !Task.isCancelled else { return }
+                    uploadError = "Photo upload timed out. You can retry or skip."
                 } catch {
+                    guard !Task.isCancelled else { return }
                     uploadError = error.localizedDescription
                 }
             }
         }
         .alert("Upload Failed", isPresented: Binding(
             get: { uploadError != nil },
-            set: { if !$0 { uploadError = nil; deliveryProofImage = nil } }
+            set: { if !$0 { uploadError = nil } }
         )) {
-            Button("Retry") { deliveryProofImage = nil }
+            Button("Retry") {
+                guard let image = uploadCandidate else { return }
+                uploadError = nil
+                Task {
+                    isUploading = true
+                    defer { isUploading = false }
+                    do {
+                        let proofURL = try await uploadImageWithTimeout(image)
+                        didDeliver = true
+                        await vm.deliver(liveOrder, proofURL: proofURL)
+                        if vm.errorMessage != nil { didDeliver = false }
+                    } catch is UploadTimedOut {
+                        uploadError = "Photo upload timed out. You can retry or skip."
+                    } catch {
+                        uploadError = error.localizedDescription
+                    }
+                }
+            }
             Button("Skip & Deliver") {
                 uploadError = nil
-                Task { await vm.deliver(liveOrder) }
+                Task {
+                    await vm.deliver(liveOrder)
+                    if !vm.active.contains(where: { $0.id == order.id }) { didDeliver = true }
+                }
             }
             Button("Cancel", role: .cancel) {
                 uploadError = nil
                 deliveryProofImage = nil
+                uploadCandidate = nil
             }
         } message: {
             Text(uploadError ?? "Could not upload delivery photo. You can retry or skip.")
         }
+        .onChange(of: vm.active.map { $0.id }) { _, ids in
+            if !ids.contains(order.id) && !didDeliver {
+                showCancellationAlert = true
+            }
+        }
+        .alert("Order Cancelled", isPresented: $showCancellationAlert) {
+            Button("OK") { dismiss() }
+        } message: {
+            Text("This order is no longer active.")
+        }
+        .alert("Action Failed", isPresented: Binding(
+            get: { vm.errorMessage != nil },
+            set: { if !$0 { vm.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(vm.errorMessage ?? "")
+        }
+        .onDisappear { uploadTask?.cancel() }
     }
 
     private var bottomCard: some View {
@@ -158,6 +246,7 @@ struct DeliveryMapView: View {
                         .background(Color.keBackgroundElevated)
                         .cornerRadius(Theme.cornerRadiusMedium)
                 }
+                .accessibilityLabel("Open navigation")
             }
 
             VStack(alignment: .leading, spacing: Theme.spacingSM) {
@@ -221,6 +310,11 @@ struct DeliveryMapView: View {
         guard let route else { return nil }
         let minutes = Int((route.expectedTravelTime / 60).rounded())
         let miles = route.distance / 1609.34
+        // Sanity check: if the route is implausibly long, the courier's
+        // location is almost certainly wrong (e.g., simulator default at
+        // Cupertino computing a route to an NJ restaurant). Showing
+        // "2436 min · 2928 mi" is worse than showing nothing.
+        if miles > 50 || minutes > 120 { return nil }
         return String(format: "%d min · %.1f mi", minutes, miles)
     }
 
@@ -236,9 +330,20 @@ struct DeliveryMapView: View {
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destinationCoordinate))
         request.transportType = .automobile
         let directions = MKDirections(request: request)
+        isFetchingRoute = true
+        defer { isFetchingRoute = false }
         do {
-            let response = try await directions.calculate()
-            route = response.routes.first
+            let fetched: MKRoute? = try await withThrowingTaskGroup(of: MKRoute?.self) { group in
+                group.addTask { try await directions.calculate().routes.first }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(10))
+                    return nil
+                }
+                let result = try await group.next() ?? nil
+                group.cancelAll()
+                return result
+            }
+            route = fetched
         } catch {
             route = nil
         }
@@ -303,7 +408,22 @@ struct DeliveryMapView: View {
         guard let url = URL(string: "waze://?ll=\(lat),\(lng)&navigate=yes") else { return }
         UIApplication.shared.open(url)
     }
+
+    private func uploadImageWithTimeout(_ image: UIImage) async throws -> String {
+        try await withThrowingTaskGroup(of: String.self) { group in
+            group.addTask { try await UploadService.shared.uploadImage(image, kind: .deliveryProof) }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                throw UploadTimedOut()
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw UploadTimedOut() }
+            return result
+        }
+    }
 }
+
+private struct UploadTimedOut: Error {}
 
 // MARK: - Camera representable for delivery proof
 

@@ -10,8 +10,16 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var currentLocation: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var locationUpdateFailing = false
+    @Published var permissionDenied = false
+    @Published var needsReauth = false
 
     private let manager = CLLocationManager()
+
+    // Set to true while the courier has an active delivery; false when online-idle.
+    // Switching this escalates/de-escalates GPS accuracy to save battery.
+    var hasActiveDelivery: Bool = false {
+        didSet { manager.desiredAccuracy = hasActiveDelivery ? kCLLocationAccuracyBest : kCLLocationAccuracyHundredMeters }
+    }
 
     // Heartbeats are driven by `didUpdateLocations` rather than a timer. A
     // timer-based Task gets suspended when iOS decides to throttle the app
@@ -22,11 +30,14 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private var lastHeartbeatSentAt: Date?
     private var heartbeatFailures = 0
     private let heartbeatMinInterval: TimeInterval = 8
+    private var heartbeatRecoveryTask: Task<Void, Never>?
+    private var heartbeatImmediateTask: Task<Void, Never>?
+    private var heartbeatGeneration = 0
 
     override init() {
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         manager.distanceFilter = 15 // meters
         manager.pausesLocationUpdatesAutomatically = false
         // Blue "location in use" bar when tracking in the background —
@@ -65,6 +76,9 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     // is posted to the backend (throttled to one per `heartbeatMinInterval`).
     // Called when courier goes online AND when they have an active delivery.
     func startHeartbeat() {
+        heartbeatGeneration += 1
+        heartbeatRecoveryTask?.cancel()
+        heartbeatRecoveryTask = nil
         isHeartbeatActive = true
         lastHeartbeatSentAt = nil
         heartbeatFailures = 0
@@ -72,11 +86,20 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         // customer's pin doesn't lag for up to `distanceFilter` meters
         // of driving before we first report in.
         if let loc = currentLocation {
-            Task { await sendHeartbeat(loc) }
+            let gen = heartbeatGeneration
+            heartbeatImmediateTask = Task {
+                guard self.heartbeatGeneration == gen else { return }
+                await sendHeartbeat(loc)
+            }
         }
     }
 
     func stopHeartbeat() {
+        heartbeatGeneration += 1
+        heartbeatImmediateTask?.cancel()
+        heartbeatImmediateTask = nil
+        heartbeatRecoveryTask?.cancel()
+        heartbeatRecoveryTask = nil
         isHeartbeatActive = false
         lastHeartbeatSentAt = nil
     }
@@ -109,24 +132,42 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             try await APIService.shared.sendLocation(
                 lat: loc.coordinate.latitude,
                 lng: loc.coordinate.longitude,
-                heading: loc.course >= 0 ? loc.course : 0,
+                heading: loc.course >= 0 ? loc.course : nil,
                 speed: loc.speed >= 0 ? loc.speed : 0
             )
             heartbeatFailures = 0
             locationUpdateFailing = false
         } catch {
             if case APIError.unauthorized = error {
-                // Token expired and refresh failed — stop hammering
-                // the server. The auth state flag surfaces to the UI
-                // so the courier is prompted to sign back in rather
-                // than silently losing location updates.
+                // Token expired and refresh failed — surface auth
+                // failure so DashboardView can trigger logout rather
+                // than leaving the courier stuck with a red banner.
                 locationUpdateFailing = true
                 isHeartbeatActive = false
+                needsReauth = true
                 return
             }
             heartbeatFailures += 1
             if heartbeatFailures >= 3 {
                 locationUpdateFailing = true
+                isHeartbeatActive = false
+                // Re-arm after 30 s so a transient network hiccup doesn't
+                // permanently freeze the customer's tracking pin. Cancelled
+                // by stopHeartbeat()/startHeartbeat() if the courier goes
+                // offline or manually restarts before the timer fires.
+                let gen = heartbeatGeneration
+                heartbeatRecoveryTask = Task {
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    guard !Task.isCancelled, self.heartbeatGeneration == gen else { return }
+                    self.heartbeatFailures = 0
+                    self.isHeartbeatActive = true
+                    // Send an immediate heartbeat so a stationary courier
+                    // doesn't wait for the next didUpdateLocations (which
+                    // requires 15m of movement to fire).
+                    if let loc = self.currentLocation {
+                        await self.sendHeartbeat(loc)
+                    }
+                }
             }
         }
     }
@@ -137,6 +178,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         guard let loc = locations.last else { return }
         Task { @MainActor in
             self.currentLocation = loc
+            // Only heartbeat with fresh, accurate fixes — iOS often delivers
+            // a stale cached fix on wake with high horizontal uncertainty.
+            let age = abs(loc.timestamp.timeIntervalSinceNow)
+            guard loc.horizontalAccuracy > 0,
+                  loc.horizontalAccuracy < 100,
+                  age < 30 else { return }
             await self.maybeSendHeartbeat(loc)
         }
     }
@@ -153,9 +200,14 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             // only reliable hook to enable background updates. Without this
             // fix, couriers pocket their phone mid-delivery and the customer's
             // tracking pin immediately freezes.
-            self.enableBackgroundUpdatesIfAuthorized()
-            if status == .authorizedAlways || status == .authorizedWhenInUse {
-                self.manager.startUpdatingLocation()
+            if status == .denied || status == .restricted {
+                self.permissionDenied = true
+            } else {
+                self.permissionDenied = false
+                self.enableBackgroundUpdatesIfAuthorized()
+                if status == .authorizedAlways || status == .authorizedWhenInUse {
+                    self.manager.startUpdatingLocation()
+                }
             }
         }
     }
@@ -164,6 +216,8 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         // Transient CoreLocation errors (kCLErrorLocationUnknown, airplane
         // mode flicker, etc.) shouldn't kill tracking — the next fix will
         // arrive. Log so we can diagnose a stuck-pin report later.
+        #if DEBUG
         print("[location] error: \(error.localizedDescription)")
+        #endif
     }
 }

@@ -85,7 +85,7 @@ struct OrderChatView: View {
             } label: {
                 Image(systemName: "paperplane.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.keTextOnAccent)
                     .frame(width: 40, height: 40)
                     .background(canSend ? Color.kePrimary : Color.keTextMuted)
                     .clipShape(Circle())
@@ -111,7 +111,7 @@ struct OrderChatView: View {
     }
 
     private func send() async {
-        let text = input.trimmingCharacters(in: .whitespaces)
+        let text = String(input.trimmingCharacters(in: .whitespaces).prefix(2000))
         guard !text.isEmpty else { return }
         isSending = true
         defer { isSending = false }
@@ -128,9 +128,13 @@ struct OrderChatView: View {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                do {
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                } catch {
+                    break
+                }
                 if Task.isCancelled { break }
-                await fetch()
+                if !isSending { await fetch() }
             }
         }
     }

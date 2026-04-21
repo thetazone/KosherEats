@@ -18,7 +18,9 @@ final class PushNotifications: NSObject, ObservableObject {
                 await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
             }
         } catch {
+            #if DEBUG
             print("[push] authorization error: \(error)")
+            #endif
         }
     }
 
@@ -40,11 +42,15 @@ final class PushNotifications: NSObject, ObservableObject {
             try await APIService.shared.registerDevice(token: hex, platform: "ios", app: app)
             pendingToken = nil
         } catch {
+            #if DEBUG
             print("[push] failed to register token: \(error)")
+            #endif
         }
     }
 
     func handleRegistrationError(_ error: Error) {
+        #if DEBUG
         print("[push] APNs registration failed: \(error)")
+        #endif
     }
 }

@@ -40,7 +40,7 @@ struct RegisterView: View {
                                     .font(.system(size: 16, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity, minHeight: 50)
-                            .foregroundColor(.white)
+                            .foregroundColor(.keTextOnAccent)
                             .background(Color.black)
                             .cornerRadius(12)
                         }
@@ -143,7 +143,7 @@ struct RegisterView: View {
                         HStack {
                             if authVM.isLoading {
                                 ProgressView()
-                                    .tint(.white)
+                                    .tint(.keTextOnAccent)
                             } else {
                                 Text("Create Account")
                             }

@@ -3,38 +3,38 @@ import SwiftUI
 /// Order-scoped chat screen. Used by the consumer app to message the
 /// courier or restaurant about an in-progress order. Same backend endpoint
 /// (`/orders/:id/chat`) that the seller + courier apps hit — all three see
-/// the same thread.
-///
-/// Polls every 3s while the view is visible. Uses a simple request/response
-/// pattern rather than websockets — fine for the MVP, and matches how
-/// UberEats / DoorDash actually run their chat (polling + smart back-off).
+/// the same thread, with the polling lifecycle owned by the view model.
 struct OrderChatView: View {
     let orderID: String
+    @StateObject private var vm: OrderChatViewModel
 
-    @State private var messages: [ChatMessage] = []
     @State private var input: String = ""
-    @State private var isSending = false
-    @State private var errorMessage: String?
-    @State private var pollTask: Task<Void, Never>?
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authVM: AuthViewModel
+
+    init(orderID: String) {
+        self.orderID = orderID
+        _vm = StateObject(wrappedValue: OrderChatViewModel(orderID: orderID))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if messages.isEmpty {
+            if vm.messages.isEmpty {
                 emptyState
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 8) {
-                            ForEach(messages) { message in
+                            ForEach(vm.messages) { message in
                                 ChatBubble(message: message)
                                     .id(message.id)
                             }
                         }
                         .padding()
                     }
-                    .onChange(of: messages.count) { _, _ in
+                    .onChange(of: vm.messages.count) { _, _ in
                         // Auto-scroll to the newest message as they come in.
-                        if let last = messages.last {
+                        if let last = vm.messages.last {
                             withAnimation {
                                 proxy.scrollTo(last.id, anchor: .bottom)
                             }
@@ -43,7 +43,40 @@ struct OrderChatView: View {
                 }
             }
 
-            if let err = errorMessage {
+            if vm.authErrorOccurred {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lock.fill")
+                        Text("Session expired — tap to sign in again")
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.keTextOnAccent)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.keError)
+                }
+            } else if let err = vm.sendErrorMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                    Text(err)
+                        .font(.caption)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        vm.dismissSendError()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.bold())
+                    }
+                }
+                .foregroundColor(.keError)
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+            } else if let err = vm.errorMessage {
                 Text(err)
                     .font(.caption)
                     .foregroundColor(.keError)
@@ -51,15 +84,16 @@ struct OrderChatView: View {
             }
 
             inputBar
+                .disabled(vm.authErrorOccurred)
         }
         .background(Color.keBackground.ignoresSafeArea())
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await fetch()
-            startPolling()
+            vm.configureAuthRefresh { await authVM.refreshToken() }
+            await vm.start()
         }
-        .onDisappear { pollTask?.cancel() }
+        .onDisappear { vm.stop() }
     }
 
     private var emptyState: some View {
@@ -89,11 +123,16 @@ struct OrderChatView: View {
                 .foregroundColor(.keTextPrimary)
 
             Button {
-                Task { await send() }
+                Task {
+                    let didSend = await vm.send(text: input)
+                    if didSend {
+                        input = ""
+                    }
+                }
             } label: {
                 Image(systemName: "paperplane.fill")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.keTextOnAccent)
                     .frame(width: 40, height: 40)
                     .background(canSend ? Color.kePrimary : Color.keTextMuted)
                     .clipShape(Circle())
@@ -106,49 +145,7 @@ struct OrderChatView: View {
     }
 
     private var canSend: Bool {
-        !input.trimmingCharacters(in: .whitespaces).isEmpty && !isSending
-    }
-
-    private func fetch() async {
-        do {
-            messages = try await APIService.shared.listChatMessages(orderID: orderID)
-            errorMessage = nil
-        } catch {
-            // Don't overwrite existing messages on poll failure — just show
-            // the error inline so the user knows refresh is failing.
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
-    private func send() async {
-        let text = input.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-        guard text.count <= 2000 else {
-            errorMessage = "Message is too long"
-            return
-        }
-        isSending = true
-        defer { isSending = false }
-        do {
-            let newMessage = try await APIService.shared.sendChatMessage(orderID: orderID, text: text)
-            messages.append(newMessage)
-            input = ""
-            Haptics.impact(.light)
-        } catch {
-            errorMessage = error.localizedDescription
-            Haptics.error()
-        }
-    }
-
-    private func startPolling() {
-        pollTask?.cancel()
-        pollTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if Task.isCancelled { break }
-                await fetch()
-            }
-        }
+        !input.trimmingCharacters(in: .whitespaces).isEmpty && !vm.isSending && !vm.authErrorOccurred
     }
 }
 

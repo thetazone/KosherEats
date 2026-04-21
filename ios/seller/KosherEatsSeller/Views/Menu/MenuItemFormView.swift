@@ -56,6 +56,10 @@ struct MenuItemFormView: View {
                                     TextField("0.00", text: $priceText)
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
+                                        .onChange(of: priceText) { _, newValue in
+                                            let filtered = newValue.filter { $0.isNumber || $0 == "." }
+                                            if filtered != newValue { priceText = filtered }
+                                        }
                                 }
                                 .padding()
                                 .background(Color.keCard)
@@ -160,7 +164,7 @@ struct MenuItemFormView: View {
                         } label: {
                             Text(isEditing ? "Update Item" : "Add Item")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 52)
                                 .background(canSave ? Color.kePrimary : Color.kePrimary.opacity(0.4))
@@ -271,7 +275,7 @@ struct MenuItemFormView: View {
             priceCents > 0 && priceCents <= 999_999 &&
             (isMeat || isDairy || isPareve) &&
             !isUploading &&
-            uploadError == nil
+            (pickerItem == nil || uploadError == nil)
     }
 
     // MARK: - Photo picker

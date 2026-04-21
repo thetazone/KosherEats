@@ -36,7 +36,8 @@ final class UploadService {
     // uploadImage is a one-shot helper: takes a UIImage, asks the backend for
     // a presigned URL, PUTs the JPEG, returns the resulting public URL.
     func uploadImage(_ image: UIImage, kind: UploadKind) async throws -> String {
-        guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
+        let jpegQuality: CGFloat = 0.85
+        guard let jpeg = image.jpegData(compressionQuality: jpegQuality) else {
             throw NSError(domain: "upload", code: 1, userInfo: [NSLocalizedDescriptionKey: "failed to encode image"])
         }
 
@@ -55,8 +56,19 @@ final class UploadService {
         req.httpMethod = "PUT"
         req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
         req.httpBody = jpeg
+        req.timeoutInterval = 30
 
-        let (_, response) = try await URLSession.shared.data(for: req)
+        // Use a dedicated session so that invalidateAndCancel() in the onCancel
+        // handler aborts only this request and not any other in-flight tasks.
+        let session = URLSession(configuration: .default)
+        defer { session.finishTasksAndInvalidate() }
+        let (_, response) = try await withTaskCancellationHandler {
+            try await session.data(for: req)
+        } onCancel: {
+            // group.cancelAll() in uploadImageWithTimeout only sets Task.isCancelled;
+            // explicitly cancel the URLSession task so the S3 PUT is actually aborted.
+            session.invalidateAndCancel()
+        }
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw NSError(domain: "upload", code: 3, userInfo: [NSLocalizedDescriptionKey: "S3 PUT failed"])
         }

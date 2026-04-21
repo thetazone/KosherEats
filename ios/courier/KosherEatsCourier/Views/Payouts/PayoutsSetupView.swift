@@ -38,6 +38,7 @@ struct PayoutsSetupView: View {
             if let url = onboardingURL {
                 SafariView(url: url)
                     .ignoresSafeArea()
+                    .presentationDetents([.large])
             }
         }
     }
@@ -75,7 +76,7 @@ struct PayoutsSetupView: View {
                 Task { await startOnboarding() }
             } label: {
                 if isLoading {
-                    ProgressView().tint(.white)
+                    ProgressView().tint(.keTextOnAccent)
                 } else {
                     Text("Set up payouts")
                 }

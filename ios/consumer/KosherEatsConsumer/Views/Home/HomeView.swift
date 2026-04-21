@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct HomeView: View {
-    @StateObject private var vm = HomeViewModel()
+    @EnvironmentObject var vm: RestaurantStore
     @EnvironmentObject var cartVM: CartViewModel
     @State private var showKosherFilter = false
+    @State private var searchText = ""
+    @State private var selectedCuisine: String?
+    @State private var kosherFilters = KosherFilters()
 
     var body: some View {
         NavigationStack {
@@ -21,6 +24,14 @@ struct HomeView: View {
                         // Cuisine Filters
                         cuisineFilterRow
 
+                        if let errorMessage = vm.errorMessage, !vm.restaurants.isEmpty {
+                            InlineErrorBanner(
+                                message: errorMessage,
+                                onRetry: { Task { await vm.refreshRestaurants() } }
+                            )
+                            .padding(.horizontal)
+                        }
+
                         // Featured Section
                         if !vm.featuredRestaurants.isEmpty {
                             featuredSection
@@ -36,25 +47,34 @@ struct HomeView: View {
                     }
                     .padding(.bottom, 100) // space for cart button
                 }
+                .safeAreaPadding(.top, Theme.spacingSM)
             }
             .navigationBarHidden(true)
             .task {
-                await vm.loadRestaurants()
+                await vm.ensureRestaurantsLoaded()
                 await cartVM.loadCart()
             }
             .refreshable {
                 Haptics.impact(.light)
-                await vm.loadRestaurants()
+                await vm.refreshRestaurants()
             }
             .sheet(isPresented: $showKosherFilter) {
                 KosherFilterSheet(
                     isPresented: $showKosherFilter,
                     allRestaurants: vm.restaurants,
-                    currentFilters: vm.kosherFilters,
-                    onApply: { vm.setKosherFilters($0) },
+                    currentFilters: kosherFilters,
+                    onApply: { kosherFilters = $0 },
                 )
             }
         }
+    }
+
+    private var filteredRestaurants: [Restaurant] {
+        vm.filteredRestaurants(
+            searchText: searchText,
+            selectedCuisine: selectedCuisine,
+            kosherFilters: kosherFilters
+        )
     }
 
     // MARK: - Header
@@ -88,12 +108,12 @@ struct HomeView: View {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "line.3.horizontal.decrease.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundColor(vm.kosherFilters.isActive ? .kePrimary : .keTextSecondary)
+                    .foregroundColor(kosherFilters.isActive ? .kePrimary : .keTextSecondary)
 
-                if vm.kosherFilters.activeCount > 0 {
-                    Text("\(vm.kosherFilters.activeCount)")
+                if kosherFilters.activeCount > 0 {
+                    Text("\(kosherFilters.activeCount)")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.keTextOnAccent)
                         .frame(minWidth: 16, minHeight: 16)
                         .background(Color.kePrimary)
                         .clipShape(Circle())
@@ -110,12 +130,9 @@ struct HomeView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.keTextMuted)
-            TextField("Search restaurants...", text: $vm.searchText)
+            TextField("Search restaurants...", text: $searchText)
                 .foregroundColor(.keTextPrimary)
                 .autocorrectionDisabled()
-                .onSubmit {
-                    Task { await vm.search() }
-                }
         }
         .padding()
         .background(Color.keCard)
@@ -131,9 +148,13 @@ struct HomeView: View {
                 ForEach(vm.cuisineFilters, id: \.self) { cuisine in
                     CuisineChip(
                         title: cuisine,
-                        isSelected: vm.selectedCuisine == cuisine || (cuisine == "All" && vm.selectedCuisine == nil)
+                        isSelected: selectedCuisine == cuisine || (cuisine == "All" && selectedCuisine == nil)
                     ) {
-                        vm.selectCuisine(cuisine)
+                        if cuisine == "All" {
+                            selectedCuisine = nil
+                        } else {
+                            selectedCuisine = selectedCuisine == cuisine ? nil : cuisine
+                        }
                     }
                 }
             }
@@ -202,7 +223,13 @@ struct HomeView: View {
                 ProgressView()
                     .tint(.kePrimary)
                     .frame(maxWidth: .infinity, minHeight: 200)
-            } else if vm.filteredRestaurants.isEmpty {
+            } else if let errorMessage = vm.errorMessage, vm.restaurants.isEmpty {
+                ErrorStateView(
+                    message: errorMessage,
+                    onRetry: { Task { await vm.refreshRestaurants() } }
+                )
+                .frame(minHeight: 280)
+            } else if filteredRestaurants.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "fork.knife.circle")
                         .font(.system(size: 48))
@@ -214,7 +241,7 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, minHeight: 200)
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(vm.filteredRestaurants) { restaurant in
+                    ForEach(filteredRestaurants) { restaurant in
                         NavigationLink(destination: RestaurantDetailView(restaurantID: restaurant.id)) {
                             RestaurantCardView(
                                 restaurant: restaurant,
@@ -242,7 +269,7 @@ struct CuisineChip: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(isSelected ? .white : .keTextSecondary)
+                .foregroundColor(isSelected ? .keTextOnAccent : .keTextSecondary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(

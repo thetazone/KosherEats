@@ -44,7 +44,6 @@ struct DashboardView: View {
             }
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 // Surface the restaurant picker only when the seller owns
                 // more than one restaurant — otherwise there's nothing to
@@ -105,12 +104,13 @@ struct DashboardView: View {
 
             Toggle("", isOn: Binding(
                 get: { restaurant.isOpen },
-                set: { _ in
-                    Task { await vm.toggleRestaurantOpen() }
+                set: { newValue in
+                    Task { await vm.setRestaurantOpen(newValue) }
                 }
             ))
             .tint(.kePrimary)
             .labelsHidden()
+            .disabled(vm.isTogglingOpen)
         }
         .padding()
         .background(Color.keCard)
@@ -144,7 +144,7 @@ struct DashboardView: View {
             StatCard(
                 title: "Today's Revenue",
                 // Backend returns cents; divide for display.
-                value: String(format: "$%.2f", Double(vm.stats.todayRevenue) / 100),
+                value: CurrencyFormat.string(fromCents: vm.stats.todayRevenue),
                 icon: "dollarsign.circle.fill",
                 iconColor: .keWarning
             )
@@ -172,7 +172,7 @@ struct DashboardView: View {
                 if !vm.activeOrders.isEmpty {
                     Text("\(vm.activeOrders.count)")
                         .font(.caption.bold())
-                        .foregroundColor(.white)
+                        .foregroundColor(.keTextOnAccent)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.kePrimary)
@@ -184,7 +184,7 @@ struct DashboardView: View {
                 emptyActiveOrders
             } else {
                 ForEach(vm.activeOrders) { order in
-                    NavigationLink(destination: SellerOrderDetailView(order: order)) {
+                    NavigationLink(destination: SellerOrderDetailView(vm: vm.sharedOrdersVM, order: order)) {
                         ActiveOrderCard(order: order)
                     }
                     .buttonStyle(.plain)

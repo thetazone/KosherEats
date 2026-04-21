@@ -41,17 +41,17 @@ final class OnboardingViewModel: ObservableObject {
 
     /// What documents are required depends on the vehicle type — bike/walk
     /// couriers don't need insurance or vehicle registration, but cars and
-    /// motorcycles do (matches DoorDash/UberEats requirements). License +
-    /// profile photo are universal.
+    /// motorcycles do (matches DoorDash/UberEats requirements). ID photo +
+    /// profile photo are universal; the license *number* is only collected
+    /// for car/motorcycle couriers (bike/scooter/walk show a government-ID
+    /// upload instead, no number field).
     var documentsFormValid: Bool {
-        let basics = !driversLicenseNumber.isEmpty
-            && !driversLicenseURL.isEmpty
-            && !profilePhotoURL.isEmpty
+        guard !driversLicenseURL.isEmpty, !profilePhotoURL.isEmpty else { return false }
         switch vehicleType {
         case .car, .motorcycle:
-            return basics && !insuranceURL.isEmpty && !registrationURL.isEmpty
+            return !driversLicenseNumber.isEmpty && !insuranceURL.isEmpty && !registrationURL.isEmpty
         case .bike, .scooter, .walk:
-            return basics
+            return true
         }
     }
 

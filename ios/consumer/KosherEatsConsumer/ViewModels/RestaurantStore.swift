@@ -24,15 +24,11 @@ struct KosherFilters: Equatable {
 }
 
 @MainActor
-class HomeViewModel: ObservableObject {
+final class RestaurantStore: ObservableObject {
     @Published var restaurants: [Restaurant] = []
-    @Published var filteredRestaurants: [Restaurant] = []
     @Published var featuredRestaurants: [Restaurant] = []
     @Published var favoriteIDs: Set<String> = []
-    @Published var searchText = ""
-    @Published var selectedCuisine: String?
-    @Published var kosherFilters = KosherFilters()
-    @Published var isLoading = false
+    @Published var isLoading = true
     @Published var errorMessage: String?
 
     var favoriteRestaurants: [Restaurant] {
@@ -45,10 +41,39 @@ class HomeViewModel: ObservableObject {
     ]
 
     private let api = APIService.shared
+    private var togglingIDs: Set<String> = []
+    private var hasLoadedRestaurants = false
+    private var loadTask: Task<Void, Never>?
 
-    func loadRestaurants() async {
+    func ensureRestaurantsLoaded() async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+        guard !hasLoadedRestaurants else { return }
+        await refreshRestaurants()
+    }
+
+    func refreshRestaurants() async {
+        if let loadTask {
+            await loadTask.value
+            return
+        }
+
+        let task = Task { @MainActor in
+            await self.loadRestaurants()
+        }
+        loadTask = task
+        await task.value
+    }
+
+    private func loadRestaurants() async {
         isLoading = true
         errorMessage = nil
+        defer {
+            isLoading = false
+            loadTask = nil
+        }
 
         do {
             restaurants = try await api.listRestaurants()
@@ -58,71 +83,74 @@ class HomeViewModel: ObservableObject {
                     .sorted { $0.rating > $1.rating }
                     .prefix(5)
             )
-            applyFilters()
+            hasLoadedRestaurants = true
             await loadFavorites()
         } catch {
             errorMessage = error.localizedDescription
         }
-
-        isLoading = false
     }
 
     func loadFavorites() async {
-        if let ids = try? await APIService.shared.listFavoriteIDs() {
+        do {
+            let ids = try await api.listFavoriteIDs()
             favoriteIDs = Set(ids)
+            errorMessage = nil
+        } catch let APIError.httpError(code, _) where code == 404 {
+            // "No favorites yet" is a valid empty state, not a banner-worthy
+            // failure on the home screen.
+            favoriteIDs = []
+            errorMessage = nil
+        } catch {
+            errorMessage = "Couldn't refresh favorites. " +
+                ((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
         }
     }
 
     func toggleFavorite(_ restaurantID: String) async {
-        if favoriteIDs.contains(restaurantID) {
+        guard !togglingIDs.contains(restaurantID) else { return }
+        togglingIDs.insert(restaurantID)
+        defer { togglingIDs.remove(restaurantID) }
+        let wasPresent = favoriteIDs.contains(restaurantID)
+        if wasPresent {
             favoriteIDs.remove(restaurantID)
-            try? await APIService.shared.removeFavorite(restaurantID: restaurantID)
         } else {
             favoriteIDs.insert(restaurantID)
-            try? await APIService.shared.addFavorite(restaurantID: restaurantID)
         }
-    }
-
-    func search() async {
-        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else {
-            applyFilters()
-            return
-        }
-
-        isLoading = true
         do {
-            let results = try await api.searchRestaurants(query: searchText)
-            filteredRestaurants = results
+            if wasPresent {
+                try await api.removeFavorite(restaurantID: restaurantID)
+            } else {
+                try await api.addFavorite(restaurantID: restaurantID)
+            }
+            errorMessage = nil
         } catch {
+            if wasPresent {
+                favoriteIDs.insert(restaurantID)
+            } else {
+                favoriteIDs.remove(restaurantID)
+            }
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 
-    func selectCuisine(_ cuisine: String) {
-        if cuisine == "All" {
-            selectedCuisine = nil
-        } else {
-            selectedCuisine = selectedCuisine == cuisine ? nil : cuisine
-        }
-        applyFilters()
+    func searchRestaurants(query: String) async throws -> [Restaurant] {
+        let results = try await api.searchRestaurants(query: query)
+        return filteredRestaurants(
+            searchText: query,
+            selectedCuisine: nil,
+            kosherFilters: KosherFilters(),
+            source: results
+        )
     }
 
-    /// Applies an updated kosher filter set and refreshes the list.
-    func setKosherFilters(_ filters: KosherFilters) {
-        kosherFilters = filters
-        applyFilters()
-    }
-
-    func clearKosherFilters() {
-        kosherFilters = KosherFilters()
-        applyFilters()
-    }
-
-    /// Made internal so callers (like the filter sheet's "preview X results"
-    /// footer) can compute counts against the current filter set.
-    func applyFilters() {
-        var results = restaurants.filter { $0.isActive }
+    func filteredRestaurants(
+        searchText: String,
+        selectedCuisine: String?,
+        kosherFilters: KosherFilters,
+        source: [Restaurant]? = nil
+    ) -> [Restaurant] {
+        let source = source ?? restaurants
+        var results = source.filter { $0.isActive }
 
         if let cuisine = selectedCuisine {
             results = results.filter { restaurant in
@@ -130,10 +158,11 @@ class HomeViewModel: ObservableObject {
             }
         }
 
-        if !searchText.isEmpty {
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSearch.isEmpty {
             results = results.filter {
-                $0.name.localizedCaseInsensitiveContains(searchText) ||
-                $0.description.localizedCaseInsensitiveContains(searchText)
+                $0.name.localizedCaseInsensitiveContains(trimmedSearch) ||
+                $0.description.localizedCaseInsensitiveContains(trimmedSearch)
             }
         }
 
@@ -152,6 +181,6 @@ class HomeViewModel: ObservableObject {
             results = results.filter { $0.isPasYisroel }
         }
 
-        filteredRestaurants = results
+        return results
     }
 }

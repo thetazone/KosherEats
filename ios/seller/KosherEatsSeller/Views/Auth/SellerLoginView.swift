@@ -98,7 +98,7 @@ struct SellerLoginView: View {
                                             .font(.headline)
                                     }
                                 }
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 52)
                                 .background(isPhoneValid ? Color.kePrimary : Color.kePrimary.opacity(0.4))
@@ -130,7 +130,7 @@ struct SellerLoginView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .background(Color.keCard)
                                 .cornerRadius(12)
                                 .overlay(
@@ -150,7 +150,7 @@ struct SellerLoginView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .background(Color.keCard)
                                 .cornerRadius(12)
                                 .overlay(
@@ -172,7 +172,7 @@ struct SellerLoginView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .foregroundColor(.white)
+                                .foregroundColor(.keTextOnAccent)
                                 .background(Color.keCard)
                                 .cornerRadius(12)
                                 .overlay(

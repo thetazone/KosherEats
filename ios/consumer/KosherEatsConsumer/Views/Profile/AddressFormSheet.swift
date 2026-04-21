@@ -11,6 +11,7 @@ import Contacts
 /// lat/lng so delivery-radius math has real coordinates instead of 0,0.
 struct AddressFormSheet: View {
     let onSaved: (Address) -> Void
+    var onWarning: ((String) -> Void)? = nil
     @Environment(\.dismiss) var dismiss
 
     @State private var label = "Home"
@@ -62,7 +63,15 @@ struct AddressFormSheet: View {
                         HStack(spacing: 12) {
                             field("State", text: $state)
                                 .frame(maxWidth: 100)
+                                .textInputAutocapitalization(.characters)
+                                .onChange(of: state) { _, val in
+                                    state = String(val.filter(\.isLetter).prefix(2))
+                                }
                             field("Zip", text: $zip)
+                                .keyboardType(.numberPad)
+                                .onChange(of: zip) { _, val in
+                                    zip = String(val.filter(\.isNumber).prefix(5))
+                                }
                         }
 
                         Toggle("Make this my default", isOn: $isDefault)
@@ -76,7 +85,7 @@ struct AddressFormSheet: View {
                         }
 
                         Button { Task { await save() } } label: {
-                            if isSaving { ProgressView().tint(.white) } else { Text("Save address") }
+                            if isSaving { ProgressView().tint(.keTextOnAccent) } else { Text("Save address") }
                         }
                         .buttonStyle(KEPrimaryButtonStyle(isEnabled: formValid && !isSaving))
                         .disabled(!formValid || isSaving)
@@ -170,11 +179,20 @@ struct AddressFormSheet: View {
             lat: lat, lng: lng, isDefault: isDefault,
         )
         do {
-            let saved = try await APIService.shared.addAddress(draft)
+            var saved = try await APIService.shared.addAddress(draft)
             if isDefault {
-                // Backend AddAddress doesn't yet flip is_default on existing rows.
-                // Call the dedicated endpoint so other saved addresses lose it.
-                try? await APIService.shared.setDefaultAddress(id: saved.id)
+                do {
+                    // Backend AddAddress doesn't yet flip is_default on existing rows.
+                    // Call the dedicated endpoint so other saved addresses lose it.
+                    try await APIService.shared.setDefaultAddress(id: saved.id)
+                    saved.isDefault = true
+                } catch {
+                    // The address itself exists, but we couldn't promote it to
+                    // the sole default. Report that explicitly after dismiss so
+                    // the caller can prompt the user to retry from the list view.
+                    saved.isDefault = false
+                    onWarning?("Address saved, but it couldn't be made default.")
+                }
             }
             onSaved(saved)
             dismiss()

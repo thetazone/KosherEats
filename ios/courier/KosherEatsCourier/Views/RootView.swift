@@ -68,6 +68,7 @@ struct RootView: View {
         )) {
             ProfileCompletionSheet()
                 .environmentObject(auth)
+                .presentationDetents([.medium, .large])
         }
     }
 }

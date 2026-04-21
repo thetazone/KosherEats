@@ -36,8 +36,11 @@ final class APIService: ObservableObject {
         return formatter
     }()
 
+    // Pointing DEBUG at prod Fly so simulator builds round-trip through the
+    // same backend the consumer/seller apps use. Switch back to localhost when
+    // running a local Docker stack with its own creds.
     #if DEBUG
-    private var baseURL = "http://localhost:8080/api/v1"
+    private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #else
     private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #endif
@@ -176,48 +179,56 @@ final class APIService: ObservableObject {
         throw APIError.invalidResponse
     }
 
-    private var isRefreshing = false
+    private var refreshTask: Task<Bool, Never>?
 
     private func performTokenRefresh() async -> Bool {
-        if isRefreshing { return token != nil }
-        isRefreshing = true
-        defer { isRefreshing = false }
-        guard let refresh = refreshToken,
-              let url = URL(string: "\(baseURL)/auth/refresh") else { return false }
-
-        struct RefreshBody: Encodable {
-            let refreshToken: String
-            enum CodingKeys: String, CodingKey { case refreshToken = "refresh_token" }
+        if let existing = refreshTask {
+            return await existing.value
         }
-        struct RefreshResponse: Decodable {
-            let token: String
-            let refreshToken: String
-            enum CodingKeys: String, CodingKey {
-                case token
-                case refreshToken = "refresh_token"
+
+        let task = Task {
+            defer { self.refreshTask = nil }
+            guard let refresh = self.refreshToken,
+                  let url = URL(string: "\(self.baseURL)/auth/refresh") else { return false }
+
+            struct RefreshBody: Encodable {
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey { case refreshToken = "refresh_token" }
+            }
+            struct RefreshResponse: Decodable {
+                let token: String
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey {
+                    case token
+                    case refreshToken = "refresh_token"
+                }
+            }
+
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            do {
+                req.httpBody = try self.encoder.encode(RefreshBody(refreshToken: refresh))
+            } catch {
+                #if DEBUG
+                print("[APIService] Failed to encode refresh body: \(error)")
+                #endif
+                return false
+            }
+
+            do {
+                let (data, response) = try await URLSession.shared.data(for: req)
+                guard let http = response as? HTTPURLResponse,
+                      (200...299).contains(http.statusCode) else { return false }
+                let decoded = try self.decoder.decode(RefreshResponse.self, from: data)
+                self.setToken(decoded.token, refresh: decoded.refreshToken)
+                return true
+            } catch {
+                return false
             }
         }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        do {
-            req.httpBody = try encoder.encode(RefreshBody(refreshToken: refresh))
-        } catch {
-            print("[APIService] Failed to encode refresh body: \(error)")
-            return false
-        }
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode) else { return false }
-            let decoded = try decoder.decode(RefreshResponse.self, from: data)
-            setToken(decoded.token, refresh: decoded.refreshToken)
-            return true
-        } catch {
-            return false
-        }
+        refreshTask = task
+        return await task.value
     }
 
     // MARK: - Void request
@@ -299,7 +310,14 @@ final class APIService: ObservableObject {
         }
     }
 
-    struct LoginBody: Encodable { let email: String; let password: String }
+    struct LoginBody: Encodable {
+        let email: String
+        let password: String
+        // Backend uniqueness is now (email, role) — see migration 019. Sending
+        // role="courier" makes the lookup find the courier-side account, not
+        // a consumer account that happens to share the same email.
+        let role: String
+    }
 
     func register(email: String, password: String, firstName: String, lastName: String, phone: String) async throws -> AuthResponse {
         let body = CourierRegisterBody(email: email, password: password, firstName: firstName, lastName: lastName, phone: phone)
@@ -309,7 +327,7 @@ final class APIService: ObservableObject {
     }
 
     func login(email: String, password: String) async throws -> AuthResponse {
-        let body = LoginBody(email: email, password: password)
+        let body = LoginBody(email: email, password: password, role: "courier")
         let res: AuthResponse = try await request(method: "POST", path: "/auth/login", body: body, authenticated: false)
         guard res.user.role == "courier" else {
             clearToken()
@@ -323,12 +341,15 @@ final class APIService: ObservableObject {
 
     // MARK: - Email existence check (for unified email entry UI)
 
-    struct EmailCheckBody: Encodable { let email: String }
+    struct EmailCheckBody: Encodable {
+        let email: String
+        let role: String
+    }
     struct EmailCheckResponse: Decodable { let exists: Bool; let role: String }
 
     func checkEmail(_ email: String) async throws -> EmailCheckResponse {
         try await request(method: "POST", path: "/auth/email/check",
-                          body: EmailCheckBody(email: email), authenticated: false)
+                          body: EmailCheckBody(email: email, role: "courier"), authenticated: false)
     }
 
     // MARK: - Phone OTP login
@@ -393,17 +414,18 @@ final class APIService: ObservableObject {
         // `/auth/social` handler falls back to `consumer` and the courier app
         // would then reject the login for role mismatch.
         let role: String
+        let nonce: String?
         enum CodingKeys: String, CodingKey {
-            case provider, token, role
+            case provider, token, role, nonce
             case firstName = "first_name"
             case lastName = "last_name"
         }
     }
 
-    func socialLogin(provider: String, token: String, firstName: String, lastName: String) async throws -> AuthResponse {
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async throws -> AuthResponse {
         let body = SocialLoginBody(
             provider: provider, token: token,
-            firstName: firstName, lastName: lastName, role: "courier"
+            firstName: firstName, lastName: lastName, role: "courier", nonce: nonce
         )
         // The backend handles role promotion + auto-approval when `role:
         // "courier"` is sent from this app (see SocialLogin in
@@ -506,10 +528,10 @@ final class APIService: ObservableObject {
     }
 
     struct LocationBody: Encodable {
-        let lat: Double; let lng: Double; let heading: Double; let speed: Double
+        let lat: Double; let lng: Double; let heading: Double?; let speed: Double
     }
 
-    func sendLocation(lat: Double, lng: Double, heading: Double = 0, speed: Double = 0) async throws {
+    func sendLocation(lat: Double, lng: Double, heading: Double? = nil, speed: Double = 0) async throws {
         let _: [String: String] = try await request(method: "POST", path: "/courier/location",
                                                     body: LocationBody(lat: lat, lng: lng, heading: heading, speed: speed))
     }
@@ -518,6 +540,15 @@ final class APIService: ObservableObject {
 
     func listAvailable() async throws -> [AvailableDelivery] {
         let res: AvailableDeliveriesResponse = try await request(method: "GET", path: "/courier/deliveries/available")
+        return res.deliveries
+    }
+
+    /// Orders the seller has accepted but not yet marked ready. Couriers can't
+    /// claim these yet (the backend's claim endpoint enforces status='ready'),
+    /// but seeing them lets a courier head toward the restaurant ahead of the
+    /// kitchen finishing — cuts dwell time at pickup.
+    func listUpcoming() async throws -> [AvailableDelivery] {
+        let res: AvailableDeliveriesResponse = try await request(method: "GET", path: "/courier/deliveries/upcoming")
         return res.deliveries
     }
 

@@ -43,12 +43,12 @@ struct SignupView: View {
                     }
                 } label: {
                     if auth.isLoading {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(.keTextOnAccent)
                     } else {
                         Text("Continue")
                     }
                 }
-                .buttonStyle(KEPrimaryButtonStyle(isEnabled: formValid && !auth.isLoading))
+                .buttonStyle(KEAuthButtonStyle(isEnabled: formValid && !auth.isLoading))
                 .disabled(!formValid || auth.isLoading)
 
                 Text("By continuing you agree to a background check and KosherEats' Courier Agreement.")

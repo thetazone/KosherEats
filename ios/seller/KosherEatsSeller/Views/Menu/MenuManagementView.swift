@@ -53,7 +53,6 @@ struct MenuManagementView: View {
             }
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -102,6 +101,7 @@ struct MenuManagementView: View {
                         }
                     }
                 )
+                .presentationDetents([.medium, .large])
             }
             .sheet(item: $editingItem) { item in
                 MenuItemFormView(
@@ -125,6 +125,7 @@ struct MenuManagementView: View {
                         }
                     }
                 )
+                .presentationDetents([.medium, .large])
             }
             .alert("New Category", isPresented: $showAddCategory) {
                 TextField("Category name", text: $newCategoryName)
@@ -138,7 +139,27 @@ struct MenuManagementView: View {
                     }
                 }
             }
+            .overlay {
+                if let msg = vm.successMessage {
+                    successToast(msg)
+                }
+            }
         }
+    }
+
+    private func successToast(_ message: String) -> some View {
+        VStack {
+            Spacer()
+            Text(message)
+                .font(.subheadline.bold())
+                .foregroundColor(.keTextOnAccent)
+                .padding()
+                .background(Color.keSuccess)
+                .cornerRadius(12)
+                .padding(.bottom, 20)
+        }
+        .transition(.move(edge: .bottom))
+        .animation(.easeInOut, value: vm.successMessage)
     }
 
     // MARK: - Menu List
@@ -156,6 +177,7 @@ struct MenuManagementView: View {
             .padding()
             .adaptiveContentWidth(800)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func categorySection(_ category: MenuCategory, items: [MenuItem]) -> some View {
@@ -222,6 +244,7 @@ struct MenuManagementView: View {
                 ))
                 .tint(.kePrimary)
                 .labelsHidden()
+                .disabled(vm.togglingItemIDs.contains(item.id))
 
                 Text(item.isAvailable ? "Available" : "Unavailable")
                     .font(.caption2)
@@ -298,7 +321,7 @@ struct MenuManagementView: View {
             } label: {
                 Text("Create First Category")
                     .font(.subheadline.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(.keTextOnAccent)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(Color.kePrimary)

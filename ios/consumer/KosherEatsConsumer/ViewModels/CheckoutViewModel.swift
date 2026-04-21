@@ -16,6 +16,10 @@ import UIKit
 @MainActor
 final class CheckoutViewModel: NSObject, ObservableObject {
 
+    /// Maximum custom tip in cents ($500). Matches the backend cap in
+    /// orders.go / payments.go (tip <= subtotal).
+    static let maxTipCents = 50_000
+
     // MARK: - Tip selection
 
     enum TipChoice: Equatable, Hashable {
@@ -44,18 +48,34 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// nil = ASAP. Any future Date triggers backend's 'scheduled' status.
     @Published var scheduledFor: Date?
 
+    /// "delivery" (default) or "pickup". When "pickup", the address card +
+    /// tip selector hide and the bundle excludes both the delivery fee and
+    /// any tip (the backend zeros them server-side too).
+    @Published var fulfillmentType: String = "delivery" {
+        didSet {
+            if fulfillmentType == "pickup" {
+                tipSelection = .none
+                customTipText = ""
+            }
+            Task { @MainActor [weak self] in
+                await self?.refreshBundle()
+            }
+        }
+    }
+
     @Published var bundle: APIService.PaymentSheetBundle?
     @Published var isLoadingBundle: Bool = false
     @Published var isProcessing: Bool = false
     @Published var errorMessage: String?
     @Published var paymentSucceeded: Bool = false
+    @Published var orderCreationFailed: Bool = false
 
     private let api = APIService.shared
     private var activeSheet: PaymentSheet?
     private var bundleGeneration = 0
-    private var sheetContinuation: CheckedContinuation<Void, Never>?
+    private var sheetContinuation: CheckedContinuation<Void, Error>?
     private var applePayContext: STPApplePayContext?
-    private var applePayContinuation: CheckedContinuation<Void, Never>?
+    private var applePayContinuation: CheckedContinuation<Void, Error>?
 
     // MARK: - Addresses
 
@@ -85,7 +105,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         case .percent(let p): return Int(Double(subtotal) * p)
         case .custom:
             let dollars = max(0, Double(customTipText) ?? 0)
-            return min(Int(dollars * 100), 50_000)
+            return min(Int(dollars * 100), Self.maxTipCents)
         }
     }
 
@@ -100,16 +120,17 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         isLoadingBundle = true
         errorMessage = nil
 
+        defer { if gen == bundleGeneration { isLoadingBundle = false } }
+
         do {
             let tip = currentTipCents()
-            let fresh = try await api.createPaymentSheet(tip: tip)
-            guard gen == bundleGeneration else { return }
+            let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType)
+            guard gen == bundleGeneration, !Task.isCancelled else { return }
             bundle = fresh
         } catch {
-            guard gen == bundleGeneration else { return }
+            guard gen == bundleGeneration, !Task.isCancelled else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
-        isLoadingBundle = false
     }
 
     // MARK: - Stripe PaymentSheet
@@ -119,6 +140,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// circuits and marks the payment as succeeded immediately so the rest
     /// of the flow stays testable locally.
     func presentAndChargePaymentSheet(bundle: APIService.PaymentSheetBundle) async {
+        paymentSucceeded = false
         isProcessing = true
         errorMessage = nil
         defer { isProcessing = false }
@@ -158,24 +180,34 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
         // Use a continuation-free approach: store the result in a published
         // property and let the caller poll or observe.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            self.sheetContinuation = continuation
-            sheet.present(from: rootVC) { [weak self] result in
-                guard let self else { return }
-                Task { @MainActor in
-                    switch result {
-                    case .completed:
-                        self.paymentSucceeded = true
-                    case .canceled:
-                        self.paymentSucceeded = false
-                    case .failed(let error):
-                        self.paymentSucceeded = false
-                        self.errorMessage = error.localizedDescription
+        try? await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                self.sheetContinuation = continuation
+                sheet.present(from: rootVC) { [weak self] result in
+                    guard let self else {
+                        continuation.resume(throwing: CancellationError())
+                        return
                     }
-                    self.activeSheet = nil
-                    self.sheetContinuation?.resume()
-                    self.sheetContinuation = nil
+                    Task { @MainActor in
+                        switch result {
+                        case .completed:
+                            self.paymentSucceeded = true
+                        case .canceled:
+                            self.paymentSucceeded = false
+                        case .failed(let error):
+                            self.paymentSucceeded = false
+                            self.errorMessage = error.localizedDescription
+                        }
+                        self.activeSheet = nil
+                        self.sheetContinuation?.resume()
+                        self.sheetContinuation = nil
+                    }
                 }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.sheetContinuation?.resume(throwing: CancellationError())
+                self?.sheetContinuation = nil
             }
         }
     }
@@ -187,6 +219,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// once the user authorizes in the native Apple Pay sheet; we just hand
     /// it our existing client_secret via the delegate.
     func presentApplePayExpress(bundle: APIService.PaymentSheetBundle) async {
+        paymentSucceeded = false
         isProcessing = true
         errorMessage = nil
         defer { isProcessing = false }
@@ -212,16 +245,18 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             return
         }
 
-        guard let rootVC = Self.topViewController() else {
-            errorMessage = "Could not present Apple Pay"
-            return
-        }
-
         self.applePayContext = context
 
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            self.applePayContinuation = continuation
-            context.presentApplePay(on: rootVC)
+        try? await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                self.applePayContinuation = continuation
+                context.presentApplePay(completion: nil)
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.applePayContinuation?.resume(throwing: CancellationError())
+                self?.applePayContinuation = nil
+            }
         }
     }
 
@@ -250,25 +285,65 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
     // MARK: - Order creation
 
-    func placeOrder(address: Address, bundle: APIService.PaymentSheetBundle) async -> Order? {
+    func placeOrder(address: Address?, bundle: APIService.PaymentSheetBundle) async -> Order? {
         guard !isProcessing else { return nil }
         isProcessing = true
         defer { isProcessing = false }
 
-        // In stub mode we don't have a real payment intent id; the backend
-        // tolerates an empty string.
-        let paymentIntentId = bundle.isStub ? "stub_intent" : extractIntentId(from: bundle.paymentIntentSecret)
+        // Pickup orders don't carry an address; pass empty strings + (0, 0)
+        // and let the backend's validation skip the delivery-address check
+        // because fulfillment_type='pickup'.
+        let addressString = address?.formatted ?? ""
+        let lat = address?.lat ?? 0
+        let lng = address?.lng ?? 0
 
         do {
-            return try await api.createOrder(
-                deliveryAddress: address.formatted,
-                lat: address.lat,
-                lng: address.lng,
-                paymentIntentId: paymentIntentId,
-                tip: bundle.tip,
-                scheduledFor: scheduledFor,
-            )
+            // In stub mode we don't have a real payment intent id; the backend
+            // tolerates an empty string.
+            let paymentIntentId = bundle.isStub ? "stub_intent" : try extractIntentId(from: bundle.paymentIntentSecret)
+            // Retry createOrder up to 3 times — the card is already charged,
+            // so dropping the order on a transient network failure is worse
+            // than a duplicate-order guard on the backend (idempotent via
+            // payment_intent_id unique constraint).
+            var lastError: Error?
+            for attempt in 0..<3 {
+                do {
+                    return try await api.createOrder(
+                        deliveryAddress: addressString,
+                        lat: lat,
+                        lng: lng,
+                        paymentIntentId: paymentIntentId,
+                        tip: bundle.tip,
+                        scheduledFor: scheduledFor,
+                        fulfillmentType: fulfillmentType
+                    )
+                } catch let APIError.httpError(code, _) where code == 409 {
+                    // Duplicate payment_intent_id — the order was already created
+                    // on a previous attempt whose response was lost. Fetch it.
+                    if let orders = try? await api.listOrders(),
+                       let existing = orders.first(where: { $0.stripePaymentID == paymentIntentId }) {
+                        return existing
+                    }
+                    lastError = NSError(
+                        domain: "Checkout",
+                        code: -3,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "Payment was received, but we couldn't recover the created order. Please retry or contact support."
+                        ]
+                    )
+                } catch {
+                    lastError = error
+                    if attempt < 2 {
+                        try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
+                    }
+                }
+            }
+            paymentSucceeded = false
+            orderCreationFailed = true
+            errorMessage = lastError?.localizedDescription ?? "Order creation failed"
+            return nil
         } catch {
+            paymentSucceeded = false
             errorMessage = error.localizedDescription
             return nil
         }
@@ -276,8 +351,16 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
     /// PaymentIntent client secrets are `pi_xxxxxx_secret_yyyy`. We only
     /// want the `pi_xxxxxx` portion for our DB.
-    private func extractIntentId(from clientSecret: String) -> String {
-        clientSecret.components(separatedBy: "_secret_").first ?? clientSecret
+    private func extractIntentId(from clientSecret: String) throws -> String {
+        let parts = clientSecret.components(separatedBy: "_secret_")
+        guard parts.count == 2 else {
+            throw NSError(
+                domain: "Checkout",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Malformed payment intent secret — cannot extract intent ID"]
+            )
+        }
+        return parts[0]
     }
 
     // MARK: - UIKit bridging

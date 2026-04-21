@@ -3,13 +3,12 @@ import SwiftUI
 struct OrdersListView: View {
     @StateObject private var vm = OrderViewModel()
     @EnvironmentObject var cartVM: CartViewModel
+    @Binding var pendingTrackingOrderId: String?
+    @Binding var pendingDetailOrderId: String?
     @State private var selectedSegment = 0
     @State private var showReorderToast = false
-    // Deep-link state: when a navigation notification arrives, we set one
-    // of these so a NavigationLink(isActive:) pushes the right screen.
-    @State private var deepLinkOrderId: String?
-    @State private var showTrackingForDeepLink = false
-    @State private var showDetailForDeepLink = false
+    @State private var reorderError: String? = nil
+    @State private var reorderTask: Task<Void, Never>? = nil
 
     var body: some View {
         NavigationStack {
@@ -63,19 +62,23 @@ struct OrdersListView: View {
                                         OrderRowView(
                                             order: order,
                                             onReorder: order.status == .delivered ? {
-                                                Task {
-                                                    for item in order.items {
-                                                        await cartVM.addItem(
-                                                            menuItemID: item.menuItemID,
-                                                            quantity: item.quantity,
-                                                            notes: item.notes,
-                                                            restaurantID: order.restaurantID,
-                                                            modifierIDs: item.selectedModifiers?.map(\.id) ?? []
-                                                        )
+                                                guard !cartVM.isReordering else { return }
+                                                reorderTask?.cancel()
+                                                reorderTask = Task {
+                                                    let error = await cartVM.reorder(
+                                                        items: order.items,
+                                                        restaurantID: order.restaurantID
+                                                    )
+                                                    guard !Task.isCancelled else { return }
+                                                    if error == nil {
+                                                        showReorderToast = true
+                                                    } else {
+                                                        reorderError = error
                                                     }
-                                                    showReorderToast = true
                                                     try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                                    guard !Task.isCancelled else { return }
                                                     showReorderToast = false
+                                                    reorderError = nil
                                                 }
                                             } : nil
                                         )
@@ -89,10 +92,25 @@ struct OrdersListView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if showReorderToast {
+                if cartVM.isReordering {
+                    HStack(spacing: 8) {
+                        ProgressView().tint(.keTextOnAccent)
+                        Text("Adding items to cart…")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.keTextOnAccent)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(Color.kePrimary)
+                    .cornerRadius(25)
+                    .shadow(radius: 4)
+                    .padding(.bottom, 32)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .animation(.easeInOut, value: cartVM.isReordering)
+                } else if showReorderToast {
                     Text("Items added to cart!")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.keTextOnAccent)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .background(Color.kePrimary)
@@ -101,10 +119,28 @@ struct OrdersListView: View {
                         .padding(.bottom, 32)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .animation(.easeInOut, value: showReorderToast)
+                } else if let error = reorderError {
+                    Text(error)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.keTextOnAccent)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Color.red)
+                        .cornerRadius(25)
+                        .shadow(radius: 4)
+                        .padding(.bottom, 32)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut, value: reorderError)
                 }
             }
             .navigationTitle("Orders")
             .navigationBarTitleDisplayMode(.large)
+            .onDisappear {
+                reorderTask?.cancel()
+                reorderTask = nil
+                showReorderToast = false
+                reorderError = nil
+            }
             .task {
                 await vm.loadOrders()
             }
@@ -112,28 +148,11 @@ struct OrdersListView: View {
                 Haptics.impact(.light)
                 await vm.loadOrders()
             }
-            // Deep-link hooks for "track your order" button and push taps.
-            .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderTracking)) { note in
-                if let id = note.userInfo?["order_id"] as? String {
-                    deepLinkOrderId = id
-                    showTrackingForDeepLink = true
-                }
+            .navigationDestination(item: $pendingTrackingOrderId) { id in
+                OrderTrackingView(orderId: id)
             }
-            .onReceive(NotificationCenter.default.publisher(for: .navigateToOrderDetail)) { note in
-                if let id = note.userInfo?["order_id"] as? String {
-                    deepLinkOrderId = id
-                    showDetailForDeepLink = true
-                }
-            }
-            .navigationDestination(isPresented: $showTrackingForDeepLink) {
-                if let id = deepLinkOrderId {
-                    OrderTrackingView(orderId: id)
-                }
-            }
-            .navigationDestination(isPresented: $showDetailForDeepLink) {
-                if let id = deepLinkOrderId {
-                    OrderDetailView(orderID: id)
-                }
+            .navigationDestination(item: $pendingDetailOrderId) { id in
+                OrderDetailView(orderID: id)
             }
         }
     }
@@ -221,6 +240,10 @@ struct OrderStatusBadge: View {
         case .ready, .pickedUp: return .keDairy
         case .delivered: return .keSuccess
         case .cancelled, .rejected: return .keError
+        case .completed:
+            return .clear
+        @unknown default:
+            return .keTextSecondary
         }
     }
 
