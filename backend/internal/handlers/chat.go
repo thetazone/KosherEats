@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -32,25 +33,54 @@ func (h *Handler) canAccessChat(r *http.Request, orderID, userID, role string) b
 	if role == "admin" {
 		return true
 	}
-	var consumerID, ownerID string
+	var consumerID string
+	var ownerID *string
 	var courierID *string
+	// LEFT JOIN so a missing restaurant row doesn't lock the consumer/courier
+	// out of their own chat (seller path still requires owner_id, handled below).
 	err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT o.user_id, rest.owner_id, o.courier_id
 		   FROM orders o
-		   JOIN restaurants rest ON o.restaurant_id = rest.id
+		   LEFT JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1`, orderID,
 	).Scan(&consumerID, &ownerID, &courierID)
 	if err != nil {
+		slog.Warn("canAccessChat: order lookup failed",
+			slog.String("order_id", orderID),
+			slog.String("user_id", userID),
+			slog.String("role", role),
+			slog.String("error", err.Error()))
 		return false
 	}
 
 	switch role {
 	case "consumer":
-		return consumerID == userID
+		ok := consumerID == userID
+		if !ok {
+			slog.Warn("canAccessChat: consumer mismatch",
+				slog.String("order_id", orderID),
+				slog.String("jwt_user", userID),
+				slog.String("order_user", consumerID))
+		}
+		return ok
 	case "seller":
-		return ownerID == userID
+		ok := ownerID != nil && *ownerID == userID
+		if !ok {
+			slog.Warn("canAccessChat: seller mismatch",
+				slog.String("order_id", orderID),
+				slog.String("jwt_user", userID),
+				slog.Any("order_owner", ownerID))
+		}
+		return ok
 	case "courier":
-		return courierID != nil && *courierID == userID
+		ok := courierID != nil && *courierID == userID
+		if !ok {
+			slog.Warn("canAccessChat: courier mismatch",
+				slog.String("order_id", orderID),
+				slog.String("jwt_user", userID),
+				slog.Any("order_courier", courierID))
+		}
+		return ok
 	}
 	return false
 }
@@ -58,7 +88,11 @@ func (h *Handler) canAccessChat(r *http.Request, orderID, userID, role string) b
 // ListChatMessages returns all messages on an order sorted oldest-first.
 // Clients poll this every few seconds while the chat view is open.
 func (h *Handler) ListChatMessages(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orderID := chi.URLParam(r, "id")
 
 	if !h.canAccessChat(r, orderID, user["user_id"], user["role"]) {
@@ -82,6 +116,7 @@ func (h *Handler) ListChatMessages(w http.ResponseWriter, r *http.Request) {
 		var m ChatMessage
 		var createdAt time.Time
 		if err := rows.Scan(&m.ID, &m.OrderID, &m.SenderID, &m.SenderRole, &m.Text, &createdAt); err != nil {
+			slog.Error("ListChatMessages: scan error", slog.String("error", err.Error()))
 			continue
 		}
 		m.CreatedAt = createdAt.Format(time.RFC3339)
@@ -97,7 +132,11 @@ func (h *Handler) ListChatMessages(w http.ResponseWriter, r *http.Request) {
 // authenticated user's role claim, not from the request body, so clients
 // can't spoof a seller message.
 func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orderID := chi.URLParam(r, "id")
 
 	if !h.canAccessChat(r, orderID, user["user_id"], user["role"]) {
@@ -119,7 +158,7 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 
 	var m ChatMessage
 	var createdAt time.Time
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`INSERT INTO chat_messages (order_id, sender_user_id, sender_role, text)
 		 VALUES ($1, $2, $3, $4)
 		 RETURNING id, order_id, sender_user_id, sender_role, text, created_at`,

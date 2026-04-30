@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/models"
 )
 
@@ -13,26 +16,27 @@ import (
 // Using pointers here lets the seller UI save a single section without
 // clobbering fields it doesn't render (e.g. lat/lng, is_active).
 type UpdateRestaurantRequest struct {
-	Name                *string  `json:"name"`
-	Description         *string  `json:"description"`
-	Phone               *string  `json:"phone"`
-	Email               *string  `json:"email"`
-	Street              *string  `json:"street"`
-	City                *string  `json:"city"`
-	State               *string  `json:"state"`
-	ZipCode             *string  `json:"zip_code"`
-	CuisineType         []string `json:"cuisine_type"`
+	Name        *string  `json:"name"`
+	Description *string  `json:"description"`
+	Phone       *string  `json:"phone"`
+	Email       *string  `json:"email"`
+	Street      *string  `json:"street"`
+	City        *string  `json:"city"`
+	State       *string  `json:"state"`
+	ZipCode     *string  `json:"zip_code"`
+	CuisineType []string `json:"cuisine_type"`
 	// Money fields are cents to match the DB (delivery_fee / min_order are INTEGER).
-	DeliveryFee         *int     `json:"delivery_fee"`
-	MinOrder            *int     `json:"min_order"`
-	EstDeliveryMin      *int     `json:"est_delivery_min"`
-	EstDeliveryMax      *int     `json:"est_delivery_max"`
-	IsOpen              *bool    `json:"is_open"`
-	KosherCertification *string  `json:"kosher_certification"`
-	CertifyingAgency    *string  `json:"certifying_agency"`
-	IsCholovYisroel     *bool    `json:"is_cholov_yisroel"`
-	IsPasYisroel        *bool    `json:"is_pas_yisroel"`
-	IsGlattKosher       *bool    `json:"is_glatt_kosher"`
+	DeliveryFee         *int    `json:"delivery_fee"`
+	MinOrder            *int    `json:"min_order"`
+	EstDeliveryMin      *int    `json:"est_delivery_min"`
+	EstDeliveryMax      *int    `json:"est_delivery_max"`
+	IsOpen              *bool   `json:"is_open"`
+	KosherCertification *string `json:"kosher_certification"`
+	CertifyingAgency    *string `json:"certifying_agency"`
+	IsCholovYisroel     *bool   `json:"is_cholov_yisroel"`
+	IsPasYisroel        *bool   `json:"is_pas_yisroel"`
+	IsGlattKosher       *bool   `json:"is_glatt_kosher"`
+	DeliveryMode        *string `json:"delivery_mode"`
 }
 
 type CreateMenuItemRequest struct {
@@ -76,17 +80,151 @@ func (h *Handler) resolveSellerRestaurant(r *http.Request, userID string) (strin
 	return restID, nil
 }
 
+// CreateRestaurantRequest is the form a seller fills on first launch (or when
+// adding a second restaurant). Fields are required-or-defaulted at the handler
+// rather than at the DB layer so we can return a useful 400 instead of a
+// generic "null value violates NOT NULL constraint" error.
+type CreateRestaurantRequest struct {
+	Name                string   `json:"name"`
+	Description         string   `json:"description"`
+	Phone               string   `json:"phone"`
+	Email               string   `json:"email"`
+	Street              string   `json:"street"`
+	City                string   `json:"city"`
+	State               string   `json:"state"`
+	ZipCode             string   `json:"zip_code"`
+	KosherCertification string   `json:"kosher_certification"`
+	CertifyingAgency    string   `json:"certifying_agency"`
+	CuisineType         []string `json:"cuisine_type"`
+	IsCholovYisroel     bool     `json:"is_cholov_yisroel"`
+	IsPasYisroel        bool     `json:"is_pas_yisroel"`
+	IsGlattKosher       bool     `json:"is_glatt_kosher"`
+}
+
+// CreateRestaurant inserts a new restaurant owned by the calling seller.
+// Used by the seller iOS app's "create your first restaurant" onboarding flow
+// and (eventually) a multi-restaurant "add another" path. Defaults are picked
+// to land the restaurant in a usable but offline state — is_open=false so
+// orders don't immediately route to a kitchen that isn't ready, sensible
+// delivery-fee/time defaults the seller can tune in Settings.
+//
+// lat/lng default to NYC-center for now (no geocoding wired up). The seller
+// can fix these in Settings, or we add geocoding in a follow-up.
+func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req CreateRestaurantRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Required-field validation. Description is allowed empty so first-time
+	// sellers aren't blocked on writing copy.
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if req.Street == "" || req.City == "" || req.State == "" || req.ZipCode == "" {
+		writeError(w, http.StatusBadRequest, "full address (street, city, state, zip_code) is required")
+		return
+	}
+	if req.Phone == "" {
+		writeError(w, http.StatusBadRequest, "phone is required")
+		return
+	}
+	if req.Email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	if req.KosherCertification == "" {
+		writeError(w, http.StatusBadRequest, "kosher_certification is required")
+		return
+	}
+	if len(req.Name) > 200 {
+		writeError(w, http.StatusBadRequest, "name too long (max 200)")
+		return
+	}
+	if len(req.Description) > 2000 {
+		writeError(w, http.StatusBadRequest, "description too long (max 2000)")
+		return
+	}
+
+	cuisine := req.CuisineType
+	if cuisine == nil {
+		cuisine = []string{}
+	}
+
+	// NYC default — geocoding is a follow-up. The seller can correct this in
+	// Settings; the consumer map view will show the restaurant at this point
+	// until then.
+	const defaultLat, defaultLng = 40.7128, -74.0060
+	const defaultDeliveryFee = 399 // $3.99 cents
+	const defaultMinOrder = 0
+	const defaultEstMin = 25
+	const defaultEstMax = 45
+
+	var rest models.Restaurant
+	err = h.db.Pool.QueryRow(r.Context(),
+		`INSERT INTO restaurants (
+			owner_id, name, description, image_url, cover_image_url,
+			phone, email, street, city, state, zip_code, lat, lng,
+			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
+			is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			est_delivery_min, est_delivery_max, is_open, is_active
+		)
+		VALUES ($1, $2, $3, '', '',
+			$4, $5, $6, $7, $8, $9, $10, $11,
+			$12, $13, $14, $15,
+			$16, $17, 0, 0, $18, $19,
+			$20, $21, false, true)
+		RETURNING id, owner_id, name, description, image_url, cover_image_url,
+			phone, email, street, city, state, zip_code, lat, lng,
+			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
+			is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at`,
+		user["user_id"], req.Name, req.Description,
+		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
+		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
+		req.IsGlattKosher, cuisine, defaultDeliveryFee, defaultMinOrder,
+		defaultEstMin, defaultEstMax,
+	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
+		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
+		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
+		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
+		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
+		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
+		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
+
+	if err != nil {
+		slog.Error("CreateRestaurant insert failed",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to create restaurant")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, rest)
+}
+
 // ListSellerRestaurants returns every restaurant the current seller owns.
 // Used by the iOS restaurant picker to populate its list.
 func (h *Handler) ListSellerRestaurants(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		 FROM restaurants WHERE owner_id = $1 ORDER BY name`, user["user_id"])
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list restaurants")
@@ -94,14 +232,23 @@ func (h *Handler) ListSellerRestaurants(w http.ResponseWriter, r *http.Request) 
 	}
 	defer rows.Close()
 
-	writeJSON(w, http.StatusOK, scanRestaurants(rows))
+	restaurants, err := scanRestaurants(rows)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list restaurants")
+		return
+	}
+	writeJSON(w, http.StatusOK, restaurants)
 }
 
 func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
@@ -111,7 +258,7 @@ func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
@@ -119,7 +266,7 @@ func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
-		&rest.CreatedAt, &rest.UpdatedAt)
+		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 
 	if err != nil {
 		writeError(w, http.StatusNotFound, "restaurant not found")
@@ -130,10 +277,14 @@ func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
@@ -141,6 +292,22 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	if req.Name != nil && len(*req.Name) > 200 {
+		writeError(w, http.StatusBadRequest, "name too long (max 200)")
+		return
+	}
+	if req.Description != nil && len(*req.Description) > 2000 {
+		writeError(w, http.StatusBadRequest, "description too long (max 2000)")
+		return
+	}
+	if req.DeliveryMode != nil {
+		switch *req.DeliveryMode {
+		case "platform", "external", "restaurant":
+		default:
+			writeError(w, http.StatusBadRequest, "delivery_mode must be platform, external, or restaurant")
+			return
+		}
 	}
 
 	// Use COALESCE so each column only gets overwritten when the client
@@ -167,14 +334,16 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 			is_cholov_yisroel    = COALESCE($17, is_cholov_yisroel),
 			is_pas_yisroel       = COALESCE($18, is_pas_yisroel),
 			is_glatt_kosher      = COALESCE($19, is_glatt_kosher),
+			delivery_mode        = COALESCE($20, delivery_mode),
 			updated_at           = NOW()
-		 WHERE id = $20`,
+		 WHERE id = $21`,
 		req.Name, req.Description, req.Phone, req.Email,
 		req.Street, req.City, req.State, req.ZipCode,
 		req.CuisineType,
 		req.DeliveryFee, req.MinOrder, req.EstDeliveryMin, req.EstDeliveryMax,
 		req.IsOpen, req.KosherCertification, req.CertifyingAgency,
 		req.IsCholovYisroel, req.IsPasYisroel, req.IsGlattKosher,
+		req.DeliveryMode,
 		restID)
 
 	if err != nil {
@@ -191,7 +360,7 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
@@ -199,7 +368,7 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
-		&rest.CreatedAt, &rest.UpdatedAt)
+		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "updated but failed to reload restaurant")
 		return
@@ -209,11 +378,15 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetSellerMenu(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
@@ -240,7 +413,8 @@ func (h *Handler) GetSellerMenu(w http.ResponseWriter, r *http.Request) {
 		itemRows, err := h.db.Pool.Query(r.Context(),
 			`SELECT id, restaurant_id, category_id, name, description, image_url,
 			 price, is_meat, is_dairy, is_pareve, is_available, sort_order
-			 FROM menu_items WHERE category_id = $1 ORDER BY sort_order`, cat.ID)
+			 FROM menu_items WHERE category_id = $1 AND restaurant_id = $2
+			 ORDER BY sort_order`, cat.ID, restID)
 		if err != nil {
 			continue
 		}
@@ -339,7 +513,11 @@ func (h *Handler) attachSellerModifierGroups(r *http.Request, itemIDs []string, 
 }
 
 func (h *Handler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req CreateMenuItemRequest
 	if err := readJSON(r, &req); err != nil {
@@ -349,15 +527,25 @@ func (h *Handler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
+		return
+	}
+
+	if req.Price < 0 {
+		writeError(w, http.StatusBadRequest, "price must be non-negative")
 		return
 	}
 
 	var item models.MenuItem
 	err = h.db.Pool.QueryRow(r.Context(),
+		// Only allow inserts through a category owned by this seller's restaurant.
+		// This closes the cross-tenant hole where one seller could inject items
+		// into another restaurant's public menu by reusing that category UUID.
 		`INSERT INTO menu_items (restaurant_id, category_id, name, description, image_url, price,
 		 is_meat, is_dairy, is_pareve, is_available)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+		 SELECT $1, mc.id, $3, $4, $5, $6, $7, $8, $9, true
+		 FROM menu_categories mc
+		 WHERE mc.id = $2 AND mc.restaurant_id = $1
 		 RETURNING id, restaurant_id, category_id, name, description, image_url, price,
 		 is_meat, is_dairy, is_pareve, is_available, sort_order`,
 		restID, req.CategoryID, req.Name, req.Description, req.ImageURL, req.Price,
@@ -366,6 +554,10 @@ func (h *Handler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 		&item.ImageURL, &item.Price, &item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable, &item.SortOrder)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusBadRequest, "category not found for restaurant")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create menu item")
 		return
 	}
@@ -374,7 +566,11 @@ func (h *Handler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	itemID := chi.URLParam(r, "id")
 
 	var req CreateMenuItemRequest
@@ -383,8 +579,13 @@ func (h *Handler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Price < 0 {
+		writeError(w, http.StatusBadRequest, "price must be non-negative")
+		return
+	}
+
 	var item models.MenuItem
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`UPDATE menu_items SET name = $1, description = $2, image_url = $3, price = $4,
 		 is_meat = $5, is_dairy = $6, is_pareve = $7, updated_at = NOW()
 		 WHERE id = $8 AND restaurant_id IN (SELECT id FROM restaurants WHERE owner_id = $9)
@@ -407,7 +608,11 @@ func (h *Handler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
 // ToggleItemAvailability flips the is_available flag on a menu item.
 // Called from the seller menu management screen's per-item toggle.
 func (h *Handler) ToggleItemAvailability(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	itemID := chi.URLParam(r, "id")
 
 	var req struct {
@@ -419,7 +624,7 @@ func (h *Handler) ToggleItemAvailability(w http.ResponseWriter, r *http.Request)
 	}
 
 	var item models.MenuItem
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`UPDATE menu_items SET is_available = $1, updated_at = NOW()
 		 WHERE id = $2 AND restaurant_id IN (SELECT id FROM restaurants WHERE owner_id = $3)
 		 RETURNING id, restaurant_id, category_id, name, description, price,
@@ -439,7 +644,11 @@ func (h *Handler) ToggleItemAvailability(w http.ResponseWriter, r *http.Request)
 // the big orange/green toggle on the dashboard that lets a seller go
 // "closed" when they want to stop receiving orders.
 func (h *Handler) ToggleRestaurantStatus(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req struct {
 		IsOpen bool `json:"is_open"`
@@ -451,7 +660,7 @@ func (h *Handler) ToggleRestaurantStatus(w http.ResponseWriter, r *http.Request)
 
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
@@ -469,7 +678,11 @@ func (h *Handler) ToggleRestaurantStatus(w http.ResponseWriter, r *http.Request)
 
 // CreateCategory adds a menu category for the seller's restaurant.
 func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req struct {
 		Name string `json:"name"`
@@ -481,7 +694,7 @@ func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
@@ -501,7 +714,11 @@ func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 
 // DeleteCategory removes a category (cascades to items via FK ON DELETE CASCADE).
 func (h *Handler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	catID := chi.URLParam(r, "id")
 
 	result, err := h.db.Pool.Exec(r.Context(),
@@ -519,17 +736,22 @@ func (h *Handler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 // their home screen. Scoped to a single restaurant via resolveSellerRestaurant
 // so a multi-restaurant seller gets accurate per-restaurant numbers.
 func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
 	var stats models.DashboardStats
-	_ = h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT
-		    COUNT(*) FILTER (WHERE o.created_at::date = CURRENT_DATE)         AS today_orders,
+		    COUNT(*) FILTER (WHERE o.created_at::date = CURRENT_DATE
+		                      AND o.status NOT IN ('cancelled','rejected'))   AS today_orders,
 		    COALESCE(SUM(o.total) FILTER (
 		        WHERE o.created_at::date = CURRENT_DATE
 		          AND o.status NOT IN ('cancelled','rejected')
@@ -545,12 +767,21 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 		   FROM orders o
 		  WHERE o.restaurant_id = $1`, restID,
 	).Scan(&stats.TodayOrders, &stats.TodayRevenueCents, &stats.ActiveOrders, &stats.AvgPrepTime)
+	if err != nil {
+		slog.Error("GetDashboardStats query failed", "error", err, "restaurant_id", restID)
+		writeError(w, http.StatusInternalServerError, "failed to load dashboard stats")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, stats)
 }
 
 func (h *Handler) DeleteMenuItem(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	itemID := chi.URLParam(r, "id")
 
 	result, err := h.db.Pool.Exec(r.Context(),
@@ -573,12 +804,12 @@ func (h *Handler) DeleteMenuItem(w http.ResponseWriter, r *http.Request) {
 // a UUID. Each handler threads this through a JOIN against `restaurants.owner_id`.
 
 type ModifierGroupRequest struct {
-	Name          string                 `json:"name"`
-	Description   string                 `json:"description"`
-	IsRequired    bool                   `json:"is_required"`
-	MinSelections int                    `json:"min_selections"`
-	MaxSelections int                    `json:"max_selections"`
-	SortOrder     int                    `json:"sort_order"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	IsRequired    bool                    `json:"is_required"`
+	MinSelections int                     `json:"min_selections"`
+	MaxSelections int                     `json:"max_selections"`
+	SortOrder     int                     `json:"sort_order"`
 	Modifiers     []ModifierOptionRequest `json:"modifiers"`
 }
 
@@ -596,7 +827,11 @@ type ModifierOptionRequest struct {
 // We do this in a tx so a partially-saved group doesn't leave the seller with
 // a group visible in their editor but no options to pick from.
 func (h *Handler) CreateModifierGroup(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	itemID := chi.URLParam(r, "itemId")
 
 	var req ModifierGroupRequest
@@ -605,7 +840,12 @@ func (h *Handler) CreateModifierGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.ownsMenuItem(r, itemID, user["user_id"]) {
+	owned, err := h.ownsMenuItem(r, itemID, user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify menu item ownership")
+		return
+	}
+	if !owned {
 		writeError(w, http.StatusNotFound, "menu item not found")
 		return
 	}
@@ -639,6 +879,10 @@ func (h *Handler) CreateModifierGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, m := range req.Modifiers {
+		if m.PriceDelta < 0 {
+			writeError(w, http.StatusBadRequest, "price_delta must be non-negative")
+			return
+		}
 		var mod models.Modifier
 		err := tx.QueryRow(r.Context(),
 			`INSERT INTO menu_item_modifiers
@@ -669,7 +913,11 @@ func (h *Handler) CreateModifierGroup(w http.ResponseWriter, r *http.Request) {
 // shape matches how the seller editor submits the form — simpler than tracking
 // a per-option action type on the client.
 func (h *Handler) UpdateModifierGroup(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	groupID := chi.URLParam(r, "groupId")
 
 	var req ModifierGroupRequest
@@ -678,7 +926,12 @@ func (h *Handler) UpdateModifierGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.ownsModifierGroup(r, groupID, user["user_id"]) {
+	ownedGroup, errGroup := h.ownsModifierGroup(r, groupID, user["user_id"])
+	if errGroup != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify modifier group ownership")
+		return
+	}
+	if !ownedGroup {
 		writeError(w, http.StatusNotFound, "modifier group not found")
 		return
 	}
@@ -741,6 +994,10 @@ func (h *Handler) UpdateModifierGroup(w http.ResponseWriter, r *http.Request) {
 
 	// Upsert each option: update if it has an id, insert if not.
 	for _, m := range req.Modifiers {
+		if m.PriceDelta < 0 {
+			writeError(w, http.StatusBadRequest, "price_delta must be non-negative")
+			return
+		}
 		var mod models.Modifier
 		if m.ID != "" {
 			err = tx.QueryRow(r.Context(),
@@ -779,10 +1036,19 @@ func (h *Handler) UpdateModifierGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteModifierGroup(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	groupID := chi.URLParam(r, "groupId")
 
-	if !h.ownsModifierGroup(r, groupID, user["user_id"]) {
+	ownedDel, errDel := h.ownsModifierGroup(r, groupID, user["user_id"])
+	if errDel != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify modifier group ownership")
+		return
+	}
+	if !ownedDel {
 		writeError(w, http.StatusNotFound, "modifier group not found")
 		return
 	}
@@ -797,27 +1063,27 @@ func (h *Handler) DeleteModifierGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-func (h *Handler) ownsMenuItem(r *http.Request, itemID string, ownerID interface{}) bool {
+func (h *Handler) ownsMenuItem(r *http.Request, itemID string, ownerID interface{}) (bool, error) {
 	var exists bool
-	_ = h.db.Pool.QueryRow(r.Context(),
+	err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT EXISTS (
 		    SELECT 1 FROM menu_items mi
 		    JOIN restaurants rest ON rest.id = mi.restaurant_id
 		    WHERE mi.id = $1 AND rest.owner_id = $2
 		 )`, itemID, ownerID).Scan(&exists)
-	return exists
+	return exists, err
 }
 
-func (h *Handler) ownsModifierGroup(r *http.Request, groupID string, ownerID interface{}) bool {
+func (h *Handler) ownsModifierGroup(r *http.Request, groupID string, ownerID interface{}) (bool, error) {
 	var exists bool
-	_ = h.db.Pool.QueryRow(r.Context(),
+	err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT EXISTS (
 		    SELECT 1 FROM menu_item_modifier_groups g
 		    JOIN menu_items mi ON mi.id = g.menu_item_id
 		    JOIN restaurants rest ON rest.id = mi.restaurant_id
 		    WHERE g.id = $1 AND rest.owner_id = $2
 		 )`, groupID, ownerID).Scan(&exists)
-	return exists
+	return exists, err
 }
 
 func isValidModifierGroup(req ModifierGroupRequest) bool {

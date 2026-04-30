@@ -35,8 +35,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
+	"github.com/koshereats/backend/internal/uberdirect"
 )
 
 // autoDispatchGrace is how long an order may sit in 'ready' with no courier
@@ -55,6 +57,11 @@ const autoDispatchBatchLimit = 20
 // the enemy. Sellers who don't respond this fast shouldn't be taking orders.
 const pendingOrderTTL = 10 * time.Minute
 
+// externalDispatchGrace is the total time an order sits in 'ready' before we
+// fall back to an external courier (Uber Direct). Must be longer than
+// autoDispatchGrace to give own-fleet assignment a chance first.
+const externalDispatchGrace = 5 * time.Minute
+
 // staleRejectionBatchLimit caps orders auto-rejected per sweep. Protects
 // Stripe from a burst of refund requests if the API was down for a while.
 const staleRejectionBatchLimit = 20
@@ -71,13 +78,15 @@ const payoutBatchLimit = 20
 const maxPayoutAttempts = 6
 
 type Dispatcher struct {
-	db     *pgxpool.Pool
-	notify *notify.Notifier
-	stripe *payments.Client
+	db       *pgxpool.Pool
+	notify   *notify.Notifier
+	stripe   *payments.Client
+	uber     *uberdirect.Client
+	doordash *doordash.Client
 }
 
-func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client) *Dispatcher {
-	return &Dispatcher{db: db, notify: n, stripe: s}
+func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
+	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd}
 }
 
 // Start launches a goroutine that runs both sweeps every minute. Runs once
@@ -127,13 +136,25 @@ func (d *Dispatcher) sweepScheduled(ctx context.Context) {
 // staleOrder is the minimum projection of an unclaimed 'ready' order that
 // the auto-dispatch sweep needs to find a courier and fire push payloads.
 type staleOrder struct {
-	orderID        string
-	consumerID     string
-	restaurantID   string
-	restaurantName string
-	restLat        float64
-	restLng        float64
-	payout         int
+	orderID         string
+	consumerID      string
+	restaurantID    string
+	restaurantName  string
+	restLat         float64
+	restLng         float64
+	restAddress     string
+	restPhone       string
+	deliveryAddress string
+	deliveryLat     float64
+	deliveryLng     float64
+	customerName    string
+	customerPhone   string
+	subtotal        int
+	tipCents        int
+	payout          int
+	updatedAt       time.Time
+	hasExternal     bool
+	deliveryMode    string
 }
 
 // sweepAutoDispatch finds orders that have been 'ready' without a courier
@@ -144,11 +165,22 @@ type staleOrder struct {
 func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
 	rows, err := d.db.Query(ctx, `
 		SELECT o.id, o.user_id, o.restaurant_id, rest.name, rest.lat, rest.lng,
-		       o.delivery_fee + COALESCE(o.courier_tip, 0) AS payout
+		       COALESCE(rest.street || ', ' || rest.city || ', ' || rest.state || ' ' || rest.zip_code, ''),
+		       COALESCE(rest.phone, ''),
+		       COALESCE(o.delivery_address, ''), o.delivery_lat, o.delivery_lng,
+		       COALESCE(u.first_name || ' ' || u.last_name, ''),
+		       COALESCE(u.phone, ''),
+		       o.subtotal, COALESCE(o.courier_tip, 0),
+		       o.delivery_fee + COALESCE(o.courier_tip, 0) AS payout,
+		       o.updated_at,
+		       o.external_delivery_id IS NOT NULL AS has_external,
+		       COALESCE(rest.delivery_mode, 'platform')
 		  FROM orders o
 		  JOIN restaurants rest ON rest.id = o.restaurant_id
+		  JOIN users u ON u.id = o.user_id
 		 WHERE o.status = 'ready'
 		   AND o.courier_id IS NULL
+		   AND o.fulfillment_type = 'delivery'
 		   AND o.updated_at < NOW() - make_interval(secs => $1)
 		 ORDER BY o.updated_at ASC
 		 LIMIT $2`,
@@ -163,7 +195,12 @@ func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
 	for rows.Next() {
 		var o staleOrder
 		if err := rows.Scan(&o.orderID, &o.consumerID, &o.restaurantID,
-			&o.restaurantName, &o.restLat, &o.restLng, &o.payout); err != nil {
+			&o.restaurantName, &o.restLat, &o.restLng,
+			&o.restAddress, &o.restPhone,
+			&o.deliveryAddress, &o.deliveryLat, &o.deliveryLng,
+			&o.customerName, &o.customerPhone,
+			&o.subtotal, &o.tipCents, &o.payout,
+			&o.updatedAt, &o.hasExternal, &o.deliveryMode); err != nil {
 			slog.Error("auto-dispatch: scan failed",
 				slog.String("error", err.Error()))
 			continue
@@ -181,6 +218,15 @@ func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
 // atomically claims it on their behalf. If no courier is available this is a
 // quiet no-op — the next sweep will retry.
 func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
+	if o.deliveryMode == "restaurant" {
+		return
+	}
+
+	if o.deliveryMode == "external" {
+		d.tryExternalDispatch(ctx, o)
+		return
+	}
+
 	var courierID, courierFirstName string
 	err := d.db.QueryRow(ctx, `
 		SELECT cp.user_id, u.first_name
@@ -188,6 +234,7 @@ func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
 		  JOIN users u ON u.id = cp.user_id
 		 WHERE cp.is_online = true
 		   AND cp.onboarding_status = 'approved'
+		   AND u.role = 'courier'
 		   AND NOT EXISTS (
 		     SELECT 1 FROM orders o2
 		      WHERE o2.courier_id = cp.user_id
@@ -198,8 +245,7 @@ func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
 		o.restLng, o.restLat).Scan(&courierID, &courierFirstName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Info("auto-dispatch: no eligible courier",
-				slog.String("order_id", o.orderID))
+			d.tryExternalDispatch(ctx, o)
 			return
 		}
 		slog.Error("auto-dispatch: courier lookup failed",
@@ -239,6 +285,176 @@ func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
 		// Direct push to the assigned courier since they didn't tap claim.
 		d.notify.CourierAutoAssigned(ctx, o.orderID, courierID, o.restaurantName, o.payout)
 	}
+}
+
+// tryExternalDispatch gets quotes from available external providers (Uber
+// Direct, DoorDash Drive) and dispatches with the cheapest one. Waits until
+// externalDispatchGrace has passed to give the own fleet maximum time.
+func (d *Dispatcher) tryExternalDispatch(ctx context.Context, o staleOrder) {
+	if o.hasExternal {
+		return
+	}
+
+	uberEnabled := d.uber != nil && d.uber.Enabled()
+	ddEnabled := d.doordash != nil && d.doordash.Enabled()
+	if !uberEnabled && !ddEnabled {
+		slog.Info("auto-dispatch: no eligible courier and no external provider configured",
+			slog.String("order_id", o.orderID))
+		return
+	}
+
+	if time.Since(o.updatedAt) < externalDispatchGrace {
+		slog.Info("auto-dispatch: no own courier yet, waiting for external grace period",
+			slog.String("order_id", o.orderID))
+		return
+	}
+
+	type externalQuote struct {
+		provider    string
+		feeCents    int
+		uberQuoteID string
+	}
+	var quotes []externalQuote
+
+	if uberEnabled {
+		pickup := uberdirect.Address{
+			Street: []string{o.restAddress}, Country: "US",
+		}
+		dropoff := uberdirect.Address{
+			Street: []string{o.deliveryAddress}, Country: "US",
+		}
+		q, err := d.uber.GetQuote(ctx, pickup, dropoff)
+		if err != nil {
+			slog.Warn("external-dispatch: uber quote failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+		} else {
+			quotes = append(quotes, externalQuote{
+				provider: "uber_direct", feeCents: q.Fee, uberQuoteID: q.ID,
+			})
+		}
+	}
+
+	if ddEnabled {
+		q, err := d.doordash.GetQuote(ctx, doordash.CreateDeliveryRequest{
+			ExternalDeliveryID: o.orderID + "_quote",
+			PickupAddress:      o.restAddress,
+			PickupBusinessName: o.restaurantName,
+			PickupPhone:        o.restPhone,
+			DropoffAddress:     o.deliveryAddress,
+			DropoffContactName: o.customerName,
+			DropoffPhone:       o.customerPhone,
+			OrderValue:         o.subtotal,
+		})
+		if err != nil {
+			slog.Warn("external-dispatch: doordash quote failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+		} else {
+			quotes = append(quotes, externalQuote{
+				provider: "doordash_drive", feeCents: q.Fee,
+			})
+		}
+	}
+
+	if len(quotes) == 0 {
+		slog.Error("external-dispatch: all providers failed",
+			slog.String("order_id", o.orderID))
+		return
+	}
+
+	// Pick cheapest.
+	best := quotes[0]
+	for _, q := range quotes[1:] {
+		if q.feeCents < best.feeCents {
+			best = q
+		}
+	}
+
+	slog.Info("external-dispatch: cheapest quote selected",
+		slog.String("order_id", o.orderID),
+		slog.String("provider", best.provider),
+		slog.Int("fee_cents", best.feeCents))
+
+	var deliveryID, trackingURL string
+	var fee int
+
+	switch best.provider {
+	case "uber_direct":
+		pickup := uberdirect.Address{
+			Street: []string{o.restAddress}, Country: "US",
+		}
+		dropoff := uberdirect.Address{
+			Street: []string{o.deliveryAddress}, Country: "US",
+		}
+		del, err := d.uber.CreateDelivery(ctx, uberdirect.CreateDeliveryRequest{
+			QuoteID:        best.uberQuoteID,
+			ExternalID:     o.orderID,
+			PickupName:     o.restaurantName,
+			PickupAddress:  pickup,
+			PickupPhone:    o.restPhone,
+			DropoffName:    o.customerName,
+			DropoffAddress: dropoff,
+			DropoffPhone:   o.customerPhone,
+			TotalCents:     o.subtotal,
+			TipCents:       o.tipCents,
+			Items: []uberdirect.ManifestItem{
+				{Name: "Food order from " + o.restaurantName, Quantity: 1, Price: o.subtotal},
+			},
+		})
+		if err != nil {
+			slog.Error("external-dispatch: uber create failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+			return
+		}
+		deliveryID = del.ID
+		trackingURL = del.TrackingURL
+		fee = del.Fee
+
+	case "doordash_drive":
+		del, err := d.doordash.CreateDelivery(ctx, doordash.CreateDeliveryRequest{
+			ExternalDeliveryID: o.orderID,
+			PickupAddress:      o.restAddress,
+			PickupBusinessName: o.restaurantName,
+			PickupPhone:        o.restPhone,
+			DropoffAddress:     o.deliveryAddress,
+			DropoffContactName: o.customerName,
+			DropoffPhone:       o.customerPhone,
+			OrderValue:         o.subtotal,
+			TipCents:           o.tipCents,
+		})
+		if err != nil {
+			slog.Error("external-dispatch: doordash create failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+			return
+		}
+		deliveryID = del.ExternalDeliveryID
+		trackingURL = del.TrackingURL
+		fee = del.Fee
+	}
+
+	_, err := d.db.Exec(ctx, `
+		UPDATE orders
+		   SET external_delivery_id = $1,
+		       external_provider = $2,
+		       external_tracking_url = $3,
+		       updated_at = NOW()
+		 WHERE id = $4 AND courier_id IS NULL`,
+		deliveryID, best.provider, trackingURL, o.orderID)
+	if err != nil {
+		slog.Error("external-dispatch: db update failed",
+			slog.String("order_id", o.orderID),
+			slog.String("error", err.Error()))
+		return
+	}
+
+	slog.Info("external-dispatch: delivery created",
+		slog.String("order_id", o.orderID),
+		slog.String("provider", best.provider),
+		slog.String("delivery_id", deliveryID),
+		slog.Int("fee_cents", fee))
 }
 
 // stalePending is the projection of a pending order that overshot the SLA.

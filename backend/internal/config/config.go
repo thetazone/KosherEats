@@ -50,6 +50,22 @@ type Config struct {
 	TwilioAccountSID       string
 	TwilioAuthToken        string
 	TwilioVerifyServiceSID string
+
+	// ReviewerSecret gates the App Store reviewer backdoor endpoint.
+	// Empty → endpoint disabled entirely.
+	ReviewerSecret string
+
+	// Uber Direct (fallback courier dispatch). Empty → stub mode.
+	UberDirectClientID     string
+	UberDirectClientSecret string
+	UberDirectCustomerID   string
+	UberDirectWebhookSec   string
+
+	// DoorDash Drive (second fallback courier). Empty → stub mode.
+	DoorDashDeveloperID string
+	DoorDashKeyID       string
+	DoorDashSigningKey  string
+	DoorDashWebhookSec  string
 }
 
 func Load() *Config {
@@ -57,7 +73,7 @@ func Load() *Config {
 		Port:             getEnv("PORT", "8080"),
 		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/koshereats?sslmode=disable"),
 		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:        getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:        getEnv("JWT_SECRET", ""),
 		StripeSecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
 		StripePublishableKey: getEnv("STRIPE_PUBLISHABLE_KEY", ""),
 		StripeWebhookSec:     getEnv("STRIPE_WEBHOOK_SECRET", ""),
@@ -90,6 +106,18 @@ func Load() *Config {
 		TwilioAccountSID:       getEnv("TWILIO_ACCOUNT_SID", ""),
 		TwilioAuthToken:        getEnv("TWILIO_AUTH_TOKEN", ""),
 		TwilioVerifyServiceSID: getEnv("TWILIO_VERIFY_SERVICE_SID", ""),
+
+		ReviewerSecret: getEnv("REVIEWER_SECRET", ""),
+
+		UberDirectClientID:     getEnv("UBER_DIRECT_CLIENT_ID", ""),
+		UberDirectClientSecret: getEnv("UBER_DIRECT_CLIENT_SECRET", ""),
+		UberDirectCustomerID:   getEnv("UBER_DIRECT_CUSTOMER_ID", ""),
+		UberDirectWebhookSec:   getEnv("UBER_DIRECT_WEBHOOK_SECRET", ""),
+
+		DoorDashDeveloperID: getEnv("DOORDASH_DEVELOPER_ID", ""),
+		DoorDashKeyID:       getEnv("DOORDASH_KEY_ID", ""),
+		DoorDashSigningKey:  getEnv("DOORDASH_SIGNING_KEY", ""),
+		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
 	}
 }
 

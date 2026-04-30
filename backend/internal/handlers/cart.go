@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -23,10 +24,14 @@ type UpdateCartItemRequest struct {
 }
 
 func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var cart models.Cart
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT id, user_id, restaurant_id FROM carts WHERE user_id = $1`,
 		user["user_id"],
 	).Scan(&cart.ID, &cart.UserID, &cart.RestaurantID)
@@ -62,6 +67,10 @@ func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
 		subtotal += item.Price * item.Quantity
 		cart.Items = append(cart.Items, item)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch cart")
+		return
+	}
 
 	if cart.Items == nil {
 		cart.Items = []models.CartItem{}
@@ -72,7 +81,11 @@ func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req AddToCartRequest
 	if err := readJSON(r, &req); err != nil {
@@ -83,16 +96,33 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	if req.Quantity <= 0 {
 		req.Quantity = 1
 	}
+	if req.Quantity > 99 {
+		writeError(w, http.StatusBadRequest, "quantity cannot exceed 99")
+		return
+	}
+	if len(req.Notes) > 500 {
+		writeError(w, http.StatusBadRequest, "notes cannot exceed 500 characters")
+		return
+	}
 
-	// Get or create cart — if switching restaurants, clear existing cart
+	// Get or create cart — if switching restaurants, clear existing cart.
+	// Use a transaction with SELECT FOR UPDATE to prevent TOCTOU races when
+	// concurrent requests from different restaurants interleave here.
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to begin transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
 	var cartID string
-	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT id FROM carts WHERE user_id = $1`, user["user_id"],
+	err = tx.QueryRow(r.Context(),
+		`SELECT id FROM carts WHERE user_id = $1 FOR UPDATE`, user["user_id"],
 	).Scan(&cartID)
 
 	if err != nil {
 		// Create new cart
-		err = h.db.Pool.QueryRow(r.Context(),
+		err = tx.QueryRow(r.Context(),
 			`INSERT INTO carts (user_id, restaurant_id) VALUES ($1, $2) RETURNING id`,
 			user["user_id"], req.RestaurantID,
 		).Scan(&cartID)
@@ -103,15 +133,29 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Check if same restaurant
 		var existingRestID string
-		h.db.Pool.QueryRow(r.Context(),
+		if err := tx.QueryRow(r.Context(),
 			`SELECT restaurant_id FROM carts WHERE id = $1`, cartID,
-		).Scan(&existingRestID)
+		).Scan(&existingRestID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read cart restaurant")
+			return
+		}
 
 		if existingRestID != req.RestaurantID {
 			// Clear old cart and update restaurant
-			h.db.Pool.Exec(r.Context(), `DELETE FROM cart_items WHERE cart_id = $1`, cartID)
-			h.db.Pool.Exec(r.Context(), `UPDATE carts SET restaurant_id = $1 WHERE id = $2`, req.RestaurantID, cartID)
+			if _, err := tx.Exec(r.Context(), `DELETE FROM cart_items WHERE cart_id = $1`, cartID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to clear cart items")
+				return
+			}
+			if _, err := tx.Exec(r.Context(), `UPDATE carts SET restaurant_id = $1 WHERE id = $2`, req.RestaurantID, cartID); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to update cart restaurant")
+				return
+			}
 		}
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit cart transaction")
+		return
 	}
 
 	// Load base item price.
@@ -189,6 +233,9 @@ func (h *Handler) snapshotModifiers(r *http.Request, menuItemID string, modifier
 		out = append(out, s)
 		total += s.PriceDelta
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
 
 	// If the count doesn't match, some modifier ids were invalid or belonged
 	// to a different menu item — reject the request rather than silently
@@ -200,7 +247,11 @@ func (h *Handler) snapshotModifiers(r *http.Request, menuItemID string, modifier
 }
 
 func (h *Handler) UpdateCartItem(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	itemID := chi.URLParam(r, "id")
 
 	var req UpdateCartItemRequest
@@ -211,6 +262,10 @@ func (h *Handler) UpdateCartItem(w http.ResponseWriter, r *http.Request) {
 
 	if req.Quantity <= 0 {
 		writeError(w, http.StatusBadRequest, "quantity must be at least 1")
+		return
+	}
+	if req.Quantity > 99 {
+		writeError(w, http.StatusBadRequest, "quantity cannot exceed 99")
 		return
 	}
 
@@ -228,7 +283,11 @@ func (h *Handler) UpdateCartItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RemoveCartItem(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	itemID := chi.URLParam(r, "id")
 
 	result, err := h.db.Pool.Exec(r.Context(),
@@ -245,13 +304,27 @@ func (h *Handler) RemoveCartItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ClearCart(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
-	h.db.Pool.Exec(r.Context(),
+	if _, err := h.db.Pool.Exec(r.Context(),
 		`DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id = $1)`,
-		user["user_id"])
-	h.db.Pool.Exec(r.Context(),
-		`DELETE FROM carts WHERE user_id = $1`, user["user_id"])
+		user["user_id"]); err != nil {
+		slog.Error("ClearCart: failed to delete cart items",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to clear cart")
+		return
+	}
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`DELETE FROM carts WHERE user_id = $1`, user["user_id"]); err != nil {
+		slog.Error("ClearCart: failed to delete cart",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to clear cart")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }

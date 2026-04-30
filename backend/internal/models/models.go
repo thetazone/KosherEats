@@ -55,6 +55,7 @@ const (
 	OrderReady      OrderStatus = "ready"
 	OrderPickedUp   OrderStatus = "picked_up"
 	OrderDelivered  OrderStatus = "delivered"
+	OrderCompleted  OrderStatus = "completed"
 	OrderCancelled  OrderStatus = "cancelled"
 	OrderRejected   OrderStatus = "rejected"
 )
@@ -115,6 +116,7 @@ type Restaurant struct {
 	EstDeliveryMax      int                 `json:"est_delivery_max"`
 	IsOpen              bool                `json:"is_open"`
 	IsActive            bool                `json:"is_active"`
+	DeliveryMode        string              `json:"delivery_mode"`
 	CreatedAt           time.Time           `json:"created_at"`
 	UpdatedAt           time.Time           `json:"updated_at"`
 }
@@ -240,6 +242,16 @@ type Order struct {
 
 	// Drop-off photo from courier
 	DeliveryProofURL string `json:"delivery_proof_url,omitempty"`
+
+	// "delivery" (default) or "pickup". Lets all clients branch their UI on
+	// pickup-shaped orders — no courier card on the seller side, no
+	// "couriers nearby" entry for couriers, etc.
+	FulfillmentType string `json:"fulfillment_type"`
+
+	// External courier dispatch (Uber Direct fallback).
+	ExternalDeliveryID  *string `json:"external_delivery_id,omitempty"`
+	ExternalProvider    *string `json:"external_provider,omitempty"`
+	ExternalTrackingURL *string `json:"external_tracking_url,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -16,16 +18,22 @@ type contextKey string
 const userContextKey contextKey = "user"
 
 type RegisterRequest struct {
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Phone     string `json:"phone"`
+	Email     string          `json:"email"`
+	Password  string          `json:"password"`
+	FirstName string          `json:"first_name"`
+	LastName  string          `json:"last_name"`
+	Phone     string          `json:"phone"`
+	// Role is the role being signed up for. Empty defaults to consumer so
+	// older consumer-app builds without the role field keep working.
+	Role models.UserRole `json:"role,omitempty"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email    string          `json:"email"`
+	Password string          `json:"password"`
+	// Role scopes the lookup since (email, role) is now the unique key.
+	// Empty defaults to consumer for backward compatibility.
+	Role models.UserRole `json:"role,omitempty"`
 }
 
 type AuthResponse struct {
@@ -45,6 +53,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "email, password, and first_name are required")
 		return
 	}
+	if len(req.Password) < 8 || len(req.Password) > 72 {
+		writeError(w, http.StatusBadRequest, "password must be between 8 and 72 characters")
+		return
+	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -52,17 +64,22 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	role := req.Role
+	if role == "" {
+		role = models.RoleConsumer
+	}
+
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
 		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, email, first_name, last_name, phone, role, created_at, updated_at`,
-		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, models.RoleConsumer,
+		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, role,
 	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
-			writeError(w, http.StatusConflict, "email already registered")
+			writeError(w, http.StatusConflict, "an account with this email already exists for this role")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to create user")
@@ -83,15 +100,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 // CheckEmail tells the unified email-entry UI whether an account already
-// exists for this email — used to route the user to "sign in" vs "create
-// account" without forcing a dummy login attempt first. Doesn't leak anything
-// /login doesn't already leak via its "invalid credentials" vs "user not
-// found" error messaging (we don't actually distinguish those, but a timing
-// attack would). Role is returned when known so the client can detect
-// cross-app mismatches early (e.g. courier app refusing to log in a consumer).
+// exists for this (email, role) pair — used to route the user to "sign in"
+// vs "create account" without forcing a dummy login attempt first.
+//
+// Scoped by role so the seller app's "do I have a seller account?" check
+// doesn't get false positives from a consumer-side account that happens to
+// share the email.
 func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email string `json:"email"`
+		Email string          `json:"email"`
+		Role  models.UserRole `json:"role,omitempty"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -104,10 +122,15 @@ func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var role string
+	role := req.Role
+	if role == "" {
+		role = models.RoleConsumer
+	}
+
+	var found string
 	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT role FROM users WHERE email = $1`, email,
-	).Scan(&role)
+		`SELECT role FROM users WHERE email = $1 AND role = $2`, email, role,
+	).Scan(&found)
 
 	if err != nil {
 		// Any error — including pgx.ErrNoRows — is treated as "doesn't
@@ -119,9 +142,11 @@ func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Don't expose the user's role — it's strictly more information than
+	// /login leaks and enables targeted account-enumeration attacks.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"exists": true,
-		"role":   role,
+		"role":   "",
 	})
 }
 
@@ -132,11 +157,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	role := req.Role
+	if role == "" {
+		role = models.RoleConsumer
+	}
+
 	var user models.User
 	err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT id, email, password_hash, first_name, last_name, phone, role, created_at, updated_at
-		 FROM users WHERE email = $1`,
-		req.Email,
+		 FROM users WHERE email = $1 AND role = $2`,
+		req.Email, role,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
 		&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
 
@@ -176,6 +206,9 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	claims := &jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(req.RefreshToken, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected alg: %v", token.Header["alg"])
+		}
 		return []byte(h.cfg.JWTSecret), nil
 	})
 
@@ -184,18 +217,29 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if typ, _ := (*claims)["typ"].(string); typ != "refresh" {
+		writeError(w, http.StatusUnauthorized, "invalid refresh token: wrong token type")
+		return
+	}
+
 	userID, ok := (*claims)["sub"].(string)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "invalid refresh token: missing sub claim")
 		return
 	}
-	role, ok := (*claims)["role"].(string)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "invalid refresh token: missing role claim")
+
+	// Re-fetch the current role from DB so demotions/bans take effect
+	// immediately on the next refresh, rather than living in the token
+	// claim until it expires.
+	var currentRole string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT role FROM users WHERE id = $1`, userID,
+	).Scan(&currentRole); err != nil {
+		writeError(w, http.StatusUnauthorized, "user not found")
 		return
 	}
 
-	newToken, newRefresh, err := h.generateTokens(userID, role)
+	newToken, newRefresh, err := h.generateTokens(userID, currentRole)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -223,11 +267,19 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 
 		claims := &jwt.MapClaims{}
 		token, err := jwt.ParseWithClaims(parts[1], claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected alg: %v", token.Header["alg"])
+			}
 			return []byte(h.cfg.JWTSecret), nil
 		})
 
 		if err != nil || !token.Valid {
 			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+
+		if typ, _ := (*claims)["typ"].(string); typ == "refresh" {
+			writeError(w, http.StatusUnauthorized, "cannot use refresh token as access token")
 			return
 		}
 
@@ -252,7 +304,11 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 
 func (h *Handler) SellerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userData := r.Context().Value(userContextKey).(map[string]string)
+		userData, ok := r.Context().Value(userContextKey).(map[string]string)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		if userData["role"] != string(models.RoleSeller) && userData["role"] != string(models.RoleAdmin) {
 			writeError(w, http.StatusForbidden, "seller access required")
 			return
@@ -261,8 +317,12 @@ func (h *Handler) SellerMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func getUserFromContext(r *http.Request) map[string]string {
-	return r.Context().Value(userContextKey).(map[string]string)
+func getUserFromContext(r *http.Request) (map[string]string, error) {
+	userData, ok := r.Context().Value(userContextKey).(map[string]string)
+	if !ok || userData["user_id"] == "" {
+		return nil, errors.New("unauthorized")
+	}
+	return userData, nil
 }
 
 func (h *Handler) generateTokens(userID, role string) (string, string, error) {
@@ -281,6 +341,7 @@ func (h *Handler) generateTokens(userID, role string) (string, string, error) {
 	refresh := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  userID,
 		"role": role,
+		"typ":  "refresh",
 		"exp":  time.Now().Add(7 * 24 * time.Hour).Unix(),
 		"iat":  time.Now().Unix(),
 	})

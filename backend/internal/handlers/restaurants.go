@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -18,7 +19,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE is_active = true`
 
 	var rows pgx.Rows
@@ -37,13 +38,17 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	restaurants := scanRestaurants(rows)
+	restaurants, err := scanRestaurants(rows)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch restaurants")
+		return
+	}
 	writeJSON(w, http.StatusOK, restaurants)
 }
 
 // scanRestaurants drains a pgx.Rows into a slice of models.Restaurant.
 // Shared by ListRestaurants and SearchRestaurants to avoid duplication.
-func scanRestaurants(rows pgx.Rows) []models.Restaurant {
+func scanRestaurants(rows pgx.Rows) ([]models.Restaurant, error) {
 	out := []models.Restaurant{}
 	for rows.Next() {
 		var rest models.Restaurant
@@ -53,12 +58,12 @@ func scanRestaurants(rows pgx.Rows) []models.Restaurant {
 			&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
 			&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 			&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
-			&rest.CreatedAt, &rest.UpdatedAt); err != nil {
+			&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt); err != nil {
 			continue
 		}
 		out = append(out, rest)
 	}
-	return out
+	return out, rows.Err()
 }
 
 func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +75,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1 AND is_active = true`, id,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
@@ -78,7 +83,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
-		&rest.CreatedAt, &rest.UpdatedAt)
+		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 
 	if err != nil {
 		writeError(w, http.StatusNotFound, "restaurant not found")
@@ -108,6 +113,10 @@ func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 		}
 		categories = append(categories, cat)
 	}
+	if err := catRows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
 
 	// Collect all items first, then fetch modifier groups/modifiers in two
 	// batched queries by restaurant. Avoids N+1 queries as the menu grows.
@@ -118,8 +127,9 @@ func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 		itemRows, err := h.db.Pool.Query(r.Context(),
 			`SELECT id, restaurant_id, category_id, name, description, image_url,
 			 price, is_meat, is_dairy, is_pareve, is_available, sort_order
-			 FROM menu_items WHERE category_id = $1 AND is_available = true
-			 ORDER BY sort_order`, cat.ID)
+			 FROM menu_items
+			 WHERE category_id = $1 AND restaurant_id = $2 AND is_available = true
+			 ORDER BY sort_order`, cat.ID, id)
 		if err != nil {
 			continue
 		}
@@ -136,6 +146,10 @@ func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 			allItemIDs = append(allItemIDs, item.ID)
 		}
 		itemRows.Close()
+		if err := itemRows.Err(); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+			return
+		}
 
 		// Build pointer map into the slice so we can attach modifier groups after.
 		for j := range categories[i].Items {
@@ -184,6 +198,9 @@ func (h *Handler) attachModifierGroups(r *http.Request, itemIDs []string, itemBy
 		groupIDs = append(groupIDs, g.ID)
 	}
 	groupRows.Close()
+	if groupRows.Err() != nil {
+		return
+	}
 
 	if len(groupIDs) == 0 {
 		return
@@ -208,6 +225,9 @@ func (h *Handler) attachModifierGroups(r *http.Request, itemIDs []string, itemBy
 			continue
 		}
 		modsByGroup[m.GroupID] = append(modsByGroup[m.GroupID], m)
+	}
+	if modRows.Err() != nil {
+		return
 	}
 
 	// Step 3: attach modifiers to each group by value, then append each
@@ -236,7 +256,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		 FROM restaurants
 		 WHERE is_active = true
 		   AND (name ILIKE $1 OR EXISTS (
@@ -250,15 +270,24 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	writeJSON(w, http.StatusOK, scanRestaurants(rows))
+	restaurants, err := scanRestaurants(rows)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "search failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, restaurants)
 }
 
 // --- Favorites ---
 
 func (h *Handler) AddFavorite(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	rid := chi.URLParam(r, "restaurant_id")
-	_, err := h.db.Pool.Exec(r.Context(),
+	_, err = h.db.Pool.Exec(r.Context(),
 		`INSERT INTO restaurant_favorites (user_id, restaurant_id) VALUES ($1, $2)
 		 ON CONFLICT DO NOTHING`,
 		user["user_id"], rid)
@@ -270,22 +299,34 @@ func (h *Handler) AddFavorite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RemoveFavorite(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	rid := chi.URLParam(r, "restaurant_id")
-	_, _ = h.db.Pool.Exec(r.Context(),
+	if _, err := h.db.Pool.Exec(r.Context(),
 		`DELETE FROM restaurant_favorites WHERE user_id = $1 AND restaurant_id = $2`,
-		user["user_id"], rid)
+		user["user_id"], rid); err != nil {
+		slog.Warn("failed to remove favorite",
+			slog.String("user_id", user["user_id"]), slog.String("restaurant_id", rid),
+			slog.String("error", err.Error()))
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
 }
 
 func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT r.id, r.owner_id, r.name, r.description, r.image_url, r.cover_image_url,
 		        r.phone, r.email, r.street, r.city, r.state, r.zip_code, r.lat, r.lng,
 		        r.kosher_certification, r.certifying_agency, r.is_cholov_yisroel, r.is_pas_yisroel,
 		        r.is_glatt_kosher, r.cuisine_type, r.rating, r.review_count, r.delivery_fee, r.min_order,
-		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.created_at, r.updated_at
+		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.delivery_mode, r.created_at, r.updated_at
 		   FROM restaurant_favorites f
 		   JOIN restaurants r ON f.restaurant_id = r.id
 		  WHERE f.user_id = $1
@@ -295,11 +336,20 @@ func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	writeJSON(w, http.StatusOK, scanRestaurants(rows))
+	restaurants, err := scanRestaurants(rows)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list favorites")
+		return
+	}
+	writeJSON(w, http.StatusOK, restaurants)
 }
 
 func (h *Handler) ListFavoriteIDs(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT restaurant_id FROM restaurant_favorites WHERE user_id = $1`,
 		user["user_id"])
@@ -314,6 +364,10 @@ func (h *Handler) ListFavoriteIDs(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&id); err == nil {
 			ids = append(ids, id)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load favorites")
+		return
 	}
 	if ids == nil {
 		ids = []string{}

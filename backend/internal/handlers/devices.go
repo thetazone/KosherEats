@@ -1,6 +1,9 @@
 package handlers
 
-import "net/http"
+import (
+	"log/slog"
+	"net/http"
+)
 
 // Device token registration. The iOS apps call RegisterDevice after
 // UNUserNotificationCenter hands them an APNs device token.
@@ -15,7 +18,11 @@ type RegisterDeviceRequest struct {
 }
 
 func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req RegisterDeviceRequest
 	if err := readJSON(r, &req); err != nil {
@@ -27,7 +34,7 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.db.Pool.Exec(r.Context(),
+	_, err = h.db.Pool.Exec(r.Context(),
 		`INSERT INTO device_tokens (user_id, token, platform, app)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (token, app) DO UPDATE
@@ -41,7 +48,11 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UnregisterDevice(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req RegisterDeviceRequest
 	if err := readJSON(r, &req); err != nil {
@@ -49,8 +60,11 @@ func (h *Handler) UnregisterDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _ = h.db.Pool.Exec(r.Context(),
+	if _, err := h.db.Pool.Exec(r.Context(),
 		`DELETE FROM device_tokens WHERE user_id = $1 AND token = $2 AND app = $3`,
-		user["user_id"], req.Token, req.App)
+		user["user_id"], req.Token, req.App); err != nil {
+		slog.Warn("failed to unregister device token",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "unregistered"})
 }

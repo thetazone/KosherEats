@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -92,7 +93,10 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "failed to verify token: "+err.Error())
+		slog.Warn("social auth token verification failed",
+			slog.String("provider", req.Provider),
+			slog.String("error", err.Error()))
+		writeError(w, http.StatusUnauthorized, "failed to verify token")
 		return
 	}
 
@@ -101,39 +105,53 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Match the provider identity first (stable per user per provider), then
-	// fall back to email. Email-only lookup breaks the instant the user
-	// updates their email in ProfileCompletionSheet: Apple keeps returning
-	// the original @privaterelay.appleid.com on every sign-in, the email
-	// lookup misses, and we'd otherwise create a brand-new account on every
-	// return visit.
+	// All lookups are scoped by role (see migration 019). The same Apple ID
+	// or Google ID can map to a consumer user AND a seller user AND a
+	// courier user — three independent rows, one per role. The calling app's
+	// role disambiguates which row this sign-in is for.
+	role := req.Role
+	if role == "" {
+		role = models.RoleConsumer
+	}
+
+	// Match the provider identity via the user_auth_providers junction table
+	// (authoritative after migration 022), then fall back to email on the
+	// users table. Email-only lookup catches the case where the user updates
+	// their email in ProfileCompletionSheet but Apple keeps returning the
+	// original @privaterelay.appleid.com on every sign-in.
 	var user models.User
 	err = nil
 	if providerID != "" {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
-			 FROM users WHERE auth_provider = $1 AND auth_provider_id = $2`,
-			req.Provider, providerID,
+			`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.avatar_url, u.created_at, u.updated_at
+			 FROM users u
+			 JOIN user_auth_providers uap ON u.id = uap.user_id
+			 WHERE uap.provider = $1 AND uap.provider_id = $2 AND u.role = $3`,
+			req.Provider, providerID, role,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
 			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	}
 	if err != nil || providerID == "" {
 		err = h.db.Pool.QueryRow(r.Context(),
 			`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
-			 FROM users WHERE email = $1`, email,
+			 FROM users WHERE email = $1 AND role = $2`, email, role,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
 			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	}
 
+	isNewUser := false
 	if err != nil {
-		// User doesn't exist — create new account
+		// No account exists for this (provider/email, role) — create one.
+		// A different role's account on the same provider/email is a
+		// separate row and does not conflict.
+		isNewUser = true
 		dummyHash, _ := bcrypt.GenerateFromPassword([]byte("oauth-"+providerID), bcrypt.DefaultCost)
 
 		err = h.db.Pool.QueryRow(r.Context(),
 			`INSERT INTO users (email, password_hash, first_name, last_name, role, avatar_url, auth_provider, auth_provider_id)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 RETURNING id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at`,
-			email, string(dummyHash), firstName, lastName, models.RoleConsumer, avatarURL, req.Provider, providerID,
+			email, string(dummyHash), firstName, lastName, role, avatarURL, req.Provider, providerID,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
 			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 
@@ -143,23 +161,31 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Update avatar and provider info if needed
-		h.db.Pool.Exec(r.Context(),
+		if _, err := h.db.Pool.Exec(r.Context(),
 			`UPDATE users SET avatar_url = COALESCE(NULLIF($1, ''), avatar_url),
 			 auth_provider = $2, auth_provider_id = $3, updated_at = NOW()
 			 WHERE id = $4`,
-			avatarURL, req.Provider, providerID, user.ID)
-
-		// Courier app signed them in — promote a plain consumer to courier
-		// so the reviewer (and any real courier reinstall) isn't permanently
-		// locked out after a prior consumer signup with the same Apple ID.
-		// Admins and sellers are left alone.
-		if req.Role == models.RoleCourier && user.Role == models.RoleConsumer {
-			_, _ = h.db.Pool.Exec(r.Context(),
-				`UPDATE users SET role = 'courier', updated_at = NOW() WHERE id = $1`,
-				user.ID)
-			user.Role = models.RoleCourier
+			avatarURL, req.Provider, providerID, user.ID); err != nil {
+			slog.Warn("failed to update user avatar/auth_provider on social login",
+				slog.String("user_id", user.ID), slog.String("error", err.Error()))
 		}
 	}
+
+	// Ensure user_auth_providers has this provider link. Covers new users,
+	// email-fallback matches that didn't have a junction row yet, and
+	// pre-migration accounts not captured by the 022 seed.
+	if providerID != "" {
+		if _, err := h.db.Pool.Exec(r.Context(),
+			`INSERT INTO user_auth_providers (user_id, provider, provider_id)
+			 VALUES ($1, $2, $3)
+			 ON CONFLICT (user_id, provider) DO UPDATE SET provider_id = $3`,
+			user.ID, req.Provider, providerID,
+		); err != nil {
+			slog.Warn("failed to upsert user_auth_providers on social login",
+				slog.String("user_id", user.ID), slog.String("error", err.Error()))
+		}
+	}
+	_ = isNewUser
 
 	// Couriers need a courier_profiles row or GetCourierProfile 404s and the
 	// iOS courier app spins forever after sign-in. The email signup path
@@ -172,11 +198,14 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	// Dev mode auto-approves the background check in ~2s; no Checkr
 	// key needed for App Review.
 	if user.Role == models.RoleCourier {
-		_, _ = h.db.Pool.Exec(r.Context(),
+		if _, err := h.db.Pool.Exec(r.Context(),
 			`INSERT INTO courier_profiles (user_id, onboarding_status, phone_verified)
 			 VALUES ($1, 'pending_info', false)
 			 ON CONFLICT (user_id) DO NOTHING`,
-			user.ID)
+			user.ID); err != nil {
+			slog.Error("failed to create courier_profiles row on social login",
+				slog.String("user_id", user.ID), slog.String("error", err.Error()))
+		}
 	}
 
 	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role))
@@ -242,11 +271,34 @@ func (h *Handler) verifyAppleToken(idToken string, firstName, lastName, rawNonce
 		appleJWKs.resolveKey,
 		jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}),
 		jwt.WithIssuer("https://appleid.apple.com"),
-		jwt.WithAudience(h.cfg.AppleClientID),
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil {
-		return "", "", "", "", fmt.Errorf("invalid apple token")
+		return "", "", "", "", fmt.Errorf("invalid apple token: %w", err)
+	}
+
+	// Accept any of the configured bundle IDs (comma-separated). Consumer,
+	// seller, and courier each ship with a different Bundle ID, and Apple
+	// puts that Bundle ID in the JWT's aud claim — so the backend must
+	// recognize all three.
+	audienceMatched := false
+	for _, allowed := range strings.Split(h.cfg.AppleClientID, ",") {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "" {
+			continue
+		}
+		for _, aud := range claims.Audience {
+			if aud == allowed {
+				audienceMatched = true
+				break
+			}
+		}
+		if audienceMatched {
+			break
+		}
+	}
+	if !audienceMatched {
+		return "", "", "", "", fmt.Errorf("apple token audience not allowed: %v", claims.Audience)
 	}
 
 	if claims.Subject == "" {
@@ -265,16 +317,16 @@ func (h *Handler) verifyAppleToken(idToken string, firstName, lastName, rawNonce
 		return "", "", "", "", fmt.Errorf("apple token issued-at is invalid")
 	}
 
-	// Replay-attack mitigation. iOS clients on every release going forward
-	// send a raw nonce; we hash it and compare to the JWT's nonce claim
-	// (which Apple sets to whatever hash the client put in the request).
-	// Tokens minted for a different session won't carry our nonce, so they
-	// fail this check even if an attacker exfiltrated the JWT.
-	//
-	// Older clients (pre-nonce) send nonce="" -- we accept those for now to
-	// avoid locking out users on stale builds, but the grace can be removed
-	// once telemetry shows everyone has updated.
-	if rawNonce != "" {
+	// Replay-attack mitigation. iOS clients that generate a nonce send the
+	// raw value alongside the ID token; we re-hash and compare to the JWT's
+	// nonce claim. If the JWT carries no nonce claim (legacy clients that
+	// haven't rolled out nonce generation yet), skip the check — Apple
+	// still validates the token's signature/audience/expiration above, so
+	// the degraded mode isn't a wide-open bypass.
+	if claims.Nonce != "" || rawNonce != "" {
+		if rawNonce == "" {
+			return "", "", "", "", fmt.Errorf("nonce is required for Apple sign-in")
+		}
 		sum := sha256.Sum256([]byte(rawNonce))
 		expected := hex.EncodeToString(sum[:])
 		if subtle.ConstantTimeCompare([]byte(claims.Nonce), []byte(expected)) != 1 {

@@ -36,7 +36,11 @@ var allowedContentTypes = map[string]bool{
 }
 
 func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req PresignRequest
 	if err := readJSON(r, &req); err != nil {
@@ -53,13 +57,21 @@ func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Role-gate courier uploads — only couriers can upload to courier/* keys.
+	// Role-gate uploads by kind so consumers can't pollute seller/courier S3 prefixes.
 	if strings.HasPrefix(req.Kind, "courier/") && user["role"] != "courier" && user["role"] != "admin" {
 		writeError(w, http.StatusForbidden, "courier role required for this upload kind")
 		return
 	}
 	if strings.HasPrefix(req.Kind, "restaurant/") && user["role"] != "seller" && user["role"] != "admin" {
 		writeError(w, http.StatusForbidden, "seller role required for this upload kind")
+		return
+	}
+	if req.Kind == "menu_item" && user["role"] != "seller" && user["role"] != "admin" {
+		writeError(w, http.StatusForbidden, "seller role required for menu item uploads")
+		return
+	}
+	if req.Kind == "delivery_proof" && user["role"] != "courier" && user["role"] != "admin" {
+		writeError(w, http.StatusForbidden, "courier role required for delivery proof uploads")
 		return
 	}
 

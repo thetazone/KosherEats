@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,7 +13,11 @@ import (
 // Consumers + sellers + couriers can never reach these endpoints.
 func (h *Handler) AdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userData := r.Context().Value(userContextKey).(map[string]string)
+		userData, ok := r.Context().Value(userContextKey).(map[string]string)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		if userData["role"] != string(models.RoleAdmin) {
 			writeError(w, http.StatusForbidden, "admin access required")
 			return
@@ -29,14 +34,19 @@ func (h *Handler) AdminListRestaurants(w http.ResponseWriter, r *http.Request) {
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, created_at, updated_at
+		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		 FROM restaurants ORDER BY name`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list restaurants")
 		return
 	}
 	defer rows.Close()
-	writeJSON(w, http.StatusOK, scanRestaurants(rows))
+	restaurants, err := scanRestaurants(rows)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list restaurants")
+		return
+	}
+	writeJSON(w, http.StatusOK, restaurants)
 }
 
 // AdminCreateRestaurant onboards a new restaurant from the admin UI.
@@ -66,6 +76,7 @@ type AdminCreateRestaurantRequest struct {
 	MinOrder            int      `json:"min_order"`
 	EstDeliveryMin      int      `json:"est_delivery_min"`
 	EstDeliveryMax      int      `json:"est_delivery_max"`
+	DeliveryMode        string   `json:"delivery_mode"`
 }
 
 func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +89,30 @@ func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "owner_id and name required")
 		return
 	}
+	if len(req.Name) > 200 {
+		writeError(w, http.StatusBadRequest, "name too long (max 200 characters)")
+		return
+	}
+	if len(req.Description) > 2000 {
+		writeError(w, http.StatusBadRequest, "description too long (max 2000 characters)")
+		return
+	}
+	if req.Lat < -90 || req.Lat > 90 || req.Lng < -180 || req.Lng > 180 {
+		writeError(w, http.StatusBadRequest, "lat must be [-90,90] and lng must be [-180,180]")
+		return
+	}
+	// Verify owner exists and is a seller.
+	var ownerRole string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT role FROM users WHERE id = $1`, req.OwnerID,
+	).Scan(&ownerRole); err != nil {
+		writeError(w, http.StatusBadRequest, "owner_id does not match an existing user")
+		return
+	}
+	if ownerRole != "seller" {
+		writeError(w, http.StatusBadRequest, "owner must have the seller role")
+		return
+	}
 
 	var id string
 	err := h.db.Pool.QueryRow(r.Context(),
@@ -85,18 +120,19 @@ func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) 
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, cuisine_type, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active)
+		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-		         $16, $17, $18, $19, $20, $21, $22, $23, true, true)
+		         $16, $17, $18, $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'platform'))
 		 RETURNING id`,
 		req.OwnerID, req.Name, req.Description, req.ImageURL, req.CoverImageURL,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode,
 		req.Lat, req.Lng, req.KosherCertification, req.CertifyingAgency,
 		req.IsCholovYisroel, req.IsPasYisroel, req.IsGlattKosher, req.CuisineType,
 		req.DeliveryFee, req.MinOrder, req.EstDeliveryMin, req.EstDeliveryMax,
+		req.DeliveryMode,
 	).Scan(&id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create restaurant: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to create restaurant")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
@@ -158,6 +194,7 @@ func (h *Handler) AdminListCouriers(w http.ResponseWriter, r *http.Request) {
 			&c.OnboardingStatus, &c.VehicleType, &c.VehicleMake, &c.VehicleModel,
 			&c.LicensePlate, &c.DriversLicenseNumber, &c.BackgroundCheckStatus,
 			&c.TotalDeliveries, &c.Rating, &c.IsOnline, &c.PayoutReady); err != nil {
+			slog.Error("AdminListCouriers: scan error", slog.String("error", err.Error()))
 			continue
 		}
 		c.CreatedAt = createdAt.Format(time.RFC3339)
@@ -257,12 +294,16 @@ func (h *Handler) AdminApproveCourier(w http.ResponseWriter, r *http.Request) {
 // still log in but cannot go online or claim deliveries.
 func (h *Handler) AdminRejectCourier(w http.ResponseWriter, r *http.Request) {
 	courierID := chi.URLParam(r, "id")
-	_, err := h.db.Pool.Exec(r.Context(),
+	result, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles
 		   SET onboarding_status = 'rejected', updated_at = NOW()
 		 WHERE user_id = $1`, courierID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to reject courier")
+		return
+	}
+	if result.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "courier not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
@@ -308,6 +349,7 @@ func (h *Handler) AdminListOrders(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
 			&o.Subtotal, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 			&o.CourierTip, &o.DeliveryAddress, &createdAt); err != nil {
+			slog.Error("AdminListOrders: scan error", slog.String("error", err.Error()))
 			continue
 		}
 		o.CreatedAt = createdAt.Format(time.RFC3339)
@@ -332,7 +374,7 @@ func (h *Handler) AdminStats(w http.ResponseWriter, r *http.Request) {
 		LifetimeOrders   int `json:"lifetime_orders"`
 	}
 	var s Stats
-	_ = h.db.Pool.QueryRow(r.Context(), `
+	if err := h.db.Pool.QueryRow(r.Context(), `
 		SELECT
 		  (SELECT COUNT(*) FROM restaurants),
 		  (SELECT COUNT(*) FROM restaurants WHERE is_active = true),
@@ -343,7 +385,11 @@ func (h *Handler) AdminStats(w http.ResponseWriter, r *http.Request) {
 		  (SELECT COALESCE(SUM(total), 0) FROM orders WHERE created_at::date = CURRENT_DATE),
 		  (SELECT COUNT(*) FROM orders)
 	`).Scan(&s.TotalRestaurants, &s.ActiveRestaurants, &s.TotalCouriers,
-		&s.ApprovedCouriers, &s.PendingCouriers, &s.TodayOrders, &s.TodayRevenue, &s.LifetimeOrders)
+		&s.ApprovedCouriers, &s.PendingCouriers, &s.TodayOrders, &s.TodayRevenue, &s.LifetimeOrders); err != nil {
+		slog.Error("admin stats query failed", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to load stats")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, s)
 }
@@ -371,6 +417,10 @@ func (h *Handler) AdminCreateSeller(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "email and password required")
 		return
 	}
+	if len(req.Password) < 8 || len(req.Password) > 72 {
+		writeError(w, http.StatusBadRequest, "password must be between 8 and 72 characters")
+		return
+	}
 
 	// Reuse the Register path for consistency — same bcrypt cost, same JWT
 	// generation, but forcing role=seller.
@@ -388,7 +438,7 @@ func (h *Handler) AdminCreateSeller(w http.ResponseWriter, r *http.Request) {
 		req.Email, hashed, req.FirstName, req.LastName, req.Phone,
 	).Scan(&id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create seller: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to create seller")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})

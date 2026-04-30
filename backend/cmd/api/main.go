@@ -33,13 +33,8 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
-	// Refuse to start in production with the default JWT secret. Dev mode
-	// just warns so `docker compose up` works out of the box.
-	if cfg.JWTSecret == "change-me-in-production" {
-		if os.Getenv("APP_ENV") == "production" {
-			log.Fatal("JWT_SECRET must be set to a real value in production")
-		}
-		logger.Warn("using default JWT_SECRET — fine for dev, never deploy like this")
+	if len(cfg.JWTSecret) < 32 {
+		log.Fatal("JWT_SECRET must be set to a random value of at least 32 characters")
 	}
 
 	db, err := database.Connect(cfg.DatabaseURL)
@@ -118,12 +113,17 @@ func main() {
 		// for a JWT if the phone is associated with an existing account.
 		r.Post("/phone/start", h.StartPhoneLogin)
 		r.Post("/phone/verify", h.VerifyPhoneLogin)
-		// App Store Review bypass. Signs in a preprovisioned seller account
-		// + demo restaurant so Apple's reviewer can exercise the dashboard
-		// without a real approval flow. Temporary — remove once a public
-		// demo path exists.
-		r.Post("/reviewer/seller", h.ReviewerSellerLogin)
 	})
+
+	// App Store reviewer bypass — only registered when REVIEWER_SECRET is set.
+	// Uses a dedicated tight limiter (5 req/min) to prevent secret brute-force.
+	if cfg.ReviewerSecret != "" {
+		reviewerLimiter := kemiddleware.NewRateLimiter(rate.Limit(5.0/60), 5, 30*time.Minute)
+		r.Group(func(r chi.Router) {
+			r.Use(reviewerLimiter.PerIP)
+			r.Post("/api/v1/auth/reviewer/seller", h.ReviewerSellerLogin)
+		})
+	}
 
 	// Restaurants (public, IP rate limited)
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
@@ -132,6 +132,13 @@ func main() {
 		r.Get("/{id}", h.GetRestaurant)
 		r.Get("/{id}/menu", h.GetMenu)
 		r.Get("/search", h.SearchRestaurants)
+	})
+
+	// Delivery fee quote (authenticated — checkout screen calls this)
+	r.Route("/api/v1/delivery-quote", func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Use(apiLimiter.PerUser)
+		r.Post("/", h.DeliveryQuote)
 	})
 
 	// Orders (authenticated, per-user rate limited)
@@ -186,6 +193,8 @@ func main() {
 	})
 	r.Post("/api/v1/webhooks/stripe", h.StripeWebhook)
 	r.Post("/api/v1/webhooks/checkr", h.CheckrWebhook)
+	r.Post("/api/v1/webhooks/uber-direct", h.UberDirectWebhook)
+	r.Post("/api/v1/webhooks/doordash", h.DoorDashWebhook)
 
 	// Seller routes
 	r.Route("/api/v1/seller", func(r chi.Router) {
@@ -197,6 +206,7 @@ func main() {
 		// optional ?restaurant_id= query param; if omitted we fall back to
 		// the seller's first owned restaurant for single-restaurant sellers.
 		r.Get("/restaurants", h.ListSellerRestaurants)
+		r.Post("/restaurants", h.CreateRestaurant)
 		r.Get("/restaurant", h.GetSellerRestaurant)
 		r.Put("/restaurant", h.UpdateRestaurant)
 		r.Patch("/restaurant/status", h.ToggleRestaurantStatus)
@@ -222,7 +232,10 @@ func main() {
 			r.Patch("/{id}/accept", h.AcceptOrder)
 			r.Patch("/{id}/preparing", h.MarkOrderPreparing)
 			r.Patch("/{id}/ready", h.MarkOrderReady)
+			r.Patch("/{id}/complete", h.CompleteOrder)
 			r.Patch("/{id}/reject", h.RejectOrder)
+			r.Patch("/{id}/pickup", h.SellerPickupOrder)
+			r.Patch("/{id}/deliver", h.SellerDeliverOrder)
 		})
 	})
 
@@ -254,6 +267,7 @@ func main() {
 
 		// Marketplace
 		r.Get("/deliveries/available", h.ListAvailableDeliveries)
+		r.Get("/deliveries/upcoming", h.ListUpcomingDeliveries)
 		r.Get("/orders/active", h.ListCourierActiveOrders)
 		r.Get("/orders/history", h.ListCourierHistory)
 		r.Post("/orders/{id}/claim", h.ClaimOrder)
@@ -312,6 +326,11 @@ func main() {
 		r.Get("/notification-preferences", h.GetNotificationPreferences)
 		r.Put("/notification-preferences", h.UpdateNotificationPreferences)
 		r.Delete("/account", h.DeleteAccount)
+
+		// Linked auth providers (account linking)
+		r.Get("/linked-providers", h.ListLinkedProviders)
+		r.Post("/linked-providers", h.LinkProvider)
+		r.Delete("/linked-providers/{provider}", h.UnlinkProvider)
 	})
 
 	srv := &http.Server{
@@ -333,7 +352,7 @@ func main() {
 	//       aren't stuck watching a dead order.
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 	defer schedulerCancel()
-	scheduler.New(db.Pool, h.Notifier(), h.Stripe()).Start(schedulerCtx)
+	scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash()).Start(schedulerCtx)
 
 	go func() {
 		logger.Info("server starting", slog.String("port", cfg.Port))

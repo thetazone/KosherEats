@@ -3,6 +3,8 @@ package handlers
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -117,9 +119,19 @@ func TestVerifyAppleTokenAcceptsValidSignedToken(t *testing.T) {
 		cfg: &config.Config{AppleClientID: "com.koshereats.ios"},
 	}
 
-	token := signedAppleToken(t, privateKey, "test-kid", handler.cfg.AppleClientID, true)
+	// Replay-attack mitigation: handler hashes rawNonce (SHA256 → hex) and
+	// expects it to match the JWT's nonce claim. We bake the hashed form into
+	// the signed token so the verification round-trips successfully.
+	const rawNonce = "test-raw-nonce"
+	hashedNonce := sha256.Sum256([]byte(rawNonce))
+	hexNonce := hex.EncodeToString(hashedNonce[:])
 
-	email, firstName, lastName, providerID, err := handler.verifyAppleToken(token, "", "", "")
+	token := signedAppleTokenWithNonce(t, privateKey, "test-kid", handler.cfg.AppleClientID, true, hexNonce)
+
+	// First/last name come from the iOS client (Apple only returns them on
+	// the very first sign-in), so verifyAppleToken returns whatever the
+	// client supplied as-is.
+	email, firstName, lastName, providerID, err := handler.verifyAppleToken(token, "Apple", "User", rawNonce)
 	if err != nil {
 		t.Fatalf("verify apple token: %v", err)
 	}
@@ -194,11 +206,17 @@ func TestVerifyAppleTokenRejectsUnverifiedEmail(t *testing.T) {
 
 func signedAppleToken(t *testing.T, privateKey *rsa.PrivateKey, kid, audience string, emailVerified bool) string {
 	t.Helper()
+	return signedAppleTokenWithNonce(t, privateKey, kid, audience, emailVerified, "")
+}
+
+func signedAppleTokenWithNonce(t *testing.T, privateKey *rsa.PrivateKey, kid, audience string, emailVerified bool, hashedNonce string) string {
+	t.Helper()
 
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, appleTokenClaims{
 		Email:         "user@example.com",
 		EmailVerified: mustMarshalRawMessage(t, emailVerified),
+		Nonce:         hashedNonce,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "https://appleid.apple.com",
 			Subject:   "apple-user-123",

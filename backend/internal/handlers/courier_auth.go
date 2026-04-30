@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -93,7 +94,11 @@ func (h *Handler) CourierRegister(w http.ResponseWriter, r *http.Request) {
 // the individual endpoints (e.g. GoOnline and ClaimOrder require approved).
 func (h *Handler) CourierMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userData := r.Context().Value(userContextKey).(map[string]string)
+		userData, ok := r.Context().Value(userContextKey).(map[string]string)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		if userData["role"] != string(models.RoleCourier) && userData["role"] != string(models.RoleAdmin) {
 			writeError(w, http.StatusForbidden, "courier access required")
 			return
@@ -105,7 +110,11 @@ func (h *Handler) CourierMiddleware(next http.Handler) http.Handler {
 // GetCourierProfile returns the full profile for the authenticated courier,
 // including onboarding state so the iOS app knows which step to show.
 func (h *Handler) GetCourierProfile(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	p, err := h.loadCourierProfile(r, user["user_id"])
 	if err != nil {
@@ -126,7 +135,11 @@ type UpdateCourierVehicleRequest struct {
 
 // Step 1 of onboarding: vehicle info. Advances pending_info -> pending_documents.
 func (h *Handler) UpdateCourierVehicle(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req UpdateCourierVehicleRequest
 	if err := readJSON(r, &req); err != nil {
@@ -138,7 +151,7 @@ func (h *Handler) UpdateCourierVehicle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.db.Pool.Exec(r.Context(),
+	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles
 		   SET vehicle_type = $1, vehicle_make = $2, vehicle_model = $3,
 		       vehicle_year = $4, vehicle_color = $5, license_plate = $6,
@@ -170,19 +183,27 @@ type UpdateCourierDocumentsRequest struct {
 // Step 2 of onboarding: document uploads. Advances pending_documents -> pending_background
 // and kicks off a (stubbed) background check that auto-approves in dev.
 func (h *Handler) UpdateCourierDocuments(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req UpdateCourierDocumentsRequest
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.DriversLicenseURL == "" || req.DriversLicenseNumber == "" {
-		writeError(w, http.StatusBadRequest, "drivers license is required")
+	// We always require the ID *photo* (driver's license for car/motorcycle
+	// couriers, government ID for bike/scooter/walk couriers — same DB column,
+	// different UI label). The driver's license *number* is requested only for
+	// vehicle types that legally need one and may be empty for ID-only flows.
+	if req.DriversLicenseURL == "" {
+		writeError(w, http.StatusBadRequest, "ID photo is required")
 		return
 	}
 
-	_, err := h.db.Pool.Exec(r.Context(),
+	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles
 		   SET drivers_license_url = $1, drivers_license_number = $2,
 		       insurance_url = $3, vehicle_registration_url = $4, profile_photo_url = $5,
@@ -202,11 +223,17 @@ func (h *Handler) UpdateCourierDocuments(w http.ResponseWriter, r *http.Request)
 	// "background check running" screen; the flip to approved happens
 	// asynchronously.
 	var email, firstName, lastName, phone string
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT email, first_name, last_name, phone FROM users WHERE id = $1`,
 		user["user_id"],
-	).Scan(&email, &firstName, &lastName, &phone)
-	_ = h.checkr.InitiateCheck(r.Context(), user["user_id"], email, firstName, lastName, phone)
+	).Scan(&email, &firstName, &lastName, &phone); err != nil {
+		slog.Error("UpdateCourierDocuments: failed to fetch user info for background check",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+	}
+	if err := h.checkr.InitiateCheck(r.Context(), user["user_id"], email, firstName, lastName, phone); err != nil {
+		slog.Error("UpdateCourierDocuments: background check initiation failed",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 
 	p, _ := h.loadCourierProfile(r, user["user_id"])
 	writeJSON(w, http.StatusOK, p)
@@ -214,8 +241,12 @@ func (h *Handler) UpdateCourierDocuments(w http.ResponseWriter, r *http.Request)
 
 // VerifyCourierPhone stub: in prod this would check an SMS code. Dev auto-passes.
 func (h *Handler) VerifyCourierPhone(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
-	_, err := h.db.Pool.Exec(r.Context(),
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles SET phone_verified = true, updated_at = NOW() WHERE user_id = $1`,
 		user["user_id"])
 	if err != nil {

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 )
 
@@ -32,10 +33,14 @@ type PayoutStatusResponse struct {
 // CreatePayoutAccount creates a Stripe Express account for the courier if
 // they don't have one yet, then returns status. Idempotent.
 func (h *Handler) CreatePayoutAccount(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var existingID, email, firstName, lastName, phone string
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT cp.stripe_connect_id, u.email, u.first_name, u.last_name, u.phone
 		   FROM courier_profiles cp JOIN users u ON u.id = cp.user_id
 		  WHERE cp.user_id = $1`, user["user_id"],
@@ -53,7 +58,7 @@ func (h *Handler) CreatePayoutAccount(w http.ResponseWriter, r *http.Request) {
 
 	acctID, err := h.stripe.CreateExpressAccount(email, firstName, lastName, phone)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create Stripe account: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to create Stripe account")
 		return
 	}
 
@@ -71,10 +76,14 @@ func (h *Handler) CreatePayoutAccount(w http.ResponseWriter, r *http.Request) {
 // GetPayoutLink generates a fresh Stripe hosted onboarding URL. Links expire
 // quickly, so the iOS app fetches a new one each time it opens the sheet.
 func (h *Handler) GetPayoutLink(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var acctID string
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT stripe_connect_id FROM courier_profiles WHERE user_id = $1`,
 		user["user_id"],
 	).Scan(&acctID)
@@ -103,9 +112,13 @@ func (h *Handler) GetPayoutLink(w http.ResponseWriter, r *http.Request) {
 // updates the local payout_ready flag. Called after the user returns from
 // the hosted onboarding UI.
 func (h *Handler) GetPayoutStatus(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	var acctID string
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT stripe_connect_id FROM courier_profiles WHERE user_id = $1`,
 		user["user_id"],
 	).Scan(&acctID)
@@ -127,9 +140,12 @@ func (h *Handler) writePayoutStatus(w http.ResponseWriter, r *http.Request, user
 	}
 
 	payoutReady := status.PayoutsEnabled && status.DetailsSubmitted
-	_, _ = h.db.Pool.Exec(r.Context(),
+	if _, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles SET payout_ready = $1, updated_at = NOW() WHERE user_id = $2`,
-		payoutReady, userID)
+		payoutReady, userID); err != nil {
+		slog.Error("writePayoutStatus: failed to update payout_ready",
+			slog.String("user_id", userID), slog.String("error", err.Error()))
+	}
 
 	writeJSON(w, http.StatusOK, PayoutStatusResponse{
 		PayoutReady:      payoutReady,

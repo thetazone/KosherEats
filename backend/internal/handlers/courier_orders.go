@@ -3,11 +3,15 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/models"
 )
@@ -32,7 +36,11 @@ type SetOnlineRequest struct {
 
 // SetOnline toggles courier availability. Blocks non-approved couriers.
 func (h *Handler) SetCourierOnline(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req SetOnlineRequest
 	if err := readJSON(r, &req); err != nil {
@@ -57,6 +65,21 @@ func (h *Handler) SetCourierOnline(w http.ResponseWriter, r *http.Request) {
 // ListAvailableDeliveries returns orders in 'ready' status with no courier claimed.
 // Accepts optional ?lat=&lng= to sort by distance. In prod we'd also filter by a radius.
 func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var status models.CourierOnboardingStatus
+	err = h.db.Pool.QueryRow(r.Context(),
+		`SELECT onboarding_status FROM courier_profiles WHERE user_id = $1`, user["user_id"],
+	).Scan(&status)
+	if err != nil || status != models.OnboardingApproved {
+		writeError(w, http.StatusForbidden, "courier not approved")
+		return
+	}
+
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT o.id, o.restaurant_id, rest.name, o.status, o.subtotal, o.delivery_fee,
 		        o.service_fee, o.tax, o.total, o.courier_tip, o.delivery_address,
@@ -65,6 +88,7 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 		   FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.status = 'ready' AND o.courier_id IS NULL
+		    AND o.fulfillment_type = 'delivery'
 		  ORDER BY o.created_at ASC
 		  LIMIT 50`)
 	if err != nil {
@@ -95,17 +119,90 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 	if list == nil {
 		list = []AvailableDelivery{}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"deliveries": list})
+	writeJSON(w, http.StatusOK, map[string]any{"deliveries": list})
+}
+
+// ListUpcomingDeliveries returns orders in 'accepted' or 'preparing' status
+// with no courier yet — orders that aren't claimable yet but will be soon.
+// Lets approved couriers position themselves near the restaurant ahead of
+// the status flip to 'ready', cutting the dwell time between a kitchen
+// finishing the order and a courier arriving for pickup.
+//
+// Same payload shape as ListAvailableDeliveries; clients differentiate by
+// the order's `status` field. Customer/dropoff details are intentionally
+// omitted from this list since the courier hasn't claimed yet — only
+// restaurant info is exposed.
+func (h *Handler) ListUpcomingDeliveries(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var status models.CourierOnboardingStatus
+	err = h.db.Pool.QueryRow(r.Context(),
+		`SELECT onboarding_status FROM courier_profiles WHERE user_id = $1`, user["user_id"],
+	).Scan(&status)
+	if err != nil || status != models.OnboardingApproved {
+		writeError(w, http.StatusForbidden, "courier not approved")
+		return
+	}
+
+	rows, err := h.db.Pool.Query(r.Context(),
+		`SELECT o.id, o.restaurant_id, rest.name, o.status, o.subtotal, o.delivery_fee,
+		        o.service_fee, o.tax, o.total, o.courier_tip,
+		        '' AS delivery_address, 0::float AS delivery_lat, 0::float AS delivery_lng,
+		        rest.lat, rest.lng, o.est_delivery_time, o.created_at, o.updated_at
+		   FROM orders o
+		   JOIN restaurants rest ON o.restaurant_id = rest.id
+		  WHERE o.status IN ('accepted', 'preparing')
+		    AND o.courier_id IS NULL
+		    AND o.fulfillment_type = 'delivery'
+		  ORDER BY o.created_at ASC
+		  LIMIT 50`)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch upcoming deliveries")
+		return
+	}
+	defer rows.Close()
+
+	type AvailableDelivery struct {
+		models.Order
+		RestaurantLat float64 `json:"restaurant_lat"`
+		RestaurantLng float64 `json:"restaurant_lng"`
+	}
+
+	var list []AvailableDelivery
+	for rows.Next() {
+		var d AvailableDelivery
+		if err := rows.Scan(&d.ID, &d.RestaurantID, &d.RestaurantName, &d.Status,
+			&d.Subtotal, &d.DeliveryFee, &d.ServiceFee, &d.Tax, &d.Total,
+			&d.CourierTip, &d.DeliveryAddress, &d.DeliveryLat, &d.DeliveryLng,
+			&d.RestaurantLat, &d.RestaurantLng,
+			&d.EstDeliveryTime, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			continue
+		}
+		list = append(list, d)
+	}
+
+	if list == nil {
+		list = []AvailableDelivery{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deliveries": list})
 }
 
 // ClaimOrder atomically assigns the order to this courier iff no one else has.
 func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orderID := chi.URLParam(r, "id")
 
 	// Only approved couriers can claim
 	var status models.CourierOnboardingStatus
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT onboarding_status FROM courier_profiles WHERE user_id = $1`, user["user_id"],
 	).Scan(&status)
 	if err != nil || status != models.OnboardingApproved {
@@ -126,11 +223,14 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Notify consumer + seller that a courier has been assigned.
 	var consumerID, restaurantID, courierFirst string
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT o.user_id, o.restaurant_id, u.first_name
-		   FROM orders o JOIN users u ON u.id = $1
-		  WHERE o.id = $2`, user["user_id"], orderID,
-	).Scan(&consumerID, &restaurantID, &courierFirst)
+		   FROM orders o JOIN users u ON u.id = o.courier_id
+		  WHERE o.id = $1`, orderID,
+	).Scan(&consumerID, &restaurantID, &courierFirst); err != nil {
+		slog.Warn("failed to fetch notification data after order claim",
+			slog.String("order_id", orderID), slog.String("error", err.Error()))
+	}
 	if consumerID != "" {
 		go h.notify.OrderClaimed(context.Background(), orderID, consumerID, restaurantID, courierFirst)
 	}
@@ -141,7 +241,11 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 // PickupOrder: courier has arrived at restaurant and collected the food.
 // Transitions 'ready' -> 'picked_up'.
 func (h *Handler) PickupOrder(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orderID := chi.URLParam(r, "id")
 
 	result, err := h.db.Pool.Exec(r.Context(),
@@ -155,8 +259,11 @@ func (h *Handler) PickupOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var consumerID string
-	_ = h.db.Pool.QueryRow(r.Context(),
-		`SELECT user_id FROM orders WHERE id = $1`, orderID).Scan(&consumerID)
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM orders WHERE id = $1`, orderID).Scan(&consumerID); err != nil {
+		slog.Warn("failed to fetch consumer for pickup notification",
+			slog.String("order_id", orderID), slog.String("error", err.Error()))
+	}
 	if consumerID != "" {
 		go h.notify.OrderPickedUp(context.Background(), orderID, consumerID)
 	}
@@ -167,14 +274,27 @@ func (h *Handler) PickupOrder(w http.ResponseWriter, r *http.Request) {
 // DeliverOrder: courier has handed the order to the customer.
 // Transitions 'picked_up' -> 'delivered' and bumps total_deliveries.
 func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	orderID := chi.URLParam(r, "id")
 
 	var req struct {
 		ProofURL string `json:"proof_url"`
 	}
 	// Body is optional — courier app sends proof URL when a photo was taken.
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.ProofURL != "" {
+		if len(req.ProofURL) > 2048 || !strings.HasPrefix(req.ProofURL, "https://") {
+			writeError(w, http.StatusBadRequest, "invalid proof_url")
+			return
+		}
+	}
 
 	tx, err := h.db.Pool.Begin(r.Context())
 	if err != nil {
@@ -183,14 +303,18 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	var deliveryFee, tip int
+	var deliveryFee, tip, subtotal int
 	if err := tx.QueryRow(r.Context(),
-		`SELECT delivery_fee, courier_tip FROM orders WHERE id = $1`, orderID,
-	).Scan(&deliveryFee, &tip); err != nil {
+		`SELECT delivery_fee, courier_tip, subtotal FROM orders WHERE id = $1`, orderID,
+	).Scan(&deliveryFee, &tip, &subtotal); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load order payout fields")
 		return
 	}
-	payout := deliveryFee + tip
+	// Platform-side courier bump: 2.5% of subtotal, paid out of our service
+	// fee. Combined with the consumer's 2.5% (already inside delivery_fee),
+	// the courier nets ~5% of subtotal on top of the $3.99 base.
+	platformBump := subtotal * 25 / 1000
+	payout := deliveryFee + tip + platformBump
 
 	result, err := tx.Exec(r.Context(),
 		`UPDATE orders
@@ -204,46 +328,46 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _ = tx.Exec(r.Context(),
+	if _, err := tx.Exec(r.Context(),
 		`UPDATE courier_profiles
 		   SET total_deliveries = total_deliveries + 1, updated_at = NOW()
-		 WHERE user_id = $1`, user["user_id"])
+		 WHERE user_id = $1`, user["user_id"]); err != nil {
+		slog.Error("failed to increment courier delivery count",
+			slog.String("courier_id", user["user_id"]), slog.String("error", err.Error()))
+	}
+
+	// Enqueue the courier payout inside the same transaction so it cannot
+	// be silently dropped if the process dies between commit and insert.
+	var connectID string
+	if err := tx.QueryRow(r.Context(),
+		`SELECT stripe_connect_id FROM courier_profiles WHERE user_id = $1`,
+		user["user_id"]).Scan(&connectID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		slog.Warn("failed to fetch courier stripe_connect_id for payout enqueue",
+			slog.String("courier_id", user["user_id"]), slog.String("error", err.Error()))
+	}
+	if connectID != "" && payout > 0 {
+		if _, err := tx.Exec(r.Context(), `
+			INSERT INTO courier_payout_queue
+			    (order_id, courier_id, stripe_connect_id, amount_cents)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (order_id) DO NOTHING`,
+			orderID, user["user_id"], connectID, payout); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to enqueue payout")
+			return
+		}
+	}
 
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit")
 		return
 	}
 
-	// Enqueue the courier payout for durable, retryable processing. The
-	// background scheduler's payout sweep picks up this row on the next
-	// tick (within ~60s) and fires the Stripe transfer; on failure it
-	// reschedules with exponential backoff. Happy path has a small delay
-	// vs the old inline attempt, but we never silently drop a payout.
-	var connectID string
-	_ = h.db.Pool.QueryRow(r.Context(),
-		`SELECT stripe_connect_id FROM courier_profiles WHERE user_id = $1`,
-		user["user_id"]).Scan(&connectID)
-	if connectID != "" && payout > 0 {
-		_, err := h.db.Pool.Exec(r.Context(), `
-			INSERT INTO courier_payout_queue
-			    (order_id, courier_id, stripe_connect_id, amount_cents)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (order_id) DO NOTHING`,
-			orderID, user["user_id"], connectID, payout)
-		if err != nil {
-			// Delivery is already committed — log so ops can reconcile,
-			// but don't fail the request. Courier can contact support if
-			// payout doesn't land.
-			slog.Error("failed to enqueue courier payout",
-				slog.String("order_id", orderID),
-				slog.String("courier_id", user["user_id"]),
-				slog.String("error", err.Error()))
-		}
-	}
-
 	var consumerID string
-	_ = h.db.Pool.QueryRow(r.Context(),
-		`SELECT user_id FROM orders WHERE id = $1`, orderID).Scan(&consumerID)
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM orders WHERE id = $1`, orderID).Scan(&consumerID); err != nil {
+		slog.Warn("failed to fetch consumer for delivery notification",
+			slog.String("order_id", orderID), slog.String("error", err.Error()))
+	}
 	if consumerID != "" {
 		go h.notify.OrderDelivered(context.Background(), orderID, consumerID)
 	}
@@ -254,15 +378,23 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 // UpdateCourierLocation is the GPS heartbeat. Writes to courier_profiles.last_*
 // (hot, for nearby-courier queries) AND appends to courier_locations (cold trail).
 func (h *Handler) UpdateCourierLocation(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req models.CourierLocationPing
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.Lat < -90 || req.Lat > 90 || req.Lng < -180 || req.Lng > 180 {
+		writeError(w, http.StatusBadRequest, "lat must be [-90,90] and lng must be [-180,180]")
+		return
+	}
 
-	_, err := h.db.Pool.Exec(r.Context(),
+	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles
 		   SET last_lat = $1, last_lng = $2, last_location_at = NOW(), updated_at = NOW()
 		 WHERE user_id = $3`,
@@ -274,16 +406,22 @@ func (h *Handler) UpdateCourierLocation(w http.ResponseWriter, r *http.Request) 
 
 	// Attach to active order if any, for the delivery trail.
 	var activeOrderID *string
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT id FROM orders
 		  WHERE courier_id = $1 AND status IN ('ready', 'picked_up')
 		  ORDER BY claimed_at DESC LIMIT 1`, user["user_id"],
-	).Scan(&activeOrderID)
+	).Scan(&activeOrderID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		slog.Warn("failed to look up active order for location trail",
+			slog.String("courier_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 
-	_, _ = h.db.Pool.Exec(r.Context(),
+	if _, err := h.db.Pool.Exec(r.Context(),
 		`INSERT INTO courier_locations (courier_id, order_id, lat, lng, heading, speed)
 		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		user["user_id"], activeOrderID, req.Lat, req.Lng, req.Heading, req.Speed)
+		user["user_id"], activeOrderID, req.Lat, req.Lng, req.Heading, req.Speed); err != nil {
+		slog.Warn("failed to record courier location trail",
+			slog.String("courier_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 
 	// Fan out to any consumer SSE streams watching this order.
 	if activeOrderID != nil && *activeOrderID != "" {
@@ -302,7 +440,11 @@ func (h *Handler) UpdateCourierLocation(w http.ResponseWriter, r *http.Request) 
 
 // ListCourierActiveOrders returns the currently-claimed order(s) for this courier.
 func (h *Handler) ListCourierActiveOrders(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
@@ -341,12 +483,16 @@ func (h *Handler) ListCourierActiveOrders(w http.ResponseWriter, r *http.Request
 	if list == nil {
 		list = []models.Order{}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"orders": list})
+	writeJSON(w, http.StatusOK, map[string]any{"orders": list})
 }
 
 // ListCourierHistory returns completed deliveries (for earnings screen).
 func (h *Handler) ListCourierHistory(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT o.id, o.restaurant_id, rest.name, o.status, o.total,
@@ -402,5 +548,5 @@ func (h *Handler) ListCourierHistory(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []HistoryRow{}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"orders": list})
+	writeJSON(w, http.StatusOK, map[string]any{"orders": list})
 }

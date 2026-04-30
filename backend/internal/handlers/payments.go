@@ -18,10 +18,23 @@ import (
 // derived from the cart.
 type CreatePaymentIntentRequest struct {
 	Tip int `json:"tip"` // cents, optional
+	// FulfillmentType matches CreateOrderRequest. Pickup orders skip both
+	// the delivery fee and the courier tip so the Stripe charge total
+	// agrees with what CreateOrder will record. Defaults to delivery.
+	FulfillmentType string `json:"fulfillment_type,omitempty"`
+	// Delivery address fields for dynamic fee quoting. When provided, the
+	// server gets real-time quotes from courier providers instead of using
+	// the static formula.
+	RestaurantID    string `json:"restaurant_id,omitempty"`
+	DeliveryAddress string `json:"delivery_address,omitempty"`
 }
 
 func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var req CreatePaymentIntentRequest
 	_ = readJSON(r, &req) // body optional
@@ -30,7 +43,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	// truth. Uses ci.unit_price (modifier-adjusted snapshot) not mi.price so
 	// selected modifiers are already baked in.
 	var subtotal int
-	err := h.db.Pool.QueryRow(r.Context(),
+	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT COALESCE(SUM(ci.unit_price * ci.quantity), 0)
 		   FROM cart_items ci
 		   JOIN carts c ON ci.cart_id = c.id
@@ -45,26 +58,61 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fee calculation mirrors CreateOrder exactly so the client sees the
-	// same amount it will actually be charged.
-	deliveryFee := 399
-	serviceFee := subtotal * 15 / 100
+	isPickup := req.FulfillmentType == "pickup"
+
+	deliveryFee := 0
+	if !isPickup {
+		if req.RestaurantID != "" && req.DeliveryAddress != "" {
+			var restAddress string
+			err := h.db.Pool.QueryRow(r.Context(),
+				`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, '')
+				   FROM restaurants WHERE id = $1`, req.RestaurantID,
+			).Scan(&restAddress)
+			if err == nil && restAddress != "" {
+				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress)
+				deliveryFee = quote.consumerFee
+			} else {
+				deliveryFee = deliveryFeeFallbackCents
+			}
+		} else {
+			deliveryFee = deliveryFeeFallbackCents
+		}
+	}
+	serviceFee := 0
 	tax := subtotal * 9 / 100
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
 	}
+	if isPickup {
+		tip = 0
+	}
+	if tip > subtotal {
+		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
+		return
+	}
 	total := subtotal + deliveryFee + serviceFee + tax + tip
 
 	// Fetch the user's email + name for the Stripe Customer record.
 	var email, firstName, lastName string
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT email, first_name, last_name FROM users WHERE id = $1`, user["user_id"],
-	).Scan(&email, &firstName, &lastName)
+	).Scan(&email, &firstName, &lastName); err != nil {
+		slog.Warn("CreatePaymentIntent: failed to fetch user info for Stripe",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 
 	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, user["user_id"], email, firstName+" "+lastName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create payment: "+err.Error())
+		// Surface the real Stripe error to the logs so future "failed to
+		// create payment" reports take seconds, not an hour, to diagnose.
+		// Past examples: stale stripe_customer_id from key rotation, missing
+		// publishable key, account in restricted state.
+		slog.Error("CreatePaymentIntent failed",
+			slog.String("user_id", user["user_id"]),
+			slog.Int("amount_cents", total),
+			slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to create payment")
 		return
 	}
 
@@ -97,16 +145,23 @@ func (h *Handler) ConfirmPayment(w http.ResponseWriter, r *http.Request) {
 // Unlike CreatePaymentIntent this does not create a PaymentIntent — the
 // CustomerSheet uses SetupIntents (see CreateSetupIntent) for adding cards.
 func (h *Handler) GetPaymentCustomer(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var email, firstName, lastName string
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT email, first_name, last_name FROM users WHERE id = $1`, user["user_id"],
-	).Scan(&email, &firstName, &lastName)
+	).Scan(&email, &firstName, &lastName); err != nil {
+		slog.Warn("GetPaymentCustomer: failed to fetch user info for Stripe",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 
 	bundle, err := h.stripe.CreateCustomerBundle(r.Context(), h.db.Pool, user["user_id"], email, firstName+" "+lastName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create customer session: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to create customer session")
 		return
 	}
 	writeJSON(w, http.StatusOK, bundle)
@@ -116,16 +171,23 @@ func (h *Handler) GetPaymentCustomer(w http.ResponseWriter, r *http.Request) {
 // persistent Stripe Customer. The iOS STPCustomerSheet needs a fresh
 // SetupIntent for each "add a new card" flow.
 func (h *Handler) CreateSetupIntent(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var email, firstName, lastName string
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT email, first_name, last_name FROM users WHERE id = $1`, user["user_id"],
-	).Scan(&email, &firstName, &lastName)
+	).Scan(&email, &firstName, &lastName); err != nil {
+		slog.Warn("CreateSetupIntent: failed to fetch user info for Stripe",
+			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
+	}
 
 	clientSecret, err := h.stripe.CreateSetupIntent(r.Context(), h.db.Pool, user["user_id"], email, firstName+" "+lastName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create setup intent: "+err.Error())
+		writeError(w, http.StatusInternalServerError, "failed to create setup intent")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"client_secret": clientSecret})
@@ -166,9 +228,14 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		ready := account.PayoutsEnabled && account.DetailsSubmitted
-		_, _ = h.db.Pool.Exec(r.Context(),
+		if _, err := h.db.Pool.Exec(r.Context(),
 			`UPDATE courier_profiles SET payout_ready = $1, updated_at = NOW()
-			 WHERE stripe_connect_id = $2`, ready, account.ID)
+			 WHERE stripe_connect_id = $2`, ready, account.ID); err != nil {
+			slog.Error("StripeWebhook: failed to update payout_ready",
+				slog.String("connect_id", account.ID), slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusOK)
