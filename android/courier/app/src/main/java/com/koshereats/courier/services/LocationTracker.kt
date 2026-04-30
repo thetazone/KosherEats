@@ -34,7 +34,8 @@ class LocationTracker @Inject constructor(
     private val client: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    private val handlerThread = HandlerThread("location-tracker").also { it.start() }
+    private var handlerThread = HandlerThread("location-tracker").also { it.start() }
+    private var handlerThreadAlive = true
     private val listeners = LinkedHashMap<Any, (Double, Double, Double, Double) -> Unit>()
     private var locationCallback: LocationCallback? = null
 
@@ -58,6 +59,12 @@ class LocationTracker @Inject constructor(
 
         listeners[key] = onLocation
         if (locationCallback != null) return true
+
+        // Re-create the HandlerThread if it was quit during a previous stopOsUpdates().
+        if (!handlerThreadAlive) {
+            handlerThread = HandlerThread("location-tracker").also { it.start() }
+            handlerThreadAlive = true
+        }
 
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 8_000L)
             .setMinUpdateIntervalMillis(5_000L)
@@ -92,6 +99,10 @@ class LocationTracker @Inject constructor(
     fun stopOsUpdates() {
         locationCallback?.let { client.removeLocationUpdates(it) }
         locationCallback = null
+        if (handlerThreadAlive) {
+            handlerThread.quitSafely()
+            handlerThreadAlive = false
+        }
     }
 
     // Full teardown: removes OS updates AND clears all listeners. Only call when
@@ -99,6 +110,5 @@ class LocationTracker @Inject constructor(
     fun stop() {
         stopOsUpdates()
         listeners.clear()
-        handlerThread.quitSafely()
     }
 }

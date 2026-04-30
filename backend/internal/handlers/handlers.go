@@ -84,6 +84,5 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 func readJSON(r *http.Request, dst interface{}) error {
-	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(dst)
 }

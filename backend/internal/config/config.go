@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	Port                 string
@@ -66,6 +69,10 @@ type Config struct {
 	DoorDashKeyID       string
 	DoorDashSigningKey  string
 	DoorDashWebhookSec  string
+
+	// Tax rate as a whole-number percentage (e.g. 9 = 9%). Defaults to 9
+	// if TAX_RATE_PERCENT is not set.
+	TaxRatePercent int
 }
 
 func Load() *Config {
@@ -118,12 +125,23 @@ func Load() *Config {
 		DoorDashKeyID:       getEnv("DOORDASH_KEY_ID", ""),
 		DoorDashSigningKey:  getEnv("DOORDASH_SIGNING_KEY", ""),
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
+
+		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
 	}
 }
 
 func getEnv(key, fallback string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if val := os.Getenv(key); val != "" {
+		if n, err := strconv.Atoi(val); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

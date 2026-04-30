@@ -4,6 +4,10 @@ import com.koshereats.consumer.data.models.*
 import retrofit2.Response
 import retrofit2.http.*
 
+data class RefreshRequest(
+    @com.google.gson.annotations.SerializedName("refresh_token") val refreshToken: String,
+)
+
 interface ApiService {
 
     // ── Auth ──────────────────────────────────────────────
@@ -15,13 +19,10 @@ interface ApiService {
     suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
 
     @POST("auth/refresh")
-    suspend fun refreshToken(@Header("Authorization") refreshToken: String): Response<AuthResponse>
+    suspend fun refreshToken(@Body request: RefreshRequest): Response<AuthResponse>
 
     @POST("auth/social")
     suspend fun socialLogin(@Body request: SocialLoginRequest): Response<AuthResponse>
-
-    @POST("auth/logout")
-    suspend fun logout(): Response<Unit>
 
     // ── User ──────────────────────────────────────────────
 
@@ -64,30 +65,11 @@ interface ApiService {
         @Query("longitude") longitude: Double? = null,
     ): Response<List<Restaurant>>
 
-    @GET("restaurants/featured")
-    suspend fun getFeaturedRestaurants(
-        @Query("latitude") latitude: Double? = null,
-        @Query("longitude") longitude: Double? = null,
-    ): Response<List<Restaurant>>
-
-    @GET("restaurants/nearby")
-    suspend fun getNearbyRestaurants(
-        @Query("latitude") latitude: Double,
-        @Query("longitude") longitude: Double,
-        @Query("radius") radiusMiles: Double = 5.0,
-    ): Response<List<Restaurant>>
-
     @GET("restaurants/{id}")
     suspend fun getRestaurant(@Path("id") restaurantId: String): Response<Restaurant>
 
     @GET("restaurants/{id}/menu")
     suspend fun getRestaurantMenu(@Path("id") restaurantId: String): Response<List<MenuCategory>>
-
-    @GET("restaurants/{id}/reviews")
-    suspend fun getRestaurantReviews(
-        @Path("id") restaurantId: String,
-        @Query("page") page: Int = 1,
-    ): Response<PaginatedResponse<Review>>
 
     // ── Cart (server-backed, used during checkout sync) ──
 
@@ -119,11 +101,8 @@ interface ApiService {
     @GET("orders/{id}")
     suspend fun getOrder(@Path("id") orderId: String): Response<Order>
 
-    @POST("orders/{id}/cancel")
+    @PATCH("orders/{id}/cancel")
     suspend fun cancelOrder(@Path("id") orderId: String): Response<Order>
-
-    @POST("orders/{id}/reorder")
-    suspend fun reorder(@Path("id") orderId: String): Response<Order>
 
     // ── Order chat ──────────────────────────────────────────
 

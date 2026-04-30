@@ -40,13 +40,18 @@ type uberLatLng struct {
 }
 
 func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	if h.uber == nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	if h.uber != nil && !h.uber.VerifyWebhook(body, r.Header.Get("X-Uber-Signature")) {
+	if !h.uber.VerifyWebhook(body, r.Header.Get("X-Uber-Signature")) {
 		slog.Warn("uber direct webhook signature verification failed")
 		writeError(w, http.StatusBadRequest, "invalid signature")
 		return
@@ -103,7 +108,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 	case "pickup_complete":
 		_, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'ready'`,
+			  WHERE id = $2 AND status = 'ready' AND external_delivery_id IS NOT NULL`,
 			time.Now(), externalID)
 		if err != nil {
 			slog.Error("uber webhook: pickup_complete update failed",
@@ -123,7 +128,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		now := time.Now()
 		_, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'picked_up'`,
+			  WHERE id = $2 AND status = 'picked_up' AND external_delivery_id IS NOT NULL`,
 			now, externalID)
 		if err != nil {
 			slog.Error("uber webhook: delivered update failed",

@@ -18,7 +18,6 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HomeUiState(
-    val featuredRestaurants: List<Restaurant> = emptyList(),
     val allRestaurants: List<Restaurant> = emptyList(),
     val searchResults: List<Restaurant> = emptyList(),
     val isLoading: Boolean = false,
@@ -46,24 +45,7 @@ class HomeViewModel @Inject constructor(
     private var currentJob: Job? = null
 
     init {
-        loadFeaturedRestaurants()
         loadRestaurants()
-    }
-
-    fun loadFeaturedRestaurants() {
-        viewModelScope.launch {
-            repository.getFeaturedRestaurants().collect { result ->
-                when (result) {
-                    is Resource.Loading -> {}
-                    is Resource.Success -> {
-                        _uiState.update { it.copy(featuredRestaurants = result.data) }
-                    }
-                    is Resource.Error -> {
-                        _uiState.update { it.copy(error = result.message) }
-                    }
-                }
-            }
-        }
     }
 
     fun loadRestaurants(page: Int = 1) {
@@ -187,7 +169,6 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         _uiState.update { it.copy(currentPage = 1, hasMore = true) }
-        loadFeaturedRestaurants()
         loadRestaurants(page = 1)
     }
 }

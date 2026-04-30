@@ -19,13 +19,18 @@ type ddWebhookPayload struct {
 }
 
 func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	if h.doordash == nil {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	if h.doordash != nil && !h.doordash.VerifyWebhook(body, r.Header.Get("X-Doordash-Signature")) {
+	if !h.doordash.VerifyWebhook(body, r.Header.Get("X-Doordash-Signature")) {
 		slog.Warn("doordash webhook signature verification failed")
 		writeError(w, http.StatusBadRequest, "invalid signature")
 		return
@@ -71,7 +76,7 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 	case "picked_up":
 		_, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'ready'`,
+			  WHERE id = $2 AND status = 'ready' AND external_delivery_id IS NOT NULL`,
 			time.Now(), orderID)
 		if err != nil {
 			slog.Error("doordash webhook: pickup update failed",
@@ -91,7 +96,7 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		now := time.Now()
 		_, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'picked_up'`,
+			  WHERE id = $2 AND status = 'picked_up' AND external_delivery_id IS NOT NULL`,
 			now, orderID)
 		if err != nil {
 			slog.Error("doordash webhook: delivered update failed",

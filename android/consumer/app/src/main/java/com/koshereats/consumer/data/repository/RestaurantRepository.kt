@@ -78,26 +78,6 @@ class RestaurantRepository @Inject constructor(
         }
     }
 
-    fun getFeaturedRestaurants(
-        latitude: Double? = null,
-        longitude: Double? = null,
-    ): Flow<Resource<List<Restaurant>>> = flow {
-        emit(Resource.Loading)
-        try {
-            val response = apiService.getFeaturedRestaurants(latitude, longitude)
-            if (response.isSuccessful) {
-                response.body()?.let { emit(Resource.Success(it)) }
-                    ?: emit(Resource.Error("No data returned"))
-            } else {
-                emit(Resource.Error("Failed to load featured restaurants", response.code()))
-            }
-        } catch (e: IOException) {
-            emit(Resource.Error("Network error", null))
-        } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
-        }
-    }
-
     fun getRestaurant(restaurantId: String): Flow<Resource<Restaurant>> = flow {
         emit(Resource.Loading)
         try {

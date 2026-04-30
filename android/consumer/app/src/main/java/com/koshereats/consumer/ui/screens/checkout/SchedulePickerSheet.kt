@@ -142,7 +142,7 @@ fun SchedulePickerSheet(
                             showTime = true
                         } else {
                             val chosenMillis = datePickerState.selectedDateMillis ?: nowMillis
-                            val date = Instant.ofEpochMilli(chosenMillis).atZone(ZoneId.of("UTC")).toLocalDate()
+                            val date = Instant.ofEpochMilli(chosenMillis).atZone(ZoneId.systemDefault()).toLocalDate()
                             val combined = LocalDateTime.of(
                                 date,
                                 java.time.LocalTime.of(timePickerState.hour, timePickerState.minute),

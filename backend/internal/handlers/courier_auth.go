@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/koshereats/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
@@ -31,6 +33,10 @@ func (h *Handler) CourierRegister(w http.ResponseWriter, r *http.Request) {
 
 	if req.Email == "" || req.Password == "" || req.FirstName == "" || req.Phone == "" {
 		writeError(w, http.StatusBadRequest, "email, password, first_name, and phone are required")
+		return
+	}
+	if len(req.Password) < 8 || len(req.Password) > 72 {
+		writeError(w, http.StatusBadRequest, "password must be between 8 and 72 characters")
 		return
 	}
 
@@ -239,13 +245,74 @@ func (h *Handler) UpdateCourierDocuments(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, p)
 }
 
-// VerifyCourierPhone stub: in prod this would check an SMS code. Dev auto-passes.
+// VerifyCourierPhone checks the SMS OTP code before marking the phone as
+// verified. Uses the same brute-force protections as VerifyPhoneLogin.
 func (h *Handler) VerifyCourierPhone(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+
+	var req struct {
+		Phone string `json:"phone"`
+		Code  string `json:"code"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	phone := normalizePhone(req.Phone)
+	if !looksLikeE164(phone) || req.Code == "" {
+		writeError(w, http.StatusBadRequest, "phone and code are required")
+		return
+	}
+
+	// Brute-force protection: check lockout and TTL (same pattern as VerifyPhoneLogin).
+	var startedAt time.Time
+	var failedAttempts int
+	var lockedUntil *time.Time
+	err = h.db.Pool.QueryRow(r.Context(),
+		`SELECT started_at, failed_attempts, locked_until
+		   FROM phone_otp_starts WHERE phone = $1`, phone,
+	).Scan(&startedAt, &failedAttempts, &lockedUntil)
+	if err != nil || time.Since(startedAt) > phoneOTPTTL {
+		writeError(w, http.StatusUnauthorized, "code expired — request a new one")
+		return
+	}
+	if lockedUntil != nil && time.Now().Before(*lockedUntil) {
+		writeError(w, http.StatusTooManyRequests, "too many failed attempts — try again in 10 minutes")
+		return
+	}
+
+	ok, err := h.sms.Check(r.Context(), phone, req.Code)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "verification failed")
+		return
+	}
+	if !ok {
+		if _, err := h.db.Pool.Exec(r.Context(),
+			`UPDATE phone_otp_starts
+			   SET failed_attempts = failed_attempts + 1,
+			       locked_until = CASE
+			           WHEN failed_attempts + 1 >= $2 THEN NOW() + $3::interval
+			           ELSE locked_until END
+			 WHERE phone = $1`,
+			phone, otpMaxAttempts, fmt.Sprintf("%d seconds", int(otpLockoutDur.Seconds()))); err != nil {
+			slog.Error("failed to increment OTP attempt counter",
+				slog.String("phone", phone), slog.String("error", err.Error()))
+		}
+		writeError(w, http.StatusUnauthorized, "invalid or expired code")
+		return
+	}
+
+	// Successful verification — clear the OTP row and mark phone verified.
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`DELETE FROM phone_otp_starts WHERE phone = $1`, phone); err != nil {
+		slog.Error("failed to clear OTP start row",
+			slog.String("phone", phone), slog.String("error", err.Error()))
+	}
+
 	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles SET phone_verified = true, updated_at = NOW() WHERE user_id = $1`,
 		user["user_id"])

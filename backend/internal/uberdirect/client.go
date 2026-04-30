@@ -218,7 +218,7 @@ func (c *Client) CancelDelivery(ctx context.Context, deliveryID, reason string) 
 
 func (c *Client) VerifyWebhook(body []byte, signature string) bool {
 	if c.cfg.WebhookSec == "" {
-		return true
+		return false
 	}
 	mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSec))
 	mac.Write(body)

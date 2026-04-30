@@ -13,13 +13,19 @@ import (
 )
 
 func (h *Handler) CheckrWebhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	if h.cfg.CheckrWebhookSec == "" {
+		slog.Error("checkr webhook signing secret is not configured")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	if h.cfg.CheckrWebhookSec != "" {
+	{
 		sig := r.Header.Get("X-Checkr-Signature")
 		mac := hmac.New(sha256.New, []byte(h.cfg.CheckrWebhookSec))
 		mac.Write(body)

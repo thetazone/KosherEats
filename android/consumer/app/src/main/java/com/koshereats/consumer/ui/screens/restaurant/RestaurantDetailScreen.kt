@@ -199,10 +199,10 @@ fun RestaurantDetailScreen(
                             isPasYisroel = restaurant.isPasYisroel,
                         )
 
-                        if (!restaurant.certifyingAuthority.isNullOrBlank()) {
+                        if (!restaurant.certifyingAgency.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Certified by: ${restaurant.certifyingAuthority}",
+                                text = "Certified by: ${restaurant.certifyingAgency}",
                                 color = TextTertiary,
                                 fontSize = 12.sp,
                             )

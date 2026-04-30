@@ -44,6 +44,7 @@ import com.koshereats.consumer.ui.theme.Orange
 import com.koshereats.consumer.ui.theme.TextMuted
 import com.koshereats.consumer.ui.theme.TextWhite
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
+import com.koshereats.consumer.ui.viewmodels.HomeViewModel
 
 @Composable
 fun KosherEatsNavHost() {
@@ -51,6 +52,7 @@ fun KosherEatsNavHost() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val cartViewModel: CartViewModel = hiltViewModel()
+    val homeViewModel: HomeViewModel = hiltViewModel()
 
     val bottomNavRoutes = BottomNavItem.entries.map { it.route }
     val showBottomBar = currentDestination?.route in bottomNavRoutes
@@ -128,6 +130,7 @@ fun KosherEatsNavHost() {
                         navController.navigate(Screen.Cart.route)
                     },
                     cartViewModel = cartViewModel,
+                    viewModel = homeViewModel,
                 )
             }
 
@@ -141,6 +144,7 @@ fun KosherEatsNavHost() {
                     },
                     cartViewModel = cartViewModel,
                     startWithSearch = true,
+                    viewModel = homeViewModel,
                 )
             }
 
@@ -149,6 +153,7 @@ fun KosherEatsNavHost() {
                     onRestaurantClick = { restaurantId ->
                         navController.navigate(Screen.Restaurant.createRoute(restaurantId))
                     },
+                    viewModel = homeViewModel,
                 )
             }
 

@@ -325,35 +325,6 @@ fun HomeScreen(
                     }
                 }
             } else {
-                // Featured section
-                if (uiState.featuredRestaurants.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "Featured",
-                            color = TextWhite,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            items(uiState.featuredRestaurants, key = { it.id }) { restaurant ->
-                                FeaturedRestaurantCard(
-                                    restaurant = restaurant,
-                                    onClick = { onRestaurantClick(restaurant.id) },
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
-                }
-
                 // All restaurants
                 item {
                     Text(

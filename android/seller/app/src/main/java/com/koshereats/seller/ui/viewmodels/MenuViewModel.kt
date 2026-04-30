@@ -7,9 +7,11 @@ import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -39,11 +41,11 @@ class MenuViewModel @Inject constructor(
 
     fun loadMenuItems(category: MenuCategory? = null) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(
+            _state.update { it.copy(
                 isLoading = true,
                 error = null,
                 selectedCategory = category,
-            )
+            ) }
             try {
                 val response = apiService.getSellerMenu()
                 if (response.isSuccessful) {
@@ -57,28 +59,29 @@ class MenuViewModel @Inject constructor(
                                 .flatMap { it.items }
                         }
                     }
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         items = items,
                         isLoading = false,
-                    )
+                    ) }
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         isLoading = false,
                         error = "Failed to load menu items",
-                    )
+                    ) }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
                     isLoading = false,
                     error = "Connection error: ${e.localizedMessage}",
-                )
+                ) }
             }
         }
     }
 
     fun loadMenuItem(itemId: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 var selectedItem = _state.value.items.firstOrNull { it.id == itemId }
                 if (selectedItem == null) {
@@ -87,9 +90,9 @@ class MenuViewModel @Inject constructor(
                         selectedItem = response.body().orEmpty()
                             .flatMap { it.items }
                             .firstOrNull { it.id == itemId }
-                        _state.value = _state.value.copy(
+                        _state.update { it.copy(
                             items = response.body().orEmpty().let { categories ->
-                                val selectedCategory = _state.value.selectedCategory
+                                val selectedCategory = it.selectedCategory
                                 if (selectedCategory == null) {
                                     categories.flatMap { it.items }
                                 } else {
@@ -102,98 +105,102 @@ class MenuViewModel @Inject constructor(
                             selectedItem = selectedItem,
                             isLoading = false,
                             error = if (selectedItem == null) "Failed to load item" else null,
-                        )
+                        ) }
                         return@launch
                     }
                 }
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     selectedItem = selectedItem,
                     isLoading = false,
                     error = if (selectedItem == null) "Failed to load item" else null,
-                )
+                ) }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
                     isLoading = false,
                     error = "Failed to load item",
-                )
+                ) }
             }
         }
     }
 
     fun createMenuItem(request: UpdateMenuItemRequest) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, error = null, saveSuccess = null)
+            _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
             try {
                 val response = apiService.createMenuItem(request)
                 if (response.isSuccessful) {
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         isSaving = false,
                         saveSuccess = "Menu item created successfully",
-                    )
+                    ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         isSaving = false,
                         error = "Failed to create menu item",
-                    )
+                    ) }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
                     isSaving = false,
                     error = "Connection error: ${e.localizedMessage}",
-                )
+                ) }
             }
         }
     }
 
     fun updateMenuItem(itemId: String, request: UpdateMenuItemRequest) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true, error = null, saveSuccess = null)
+            _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
             try {
                 val response = apiService.updateMenuItem(itemId, request)
                 if (response.isSuccessful) {
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         isSaving = false,
                         saveSuccess = "Menu item updated successfully",
-                    )
+                    ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         isSaving = false,
                         error = "Failed to update menu item",
-                    )
+                    ) }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
                     isSaving = false,
                     error = "Connection error: ${e.localizedMessage}",
-                )
+                ) }
             }
         }
     }
 
     fun deleteMenuItem(itemId: String) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = apiService.deleteMenuItem(itemId)
                 if (response.isSuccessful) {
-                    _state.value = _state.value.copy(
-                        items = _state.value.items.filter { it.id != itemId },
+                    _state.update { it.copy(
+                        items = it.items.filter { it.id != itemId },
                         isLoading = false,
                         deleteSuccess = true,
-                    )
+                    ) }
                 } else {
-                    _state.value = _state.value.copy(
+                    _state.update { it.copy(
                         isLoading = false,
                         error = "Failed to delete item",
-                    )
+                    ) }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
                     isLoading = false,
                     error = "Failed to delete item",
-                )
+                ) }
             }
         }
     }
@@ -201,12 +208,12 @@ class MenuViewModel @Inject constructor(
     fun toggleAvailability(item: MenuItem) {
         if (_state.value.pendingItemIds.contains(item.id)) return
         val newAvailability = !item.isAvailable
-        _state.value = _state.value.copy(
-            items = _state.value.items.map {
+        _state.update { it.copy(
+            items = it.items.map {
                 if (it.id == item.id) it.copy(isAvailable = newAvailability) else it
             },
-            pendingItemIds = _state.value.pendingItemIds + item.id,
-        )
+            pendingItemIds = it.pendingItemIds + item.id,
+        ) }
         viewModelScope.launch {
             try {
                 val response = apiService.toggleMenuItemAvailability(
@@ -215,43 +222,43 @@ class MenuViewModel @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     val updatedItem = response.body()
-                    _state.value = _state.value.copy(
-                        items = if (updatedItem != null) _state.value.items.map {
+                    _state.update { it.copy(
+                        items = if (updatedItem != null) it.items.map {
                             if (it.id == item.id) updatedItem else it
-                        } else _state.value.items,
-                        pendingItemIds = _state.value.pendingItemIds - item.id,
-                    )
+                        } else it.items,
+                        pendingItemIds = it.pendingItemIds - item.id,
+                    ) }
                 } else {
-                    _state.value = _state.value.copy(
-                        items = _state.value.items.map {
+                    _state.update { it.copy(
+                        items = it.items.map {
                             if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
                         },
-                        pendingItemIds = _state.value.pendingItemIds - item.id,
+                        pendingItemIds = it.pendingItemIds - item.id,
                         error = "Failed to update availability",
-                    )
+                    ) }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    items = _state.value.items.map {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    items = it.items.map {
                         if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
                     },
-                    pendingItemIds = _state.value.pendingItemIds - item.id,
-                    error = if (e is kotlinx.coroutines.CancellationException) null else "Failed to update availability",
-                )
-                if (e is kotlinx.coroutines.CancellationException) throw e
+                    pendingItemIds = it.pendingItemIds - item.id,
+                    error = "Failed to update availability",
+                ) }
             }
         }
     }
 
     fun setSelectedItem(item: MenuItem?) {
-        _state.value = _state.value.copy(selectedItem = item)
+        _state.update { it.copy(selectedItem = item) }
     }
 
     fun setError(message: String?) {
-        _state.value = _state.value.copy(error = message)
+        _state.update { it.copy(error = message) }
     }
 
     fun clearMessages() {
-        _state.value = _state.value.copy(error = null, saveSuccess = null, deleteSuccess = false)
+        _state.update { it.copy(error = null, saveSuccess = null, deleteSuccess = false) }
     }
 }

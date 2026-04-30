@@ -11,8 +11,10 @@ package payments
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/config"
@@ -181,7 +183,11 @@ func (c *Client) RefundPaymentIntent(paymentIntentID string) error {
 // Called when an order is marked delivered. In prod this is a Stripe Transfer
 // which debits the platform balance and credits the connected account. In
 // dev stub mode it just logs so the rest of the flow works without real money.
-func (c *Client) TransferToCourier(accountID string, amountCents int, orderID string) error {
+//
+// idempotencyKey should be a stable unique identifier (e.g. the payout queue
+// row's id) so that retries after a partial failure don't double-send money.
+// Pass empty string to skip idempotency (not recommended for production).
+func (c *Client) TransferToCourier(accountID string, amountCents int, orderID string, idempotencyKey string) error {
 	if !c.enabled {
 		log.Printf("[stripe stub] transfer $%d.%02d -> %s for order %s",
 			amountCents/100, amountCents%100, accountID, orderID)
@@ -197,6 +203,9 @@ func (c *Client) TransferToCourier(accountID string, amountCents int, orderID st
 		Currency:    stripe.String(string(stripe.CurrencyUSD)),
 		Destination: stripe.String(accountID),
 		TransferGroup: stripe.String("order_" + orderID),
+	}
+	if idempotencyKey != "" {
+		params.IdempotencyKey = stripe.String(idempotencyKey)
 	}
 	_, err := transfer.New(params)
 	return err
@@ -420,13 +429,16 @@ func (c *Client) CreateSetupIntent(ctx context.Context, pool *pgxpool.Pool, user
 	return si.ClientSecret, nil
 }
 
-// fakeID generates a short random-ish id for dev stubs. Not cryptographically
-// random — just enough to distinguish different stub accounts in logs.
+// fakeID generates a short random id for dev stubs using crypto/rand.
 func fakeID() string {
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 10)
+	if _, err := cryptorand.Read(b); err != nil {
+		// Fallback: if crypto/rand fails, return a timestamp-based id.
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
 	for i := range b {
-		b[i] = charset[i*7%len(charset)]
+		b[i] = charset[int(b[i])%len(charset)]
 	}
 	return string(b)
 }

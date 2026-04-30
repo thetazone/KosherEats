@@ -24,9 +24,11 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("release-upload.jks")
-            storePassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+            storePassword = findProperty("KEYSTORE_PASSWORD")?.toString()
+                ?: lp("KEYSTORE_PASSWORD").ifEmpty { error("KEYSTORE_PASSWORD not set — add it to local.properties or pass via -P") }
             keyAlias = "upload"
-            keyPassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+            keyPassword = findProperty("KEYSTORE_PASSWORD")?.toString()
+                ?: lp("KEYSTORE_PASSWORD").ifEmpty { error("KEYSTORE_PASSWORD not set — add it to local.properties or pass via -P") }
         }
     }
 

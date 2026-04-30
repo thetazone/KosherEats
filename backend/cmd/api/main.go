@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -45,7 +46,9 @@ func main() {
 
 	// Auto-apply any new migrations on boot. Uses a schema_migrations table
 	// to track which .sql files have already run — idempotent across restarts.
-	if err := db.RunMigrations(context.Background(), "internal/database/migrations"); err != nil {
+	exePath, _ := os.Executable()
+	migrationsPath := filepath.Join(filepath.Dir(exePath), "internal", "database", "migrations")
+	if err := db.RunMigrations(context.Background(), migrationsPath); err != nil {
 		log.Printf("migration warning: %v", err) // non-fatal; may not exist in all deploys
 	}
 

@@ -18,12 +18,21 @@ fun lp(key: String): String = localProps.getProperty(key, "")
 
 android {
     namespace = "com.koshereats.seller"
-    compileSdk = 34
+    compileSdk = 35
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("release-upload.jks")
+            storePassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+            keyAlias = "upload"
+            keyPassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.koshereats.seller"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -45,6 +54,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

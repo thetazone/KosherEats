@@ -239,9 +239,6 @@ class AuthViewModel @Inject constructor(
 
     fun logout() {
         viewModelScope.launch {
-            try {
-                apiService.logout()
-            } catch (_: Exception) {}
             PushBootstrap.deleteToken()
             clearAuth()
             sessionManager.signalLogout()

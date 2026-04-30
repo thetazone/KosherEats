@@ -26,7 +26,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -143,7 +143,7 @@ fun SellerOrderDetailScreen(
 
                         if (order.deliveryAddress.isNotBlank()) {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Divider(color = DividerColor, thickness = 0.5.dp)
+                            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                             Spacer(modifier = Modifier.height(16.dp))
 
                             Text(
@@ -227,7 +227,7 @@ fun SellerOrderDetailScreen(
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
-                        Divider(color = DividerColor, thickness = 0.5.dp)
+                        HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Totals

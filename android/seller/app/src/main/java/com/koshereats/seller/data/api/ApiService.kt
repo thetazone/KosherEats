@@ -1,6 +1,7 @@
 package com.koshereats.seller.data.api
 
 import com.koshereats.seller.data.models.*
+import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import retrofit2.Response
 import retrofit2.http.*
@@ -9,8 +10,8 @@ import retrofit2.http.*
 data class SocialLoginRequest(
     val provider: String,
     val token: String,
-    val firstName: String,
-    val lastName: String,
+    @Json(name = "first_name") val firstName: String,
+    @Json(name = "last_name") val lastName: String,
 )
 
 interface ApiService {

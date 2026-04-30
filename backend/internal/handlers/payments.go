@@ -79,7 +79,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	serviceFee := 0
-	tax := subtotal * 9 / 100
+	tax := subtotal * h.cfg.TaxRatePercent / 100
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
@@ -203,7 +203,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := io.ReadAll(r.Body)
+	payload, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return

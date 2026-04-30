@@ -13,6 +13,9 @@ services:
       # `go run` (which uses localhost) and `docker compose` both work.
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/koshereats?sslmode=disable
       REDIS_URL: redis://redis:6379
+      # JWT_SECRET must be set — fall through from .env, but make it
+      # explicit here so docker compose fails loudly if missing.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
     depends_on:
       postgres:
         condition: service_healthy

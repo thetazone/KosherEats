@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/models"
 )
 
@@ -131,7 +133,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	serviceFee := 0
-	tax := subtotal * 9 / 100 // ~9% tax
+	tax := subtotal * h.cfg.TaxRatePercent / 100
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
@@ -227,7 +229,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	order.Items = items
 
 	// Notify the seller that a new order just came in.
-	go h.notify.OrderCreated(r.Context(), order.RestaurantID, order.RestaurantName, order.ID, order.Total)
+	go h.notify.OrderCreated(context.Background(), order.RestaurantID, order.RestaurantName, order.ID, order.Total)
 
 	writeJSON(w, http.StatusCreated, order)
 }
@@ -239,17 +241,41 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	limit := 50
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+	cursor := r.URL.Query().Get("cursor") // RFC3339 timestamp of last item's created_at
+
 	// JOIN restaurants so the orders list shows which restaurant each order
 	// was from without a second round trip per row.
-	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-		        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
-		        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
-		        o.est_delivery_time, o.fulfillment_type, o.created_at, o.updated_at
-		   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
-		  WHERE o.user_id = $1
-		  ORDER BY o.created_at DESC LIMIT 50`,
-		user["user_id"])
+	var rows pgx.Rows
+	if cursor != "" {
+		cursorTime, parseErr := time.Parse(time.RFC3339Nano, cursor)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid cursor format")
+			return
+		}
+		rows, err = h.db.Pool.Query(r.Context(),
+			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
+			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
+			        o.est_delivery_time, o.fulfillment_type, o.created_at, o.updated_at
+			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
+			  WHERE o.user_id = $1 AND o.created_at < $2
+			  ORDER BY o.created_at DESC LIMIT $3`,
+			user["user_id"], cursorTime, limit)
+	} else {
+		rows, err = h.db.Pool.Query(r.Context(),
+			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
+			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
+			        o.est_delivery_time, o.fulfillment_type, o.created_at, o.updated_at
+			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
+			  WHERE o.user_id = $1
+			  ORDER BY o.created_at DESC LIMIT $2`,
+			user["user_id"], limit)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch orders")
 		return
@@ -663,17 +689,41 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sellerLimit := 50
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 100 {
+		sellerLimit = l
+	}
+	sellerCursor := r.URL.Query().Get("cursor")
+
 	// Scoped to the resolved restaurant so multi-restaurant sellers see
 	// only the orders for the one they've currently selected in the app.
-	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-		        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
-		        o.courier_tip, o.delivery_address, o.est_delivery_time,
-		        o.fulfillment_type, o.created_at, o.updated_at
-		   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
-		  WHERE o.restaurant_id = $1
-		  ORDER BY o.created_at DESC LIMIT 50`,
-		restID)
+	var rows pgx.Rows
+	if sellerCursor != "" {
+		cursorTime, parseErr := time.Parse(time.RFC3339Nano, sellerCursor)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid cursor format")
+			return
+		}
+		rows, err = h.db.Pool.Query(r.Context(),
+			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
+			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.courier_tip, o.delivery_address, o.est_delivery_time,
+			        o.fulfillment_type, o.created_at, o.updated_at
+			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
+			  WHERE o.restaurant_id = $1 AND o.created_at < $2
+			  ORDER BY o.created_at DESC LIMIT $3`,
+			restID, cursorTime, sellerLimit)
+	} else {
+		rows, err = h.db.Pool.Query(r.Context(),
+			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
+			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.courier_tip, o.delivery_address, o.est_delivery_time,
+			        o.fulfillment_type, o.created_at, o.updated_at
+			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
+			  WHERE o.restaurant_id = $1
+			  ORDER BY o.created_at DESC LIMIT $2`,
+			restID, sellerLimit)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch orders")
 		return
@@ -816,7 +866,38 @@ func (h *Handler) consumerAndRestaurantForOrder(r *http.Request, orderID string)
 }
 
 func (h *Handler) CompleteOrder(w http.ResponseWriter, r *http.Request) {
-	h.updateSellerOrderStatus(w, r, models.OrderCompleted, models.OrderReady)
+	id := chi.URLParam(r, "id")
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	// For pickup orders, allow completing from 'preparing' as well as 'ready'
+	// since there is no courier handoff step.
+	result, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE orders SET status = $1, updated_at = NOW()
+		 FROM restaurants WHERE orders.restaurant_id = restaurants.id
+		 AND orders.id = $2 AND restaurants.owner_id = $3
+		 AND (orders.status = $4 OR (orders.status = $5 AND orders.fulfillment_type = 'pickup'))`,
+		models.OrderCompleted, id, user["user_id"], models.OrderReady, models.OrderPreparing)
+
+	if err != nil || result.RowsAffected() == 0 {
+		writeError(w, http.StatusBadRequest, "cannot update order status")
+		return
+	}
+
+	order, err := h.loadOrderWithCourier(r, id, "restaurant_owner", user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status updated but failed to reload order")
+		return
+	}
+	order.Items, err = h.loadOrderItems(r, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status updated but failed to reload order")
+		return
+	}
+	writeJSON(w, http.StatusOK, order)
 }
 
 func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
@@ -858,11 +939,21 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lock the row inside a transaction so concurrent AcceptOrder can't flip
+	// status between our SELECT and UPDATE (same pattern as CancelOrder).
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot reject this order")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
 	var paymentIntentID string
-	err = h.db.Pool.QueryRow(r.Context(),
+	err = tx.QueryRow(r.Context(),
 		`SELECT orders.stripe_payment_id
 		   FROM orders JOIN restaurants ON orders.restaurant_id = restaurants.id
-		  WHERE orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = $3`,
+		  WHERE orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = $3
+		  FOR UPDATE OF orders`,
 		id, user["user_id"], models.OrderPending,
 	).Scan(&paymentIntentID)
 	if err != nil {
@@ -877,13 +968,17 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.db.Pool.Exec(r.Context(),
+	result, err := tx.Exec(r.Context(),
 		`UPDATE orders SET status = $1, updated_at = NOW()
-		 FROM restaurants WHERE orders.restaurant_id = restaurants.id
-		 AND orders.id = $2 AND restaurants.owner_id = $3 AND orders.status = $4`,
-		models.OrderRejected, id, user["user_id"], models.OrderPending)
+		 WHERE id = $2 AND status = $3`,
+		models.OrderRejected, id, models.OrderPending)
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot update order status")
+		return
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot reject this order")
 		return
 	}
 

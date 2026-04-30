@@ -85,8 +85,11 @@ class CheckoutViewModel @Inject constructor(
     val events = _events.receiveAsFlow()
 
     private var refreshBundleJob: Job? = null
+    private var _bootstrapped = false
 
     fun bootstrap(localCart: List<CartItem>, restaurantId: String) {
+        if (_bootstrapped) return
+        _bootstrapped = true
         viewModelScope.launch {
             loadAddresses()
             syncLocalCartToServer(localCart, restaurantId)

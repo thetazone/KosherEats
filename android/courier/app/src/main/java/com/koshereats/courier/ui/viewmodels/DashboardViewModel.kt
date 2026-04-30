@@ -18,10 +18,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import javax.inject.Inject
 
 /**
@@ -197,8 +199,10 @@ class DashboardViewModel @Inject constructor(
         context.stopService(Intent(context, LocationForegroundService::class.java))
         if (_state.value.isOnline) {
             prefs.edit().remove("was_online").apply()
-            GlobalScope.launch(NonCancellable) {
-                try { withTimeout(3_000) { repo.setOnline(false, 0.0, 0.0) } } catch (_: Exception) {}
+            ProcessLifecycleOwner.get().lifecycleScope.launch {
+                withContext(NonCancellable) {
+                    try { withTimeout(3_000) { repo.setOnline(false, 0.0, 0.0) } } catch (_: Exception) {}
+                }
             }
         }
         super.onCleared()

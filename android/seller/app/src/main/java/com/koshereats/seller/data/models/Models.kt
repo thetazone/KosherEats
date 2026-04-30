@@ -57,14 +57,14 @@ data class Restaurant(
     val email: String = "",
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "kosher_certification") val kosherCertification: KosherCertification = KosherCertification.OU,
-    @Json(name = "certification_details") val certificationDetails: String = "",
+    @Json(name = "certifying_agency") val certificationDetails: String = "",
     @Json(name = "is_open") val isOpen: Boolean = false,
     @Json(name = "opening_hours") val openingHours: Map<String, String> = emptyMap(),
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
-    @Json(name = "minimum_order") val minimumOrder: Int = 0,
-    @Json(name = "average_prep_time") val averagePrepTime: Int = 30,
+    @Json(name = "min_order") val minimumOrder: Int = 0,
+    @Json(name = "est_delivery_min") val averagePrepTime: Int = 30,
     val rating: Double = 0.0,
-    @Json(name = "total_reviews") val totalReviews: Int = 0,
+    @Json(name = "review_count") val totalReviews: Int = 0,
     @Json(name = "created_at") val createdAt: String = "",
 )
 
@@ -92,18 +92,18 @@ data class MenuItem(
 data class OrderItem(
     val id: String = "",
     @Json(name = "menu_item_id") val menuItemId: String = "",
-    @Json(name = "menu_item_name") val menuItemName: String = "",
+    @Json(name = "name") val menuItemName: String = "",
     val quantity: Int = 1,
-    @Json(name = "unit_price") val unitPrice: Int = 0,
-    @Json(name = "total_price") val totalPrice: Int = 0,
-    @Json(name = "special_instructions") val specialInstructions: String = "",
+    @Json(name = "price") val unitPrice: Int = 0,
+    val totalPrice: Int = 0,
+    @Json(name = "notes") val specialInstructions: String = "",
 )
 
 @JsonClass(generateAdapter = true)
 data class Order(
     val id: String = "",
     @Json(name = "restaurant_id") val restaurantId: String = "",
-    @Json(name = "customer_id") val customerId: String = "",
+    @Json(name = "user_id") val customerId: String = "",
     @Json(name = "delivery_address") val deliveryAddress: String = "",
     val items: List<OrderItem> = emptyList(),
     val subtotal: Int = 0,

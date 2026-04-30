@@ -7,10 +7,10 @@ import com.google.gson.annotations.SerializedName
 enum class KosherCertification(val displayName: String, val abbreviation: String) {
     @SerializedName("OU") OU("Orthodox Union", "OU"),
     @SerializedName("OK") OK("OK Kosher", "OK"),
-    @SerializedName("STAR_K") STAR_K("Star-K", "★K"),
-    @SerializedName("KOF_K") KOF_K("Kof-K", "KF"),
+    @SerializedName("Star-K") STAR_K("Star-K", "★K"),
+    @SerializedName("Kof-K") KOF_K("Kof-K", "KF"),
     @SerializedName("CRC") CRC("Chicago Rabbinical Council", "cRc"),
-    @SerializedName("BADATZ") BADATZ("Badatz", "BD"),
+    @SerializedName("Badatz") BADATZ("Badatz", "BD"),
     @SerializedName("CHABAD") CHABAD("Chabad", "CH"),
     @SerializedName("LOCAL") LOCAL("Local Rabbinical", "LR"),
     @SerializedName("OTHER") OTHER("Other", "K"),
@@ -23,32 +23,28 @@ enum class DietaryType(val displayName: String) {
 }
 
 enum class OrderStatus(val displayName: String) {
-    @SerializedName("scheduled") SCHEDULED("Scheduled"),
     @SerializedName("pending") PENDING("Pending"),
-    @SerializedName("accepted") ACCEPTED("Accepted"),
     @SerializedName("confirmed") CONFIRMED("Confirmed"),
     @SerializedName("preparing") PREPARING("Preparing"),
-    @SerializedName("ready_for_pickup") READY_FOR_PICKUP("Ready for Pickup"),
-    @SerializedName("out_for_delivery") OUT_FOR_DELIVERY("Out for Delivery"),
+    @SerializedName("ready") READY("Ready for Pickup"),
+    @SerializedName("picked_up") PICKED_UP("Out for Delivery"),
     @SerializedName("delivered") DELIVERED("Delivered"),
-    @SerializedName("completed") COMPLETED("Completed"),
     @SerializedName("cancelled") CANCELLED("Cancelled"),
-    @SerializedName("rejected") REJECTED("Rejected");
+    @SerializedName("completed") COMPLETED("Completed");
 
     val stepIndex: Int
         get() = when (this) {
-            SCHEDULED -> 0
             PENDING -> 1
-            ACCEPTED, CONFIRMED -> 2
+            CONFIRMED -> 2
             PREPARING -> 3
-            READY_FOR_PICKUP, OUT_FOR_DELIVERY, DELIVERED -> 4
+            READY, PICKED_UP, DELIVERED -> 4
             COMPLETED -> 5
-            CANCELLED, REJECTED -> -1
+            CANCELLED -> -1
         }
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, CANCELLED, COMPLETED, REJECTED -> false
+            DELIVERED, CANCELLED, COMPLETED -> false
             else -> true
         }
 }
@@ -87,12 +83,12 @@ data class User(
 data class Address(
     val id: String = "",
     val label: String = "",
-    @SerializedName("street_address") val streetAddress: String = "",
+    @SerializedName("street") val streetAddress: String = "",
     val city: String = "",
     val state: String = "",
     @SerializedName("zip_code") val zipCode: String = "",
-    val latitude: Double = 0.0,
-    val longitude: Double = 0.0,
+    @SerializedName("lat") val latitude: Double = 0.0,
+    @SerializedName("lng") val longitude: Double = 0.0,
     @SerializedName("delivery_instructions") val deliveryInstructions: String? = null,
     @SerializedName("is_default") val isDefault: Boolean = false,
 )
@@ -136,13 +132,12 @@ data class Restaurant(
     @SerializedName("image_url") val imageUrl: String = "",
     @SerializedName("logo_url") val logoUrl: String? = null,
     @SerializedName("cover_image_url") val coverImageUrl: String? = null,
-    val address: Address = Address(),
     val phone: String = "",
     val rating: Double = 0.0,
     @SerializedName("review_count") val reviewCount: Int = 0,
     @SerializedName("cuisine_types") val cuisineTypes: List<CuisineType> = emptyList(),
     @SerializedName("kosher_certification") val kosherCertification: KosherCertification = KosherCertification.OTHER,
-    @SerializedName("certifying_authority") val certifyingAuthority: String = "",
+    @SerializedName("certifying_agency") val certifyingAgency: String = "",
     @SerializedName("mashgiach_name") val mashgiachName: String? = null,
     @SerializedName("is_cholov_yisroel") val isCholovYisroel: Boolean = false,
     @SerializedName("is_pas_yisroel") val isPasYisroel: Boolean = false,
@@ -151,13 +146,27 @@ data class Restaurant(
     @SerializedName("dietary_type") val dietaryType: DietaryType = DietaryType.MEAT,
     @SerializedName("is_open") val isOpen: Boolean = true,
     @SerializedName("delivery_fee") val deliveryFee: Int = 0,
-    @SerializedName("delivery_time_min") val deliveryTimeMin: Int = 0,
-    @SerializedName("delivery_time_max") val deliveryTimeMax: Int = 0,
-    @SerializedName("minimum_order") val minimumOrder: Int = 0,
+    @SerializedName("est_delivery_min") val deliveryTimeMin: Int = 0,
+    @SerializedName("est_delivery_max") val deliveryTimeMax: Int = 0,
+    @SerializedName("min_order") val minimumOrder: Int = 0,
     @SerializedName("operating_hours") val operatingHours: List<OperatingHour> = emptyList(),
     @SerializedName("is_shabbat_closed") val isShabbatClosed: Boolean = true,
     val distance: Double? = null,
-)
+    // Flat address fields from backend (not a nested Address object)
+    val street: String = "",
+    val city: String = "",
+    val state: String = "",
+    @SerializedName("zip_code") val zipCode: String = "",
+) {
+    /** Convenience: build an [Address] from the flat fields for UI code that expects one. */
+    val address: Address
+        get() = Address(
+            streetAddress = street,
+            city = city,
+            state = state,
+            zipCode = zipCode,
+        )
+}
 
 data class OperatingHour(
     @SerializedName("day_of_week") val dayOfWeek: Int = 0,

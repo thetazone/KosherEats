@@ -504,31 +504,53 @@ func (d *Dispatcher) sweepStaleRejection(ctx context.Context) {
 }
 
 // tryStaleReject refunds an order's payment first, then flips status to
-// 'rejected' only on refund success. Refund-then-flip ordering means a
-// Stripe outage leaves the order in 'pending' for the next sweep to retry —
-// never in a state where we told the customer "rejected" without returning
-// their money.
+// 'rejected' only on refund success. Uses SELECT ... FOR UPDATE inside a
+// transaction to prevent the race where a seller AcceptOrder flips the
+// status between our read and the refund.
 func (d *Dispatcher) tryStaleReject(ctx context.Context, o stalePending) {
+	tx, err := d.db.Begin(ctx)
+	if err != nil {
+		slog.Error("stale-rejection: begin tx failed",
+			slog.String("order_id", o.orderID),
+			slog.String("error", err.Error()))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Lock the row so concurrent AcceptOrder blocks until we finish.
+	var lockedPaymentID string
+	err = tx.QueryRow(ctx,
+		`SELECT COALESCE(stripe_payment_id, '') FROM orders
+		 WHERE id = $1 AND status = 'pending'
+		 FOR UPDATE`,
+		o.orderID,
+	).Scan(&lockedPaymentID)
+	if err != nil {
+		// Row not found or no longer pending — seller already acted.
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("stale-rejection: lock row failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+		}
+		return
+	}
+
 	// Refund first. If the order had no payment intent stored (shouldn't
 	// happen in prod, but possible in dev stub data) we skip the refund
 	// call and just reject the order so the stuck state clears.
-	if o.paymentIntentID != "" && d.stripe != nil {
-		if err := d.stripe.RefundPaymentIntent(o.paymentIntentID); err != nil {
+	if lockedPaymentID != "" && d.stripe != nil {
+		if err := d.stripe.RefundPaymentIntent(lockedPaymentID); err != nil {
 			slog.Error("stale-rejection: refund failed, leaving order pending",
 				slog.String("order_id", o.orderID),
-				slog.String("payment_intent", o.paymentIntentID),
+				slog.String("payment_intent", lockedPaymentID),
 				slog.String("error", err.Error()))
 			return
 		}
 	}
 
-	// Atomic status flip: only succeeds if the order is still 'pending'
-	// (seller didn't accept in the millisecond between our SELECT and this
-	// UPDATE). If they did accept, skip — they got there first.
-	result, err := d.db.Exec(ctx, `
-		UPDATE orders
-		   SET status = 'rejected', updated_at = NOW()
-		 WHERE id = $1 AND status = 'pending'`,
+	_, err = tx.Exec(ctx,
+		`UPDATE orders SET status = 'rejected', updated_at = NOW()
+		 WHERE id = $1`,
 		o.orderID)
 	if err != nil {
 		slog.Error("stale-rejection: status update failed",
@@ -536,11 +558,11 @@ func (d *Dispatcher) tryStaleReject(ctx context.Context, o stalePending) {
 			slog.String("error", err.Error()))
 		return
 	}
-	if result.RowsAffected() == 0 {
-		// Seller accepted during the refund. Their food is coming — but
-		// we already refunded the customer. Log loudly so ops can follow up.
-		slog.Warn("stale-rejection: refund issued but seller accepted in race",
-			slog.String("order_id", o.orderID))
+
+	if err = tx.Commit(ctx); err != nil {
+		slog.Error("stale-rejection: commit failed",
+			slog.String("order_id", o.orderID),
+			slog.String("error", err.Error()))
 		return
 	}
 
@@ -581,7 +603,8 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		 WHERE status = 'pending'
 		   AND next_retry_at <= NOW()
 		 ORDER BY next_retry_at ASC
-		 LIMIT $1`,
+		 LIMIT $1
+		 FOR UPDATE SKIP LOCKED`,
 		payoutBatchLimit)
 	if err != nil {
 		slog.Error("payout-sweep: load queue failed",
@@ -611,7 +634,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 // completed; on failure reschedules with backoff or — if we've exhausted
 // maxPayoutAttempts — flips to failed_permanent so a human can intervene.
 func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
-	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID)
+	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID, p.id)
 	if err == nil {
 		_, uerr := d.db.Exec(ctx, `
 			UPDATE courier_payout_queue

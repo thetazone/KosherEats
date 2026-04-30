@@ -1,5 +1,6 @@
 package com.koshereats.courier.data.repository
 
+import android.location.Location
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.PolyUtil
 import com.koshereats.courier.BuildConfig
@@ -33,8 +34,40 @@ class DirectionsRepository @Inject constructor() {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
+    // Simple cache to avoid re-fetching when the courier has barely moved.
+    // Re-fetches only when origin has moved more than 500m or destination changes.
+    private var cachedResult: DirectionsResult? = null
+    private var cachedOrigin: LatLng? = null
+    private var cachedDestination: LatLng? = null
+
+    /** Distance in metres between two [LatLng] points. */
+    private fun distanceBetween(a: LatLng, b: LatLng): Float {
+        val results = FloatArray(1)
+        Location.distanceBetween(a.latitude, a.longitude, b.latitude, b.longitude, results)
+        return results[0]
+    }
+
+    /** Clears the cached result -- call when the delivery phase changes
+     *  (e.g. pickup -> dropoff) so the next [route] call fetches fresh data. */
+    fun invalidateCache() {
+        cachedResult = null
+        cachedOrigin = null
+        cachedDestination = null
+    }
+
     suspend fun route(origin: LatLng, destination: LatLng): Result<DirectionsResult> =
         withContext(Dispatchers.IO) {
+            // Return cached result if origin hasn't moved more than 500m
+            // and the destination hasn't changed.
+            val co = cachedOrigin
+            val cd = cachedDestination
+            val cr = cachedResult
+            if (cr != null && co != null && cd != null
+                && distanceBetween(origin, co) < 500f
+                && distanceBetween(destination, cd) < 50f
+            ) {
+                return@withContext Result.success(cr)
+            }
             runCatching {
                 val key = BuildConfig.MAPS_API_KEY
                 if (key.isBlank()) {
@@ -70,7 +103,11 @@ class DirectionsRepository @Inject constructor() {
                     polyline = PolyUtil.decode(encoded),
                     durationText = durationText,
                     distanceText = distanceText,
-                )
+                ).also { result ->
+                    cachedResult = result
+                    cachedOrigin = origin
+                    cachedDestination = destination
+                }
             }
         }
 }

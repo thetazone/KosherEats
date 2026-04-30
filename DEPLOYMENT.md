@@ -31,6 +31,57 @@ deploy the API, and Redis needs to be set manually as a secret.
 
 ---
 
+## 2b. Environment variables reference
+
+All backend environment variables are documented in `.env.example` at the repo
+root. Copy it to `.env` (local dev) or `.env.production` (deploy) and fill in
+real values. Below is a summary by category:
+
+| Category | Variable | Required | Notes |
+|---|---|---|---|
+| **App** | `PORT` | No | Defaults to `8080` |
+| | `APP_ENV` | No | Set to `production` in prod for stricter logging |
+| | `WEB_URL` | No | Defaults to `http://localhost:3000` |
+| | `JWT_SECRET` | **Yes** | Must be set in production; tokens are unsigned if empty |
+| **Database** | `DATABASE_URL` | **Yes** | Postgres connection string |
+| **Redis** | `REDIS_URL` | **Yes** | Redis connection string |
+| **Stripe** | `STRIPE_SECRET_KEY` | **Yes** | Stripe API secret key |
+| | `STRIPE_PUBLISHABLE_KEY` | No | Passed to iOS clients |
+| | `STRIPE_WEBHOOK_SECRET` | **Yes** | Signing secret for Stripe webhooks |
+| **Google Auth** | `GOOGLE_CLIENT_ID` | No | OAuth client ID |
+| | `GOOGLE_CLIENT_SECRET` | No | OAuth client secret |
+| **Apple Auth** | `APPLE_CLIENT_ID` | No | e.g. `com.koshereats.consumer` |
+| | `APPLE_TEAM_ID` | No | Apple Developer Team ID |
+| | `APPLE_KEY_ID` | No | Apple key identifier |
+| | `APPLE_PRIVATE_KEY` | No | Contents of .p8 key file |
+| **APNs** | `APNS_KEY_ID` | No | Apple push key ID |
+| | `APNS_TEAM_ID` | No | Apple team ID |
+| | `APNS_P8_KEY` | No | Full .p8 key contents |
+| | `APNS_BUNDLE_PREFIX` | No | Defaults to `com.koshereats` |
+| | `APNS_PRODUCTION` | No | `true` for prod, empty/`false` for sandbox |
+| **S3** | `S3_BUCKET` | No | Bucket name for uploads |
+| | `S3_REGION` | No | Defaults to `us-east-1` |
+| | `S3_PUBLIC_URL` | No | Optional CDN prefix (CloudFront) |
+| **Checkr** | `CHECKR_API_KEY` | No | Empty = dev stub (auto-approve) |
+| | `CHECKR_PACKAGE` | No | Defaults to `driver_pro` |
+| | `CHECKR_WEBHOOK_SECRET` | No | Signing secret for Checkr webhooks |
+| **FCM** | `FCM_SERVICE_ACCOUNT_JSON` | No | Full service account JSON string; empty = stub |
+| | `FCM_PROJECT_ID` | No | e.g. `koshereats-prod` |
+| **Twilio** | `TWILIO_ACCOUNT_SID` | No | Empty = dev stub (fixed OTP code) |
+| | `TWILIO_AUTH_TOKEN` | No | Twilio auth token |
+| | `TWILIO_VERIFY_SERVICE_SID` | No | Verify service SID |
+| **Uber Direct** | `UBER_DIRECT_CLIENT_ID` | No | Empty = stub mode |
+| | `UBER_DIRECT_CLIENT_SECRET` | No | |
+| | `UBER_DIRECT_CUSTOMER_ID` | No | |
+| | `UBER_DIRECT_WEBHOOK_SECRET` | No | |
+| **DoorDash** | `DOORDASH_DEVELOPER_ID` | No | Empty = stub mode |
+| | `DOORDASH_KEY_ID` | No | |
+| | `DOORDASH_SIGNING_KEY` | No | |
+| | `DOORDASH_WEBHOOK_SECRET` | No | |
+| **Misc** | `REVIEWER_SECRET` | No | App Store reviewer backdoor; empty = disabled |
+
+---
+
 ## 3. Deploy the backend API
 
 ```sh

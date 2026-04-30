@@ -246,25 +246,22 @@ private fun ProgressBar(status: OrderStatus) {
 }
 
 private fun phaseText(status: OrderStatus): String = when (status) {
-    OrderStatus.SCHEDULED -> "Scheduled for later"
     OrderStatus.PENDING -> "Waiting for the restaurant"
     OrderStatus.CONFIRMED -> "Restaurant accepted your order"
     OrderStatus.PREPARING -> "Your food is being prepared"
-    OrderStatus.READY_FOR_PICKUP -> "Waiting for a courier"
-    OrderStatus.OUT_FOR_DELIVERY -> "Your order is on the way"
+    OrderStatus.READY -> "Waiting for a courier"
+    OrderStatus.PICKED_UP -> "Your order is on the way"
     OrderStatus.DELIVERED -> "Delivered \u2014 enjoy!"
     OrderStatus.COMPLETED -> "Order complete"
-    OrderStatus.ACCEPTED -> "Restaurant accepted your order"
     OrderStatus.CANCELLED -> "Order was ${status.displayName.lowercase()}"
-    OrderStatus.REJECTED -> "Order was ${status.displayName.lowercase()}"
 }
 
 private fun phaseSubtext(status: OrderStatus): String = when (status) {
     OrderStatus.PENDING -> "We've sent your order to the restaurant."
     OrderStatus.CONFIRMED -> "They'll start cooking any moment."
     OrderStatus.PREPARING -> "Arriving soon."
-    OrderStatus.READY_FOR_PICKUP -> "A courier will claim your order shortly."
-    OrderStatus.OUT_FOR_DELIVERY -> "Your courier is heading to you."
+    OrderStatus.READY -> "A courier will claim your order shortly."
+    OrderStatus.PICKED_UP -> "Your courier is heading to you."
     else -> ""
 }
 
