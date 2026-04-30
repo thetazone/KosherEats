@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -34,6 +35,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -85,6 +87,7 @@ fun MenuItemFormScreen(
     var spiceLevel by remember { mutableStateOf("0") }
     var calories by remember { mutableStateOf("") }
     var categoryExpanded by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     // Load existing item data
     LaunchedEffect(itemId) {
@@ -108,12 +111,32 @@ fun MenuItemFormScreen(
             isMeat = item.isMeat
             spiceLevel = item.spiceLevel.toString()
             calories = item.calories?.toString() ?: ""
+        } ?: run {
+            name = ""
+            description = ""
+            price = ""
+            category = MenuCategory.MAINS
+            imageUrl = ""
+            prepTime = "15"
+            isPareve = false
+            isDairy = false
+            isMeat = false
+            spiceLevel = "0"
+            calories = ""
         }
     }
 
     LaunchedEffect(state.saveSuccess) {
         if (state.saveSuccess != null) {
+            viewModel.clearMessages()
             onSaved()
+        }
+    }
+
+    LaunchedEffect(state.deleteSuccess) {
+        if (state.deleteSuccess) {
+            viewModel.clearMessages()
+            onBack()
         }
     }
 
@@ -128,6 +151,28 @@ fun MenuItemFormScreen(
         focusedContainerColor = SurfaceDark,
         unfocusedContainerColor = SurfaceDark,
     )
+
+    if (showDeleteConfirm && itemId != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Item", color = TextWhite) },
+            text = { Text("Are you sure you want to delete this item? This cannot be undone.", color = TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    viewModel.deleteMenuItem(itemId)
+                }) {
+                    Text("Delete Item", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -149,10 +194,7 @@ fun MenuItemFormScreen(
             },
             actions = {
                 if (isEditing && itemId != null) {
-                    IconButton(onClick = {
-                        viewModel.deleteMenuItem(itemId)
-                        onBack()
-                    }) {
+                    IconButton(onClick = { showDeleteConfirm = true }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed)
                     }
                 }
@@ -170,7 +212,7 @@ fun MenuItemFormScreen(
             // Name
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
+                onValueChange = { if (it.length <= 100) name = it },
                 label = { Text("Item Name") },
                 singleLine = true,
                 colors = textFieldColors,
@@ -181,7 +223,7 @@ fun MenuItemFormScreen(
             // Description
             OutlinedTextField(
                 value = description,
-                onValueChange = { description = it },
+                onValueChange = { if (it.length <= 500) description = it },
                 label = { Text("Description") },
                 minLines = 2,
                 maxLines = 4,
@@ -197,7 +239,10 @@ fun MenuItemFormScreen(
             ) {
                 OutlinedTextField(
                     value = price,
-                    onValueChange = { price = it },
+                    onValueChange = { v ->
+                        val filtered = v.filter { c -> c.isDigit() || c == '.' }
+                        if (filtered.count { it == '.' } <= 1) price = filtered
+                    },
                     label = { Text("Price ($)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -333,6 +378,14 @@ fun MenuItemFormScreen(
             Button(
                 onClick = {
                     val dollars = price.toDoubleOrNull() ?: 0.0
+                    if (!isPareve && !isDairy && !isMeat) {
+                        viewModel.setError("Select a Kosher type (Meat, Dairy, or Pareve)")
+                        return@Button
+                    }
+                    if (dollars <= 0) {
+                        viewModel.setError("Price must be greater than \$0.00")
+                        return@Button
+                    }
                     val request = UpdateMenuItemRequest(
                         name = name.trim(),
                         description = description.trim(),
@@ -352,7 +405,7 @@ fun MenuItemFormScreen(
                         viewModel.createMenuItem(request)
                     }
                 },
-                enabled = name.isNotBlank() && price.toDoubleOrNull() != null && !state.isSaving,
+                enabled = name.isNotBlank() && (price.toDoubleOrNull() ?: 0.0) > 0 && !state.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),

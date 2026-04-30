@@ -4,6 +4,7 @@ import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -49,8 +50,10 @@ class RestaurantRepository @Inject constructor(
             } else {
                 emit(Resource.Error("Failed to load restaurants", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 
@@ -66,10 +69,12 @@ class RestaurantRepository @Inject constructor(
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No data returned"))
             } else {
-                emit(Resource.Error("Search failed"))
+                emit(Resource.Error("Search failed", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 
@@ -84,10 +89,12 @@ class RestaurantRepository @Inject constructor(
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No data returned"))
             } else {
-                emit(Resource.Error("Failed to load featured restaurants"))
+                emit(Resource.Error("Failed to load featured restaurants", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 
@@ -99,10 +106,12 @@ class RestaurantRepository @Inject constructor(
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("Restaurant not found"))
             } else {
-                emit(Resource.Error("Failed to load restaurant"))
+                emit(Resource.Error("Failed to load restaurant", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 
@@ -114,10 +123,12 @@ class RestaurantRepository @Inject constructor(
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No menu data"))
             } else {
-                emit(Resource.Error("Failed to load menu"))
+                emit(Resource.Error("Failed to load menu", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 
@@ -132,10 +143,12 @@ class RestaurantRepository @Inject constructor(
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No orders found"))
             } else {
-                emit(Resource.Error("Failed to load orders"))
+                emit(Resource.Error("Failed to load orders", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 
@@ -147,10 +160,12 @@ class RestaurantRepository @Inject constructor(
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("Order creation failed"))
             } else {
-                emit(Resource.Error("Failed to create order"))
+                emit(Resource.Error("Failed to create order", response.code()))
             }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
-            emit(Resource.Error(e.localizedMessage ?: "Network error"))
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
 }

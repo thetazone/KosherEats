@@ -7,17 +7,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.api.PrefsKeys
+import com.koshereats.consumer.data.api.TokenProvider
 import com.koshereats.consumer.data.models.LoginRequest
 import com.koshereats.consumer.data.models.RegisterRequest
 import com.koshereats.consumer.data.models.SocialLoginRequest
 import com.koshereats.consumer.data.models.User
+import com.koshereats.consumer.data.session.SessionManager
 import com.koshereats.consumer.push.PushBootstrap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -41,6 +42,8 @@ data class AuthUiState(
 class AuthViewModel @Inject constructor(
     private val apiService: ApiService,
     private val dataStore: DataStore<Preferences>,
+    private val sessionManager: SessionManager,
+    private val tokenProvider: TokenProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -52,22 +55,24 @@ class AuthViewModel @Inject constructor(
 
     private fun checkAuthStatus() {
         viewModelScope.launch {
-            val token = dataStore.data.map { it[PrefsKeys.AUTH_TOKEN] }.first()
+            val token = tokenProvider.awaitToken()
             if (token != null) {
                 try {
                     val response = apiService.getProfile()
-                    if (response.isSuccessful) {
-                        _uiState.update {
-                            it.copy(isLoggedIn = true, user = response.body())
+                    when {
+                        response.isSuccessful -> {
+                            _uiState.update { it.copy(isLoggedIn = true, user = response.body()) }
+                            // Resumed session — refresh the FCM token on the
+                            // backend in case it rotated since last launch.
+                            PushBootstrap.registerCurrentToken(apiService)
                         }
-                        // Resumed session — refresh the FCM token on the
-                        // backend in case it rotated since last launch.
-                        PushBootstrap.registerCurrentToken(apiService)
-                    } else {
-                        clearAuth()
+                        response.code() == 401 -> clearAuth()
+                        // 5xx or other transient error: keep session alive.
+                        else -> _uiState.update { it.copy(isLoggedIn = true) }
                     }
                 } catch (e: Exception) {
-                    clearAuth()
+                    // Network/IO error: transient, keep session alive.
+                    _uiState.update { it.copy(isLoggedIn = true) }
                 }
             }
         }
@@ -96,7 +101,10 @@ class AuthViewModel @Inject constructor(
                     LoginRequest(email = state.loginEmail, password = state.loginPassword)
                 )
                 if (response.isSuccessful) {
-                    val authData = response.body()!!
+                    val authData = response.body() ?: run {
+                        _uiState.update { it.copy(isLoading = false, error = "Unexpected server response") }
+                        return@launch
+                    }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
@@ -150,7 +158,10 @@ class AuthViewModel @Inject constructor(
                     )
                 )
                 if (response.isSuccessful) {
-                    val authData = response.body()!!
+                    val authData = response.body() ?: run {
+                        _uiState.update { it.copy(isLoading = false, error = "Unexpected server response") }
+                        return@launch
+                    }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
@@ -189,7 +200,10 @@ class AuthViewModel @Inject constructor(
                     )
                 )
                 if (response.isSuccessful) {
-                    val authData = response.body()!!
+                    val authData = response.body() ?: run {
+                        _uiState.update { it.copy(isLoading = false, error = "Unexpected server response") }
+                        return@launch
+                    }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
@@ -228,7 +242,9 @@ class AuthViewModel @Inject constructor(
             try {
                 apiService.logout()
             } catch (_: Exception) {}
+            PushBootstrap.deleteToken()
             clearAuth()
+            sessionManager.signalLogout()
             _uiState.update { AuthUiState() }
         }
     }

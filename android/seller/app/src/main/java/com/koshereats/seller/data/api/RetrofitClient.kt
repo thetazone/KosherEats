@@ -13,9 +13,10 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -35,6 +36,9 @@ object PrefsKeys {
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    @Volatile private var cachedToken: String? = null
+    @Volatile private var cachedRestaurantId: String? = null
+
     @Provides
     @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder()
@@ -46,13 +50,20 @@ object NetworkModule {
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
     ): OkHttpClient {
-        val authInterceptor = Interceptor { chain ->
-            val token = runBlocking {
-                context.dataStore.data.map { prefs ->
-                    prefs[PrefsKeys.AUTH_TOKEN]
-                }.first()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        scope.launch {
+            context.dataStore.data.collect { prefs ->
+                cachedToken = prefs[PrefsKeys.AUTH_TOKEN]
             }
+        }
+        scope.launch {
+            context.dataStore.data.collect { prefs ->
+                cachedRestaurantId = prefs[PrefsKeys.RESTAURANT_ID]
+            }
+        }
 
+        val authInterceptor = Interceptor { chain ->
+            val token = cachedToken
             val request = chain.request().newBuilder().apply {
                 token?.let {
                     addHeader("Authorization", "Bearer $it")
@@ -77,9 +88,7 @@ object NetworkModule {
                 // Skip the picker's own list endpoint and anything outside /seller/.
                 return@Interceptor chain.proceed(req)
             }
-            val restaurantId = runBlocking {
-                context.dataStore.data.map { it[PrefsKeys.RESTAURANT_ID] }.first()
-            }
+            val restaurantId = cachedRestaurantId
             if (restaurantId.isNullOrBlank()) {
                 return@Interceptor chain.proceed(req)
             }

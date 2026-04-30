@@ -44,9 +44,10 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,23 +75,22 @@ fun HomeScreen(
     startWithSearch: Boolean = false,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val cartState by cartViewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cartState by cartViewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
     var showFilterSheet by remember { mutableStateOf(false) }
 
-    // Load more when reaching the end
-    val shouldLoadMore by remember {
-        derivedStateOf {
+    // Load more when reaching the end — single long-lived effect avoids duplicate
+    // loadMore() calls that the boolean-key pattern caused on rapid scroll reversals.
+    LaunchedEffect(listState) {
+        snapshotFlow {
             val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val totalItems = listState.layoutInfo.totalItemsCount
             lastVisibleItem >= totalItems - 3 && !uiState.isLoading && uiState.hasMore
+        }.distinctUntilChanged().collect { shouldLoad ->
+            if (shouldLoad) viewModel.loadMore()
         }
-    }
-
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore) viewModel.loadMore()
     }
 
     LaunchedEffect(startWithSearch) {

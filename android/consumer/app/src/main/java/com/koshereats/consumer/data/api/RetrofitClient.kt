@@ -11,16 +11,26 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import javax.inject.Qualifier
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 import javax.inject.Singleton
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ApplicationScope
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "koshereats_prefs")
 
@@ -30,9 +40,38 @@ object PrefsKeys {
     val USER_ID = stringPreferencesKey("user_id")
 }
 
+@Singleton
+class TokenProvider @Inject constructor(
+    dataStore: DataStore<Preferences>,
+    @ApplicationScope appScope: CoroutineScope
+) {
+    @Volatile var token: String? = null
+        private set
+
+    private val _initialized = CompletableDeferred<Unit>()
+
+    init {
+        appScope.launch {
+            token = dataStore.data.first()[PrefsKeys.AUTH_TOKEN]
+            _initialized.complete(Unit)
+            dataStore.data.collect { prefs -> token = prefs[PrefsKeys.AUTH_TOKEN] }
+        }
+    }
+
+    suspend fun awaitToken(): String? {
+        _initialized.await()
+        return token
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    @Provides
+    @Singleton
+    @ApplicationScope
+    fun provideApplicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Provides
     @Singleton
@@ -42,22 +81,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideAuthInterceptor(dataStore: DataStore<Preferences>): Interceptor {
+    fun provideAuthInterceptor(tokenProvider: TokenProvider): Interceptor {
         return Interceptor { chain ->
-            val token = runBlocking {
-                dataStore.data.map { prefs ->
-                    prefs[PrefsKeys.AUTH_TOKEN]
-                }.first()
-            }
-
             val request = chain.request().newBuilder().apply {
                 addHeader("Content-Type", "application/json")
                 addHeader("Accept", "application/json")
-                if (token != null) {
-                    addHeader("Authorization", "Bearer $token")
-                }
+                tokenProvider.token?.let { addHeader("Authorization", "Bearer $it") }
             }.build()
-
             chain.proceed(request)
         }
     }

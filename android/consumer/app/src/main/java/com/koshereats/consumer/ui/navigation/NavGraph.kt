@@ -10,7 +10,9 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -170,10 +172,13 @@ fun KosherEatsNavHost() {
             }
 
             composable(Screen.Checkout.route) {
-                val cartState by cartViewModel.uiState.collectAsState()
+                val cartState by cartViewModel.uiState.collectAsStateWithLifecycle()
+                // Snapshot at entry so live CartViewModel updates can't re-trigger bootstrap mid-payment.
+                val snapshotItems = remember { cartState.cart.items }
+                val snapshotRestaurantId = remember { cartState.cart.restaurantId }
                 CheckoutScreen(
-                    localCart = cartState.cart.items,
-                    restaurantId = cartState.cart.restaurantId,
+                    localCart = snapshotItems,
+                    restaurantId = snapshotRestaurantId,
                     onBack = { navController.popBackStack() },
                     onOrderPlaced = { order ->
                         cartViewModel.clearCart()
@@ -188,7 +193,11 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderConfirmation.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+                val orderId = backStackEntry.arguments?.getString("orderId")
+                if (orderId.isNullOrEmpty()) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
                 OrderConfirmationScreen(
                     orderId = orderId,
                     onDone = {
@@ -208,7 +217,11 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderTracking.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+                val orderId = backStackEntry.arguments?.getString("orderId")
+                if (orderId.isNullOrEmpty()) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
                 OrderTrackingScreen(
                     orderId = orderId,
                     onBack = { navController.popBackStack() },
@@ -264,7 +277,15 @@ fun KosherEatsNavHost() {
 
             composable(Screen.Profile.route) {
                 ProfileScreen(
-                    onLoginClick = { navController.navigate(Screen.Login.route) },
+                    onLoginClick = {
+                        // Clear saved back stacks for all bottom-nav tabs so a
+                        // previous user's order/chat routes can't be restored
+                        // when a new user taps back into those tabs.
+                        BottomNavItem.entries.forEach { navController.clearBackStack(it.route) }
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
                 )
             }
         }

@@ -67,4 +67,19 @@ object PushBootstrap {
             }
         }
     }
+
+    /**
+     * Delete the FCM registration token on logout so a new user on this
+     * device won't receive the previous user's push notifications. Firebase
+     * will issue a fresh token on the next getToken() call (i.e. after login).
+     */
+    suspend fun deleteToken() {
+        if (!initialized) return
+        try {
+            FirebaseMessaging.getInstance().deleteToken().await()
+            Log.i(TAG, "FCM token deleted")
+        } catch (t: Throwable) {
+            Log.w(TAG, "FCM token deletion failed: ${t.message}")
+        }
+    }
 }

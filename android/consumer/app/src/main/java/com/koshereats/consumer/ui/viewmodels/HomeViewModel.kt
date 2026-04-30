@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -40,6 +42,9 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
+    private var searchJob: Job? = null
+    private var currentJob: Job? = null
+
     init {
         loadFeaturedRestaurants()
         loadRestaurants()
@@ -62,7 +67,8 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadRestaurants(page: Int = 1) {
-        viewModelScope.launch {
+        currentJob?.cancel()
+        currentJob = viewModelScope.launch {
             repository.getRestaurants(
                 page = page,
                 cuisine = _uiState.value.selectedCuisine?.name?.lowercase(),
@@ -107,18 +113,20 @@ class HomeViewModel @Inject constructor(
     fun loadMore() {
         val state = _uiState.value
         if (!state.isLoading && state.hasMore) {
+            _uiState.update { it.copy(isLoading = true) }
             loadRestaurants(state.currentPage + 1)
         }
     }
 
     fun search(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+        searchJob?.cancel()
         if (query.length < 2) {
             _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
             return
         }
-
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
+            delay(300)
             repository.searchRestaurants(query).collect { result ->
                 when (result) {
                     is Resource.Loading -> {
@@ -165,6 +173,12 @@ class HomeViewModel @Inject constructor(
             )
         }
         loadRestaurants(page = 1)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        currentJob?.cancel()
+        searchJob?.cancel()
     }
 
     fun clearError() {

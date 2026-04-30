@@ -194,7 +194,6 @@ fun RestaurantDetailScreen(
                         // Kosher info
                         KosherInfoRow(
                             certification = restaurant.kosherCertification,
-                            dietaryType = restaurant.dietaryType,
                             isGlatt = restaurant.isGlattKosher,
                             isCholovYisroel = restaurant.isCholovYisroel,
                             isPasYisroel = restaurant.isPasYisroel,

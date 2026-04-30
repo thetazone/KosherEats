@@ -17,6 +17,13 @@
     <string name="auth_password">Password</string>
     <string name="auth_login_title">Welcome back</string>
     <string name="auth_signup_title">Create account</string>
+    <string name="auth_sign_in_subtitle">Sign in to continue</string>
+    <string name="auth_continue_google">Continue with Google</string>
+    <string name="auth_continue_apple">Continue with Apple</string>
+    <string name="auth_or_divider">or</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_no_account">Don\'t have an account? </string>
+    <string name="auth_sign_up">Sign Up</string>
 
     <!-- Home -->
     <string name="home_title">KosherEats</string>
@@ -33,7 +40,10 @@
 
     <!-- Cart + checkout -->
     <string name="cart_title">Cart</string>
+    <string name="cart_screen_title">Your Cart</string>
     <string name="cart_empty_title">Your cart is empty</string>
+    <string name="cart_empty_subtitle">Browse restaurants and add items to get started</string>
+    <string name="cart_browse_restaurants">Browse Restaurants</string>
     <string name="cart_checkout">Checkout</string>
     <string name="checkout_delivery_time">Delivery time</string>
     <string name="checkout_asap">ASAP</string>
@@ -51,6 +61,8 @@
     <string name="order_status_on_the_way">Your order is on the way</string>
     <string name="order_status_delivered">Delivered — enjoy!</string>
     <string name="order_tracking_title">Tracking</string>
+    <string name="tracking_load_error">Couldn\'t load order.</string>
+    <string name="action_retry">Retry</string>
 
     <!-- Common -->
     <string name="common_cancel">Cancel</string>

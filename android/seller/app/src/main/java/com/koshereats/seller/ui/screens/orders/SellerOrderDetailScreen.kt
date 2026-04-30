@@ -35,12 +35,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -70,9 +72,17 @@ fun SellerOrderDetailScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val order = state.selectedOrder
+    val context = LocalContext.current
 
     LaunchedEffect(orderId) {
         viewModel.loadOrderDetail(orderId)
+    }
+
+    LaunchedEffect(state.error) {
+        if (state.error != null) {
+            Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
     }
 
     Column(
@@ -226,6 +236,10 @@ fun SellerOrderDetailScreen(
                         PriceRow("Delivery Fee", order.deliveryFee)
                         Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Tax", order.tax)
+                        if (order.courierTip > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            PriceRow("Courier Tip", order.courierTip)
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -252,7 +266,7 @@ fun SellerOrderDetailScreen(
             item {
                 OrderActionButtons(
                     status = order.status,
-                    isUpdating = state.isUpdating,
+                    isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED)
                     },
@@ -357,6 +371,18 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                OutlinedButton(
+                    onClick = onCancel,
+                    enabled = !isUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                    border = ButtonDefaults.outlinedButtonBorder,
+                ) {
+                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -389,6 +415,23 @@ private fun OrderActionButtons(
                         Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Complete Order", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            OrderStatus.PICKED_UP -> {
+                Button(
+                    onClick = onComplete,
+                    enabled = !isUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                ) {
+                    if (isUpdating) {
+                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                    } else {
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Mark as Completed", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

@@ -92,8 +92,12 @@ class OnboardingViewModel @Inject constructor(
             return when (s.vehicleType) {
                 VehicleType.WALK -> true
                 VehicleType.BIKE, VehicleType.SCOOTER -> true // color is optional, no plate needed
-                VehicleType.CAR, VehicleType.MOTORCYCLE ->
-                    s.vehicleMake.isNotBlank() && s.vehicleModel.isNotBlank() && s.licensePlate.isNotBlank()
+                VehicleType.CAR, VehicleType.MOTORCYCLE -> {
+                    val year = s.vehicleYear.toIntOrNull()
+                    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                    s.vehicleMake.isNotBlank() && s.vehicleModel.isNotBlank() && s.licensePlate.isNotBlank() &&
+                        year != null && year in 1950..(currentYear + 1)
+                }
             }
         }
 

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,11 +33,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.koshereats.courier.R
 import com.koshereats.courier.data.models.AvailableDelivery
+import com.koshereats.courier.data.models.formatPrice
 import com.koshereats.courier.ui.screens.delivery.DeliveryMapScreen
 import com.koshereats.courier.ui.theme.BackgroundBlack
 import com.koshereats.courier.ui.theme.Orange
@@ -54,7 +58,10 @@ fun DashboardScreen(
 ) {
     val state by vm.state.collectAsState()
 
-    LaunchedEffect(Unit) { vm.refresh() }
+    LaunchedEffect(Unit) {
+        vm.resumeIfActive()
+        vm.refresh()
+    }
 
     val activeOrder = state.active.firstOrNull()
     if (activeOrder != null) {
@@ -76,6 +83,7 @@ fun DashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        if (state.connectionLost) ConnectionLostBanner()
         OnlineToggleCard(state.isOnline, onToggle = { vm.toggleOnline() })
 
         if (state.isOnline) {
@@ -121,7 +129,7 @@ private fun OnlineToggleCard(isOnline: Boolean, onToggle: () -> Unit) {
 private fun AvailableSection(list: List<AvailableDelivery>, isLoading: Boolean, onAccept: (AvailableDelivery) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Available nearby", color = TextWhite, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.dashboard_available_nearby), color = TextWhite, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (isLoading) CircularProgressIndicator(color = Orange, modifier = Modifier.size(18.dp))
         }
         if (list.isEmpty()) {
@@ -129,8 +137,8 @@ private fun AvailableSection(list: List<AvailableDelivery>, isLoading: Boolean, 
                 modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("No deliveries right now", color = TextSecondary)
-                Text("You'll be notified when a new order is ready.", color = TextMuted, fontSize = 12.sp)
+                Text(stringResource(R.string.dashboard_no_deliveries), color = TextSecondary)
+                Text(stringResource(R.string.dashboard_no_deliveries_subtitle), color = TextMuted, fontSize = 12.sp)
             }
         } else {
             list.forEach { d ->
@@ -149,7 +157,7 @@ private fun AvailableDeliveryCard(d: AvailableDelivery, onAccept: () -> Unit) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("$${"%.2f".format(d.deliveryFee / 100.0)}", color = Orange, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(d.deliveryFee.formatPrice(), color = Orange, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Restaurant, contentDescription = null, tint = Orange, modifier = Modifier.size(16.dp))
             Spacer(Modifier.size(6.dp))
@@ -165,7 +173,25 @@ private fun AvailableDeliveryCard(d: AvailableDelivery, onAccept: () -> Unit) {
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Orange),
-        ) { Text("Accept", color = Color.White, fontWeight = FontWeight.SemiBold) }
+        ) { Text(stringResource(R.string.dashboard_accept), color = Color.White, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+@Composable
+private fun ConnectionLostBanner() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFB71C1C), shape = RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Filled.WifiOff, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+        Column {
+            Text(stringResource(R.string.dashboard_connection_lost), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(stringResource(R.string.dashboard_connection_lost_subtitle), color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
+        }
     }
 }
 
@@ -183,8 +209,8 @@ private fun OfflineHero() {
                 modifier = Modifier.size(56.dp),
             )
             Spacer(Modifier.height(8.dp))
-            Text("You're offline", color = TextWhite, fontWeight = FontWeight.SemiBold)
-            Text("Tap the toggle above to start receiving deliveries.", color = TextSecondary, fontSize = 12.sp)
+            Text(stringResource(R.string.dashboard_offline), color = TextWhite, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.dashboard_offline_subtitle), color = TextSecondary, fontSize = 12.sp)
         }
     }
 }

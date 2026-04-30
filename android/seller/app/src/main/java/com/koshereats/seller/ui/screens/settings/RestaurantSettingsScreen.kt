@@ -118,7 +118,7 @@ fun RestaurantSettingsScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(16.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = restaurant?.name ?: "Your Restaurant",
                             style = MaterialTheme.typography.titleLarge,
@@ -142,6 +142,15 @@ fun RestaurantSettingsScreen(
                             )
                         }
                     }
+                    Switch(
+                        checked = restaurant?.isOpen == true,
+                        onCheckedChange = { authViewModel.toggleOpen(it) },
+                        enabled = !authState.isTogglingOpen,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = SuccessGreen,
+                            checkedTrackColor = SuccessGreen.copy(alpha = 0.3f),
+                        ),
+                    )
                 }
 
                 if (restaurant != null) {

@@ -12,6 +12,17 @@
     <string name="auth_password">Password</string>
     <string name="auth_login_title">Welcome back</string>
     <string name="auth_signup_title">Create account</string>
+    <string name="auth_log_in">Log in</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_available_nearby">Available nearby</string>
+    <string name="dashboard_no_deliveries">No deliveries right now</string>
+    <string name="dashboard_no_deliveries_subtitle">You\'ll be notified when a new order is ready.</string>
+    <string name="dashboard_connection_lost">Connection lost</string>
+    <string name="dashboard_connection_lost_subtitle">Retrying… orders may be out of date.</string>
+    <string name="dashboard_offline">You\'re offline</string>
+    <string name="dashboard_offline_subtitle">Tap the toggle above to start receiving deliveries.</string>
+    <string name="dashboard_accept">Accept</string>
 
     <!-- Chat -->
     <string name="chat_title">Chat</string>

@@ -25,12 +25,32 @@ enum class DietaryType(val displayName: String) {
 enum class OrderStatus(val displayName: String) {
     @SerializedName("scheduled") SCHEDULED("Scheduled"),
     @SerializedName("pending") PENDING("Pending"),
+    @SerializedName("accepted") ACCEPTED("Accepted"),
     @SerializedName("confirmed") CONFIRMED("Confirmed"),
     @SerializedName("preparing") PREPARING("Preparing"),
     @SerializedName("ready_for_pickup") READY_FOR_PICKUP("Ready for Pickup"),
     @SerializedName("out_for_delivery") OUT_FOR_DELIVERY("Out for Delivery"),
     @SerializedName("delivered") DELIVERED("Delivered"),
+    @SerializedName("completed") COMPLETED("Completed"),
     @SerializedName("cancelled") CANCELLED("Cancelled"),
+    @SerializedName("rejected") REJECTED("Rejected");
+
+    val stepIndex: Int
+        get() = when (this) {
+            SCHEDULED -> 0
+            PENDING -> 1
+            ACCEPTED, CONFIRMED -> 2
+            PREPARING -> 3
+            READY_FOR_PICKUP, OUT_FOR_DELIVERY, DELIVERED -> 4
+            COMPLETED -> 5
+            CANCELLED, REJECTED -> -1
+        }
+
+    val isActive: Boolean
+        get() = when (this) {
+            DELIVERED, CANCELLED, COMPLETED, REJECTED -> false
+            else -> true
+        }
 }
 
 enum class CuisineType(val displayName: String) {
@@ -74,7 +94,10 @@ data class Address(
     val latitude: Double = 0.0,
     val longitude: Double = 0.0,
     @SerializedName("delivery_instructions") val deliveryInstructions: String? = null,
+    @SerializedName("is_default") val isDefault: Boolean = false,
 )
+
+val Address.formatted: String get() = "$streetAddress, $city, $state $zipCode"
 
 // ── Auth ──────────────────────────────────────────────────
 
@@ -245,6 +268,14 @@ data class Order(
     @SerializedName("estimated_delivery_time") val estimatedDeliveryTime: String? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
+    val courier: CourierPublic? = null,
+    @SerializedName("restaurant_lat") val restaurantLat: Double? = null,
+    @SerializedName("restaurant_lng") val restaurantLng: Double? = null,
+    @SerializedName("courier_tip") val courierTip: Int = 0,
+    @SerializedName("delivery_proof_url") val deliveryProofUrl: String? = null,
+    @SerializedName("claimed_at") val claimedAt: String? = null,
+    @SerializedName("picked_up_at") val pickedUpAt: String? = null,
+    @SerializedName("delivered_at") val deliveredAt: String? = null,
 )
 
 data class OrderItem(
@@ -256,7 +287,7 @@ data class OrderItem(
 )
 
 data class CreateOrderRequest(
-    @SerializedName("restaurant_id") val restaurantId: String,
+    @SerializedName("restaurant_id") val restaurantId: String = "",
     @SerializedName("delivery_address") val deliveryAddress: String,
     @SerializedName("delivery_lat") val deliveryLat: Double,
     @SerializedName("delivery_lng") val deliveryLng: Double,
@@ -269,6 +300,57 @@ data class CreateOrderRequest(
      * the delivery window approaches.
      */
     @SerializedName("scheduled_for") val scheduledFor: String? = null,
+)
+
+// ── Cart (server-backed) ──────────────────────────────────
+
+data class AddToCartRequest(
+    @SerializedName("menu_item_id") val menuItemId: String,
+    @SerializedName("restaurant_id") val restaurantId: String,
+    val quantity: Int,
+    val notes: String = "",
+    @SerializedName("modifier_ids") val modifierIds: List<String> = emptyList(),
+)
+
+data class ServerCart(
+    @SerializedName("restaurant_id") val restaurantId: String = "",
+    val items: List<CartItem> = emptyList(),
+    val subtotal: Int = 0,
+)
+
+// ── Payments ──────────────────────────────────────────────
+
+data class PaymentSheetRequest(val tip: Int = 0)
+
+data class PaymentSheetBundle(
+    @SerializedName("publishable_key") val publishableKey: String = "",
+    @SerializedName("customer_id") val customerId: String = "",
+    @SerializedName("ephemeral_key_secret") val ephemeralKeySecret: String = "",
+    @SerializedName("payment_intent_secret") val paymentIntentSecret: String = "",
+    val subtotal: Int = 0,
+    @SerializedName("delivery_fee") val deliveryFee: Int = 0,
+    @SerializedName("service_fee") val serviceFee: Int = 0,
+    val tax: Int = 0,
+    val tip: Int = 0,
+    val total: Int = 0,
+    @SerializedName("is_stub") val isStub: Boolean = false,
+)
+
+// ── Courier ───────────────────────────────────────────────
+
+data class CourierPublic(
+    val id: String = "",
+    @SerializedName("first_name") val firstName: String = "",
+    val rating: Double = 0.0,
+    @SerializedName("vehicle_summary") val vehicleSummary: String = "",
+    val phone: String? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+)
+
+data class CourierLocationEvent(
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
 )
 
 // ── API Responses ─────────────────────────────────────────

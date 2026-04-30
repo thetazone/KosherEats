@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,9 +43,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.koshereats.seller.R
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -65,9 +68,8 @@ fun SellerLoginScreen(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    if (state.isLoggedIn) {
-        onLoginSuccess()
-        return
+    LaunchedEffect(state.isLoggedIn) {
+        if (state.isLoggedIn) onLoginSuccess()
     }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -107,14 +109,14 @@ fun SellerLoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "KosherEats",
+                text = stringResource(R.string.auth_brand_name),
                 style = MaterialTheme.typography.headlineLarge,
                 color = TextWhite,
                 fontWeight = FontWeight.Bold,
             )
 
             Text(
-                text = "Seller Dashboard",
+                text = stringResource(R.string.auth_seller_dashboard),
                 style = MaterialTheme.typography.titleMedium,
                 color = Orange,
             )
@@ -139,7 +141,7 @@ fun SellerLoginScreen(
                 ),
             ) {
                 Text(
-                    text = "Continue with Google",
+                    text = stringResource(R.string.auth_continue_google),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -163,7 +165,7 @@ fun SellerLoginScreen(
                 ),
             ) {
                 Text(
-                    text = "Continue with Apple",
+                    text = stringResource(R.string.auth_continue_apple),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -181,7 +183,7 @@ fun SellerLoginScreen(
                     color = DividerColor,
                 )
                 Text(
-                    text = "or",
+                    text = stringResource(R.string.auth_or_divider),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -198,8 +200,8 @@ fun SellerLoginScreen(
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
-                label = { Text("Email") },
-                placeholder = { Text("restaurant@example.com", color = TextMuted) },
+                label = { Text(stringResource(R.string.auth_email)) },
+                placeholder = { Text(stringResource(R.string.auth_email_placeholder), color = TextMuted) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 colors = textFieldColors,
@@ -213,7 +215,7 @@ fun SellerLoginScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text("Password") },
+                label = { Text(stringResource(R.string.auth_password)) },
                 singleLine = true,
                 visualTransformation = if (passwordVisible) VisualTransformation.None
                     else PasswordVisualTransformation(),
@@ -223,7 +225,7 @@ fun SellerLoginScreen(
                         Icon(
                             imageVector = if (passwordVisible) Icons.Filled.Visibility
                                 else Icons.Filled.VisibilityOff,
-                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                            contentDescription = stringResource(if (passwordVisible) R.string.auth_password_hide else R.string.auth_password_show),
                             tint = TextMuted,
                         )
                     }
@@ -270,7 +272,7 @@ fun SellerLoginScreen(
                     )
                 } else {
                     Text(
-                        text = "Sign In",
+                        text = stringResource(R.string.auth_sign_in),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -280,7 +282,7 @@ fun SellerLoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Contact support if you need access",
+                text = stringResource(R.string.auth_contact_support),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )

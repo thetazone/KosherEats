@@ -199,11 +199,24 @@ private fun VehicleStep(vm: OnboardingViewModel, onDone: () -> Unit) {
         }
     }
 
+    val currentYear = remember { java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) }
+
     when (state.vehicleType) {
         VehicleType.CAR, VehicleType.MOTORCYCLE -> {
             OutlinedTextField(state.vehicleMake, vm::setVehicleMake, label = { Text("Make") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             OutlinedTextField(state.vehicleModel, vm::setVehicleModel, label = { Text("Model") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(state.vehicleYear, vm::setVehicleYear, label = { Text("Year") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+            OutlinedTextField(
+                value = state.vehicleYear,
+                onValueChange = { v -> if (v.length <= 4 && v.all { c -> c.isDigit() }) vm.setVehicleYear(v) },
+                label = { Text("Year") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+            val yearInt = state.vehicleYear.toIntOrNull()
+            if (state.vehicleYear.length == 4 && (yearInt == null || yearInt !in 1950..(currentYear + 1))) {
+                Text("Year must be between 1950 and ${currentYear + 1}", color = ErrorRed, fontSize = 12.sp)
+            }
             OutlinedTextField(state.vehicleColor, vm::setVehicleColor, label = { Text("Color") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             OutlinedTextField(state.licensePlate, vm::setLicensePlate, label = { Text("License plate") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         }

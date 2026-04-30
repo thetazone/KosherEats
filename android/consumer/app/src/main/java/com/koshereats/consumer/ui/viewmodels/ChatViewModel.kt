@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.ChatMessage
 import com.koshereats.consumer.data.models.SendChatMessageRequest
+import com.koshereats.consumer.data.session.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,6 +23,7 @@ data class ChatUiState(
     val input: String = "",
     val isSending: Boolean = false,
     val error: String? = null,
+    val scrollToBottom: Boolean = false,
 )
 
 /**
@@ -34,6 +37,7 @@ data class ChatUiState(
 class ChatViewModel @Inject constructor(
     private val apiService: ApiService,
     savedStateHandle: SavedStateHandle,
+    sessionManager: SessionManager,
 ) : ViewModel() {
 
     // Route param extracted from the nav graph.
@@ -45,6 +49,12 @@ class ChatViewModel @Inject constructor(
     private var pollJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            sessionManager.logoutEvent.collect {
+                pollJob?.cancel()
+                _state.value = ChatUiState()
+            }
+        }
         fetch()
         startPolling()
     }
@@ -66,6 +76,7 @@ class ChatViewModel @Inject constructor(
                             input = "",
                             isSending = false,
                             error = null,
+                            scrollToBottom = true,
                         )
                     }
                 } else {
@@ -82,10 +93,19 @@ class ChatViewModel @Inject constructor(
             try {
                 val response = apiService.listChatMessages(orderId)
                 if (response.isSuccessful) {
-                    // Don't blow away the list on transient failures; only
-                    // overwrite on a successful response.
-                    _state.update { it.copy(messages = response.body().orEmpty(), error = null) }
+                    val serverMessages = response.body().orEmpty()
+                    _state.update { current ->
+                        // Merge by ID so optimistically-added messages survive until the
+                        // server echoes them back. Server copy wins for any shared ID.
+                        val merged = (current.messages.associateBy { it.id } + serverMessages.associateBy { it.id })
+                            .values
+                            .sortedBy { it.createdAt }
+                        current.copy(messages = merged, error = null, scrollToBottom = false)
+                    }
                 } else {
+                    if (response.code() in listOf(401, 403, 404)) {
+                        pollJob?.cancel()
+                    }
                     _state.update { it.copy(error = "Couldn't refresh chat") }
                 }
             } catch (e: Exception) {
@@ -97,7 +117,7 @@ class ChatViewModel @Inject constructor(
     private fun startPolling() {
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
-            while (true) {
+            while (isActive) {
                 delay(3_000)
                 fetch()
             }

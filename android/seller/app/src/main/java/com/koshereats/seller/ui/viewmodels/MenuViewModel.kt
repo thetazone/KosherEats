@@ -21,6 +21,8 @@ data class MenuState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val saveSuccess: String? = null,
+    val deleteSuccess: Boolean = false,
+    val pendingItemIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -179,7 +181,12 @@ class MenuViewModel @Inject constructor(
                     _state.value = _state.value.copy(
                         items = _state.value.items.filter { it.id != itemId },
                         isLoading = false,
-                        saveSuccess = "Menu item deleted",
+                        deleteSuccess = true,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = "Failed to delete item",
                     )
                 }
             } catch (e: Exception) {
@@ -192,20 +199,47 @@ class MenuViewModel @Inject constructor(
     }
 
     fun toggleAvailability(item: MenuItem) {
+        if (_state.value.pendingItemIds.contains(item.id)) return
+        val newAvailability = !item.isAvailable
+        _state.value = _state.value.copy(
+            items = _state.value.items.map {
+                if (it.id == item.id) it.copy(isAvailable = newAvailability) else it
+            },
+            pendingItemIds = _state.value.pendingItemIds + item.id,
+        )
         viewModelScope.launch {
             try {
                 val response = apiService.toggleMenuItemAvailability(
                     item.id,
-                    mapOf("is_available" to !item.isAvailable),
+                    mapOf("is_available" to newAvailability),
                 )
                 if (response.isSuccessful) {
+                    val updatedItem = response.body()
+                    _state.value = _state.value.copy(
+                        items = if (updatedItem != null) _state.value.items.map {
+                            if (it.id == item.id) updatedItem else it
+                        } else _state.value.items,
+                        pendingItemIds = _state.value.pendingItemIds - item.id,
+                    )
+                } else {
                     _state.value = _state.value.copy(
                         items = _state.value.items.map {
-                            if (it.id == item.id) it.copy(isAvailable = !it.isAvailable) else it
+                            if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
                         },
+                        pendingItemIds = _state.value.pendingItemIds - item.id,
+                        error = "Failed to update availability",
                     )
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    items = _state.value.items.map {
+                        if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
+                    },
+                    pendingItemIds = _state.value.pendingItemIds - item.id,
+                    error = if (e is kotlinx.coroutines.CancellationException) null else "Failed to update availability",
+                )
+                if (e is kotlinx.coroutines.CancellationException) throw e
+            }
         }
     }
 
@@ -213,7 +247,11 @@ class MenuViewModel @Inject constructor(
         _state.value = _state.value.copy(selectedItem = item)
     }
 
+    fun setError(message: String?) {
+        _state.value = _state.value.copy(error = message)
+    }
+
     fun clearMessages() {
-        _state.value = _state.value.copy(error = null, saveSuccess = null)
+        _state.value = _state.value.copy(error = null, saveSuccess = null, deleteSuccess = false)
     }
 }

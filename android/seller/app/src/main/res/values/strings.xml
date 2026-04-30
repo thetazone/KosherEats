@@ -11,6 +11,16 @@
     <string name="auth_email">Email</string>
     <string name="auth_password">Password</string>
     <string name="auth_login_title">Welcome back</string>
+    <string name="auth_brand_name">KosherEats</string>
+    <string name="auth_seller_dashboard">Seller Dashboard</string>
+    <string name="auth_continue_google">Continue with Google</string>
+    <string name="auth_continue_apple">Continue with Apple</string>
+    <string name="auth_or_divider">or</string>
+    <string name="auth_email_placeholder">restaurant@example.com</string>
+    <string name="auth_password_show">Show password</string>
+    <string name="auth_password_hide">Hide password</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_contact_support">Contact support if you need access</string>
 
     <!-- Chat -->
     <string name="chat_title">Chat</string>

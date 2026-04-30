@@ -29,17 +29,21 @@ class RestaurantViewModel @Inject constructor(
     private val repository: RestaurantRepository,
 ) : ViewModel() {
 
-    private val restaurantId: String = checkNotNull(savedStateHandle["restaurantId"])
+    private val restaurantId: String? = savedStateHandle["restaurantId"]
 
     private val _uiState = MutableStateFlow(RestaurantUiState())
     val uiState: StateFlow<RestaurantUiState> = _uiState.asStateFlow()
 
     init {
-        loadRestaurant()
-        loadMenu()
+        if (restaurantId.isNullOrEmpty()) {
+            _uiState.update { it.copy(error = "Invalid restaurant.", isLoading = false) }
+        } else {
+            loadRestaurant(restaurantId)
+            loadMenu(restaurantId)
+        }
     }
 
-    private fun loadRestaurant() {
+    private fun loadRestaurant(restaurantId: String) {
         viewModelScope.launch {
             repository.getRestaurant(restaurantId).collect { result ->
                 when (result) {
@@ -57,7 +61,7 @@ class RestaurantViewModel @Inject constructor(
         }
     }
 
-    private fun loadMenu() {
+    private fun loadMenu(restaurantId: String) {
         viewModelScope.launch {
             repository.getRestaurantMenu(restaurantId).collect { result ->
                 when (result) {

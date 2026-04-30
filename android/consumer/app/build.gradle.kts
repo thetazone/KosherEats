@@ -19,13 +19,22 @@ fun lp(key: String): String = localProps.getProperty(key, "")
 
 android {
     namespace = "com.koshereats.consumer"
-    compileSdk = 34
+    compileSdk = 35
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("release-upload.jks")
+            storePassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+            keyAlias = "upload"
+            keyPassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.koshereats.consumer"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 1
+        targetSdk = 35
+        versionCode = 2
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -53,6 +62,7 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
         }
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -110,6 +120,7 @@ dependencies {
     // Lifecycle + ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.50")

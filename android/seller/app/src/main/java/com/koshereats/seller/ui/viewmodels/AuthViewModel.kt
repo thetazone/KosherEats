@@ -26,6 +26,7 @@ data class AuthState(
     val isLoading: Boolean = true,
     val restaurant: Restaurant? = null,
     val error: String? = null,
+    val isTogglingOpen: Boolean = false,
 )
 
 @HiltViewModel
@@ -49,9 +50,21 @@ class AuthViewModel @Inject constructor(
                 // Resumed session — re-register the current FCM token in
                 // case it rotated or never uploaded on first login.
                 PushBootstrap.registerCurrentToken(apiService)
+                loadRestaurant()
             } else {
                 _state.value = AuthState(isLoggedIn = false, isLoading = false)
             }
+        }
+    }
+
+    private suspend fun loadRestaurant() {
+        try {
+            val response = apiService.getRestaurant()
+            if (response.isSuccessful) {
+                _state.value = _state.value.copy(restaurant = response.body())
+            }
+        } catch (_: Exception) {
+            // Non-fatal: restaurant info will remain null
         }
     }
 
@@ -78,6 +91,7 @@ class AuthViewModel @Inject constructor(
                         isLoading = false,
                     )
                     PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -102,6 +116,13 @@ class AuthViewModel @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     val body = response.body()!!
+                    if (body.user.role != "seller" && body.user.role != "admin") {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = "This account is not a seller account.",
+                        )
+                        return@launch
+                    }
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
                     }
@@ -110,6 +131,7 @@ class AuthViewModel @Inject constructor(
                         isLoading = false,
                     )
                     PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -135,6 +157,26 @@ class AuthViewModel @Inject constructor(
         // socialLogin("apple", identityToken, firstName, lastName)
     }
 
+    fun toggleOpen(targetIsOpen: Boolean) {
+        if (_state.value.isTogglingOpen) return
+        _state.value = _state.value.copy(isTogglingOpen = true)
+        viewModelScope.launch {
+            try {
+                val response = apiService.updateRestaurantStatus(mapOf("is_open" to targetIsOpen))
+                if (response.isSuccessful) {
+                    _state.value = _state.value.copy(
+                        restaurant = response.body(),
+                        isTogglingOpen = false,
+                    )
+                } else {
+                    _state.value = _state.value.copy(isTogglingOpen = false)
+                }
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(isTogglingOpen = false)
+            }
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             clearAuth()
@@ -142,6 +184,7 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun clearAuth() {
+        PushBootstrap.deleteToken()
         context.dataStore.edit { it.clear() }
         _state.value = AuthState(isLoggedIn = false, isLoading = false)
     }

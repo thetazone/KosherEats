@@ -5,15 +5,23 @@ import com.squareup.moshi.JsonClass
 
 // --- Enums ---
 
-enum class OrderStatus {
-    @Json(name = "pending") PENDING,
-    @Json(name = "accepted") ACCEPTED,
-    @Json(name = "preparing") PREPARING,
-    @Json(name = "ready") READY,
-    @Json(name = "picked_up") PICKED_UP,
-    @Json(name = "delivered") DELIVERED,
-    @Json(name = "completed") COMPLETED,
-    @Json(name = "cancelled") CANCELLED,
+enum class OrderStatus(val displayName: String) {
+    @Json(name = "scheduled") SCHEDULED("Scheduled"),
+    @Json(name = "pending") PENDING("Pending"),
+    @Json(name = "accepted") ACCEPTED("Accepted"),
+    @Json(name = "preparing") PREPARING("Preparing"),
+    @Json(name = "ready") READY("Ready"),
+    @Json(name = "picked_up") PICKED_UP("Picked Up"),
+    @Json(name = "delivered") DELIVERED("Delivered"),
+    @Json(name = "completed") COMPLETED("Completed"),
+    @Json(name = "cancelled") CANCELLED("Cancelled"),
+    @Json(name = "rejected") REJECTED("Rejected");
+
+    val isActive: Boolean
+        get() = when (this) {
+            DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
+            else -> true
+        }
 }
 
 enum class KosherCertification {
@@ -101,6 +109,7 @@ data class Order(
     val subtotal: Int = 0,
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
     val tax: Int = 0,
+    @Json(name = "courier_tip") val courierTip: Int = 0,
     val total: Int = 0,
     val status: OrderStatus = OrderStatus.PENDING,
     @Json(name = "created_at") val createdAt: String = "",

@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 class KosherEatsMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var apiService: ApiService
+    @Inject lateinit var orderEventBus: OrderEventBus
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -45,6 +46,11 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
         val title = message.notification?.title ?: message.data["title"] ?: "KosherEats"
         val body = message.notification?.body ?: message.data["body"] ?: ""
         showNotification(this, title, body)
+        val type = message.data["type"]
+        if (type == "new_order" || type == "courier_assigned" ||
+            type == "order_status_changed" || type == "order_cancelled" || type == "payment_update") {
+            orderEventBus.notifyOrderChanged()
+        }
     }
 
     companion object {

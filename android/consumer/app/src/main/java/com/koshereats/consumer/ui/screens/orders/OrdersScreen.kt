@@ -227,12 +227,15 @@ private fun OrderStatusBadge(status: OrderStatus) {
     val (color, icon) = when (status) {
         OrderStatus.SCHEDULED -> InfoBlue to Icons.Filled.Schedule
         OrderStatus.PENDING -> Orange to Icons.Filled.Pending
+        OrderStatus.ACCEPTED -> InfoBlue to Icons.Filled.CheckCircle
         OrderStatus.CONFIRMED -> InfoBlue to Icons.Filled.CheckCircle
         OrderStatus.PREPARING -> WarningYellow to Icons.Filled.Restaurant
         OrderStatus.READY_FOR_PICKUP -> SuccessGreen to Icons.Filled.CheckCircle
         OrderStatus.OUT_FOR_DELIVERY -> InfoBlue to Icons.Filled.DeliveryDining
         OrderStatus.DELIVERED -> SuccessGreen to Icons.Filled.CheckCircle
+        OrderStatus.COMPLETED -> SuccessGreen to Icons.Filled.CheckCircle
         OrderStatus.CANCELLED -> ErrorRed to Icons.Filled.Pending
+        OrderStatus.REJECTED -> ErrorRed to Icons.Filled.Pending
     }
 
     Row(

@@ -6,6 +6,7 @@ import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.DashboardStats
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
+import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,13 +25,13 @@ data class DashboardState(
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val apiService: ApiService,
+    private val orderEventBus: OrderEventBus,
 ) : ViewModel() {
 
-    private val activeStatuses = setOf(
-        OrderStatus.PENDING,
-        OrderStatus.ACCEPTED,
-        OrderStatus.PREPARING,
-        OrderStatus.READY,
+    private val terminalStatuses = setOf(
+        OrderStatus.COMPLETED,
+        OrderStatus.CANCELLED,
+        OrderStatus.REJECTED,
     )
 
     private val _state = MutableStateFlow(DashboardState())
@@ -38,6 +39,9 @@ class DashboardViewModel @Inject constructor(
 
     init {
         loadDashboard()
+        viewModelScope.launch {
+            orderEventBus.events.collect { loadDashboard() }
+        }
     }
 
     fun loadDashboard() {
@@ -47,9 +51,21 @@ class DashboardViewModel @Inject constructor(
                 val statsResponse = apiService.getDashboardStats()
                 val ordersResponse = apiService.getOrders()
 
+                if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
+                    val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = "Failed to load dashboard (HTTP $code)",
+                    )
+                    return@launch
+                }
+
+                val activeOrders = ordersResponse.body().orEmpty()
+                    .filter { it.status !in terminalStatuses }
                 _state.value = _state.value.copy(
-                    stats = statsResponse.body() ?: DashboardStats(),
-                    activeOrders = ordersResponse.body().orEmpty().filter { it.status in activeStatuses },
+                    stats = (statsResponse.body() ?: DashboardStats())
+                        .copy(activeOrders = activeOrders.size),
+                    activeOrders = activeOrders,
                     isLoading = false,
                 )
             } catch (e: Exception) {
@@ -68,15 +84,29 @@ class DashboardViewModel @Inject constructor(
                 val statsResponse = apiService.getDashboardStats()
                 val ordersResponse = apiService.getOrders()
 
+                if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
+                    val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
+                    _state.value = _state.value.copy(
+                        isRefreshing = false,
+                        error = "Failed to refresh dashboard (HTTP $code)",
+                    )
+                    return@launch
+                }
+
+                val activeOrders = ordersResponse.body()
+                    ?.filter { it.status !in terminalStatuses }
+                    ?: _state.value.activeOrders
                 _state.value = _state.value.copy(
-                    stats = statsResponse.body() ?: _state.value.stats,
-                    activeOrders = ordersResponse.body()
-                        ?.filter { it.status in activeStatuses }
-                        ?: _state.value.activeOrders,
+                    stats = (statsResponse.body() ?: _state.value.stats)
+                        .copy(activeOrders = activeOrders.size),
+                    activeOrders = activeOrders,
                     isRefreshing = false,
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isRefreshing = false)
+                _state.value = _state.value.copy(
+                    isRefreshing = false,
+                    error = "Failed to refresh dashboard: ${e.localizedMessage}",
+                )
             }
         }
     }

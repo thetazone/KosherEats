@@ -42,7 +42,17 @@ class ChatViewModel @Inject constructor(
     private var pollJob: Job? = null
 
     init {
-        fetch()
+        if (orderId.isBlank()) return
+        startPolling()
+    }
+
+    fun pausePolling() {
+        pollJob?.cancel()
+        pollJob = null
+    }
+
+    fun resumePolling() {
+        if (orderId.isBlank()) return
         startPolling()
     }
 
@@ -74,18 +84,20 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    private fun fetch() {
-        viewModelScope.launch {
-            try {
-                val response = apiService.listChatMessages(orderId)
-                if (response.isSuccessful) {
-                    _state.update { it.copy(messages = response.body().orEmpty(), error = null) }
-                } else {
-                    _state.update { it.copy(error = "Couldn't refresh chat") }
+    private suspend fun fetch() {
+        try {
+            val response = apiService.listChatMessages(orderId)
+            if (response.isSuccessful) {
+                val incoming = response.body().orEmpty()
+                _state.update {
+                    val merged = (it.messages + incoming).distinctBy { m -> m.id }
+                    it.copy(messages = merged, error = null)
                 }
-            } catch (e: Exception) {
-                _state.update { it.copy(error = e.localizedMessage ?: "Network error") }
+            } else {
+                _state.update { it.copy(error = "Couldn't refresh chat") }
             }
+        } catch (e: Exception) {
+            _state.update { it.copy(error = e.localizedMessage ?: "Network error") }
         }
     }
 
@@ -93,8 +105,8 @@ class ChatViewModel @Inject constructor(
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
             while (true) {
-                delay(3_000)
                 fetch()
+                delay(3_000)
             }
         }
     }

@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.os.HandlerThread
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -33,9 +34,11 @@ class LocationTracker @Inject constructor(
     private val client: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    private var callback: LocationCallback? = null
+    private val handlerThread = HandlerThread("location-tracker").also { it.start() }
+    private val listeners = LinkedHashMap<Any, (Double, Double, Double, Double) -> Unit>()
+    private var locationCallback: LocationCallback? = null
 
-    private fun hasPermission(): Boolean =
+    fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
@@ -50,10 +53,12 @@ class LocationTracker @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    fun start(onLocation: (lat: Double, lng: Double, heading: Double, speed: Double) -> Unit) {
-        if (!hasPermission()) return
+    fun start(key: Any, onLocation: (lat: Double, lng: Double, heading: Double, speed: Double) -> Unit): Boolean {
+        if (!hasPermission()) return false
 
-        stop()
+        listeners[key] = onLocation
+        if (locationCallback != null) return true
+
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 8_000L)
             .setMinUpdateIntervalMillis(5_000L)
             .setMinUpdateDistanceMeters(15f)
@@ -62,20 +67,38 @@ class LocationTracker @Inject constructor(
         val cb = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation ?: return
-                onLocation(
-                    loc.latitude,
-                    loc.longitude,
-                    if (loc.hasBearing()) loc.bearing.toDouble() else 0.0,
-                    if (loc.hasSpeed()) loc.speed.toDouble() else 0.0,
-                )
+                // Mirror iOS accuracy filter: reject invalid, coarse (>100 m), or stale (>30 s) fixes.
+                if (!loc.hasAccuracy() || loc.accuracy <= 0f || loc.accuracy > 100f) return
+                if (System.currentTimeMillis() - loc.time > 30_000L) return
+                val lat = loc.latitude
+                val lng = loc.longitude
+                val heading = if (loc.hasBearing()) loc.bearing.toDouble() else 0.0
+                val speed = if (loc.hasSpeed()) loc.speed.toDouble() else 0.0
+                listeners.values.toList().forEach { it(lat, lng, heading, speed) }
             }
         }
-        callback = cb
-        client.requestLocationUpdates(request, cb, context.mainLooper)
+        locationCallback = cb
+        client.requestLocationUpdates(request, cb, handlerThread.looper)
+        return true
     }
 
+    fun removeListener(key: Any) {
+        listeners.remove(key)
+    }
+
+    // Pauses OS location updates without touching listeners. Callers that only want
+    // to pause (e.g. going offline mid-delivery) should use this + removeListener()
+    // rather than stop(), so secondary screens retain their callbacks.
+    fun stopOsUpdates() {
+        locationCallback?.let { client.removeLocationUpdates(it) }
+        locationCallback = null
+    }
+
+    // Full teardown: removes OS updates AND clears all listeners. Only call when
+    // the tracker itself is being destroyed (e.g. app sign-out).
     fun stop() {
-        callback?.let { client.removeLocationUpdates(it) }
-        callback = null
+        stopOsUpdates()
+        listeners.clear()
+        handlerThread.quitSafely()
     }
 }

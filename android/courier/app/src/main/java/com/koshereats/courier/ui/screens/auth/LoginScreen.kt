@@ -23,11 +23,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.koshereats.courier.R
 import com.koshereats.courier.ui.theme.BackgroundBlack
 import com.koshereats.courier.ui.theme.ErrorRed
 import com.koshereats.courier.ui.theme.Orange
@@ -44,16 +46,16 @@ fun LoginScreen(authViewModel: AuthViewModel) {
         modifier = Modifier.fillMaxSize().background(BackgroundBlack).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Welcome back", color = TextWhite, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.auth_login_title), color = TextWhite, fontSize = 26.sp, fontWeight = FontWeight.Bold)
 
         OutlinedTextField(
             value = email, onValueChange = { email = it },
-            label = { Text("Email") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(R.string.auth_email)) }, modifier = Modifier.fillMaxWidth(), singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
         )
         OutlinedTextField(
             value = password, onValueChange = { password = it },
-            label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+            label = { Text(stringResource(R.string.auth_password)) }, modifier = Modifier.fillMaxWidth(), singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
         )
 
@@ -73,7 +75,7 @@ fun LoginScreen(authViewModel: AuthViewModel) {
             if (state.isLoading) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.height(24.dp))
             } else {
-                Text("Log in", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.auth_log_in), fontWeight = FontWeight.SemiBold)
             }
         }
     }

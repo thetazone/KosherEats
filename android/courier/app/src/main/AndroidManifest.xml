@@ -42,6 +42,12 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
 
+        <!-- Keeps location updates alive when the app is backgrounded (Android 8+). -->
+        <service
+            android:name=".services.LocationForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+
         <!-- Firebase Cloud Messaging receiver. Hilt injects the repository
              via @AndroidEntryPoint. Tied to the default notification channel
              defined in KosherEatsMessagingService. -->

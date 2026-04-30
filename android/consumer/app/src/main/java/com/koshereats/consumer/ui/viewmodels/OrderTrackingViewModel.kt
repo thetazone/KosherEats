@@ -1,0 +1,166 @@
+package com.koshereats.consumer.ui.viewmodels
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.koshereats.consumer.BuildConfig
+import com.koshereats.consumer.data.api.ApiService
+import com.koshereats.consumer.data.models.CourierLocationEvent
+import com.koshereats.consumer.data.models.Order
+import com.koshereats.consumer.data.session.SessionManager
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+
+data class OrderTrackingUiState(
+    val order: Order? = null,
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null,
+)
+
+// Mirrors iOS OrderTrackingView: polls GET /orders/{id} every 8s and layers a
+// courier-location SSE stream on top so the pin moves in near-real time.
+@HiltViewModel
+class OrderTrackingViewModel @Inject constructor(
+    private val api: ApiService,
+    private val okHttpClient: OkHttpClient,
+    private val sessionManager: SessionManager,
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(OrderTrackingUiState())
+    val uiState: StateFlow<OrderTrackingUiState> = _uiState.asStateFlow()
+
+    private var pollJob: Job? = null
+    private var streamJob: Job? = null
+    private var currentOrderId: String? = null
+    private var completedNormally = false
+    private val gson = Gson()
+
+    fun start(orderId: String) {
+        if (currentOrderId == orderId && (pollJob?.isActive == true || completedNormally)) return
+        completedNormally = false
+        currentOrderId = orderId
+        stopInternal()
+
+        viewModelScope.launch {
+            loadOnce(orderId)
+            pollJob = launchPollLoop(orderId)
+            streamJob = launchLocationStream(orderId)
+        }
+    }
+
+    fun refresh() {
+        val id = currentOrderId ?: return
+        viewModelScope.launch { loadOnce(id) }
+    }
+
+    override fun onCleared() {
+        stopInternal()
+        super.onCleared()
+    }
+
+    private fun stopInternal() {
+        pollJob?.cancel(); pollJob = null
+        streamJob?.cancel(); streamJob = null
+    }
+
+    private suspend fun loadOnce(orderId: String) {
+        try {
+            val resp = api.getOrder(orderId)
+            if (resp.isSuccessful) {
+                _uiState.update { it.copy(order = resp.body(), isLoading = false, errorMessage = null) }
+            } else {
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Couldn't load order (${resp.code()})") }
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(isLoading = false, errorMessage = e.localizedMessage) }
+        }
+    }
+
+    private fun launchPollLoop(orderId: String): Job = viewModelScope.launch {
+        while (isActive) {
+            delay(8_000)
+            loadOnce(orderId)
+            val status = _uiState.value.order?.status ?: continue
+            if (!status.isActive) { completedNormally = true; break }
+        }
+    }
+
+    fun retryStream() {
+        val id = currentOrderId ?: return
+        streamJob?.cancel()
+        streamJob = launchLocationStream(id)
+    }
+
+    // SSE: hold a GET open on /orders/{id}/location/stream, parse `data:` lines,
+    // splice lat/lng into the in-memory courier whenever a location event arrives.
+    // Reconnects with exponential backoff (3s..30s) on any error.
+    private fun launchLocationStream(orderId: String): Job = viewModelScope.launch(Dispatchers.IO) {
+        val url = BuildConfig.BASE_URL.trimEnd('/') + "/orders/$orderId/location/stream"
+        val sseClient = okHttpClient.newBuilder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        var backoffMs = 3_000L
+
+        while (isActive) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "text/event-stream")
+                    .build()
+                sseClient.newCall(request).execute().use { response ->
+                    if (response.code == 401) {
+                        sessionManager.signalLogout()
+                        return@launch
+                    }
+                    if (!response.isSuccessful) throw RuntimeException("SSE status ${response.code}")
+                    val source = response.body?.source() ?: throw RuntimeException("no SSE body")
+                    _uiState.update { it.copy(errorMessage = null) }
+                    backoffMs = 3_000L
+                    val dataBuf = StringBuilder()
+                    while (isActive && !source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        if (line.isEmpty()) {
+                            if (dataBuf.isNotEmpty()) {
+                                val json = dataBuf.toString()
+                                dataBuf.setLength(0)
+                                handleLocationEvent(json)
+                            }
+                        } else if (line.startsWith("data:")) {
+                            dataBuf.append(line.removePrefix("data:").trimStart())
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Live tracking unavailable. Retrying\u2026") }
+            }
+            if (!isActive) break
+            val status = _uiState.value.order?.status
+            if (status != null && !status.isActive) break
+            delay(backoffMs)
+            backoffMs = (backoffMs * 2).coerceAtMost(30_000L)
+        }
+    }
+
+    private suspend fun handleLocationEvent(json: String) = withContext(Dispatchers.Default) {
+        val event = runCatching { gson.fromJson(json, CourierLocationEvent::class.java) }.getOrNull()
+            ?: return@withContext
+        _uiState.update { state ->
+            val current = state.order ?: return@update state
+            val courier = current.courier?.copy(lat = event.lat, lng = event.lng) ?: return@update state
+            state.copy(order = current.copy(courier = courier))
+        }
+    }
+}

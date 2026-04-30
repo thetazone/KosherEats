@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.models.*
 import com.koshereats.consumer.data.repository.Resource
 import com.koshereats.consumer.data.repository.RestaurantRepository
+import com.koshereats.consumer.data.session.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,10 +44,22 @@ data class CartUiState(
 @HiltViewModel
 class CartViewModel @Inject constructor(
     private val repository: RestaurantRepository,
+    private val sessionManager: SessionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CartUiState())
     val uiState: StateFlow<CartUiState> = _uiState.asStateFlow()
+
+    private val logoutJob: Job = viewModelScope.launch {
+        sessionManager.logoutEvent.collect {
+            _uiState.value = CartUiState()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        logoutJob.cancel()
+    }
 
     fun addItem(menuItem: MenuItem, restaurantId: String, restaurantName: String, quantity: Int = 1) {
         _uiState.update { state ->
@@ -71,13 +85,13 @@ class CartViewModel @Inject constructor(
                 val updatedItems = if (existingIndex >= 0) {
                     currentCart.items.toMutableList().apply {
                         val existing = this[existingIndex]
-                        this[existingIndex] = existing.copy(quantity = existing.quantity + quantity)
+                        this[existingIndex] = existing.copy(quantity = (existing.quantity + quantity).coerceAtMost(99))
                     }
                 } else {
                     currentCart.items + CartItem(
                         id = UUID.randomUUID().toString(),
                         menuItem = menuItem,
-                        quantity = quantity,
+                        quantity = quantity.coerceIn(1, 99),
                     )
                 }
 
@@ -104,16 +118,17 @@ class CartViewModel @Inject constructor(
             removeItem(cartItemId)
             return
         }
+        val capped = newQuantity.coerceAtMost(99)
         _uiState.update { state ->
             val updatedItems = state.cart.items.map { item ->
-                if (item.id == cartItemId) item.copy(quantity = newQuantity) else item
+                if (item.id == cartItemId) item.copy(quantity = capped) else item
             }
             state.copy(cart = state.cart.copy(items = updatedItems))
         }
     }
 
     fun updateTip(amount: Int) {
-        _uiState.update { it.copy(tip = amount) }
+        _uiState.update { it.copy(tip = amount.coerceAtMost(it.subtotal)) }
     }
 
     /** Pass `null` for ASAP, or a local-time instant for a scheduled delivery. */
@@ -122,7 +137,7 @@ class CartViewModel @Inject constructor(
     }
 
     fun clearCart() {
-        _uiState.update { it.copy(cart = Cart()) }
+        _uiState.value = CartUiState()
     }
 
     fun placeOrder(

@@ -1,5 +1,6 @@
 package com.koshereats.courier.ui.screens.chat
 
+import com.koshereats.courier.util.shortTime
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,12 +33,16 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -69,6 +74,19 @@ fun ChatScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val listState = rememberLazyListState()
+
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.resumePolling()
+                Lifecycle.Event.ON_PAUSE -> viewModel.pausePolling()
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     val messageCount by remember { derivedStateOf { state.messages.size } }
     LaunchedEffect(messageCount) {
@@ -210,7 +228,7 @@ private fun InputBar(
     ) {
         TextField(
             value = value,
-            onValueChange = onChange,
+            onValueChange = { if (it.length <= 2000) onChange(it) },
             modifier = Modifier.weight(1f),
             placeholder = { Text("Type a message…", color = TextMuted) },
             colors = TextFieldDefaults.colors(
@@ -255,12 +273,3 @@ private fun senderLabel(role: String): String = when (role) {
     else -> role.replaceFirstChar { it.uppercase() }
 }
 
-private fun shortTime(iso: String): String {
-    return try {
-        val instant = java.time.OffsetDateTime.parse(iso)
-        val local = instant.atZoneSameInstant(java.time.ZoneId.systemDefault())
-        java.time.format.DateTimeFormatter.ofPattern("h:mm a").format(local)
-    } catch (_: Throwable) {
-        iso
-    }
-}

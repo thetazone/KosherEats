@@ -45,9 +45,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.koshereats.consumer.R
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 
@@ -75,14 +77,14 @@ fun LoginScreen(
     ) {
         // Logo
         Text(
-            text = "KosherEats",
+            text = stringResource(R.string.app_name),
             color = Orange,
             fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Sign in to continue",
+            text = stringResource(R.string.auth_sign_in_subtitle),
             color = TextTertiary,
             fontSize = 16.sp,
         )
@@ -101,7 +103,7 @@ fun LoginScreen(
                 contentColor = Color(0xFF1F1F1F),
             ),
         ) {
-            Text("Continue with Google", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.auth_continue_google), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -117,7 +119,7 @@ fun LoginScreen(
                 contentColor = TextWhite,
             ),
         ) {
-            Text("Continue with Apple", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.auth_continue_apple), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -129,7 +131,7 @@ fun LoginScreen(
         ) {
             Divider(modifier = Modifier.weight(1f), color = SurfaceDarkBorder)
             Text(
-                text = "or",
+                text = stringResource(R.string.auth_or_divider),
                 color = TextMuted,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -143,7 +145,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = state.loginEmail,
             onValueChange = { viewModel.updateLoginEmail(it) },
-            label = { Text("Email") },
+            label = { Text(stringResource(R.string.auth_email)) },
             leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -168,7 +170,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = state.loginPassword,
             onValueChange = { viewModel.updateLoginPassword(it) },
-            label = { Text("Password") },
+            label = { Text(stringResource(R.string.auth_password)) },
             leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -222,7 +224,7 @@ fun LoginScreen(
             if (state.isLoading) {
                 CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
             } else {
-                Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(stringResource(R.string.auth_sign_in), fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
 
@@ -230,9 +232,9 @@ fun LoginScreen(
 
         // Register link
         Row {
-            Text("Don't have an account? ", color = TextTertiary, fontSize = 14.sp)
+            Text(stringResource(R.string.auth_no_account), color = TextTertiary, fontSize = 14.sp)
             Text(
-                text = "Sign Up",
+                text = stringResource(R.string.auth_sign_up),
                 color = Orange,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,

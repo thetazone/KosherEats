@@ -36,6 +36,7 @@ class CourierRepository @Inject constructor(
 
     suspend fun profile(): Result<CourierProfile> = runCatching {
         val r = api.getProfile()
+        if (r.code() == 403) throw RoleMismatchException("This account does not have courier access. Please contact support.")
         r.body() ?: throw IllegalStateException(errorMessage(r, "Failed to load profile"))
     }
 

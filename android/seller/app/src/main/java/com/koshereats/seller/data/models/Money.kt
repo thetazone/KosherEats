@@ -1,7 +1,12 @@
 package com.koshereats.seller.data.models
 
-import java.util.Locale
+import java.text.NumberFormat
 
-fun Int.formatPrice(): String = String.format(Locale.US, "$%.2f", this / 100.0)
+fun Int.formatPrice(): String = NumberFormat.getCurrencyInstance().format(this / 100.0)
 
-fun Int.formatPriceWhole(): String = String.format(Locale.US, "$%d", this / 100)
+fun Int.formatPriceWhole(): String {
+    val nf = NumberFormat.getCurrencyInstance()
+    nf.maximumFractionDigits = 0
+    nf.minimumFractionDigits = 0
+    return nf.format(this / 100)
+}

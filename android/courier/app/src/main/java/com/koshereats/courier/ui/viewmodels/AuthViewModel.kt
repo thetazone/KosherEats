@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.courier.data.models.CourierProfile
 import com.koshereats.courier.data.repository.AuthRepository
 import com.koshereats.courier.data.repository.CourierRepository
+import com.koshereats.courier.data.repository.RoleMismatchException
 import com.koshereats.courier.push.PushBootstrap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,12 +84,21 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             courierRepository.profile()
                 .onSuccess { p -> _state.update { it.copy(profile = p) } }
-                .onFailure { _state.update { it.copy(profile = null) } }
+                .onFailure { e ->
+                    if (e is RoleMismatchException) {
+                        PushBootstrap.deleteToken()
+                        authRepository.logout()
+                        _state.update { State(errorMessage = e.message) }
+                    } else {
+                        _state.update { it.copy(profile = null) }
+                    }
+                }
         }
     }
 
     fun logout() {
         viewModelScope.launch {
+            PushBootstrap.deleteToken()
             authRepository.logout()
             _state.update { State() } // reset everything
         }

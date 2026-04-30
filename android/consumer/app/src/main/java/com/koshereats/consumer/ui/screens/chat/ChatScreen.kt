@@ -36,7 +36,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,10 +75,17 @@ fun ChatScreen(
     val state by viewModel.state.collectAsState()
     val listState = rememberLazyListState()
 
-    // Auto-scroll to the newest message whenever the list grows.
+    // Track scroll position post-layout so reads are never stale.
+    val isScrolledUp = remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.canScrollForward }
+            .collect { isScrolledUp.value = it }
+    }
+
+    // Auto-scroll only when the user is already at the bottom or just sent a message.
     val messageCount by remember { derivedStateOf { state.messages.size } }
     LaunchedEffect(messageCount) {
-        if (messageCount > 0) {
+        if (messageCount > 0 && (!isScrolledUp.value || state.scrollToBottom)) {
             listState.animateScrollToItem(messageCount - 1)
         }
     }
@@ -216,7 +225,7 @@ private fun InputBar(
     ) {
         TextField(
             value = value,
-            onValueChange = onChange,
+            onValueChange = { if (it.length <= 2000) onChange(it) },
             modifier = Modifier.weight(1f),
             placeholder = { Text("Type a message…", color = TextMuted) },
             colors = TextFieldDefaults.colors(

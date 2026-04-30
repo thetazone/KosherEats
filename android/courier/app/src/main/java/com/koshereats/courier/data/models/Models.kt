@@ -98,6 +98,25 @@ data class UpdateDocumentsRequest(
 
 // ── Orders ──────────────────────────────────────────────────
 
+enum class OrderStatus(val displayName: String) {
+    @SerializedName("scheduled") SCHEDULED("Scheduled"),
+    @SerializedName("pending") PENDING("Pending"),
+    @SerializedName("accepted") ACCEPTED("Accepted"),
+    @SerializedName("preparing") PREPARING("Preparing"),
+    @SerializedName("ready") READY("Ready"),
+    @SerializedName("picked_up") PICKED_UP("Picked Up"),
+    @SerializedName("delivered") DELIVERED("Delivered"),
+    @SerializedName("completed") COMPLETED("Completed"),
+    @SerializedName("cancelled") CANCELLED("Cancelled"),
+    @SerializedName("rejected") REJECTED("Rejected");
+
+    val isActive: Boolean
+        get() = when (this) {
+            DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
+            else -> true
+        }
+}
+
 data class AvailableDelivery(
     val id: String,
     @SerializedName("restaurant_id") val restaurantId: String,

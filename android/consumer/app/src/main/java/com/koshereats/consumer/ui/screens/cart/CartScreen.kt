@@ -38,15 +38,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.koshereats.consumer.R
 import com.koshereats.consumer.data.models.CartItem
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.ui.theme.*
@@ -56,10 +58,10 @@ import com.koshereats.consumer.ui.viewmodels.CartViewModel
 @Composable
 fun CartScreen(
     onBackClick: () -> Unit,
-    onOrderPlaced: () -> Unit,
+    onCheckoutClick: () -> Unit,
     cartViewModel: CartViewModel,
 ) {
-    val state by cartViewModel.uiState.collectAsState()
+    val state by cartViewModel.uiState.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -68,7 +70,7 @@ fun CartScreen(
     ) {
         TopAppBar(
             title = {
-                Text("Your Cart", color = TextWhite, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.cart_screen_title), color = TextWhite, fontWeight = FontWeight.Bold)
             },
             navigationIcon = {
                 IconButton(onClick = onBackClick) {
@@ -100,14 +102,14 @@ fun CartScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Your cart is empty",
+                        text = stringResource(R.string.cart_empty_title),
                         color = TextWhite,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Browse restaurants and add items to get started",
+                        text = stringResource(R.string.cart_empty_subtitle),
                         color = TextTertiary,
                         fontSize = 14.sp,
                     )
@@ -117,7 +119,7 @@ fun CartScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Orange),
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text("Browse Restaurants", fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.cart_browse_restaurants), fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -180,6 +182,7 @@ fun CartScreen(
                     ) {
                         listOf(0, 200, 300, 500, 800).forEach { tipAmount ->
                             val isSelected = state.tip == tipAmount
+                            val isDisabled = tipAmount > 0 && tipAmount > state.subtotal
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -190,13 +193,20 @@ fun CartScreen(
                                         if (isSelected) Orange else SurfaceDarkBorder,
                                         RoundedCornerShape(10.dp),
                                     )
-                                    .clickable { cartViewModel.updateTip(tipAmount) }
+                                    .then(
+                                        if (!isDisabled) Modifier.clickable { cartViewModel.updateTip(tipAmount) }
+                                        else Modifier
+                                    )
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     text = if (tipAmount == 0) "None" else "$${tipAmount / 100}",
-                                    color = if (isSelected) TextWhite else TextSecondary,
+                                    color = when {
+                                        isDisabled -> TextMuted
+                                        isSelected -> TextWhite
+                                        else -> TextSecondary
+                                    },
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -255,14 +265,7 @@ fun CartScreen(
 
             // Place order button
             Button(
-                onClick = {
-                    cartViewModel.placeOrder(
-                        deliveryAddress = "",
-                        deliveryLat = 0.0,
-                        deliveryLng = 0.0,
-                        paymentIntentId = "",
-                    )
-                },
+                onClick = { onCheckoutClick() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
@@ -364,17 +367,19 @@ private fun CartItemRow(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
 
+                val atMax = cartItem.quantity >= 99
                 IconButton(
                     onClick = onIncrement,
+                    enabled = !atMax,
                     modifier = Modifier
                         .size(32.dp)
                         .clip(CircleShape)
-                        .background(Orange),
+                        .background(if (atMax) SurfaceDarkElevated else Orange),
                 ) {
                     Icon(
                         Icons.Filled.Add,
                         contentDescription = "Increase",
-                        tint = TextWhite,
+                        tint = if (atMax) TextMuted else TextWhite,
                         modifier = Modifier.size(16.dp),
                     )
                 }

@@ -71,6 +71,10 @@ class RestaurantPickerViewModel @Inject constructor(
     fun select(restaurantId: String, onDone: () -> Unit) {
         viewModelScope.launch {
             SelectedRestaurant.set(context, restaurantId)
+            // Wait until the DataStore flow reflects the new ID so that any
+            // runBlocking { flow.first() } on the OkHttp interceptor thread
+            // sees the updated value before the dashboard reload fires.
+            SelectedRestaurant.flow(context).first { it == restaurantId }
             _state.value = _state.value.copy(selectedId = restaurantId)
             onDone()
         }

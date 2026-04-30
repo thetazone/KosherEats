@@ -1,5 +1,7 @@
 package com.koshereats.courier.data.repository
 
+class RoleMismatchException(message: String) : Exception(message)
+
 /**
  * Resource wraps the result of a network call. Mirrors the pattern used in
  * the consumer app so ViewModels handle loading / success / error uniformly.

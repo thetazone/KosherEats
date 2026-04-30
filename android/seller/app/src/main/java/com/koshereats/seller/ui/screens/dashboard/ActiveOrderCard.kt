@@ -120,6 +120,7 @@ fun OrderStatusBadge(
     modifier: Modifier = Modifier,
 ) {
     val (color, label) = when (status) {
+        OrderStatus.SCHEDULED -> StatusPending to "Scheduled"
         OrderStatus.PENDING -> StatusPending to "Pending"
         OrderStatus.ACCEPTED -> StatusAccepted to "Accepted"
         OrderStatus.PREPARING -> StatusPreparing to "Preparing"
@@ -128,6 +129,7 @@ fun OrderStatusBadge(
         OrderStatus.DELIVERED -> StatusReady to "Delivered"
         OrderStatus.COMPLETED -> StatusReady to "Completed"
         OrderStatus.CANCELLED -> StatusCancelled to "Cancelled"
+        OrderStatus.REJECTED -> StatusCancelled to "Rejected"
     }
 
     Row(

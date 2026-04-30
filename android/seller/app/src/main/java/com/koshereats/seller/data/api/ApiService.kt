@@ -57,6 +57,11 @@ interface ApiService {
         @Path("orderId") orderId: String,
     ): Response<Order>
 
+    @PATCH("seller/orders/{orderId}/complete")
+    suspend fun completeOrder(
+        @Path("orderId") orderId: String,
+    ): Response<Order>
+
     @PATCH("seller/orders/{orderId}/reject")
     suspend fun rejectOrder(
         @Path("orderId") orderId: String,
