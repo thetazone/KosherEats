@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,15 +18,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
@@ -53,14 +54,19 @@ import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.theme.ErrorRed
+import com.koshereats.seller.ui.viewmodels.AuthViewModel
 import com.koshereats.seller.ui.viewmodels.DashboardViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onOrderClick: (String) -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val authState by authViewModel.state.collectAsState()
     var showPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
@@ -73,26 +79,26 @@ fun DashboardScreen(
         )
     }
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = { viewModel.refresh() },
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundBlack)
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .background(BackgroundBlack),
     ) {
-        // Header
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Header
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
                 Column(
-                    // Tapping the title opens the restaurant picker for
-                    // multi-restaurant sellers. Single-restaurant sellers
-                    // see the same chevron but the sheet just shows one row.
-                    modifier = Modifier.clickable { showPicker = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showPicker = true },
                 ) {
                     Text(
                         text = "Dashboard",
@@ -114,117 +120,145 @@ fun DashboardScreen(
                         )
                     }
                 }
+            }
 
-                IconButton(onClick = { viewModel.refresh() }) {
-                    if (state.isRefreshing) {
-                        CircularProgressIndicator(
-                            color = Orange,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Refresh",
-                            tint = Orange,
-                        )
+            // Open / Closed toggle
+            val restaurant = authState.restaurant
+            if (restaurant != null) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text(
+                                    text = if (restaurant.isOpen) "Open for orders" else "Closed",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (restaurant.isOpen) SuccessGreen else ErrorRed,
+                                )
+                                Text(
+                                    text = restaurant.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
+                                )
+                            }
+                            Switch(
+                                checked = restaurant.isOpen,
+                                onCheckedChange = { authViewModel.toggleOpen(it) },
+                                enabled = !authState.isTogglingOpen,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = TextWhite,
+                                    checkedTrackColor = SuccessGreen,
+                                    uncheckedThumbColor = TextWhite,
+                                    uncheckedTrackColor = TextMuted,
+                                ),
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        // Stats grid
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                StatCard(
-                    title = "Today's Orders",
-                    value = "${state.stats.todayOrders}",
-                    icon = Icons.Filled.ShoppingBag,
-                    iconTint = Orange,
-                    modifier = Modifier.weight(1f),
-                )
-                StatCard(
-                    title = "Revenue",
-                    value = state.stats.todayRevenue.formatPriceWhole(),
-                    icon = Icons.Filled.AttachMoney,
-                    iconTint = SuccessGreen,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                StatCard(
-                    title = "Active Orders",
-                    value = "${state.stats.activeOrders}",
-                    icon = Icons.Filled.TrendingUp,
-                    iconTint = StatusAccepted,
-                    modifier = Modifier.weight(1f),
-                )
-                StatCard(
-                    title = "Avg Prep Time",
-                    value = "${state.stats.avgPrepTime.toInt()} min",
-                    icon = Icons.Filled.AccessTime,
-                    iconTint = StatusPreparing,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        // Active orders section
-        item {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Active Orders",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = TextWhite,
-            )
-        }
-
-        if (state.isLoading) {
+            // Stats grid
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    contentAlignment = Alignment.Center,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    CircularProgressIndicator(color = Orange)
-                }
-            }
-        } else if (state.activeOrders.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No active orders right now",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextMuted,
+                    StatCard(
+                        title = "Today's Orders",
+                        value = "${state.stats.todayOrders}",
+                        icon = Icons.Filled.ShoppingBag,
+                        iconTint = Orange,
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatCard(
+                        title = "Revenue",
+                        value = state.stats.todayRevenue.formatPriceWhole(),
+                        icon = Icons.Filled.AttachMoney,
+                        iconTint = SuccessGreen,
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
-        } else {
-            items(state.activeOrders, key = { it.id }) { order ->
-                ActiveOrderCard(
-                    order = order,
-                    onClick = { onOrderClick(order.id) },
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    StatCard(
+                        title = "Active Orders",
+                        value = "${state.stats.activeOrders}",
+                        icon = Icons.Filled.TrendingUp,
+                        iconTint = StatusAccepted,
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatCard(
+                        title = "Avg Prep Time",
+                        value = "${state.stats.avgPrepTime.toInt()} min",
+                        icon = Icons.Filled.AccessTime,
+                        iconTint = StatusPreparing,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            // Active orders section
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Active Orders",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = TextWhite,
                 )
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+            if (state.isLoading) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Orange)
+                    }
+                }
+            } else if (state.activeOrders.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "No active orders right now",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = TextMuted,
+                        )
+                    }
+                }
+            } else {
+                items(state.activeOrders, key = { it.id }) { order ->
+                    ActiveOrderCard(
+                        order = order,
+                        onClick = { onOrderClick(order.id) },
+                    )
+                }
+            }
+
+            item { Spacer(modifier = Modifier.height(16.dp)) }
+        }
     }
 }
 

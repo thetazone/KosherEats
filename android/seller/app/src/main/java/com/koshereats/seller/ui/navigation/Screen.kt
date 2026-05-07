@@ -50,6 +50,9 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Settings,
     )
 
+    // Onboarding
+    data object CreateRestaurant : Screen("onboarding/create-restaurant", "Create Restaurant")
+
     // Detail screens
     data object OrderDetail : Screen("orders/{orderId}", "Order Detail") {
         fun createRoute(orderId: String) = "orders/$orderId"

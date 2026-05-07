@@ -5,19 +5,20 @@ import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.api.PrefsKeys
 import com.koshereats.seller.data.api.SocialLoginRequest
 import com.koshereats.seller.data.api.dataStore
 import com.koshereats.seller.data.models.LoginRequest
 import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.push.PushBootstrap
+import com.koshereats.seller.auth.GoogleSignInHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -27,6 +28,8 @@ data class AuthState(
     val restaurant: Restaurant? = null,
     val error: String? = null,
     val isTogglingOpen: Boolean = false,
+    /** null = not yet checked, true = seller owns at least one restaurant. */
+    val hasRestaurants: Boolean? = null,
 )
 
 @HiltViewModel
@@ -40,15 +43,27 @@ class AuthViewModel @Inject constructor(
 
     init {
         checkAuthStatus()
+        viewModelScope.launch {
+            NetworkModule.sessionExpired.collect { expired ->
+                if (expired) {
+                    NetworkModule.sessionExpired.value = false
+                    clearAuth()
+                }
+            }
+        }
     }
 
     private fun checkAuthStatus() {
         viewModelScope.launch {
-            val token = context.dataStore.data.map { it[PrefsKeys.AUTH_TOKEN] }.first()
+            val prefs = context.dataStore.data.first()
+            val token = prefs[PrefsKeys.AUTH_TOKEN]
+            val refresh = prefs[PrefsKeys.REFRESH_TOKEN]
             if (token != null) {
+                NetworkModule.cachedToken = token
+                NetworkModule.cachedRefreshToken = refresh
+                _state.value = AuthState(isLoggedIn = true, isLoading = false)
                 PushBootstrap.registerCurrentToken(apiService)
                 loadRestaurant()
-                _state.value = _state.value.copy(isLoggedIn = true, isLoading = false)
             } else {
                 _state.value = AuthState(isLoggedIn = false, isLoading = false)
             }
@@ -57,12 +72,29 @@ class AuthViewModel @Inject constructor(
 
     private suspend fun loadRestaurant() {
         try {
+            val listResponse = apiService.listRestaurants()
+            if (listResponse.isSuccessful) {
+                val restaurants = listResponse.body().orEmpty()
+                _state.value = _state.value.copy(hasRestaurants = restaurants.isNotEmpty())
+                if (restaurants.isEmpty()) return
+            } else if (listResponse.code() == 401) {
+                clearAuth()
+                return
+            } else {
+                return
+            }
+
             val response = apiService.getRestaurant()
             if (response.isSuccessful) {
                 _state.value = _state.value.copy(restaurant = response.body())
             }
-        } catch (_: Exception) {
-            // Non-fatal: restaurant info will remain null
+        } catch (_: java.io.IOException) {
+        }
+    }
+
+    fun refreshRestaurants() {
+        viewModelScope.launch {
+            loadRestaurant()
         }
     }
 
@@ -73,7 +105,6 @@ class AuthViewModel @Inject constructor(
                 val response = apiService.login(LoginRequest(email, password))
                 if (response.isSuccessful) {
                     val body = response.body()!!
-                    // Check role is seller
                     if (body.user.role != "seller" && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             isLoading = false,
@@ -83,13 +114,16 @@ class AuthViewModel @Inject constructor(
                     }
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
+                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
                     }
-                    PushBootstrap.registerCurrentToken(apiService)
-                    loadRestaurant()
-                    _state.value = _state.value.copy(
+                    NetworkModule.cachedToken = body.token
+                    NetworkModule.cachedRefreshToken = body.refreshToken
+                    _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
                     )
+                    PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -123,13 +157,16 @@ class AuthViewModel @Inject constructor(
                     }
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
+                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
                     }
-                    PushBootstrap.registerCurrentToken(apiService)
-                    loadRestaurant()
-                    _state.value = _state.value.copy(
+                    NetworkModule.cachedToken = body.token
+                    NetworkModule.cachedRefreshToken = body.refreshToken
+                    _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
                     )
+                    PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -146,13 +183,21 @@ class AuthViewModel @Inject constructor(
     }
 
     fun signInWithGoogle() {
-        // TODO: Integrate Google Sign-In SDK, obtain ID token, then call:
-        // socialLogin("google", idToken, firstName, lastName)
-    }
-
-    fun signInWithApple() {
-        // TODO: Integrate Apple Sign-In (via Android credentials API), obtain token, then call:
-        // socialLogin("apple", identityToken, firstName, lastName)
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isLoading = true, error = null)
+            val result = GoogleSignInHelper.signIn(context)
+            result.fold(
+                onSuccess = { googleResult ->
+                    socialLogin("google", googleResult.idToken, googleResult.firstName, googleResult.lastName)
+                },
+                onFailure = { e ->
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = e.message ?: "Google Sign-In failed",
+                    )
+                },
+            )
+        }
     }
 
     fun toggleOpen(targetIsOpen: Boolean) {
@@ -183,6 +228,8 @@ class AuthViewModel @Inject constructor(
 
     private suspend fun clearAuth() {
         PushBootstrap.deleteToken()
+        NetworkModule.cachedToken = null
+        NetworkModule.cachedRefreshToken = null
         context.dataStore.edit { it.clear() }
         _state.value = AuthState(isLoggedIn = false, isLoading = false)
     }

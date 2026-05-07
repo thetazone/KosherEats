@@ -12,6 +12,7 @@ data class SocialLoginRequest(
     val token: String,
     @Json(name = "first_name") val firstName: String,
     @Json(name = "last_name") val lastName: String,
+    val role: String = "seller",
 )
 
 interface ApiService {

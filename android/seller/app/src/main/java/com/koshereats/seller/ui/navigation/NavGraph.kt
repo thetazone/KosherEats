@@ -12,11 +12,9 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,14 +56,40 @@ fun NavGraph() {
     }
 
     if (authState.isLoading) {
-        // Splash / loading handled by theme
+        return
+    }
+
+    if (authState.isLoggedIn && authState.hasRestaurants == null) {
         return
     }
 
     val startDestination = when {
         !authState.isLoggedIn -> Screen.Login.route
-        authState.restaurant == null -> Screen.Onboarding.route
+        authState.hasRestaurants == false -> Screen.Onboarding.route
         else -> Screen.Dashboard.route
+    }
+
+    LaunchedEffect(authState.isLoggedIn) {
+        if (!authState.isLoggedIn) {
+            val current = navController.currentDestination?.route
+            if (current != null && current != Screen.Login.route) {
+                navController.navigate(Screen.Login.route) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(authState.isLoggedIn, authState.hasRestaurants) {
+        if (!authState.isLoggedIn) return@LaunchedEffect
+        val hasRestaurants = authState.hasRestaurants ?: return@LaunchedEffect
+        val current = navController.currentDestination?.route
+        if (current == Screen.Login.route) {
+            val target = if (hasRestaurants) Screen.Dashboard.route else Screen.Onboarding.route
+            navController.navigate(target) {
+                popUpTo(Screen.Login.route) { inclusive = true }
+            }
+        }
     }
 
     Scaffold(
@@ -131,14 +155,6 @@ fun NavGraph() {
             composable(Screen.Login.route) {
                 SellerLoginScreen(
                     onLoginSuccess = {
-                        val dest = if (authState.restaurant == null) {
-                            Screen.Onboarding.route
-                        } else {
-                            Screen.Dashboard.route
-                        }
-                        navController.navigate(dest) {
-                            popUpTo(Screen.Login.route) { inclusive = true }
-                        }
                     },
                 )
             }
@@ -147,6 +163,7 @@ fun NavGraph() {
             composable(Screen.Onboarding.route) {
                 OnboardingScreen(
                     onComplete = {
+                        authViewModel.refreshRestaurants()
                         navController.navigate(Screen.Dashboard.route) {
                             popUpTo(Screen.Onboarding.route) { inclusive = true }
                         }

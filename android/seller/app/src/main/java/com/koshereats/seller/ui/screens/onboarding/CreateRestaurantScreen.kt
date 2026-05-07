@@ -1,0 +1,465 @@
+package com.koshereats.seller.ui.screens.onboarding
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fastfood
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.koshereats.seller.data.models.KosherCertification
+import com.koshereats.seller.ui.theme.BackgroundBlack
+import com.koshereats.seller.ui.theme.DividerColor
+import com.koshereats.seller.ui.theme.ErrorRed
+import com.koshereats.seller.ui.theme.Orange
+import com.koshereats.seller.ui.theme.SurfaceDark
+import com.koshereats.seller.ui.theme.SurfaceDarkElevated
+import com.koshereats.seller.ui.theme.TextMuted
+import com.koshereats.seller.ui.theme.TextTertiary
+import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.viewmodels.CreateRestaurantViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CreateRestaurantScreen(
+    onCreated: () -> Unit,
+    viewModel: CreateRestaurantViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsState()
+
+    LaunchedEffect(state.createdRestaurant) {
+        if (state.createdRestaurant != null) {
+            onCreated()
+        }
+    }
+
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextWhite,
+        unfocusedTextColor = TextWhite,
+        focusedBorderColor = Orange,
+        unfocusedBorderColor = DividerColor,
+        cursorColor = Orange,
+        focusedLabelColor = Orange,
+        unfocusedLabelColor = TextMuted,
+        focusedContainerColor = SurfaceDark,
+        unfocusedContainerColor = SurfaceDark,
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundBlack),
+    ) {
+        TopAppBar(
+            title = {
+                Text(
+                    "Set Up Your Restaurant",
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // ---- Section 1: Basics ----
+            SectionHeader(icon = Icons.Filled.Restaurant, title = "Basics")
+            SectionCard {
+                OutlinedTextField(
+                    value = state.name,
+                    onValueChange = viewModel::updateName,
+                    label = { Text("Restaurant Name *") },
+                    placeholder = { Text("e.g., Jerusalem Grill", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = state.description,
+                    onValueChange = viewModel::updateDescription,
+                    label = { Text("Short Description") },
+                    placeholder = { Text("Tell customers about your restaurant...", color = TextMuted) },
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 3,
+                    maxLines = 5,
+                    supportingText = {
+                        Text(
+                            "${state.description.length}/2000",
+                            color = TextTertiary,
+                            fontSize = 12.sp,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            // ---- Section 2: Contact ----
+            SectionHeader(icon = Icons.Filled.Phone, title = "Contact")
+            SectionCard {
+                OutlinedTextField(
+                    value = state.phone,
+                    onValueChange = viewModel::updatePhone,
+                    label = { Text("Phone *") },
+                    placeholder = { Text("(555) 123-4567", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = state.email,
+                    onValueChange = viewModel::updateEmail,
+                    label = { Text("Email *") },
+                    placeholder = { Text("contact@restaurant.com", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            // ---- Section 3: Address ----
+            SectionHeader(icon = Icons.Filled.LocationOn, title = "Address")
+            SectionCard {
+                OutlinedTextField(
+                    value = state.street,
+                    onValueChange = viewModel::updateStreet,
+                    label = { Text("Street *") },
+                    placeholder = { Text("123 Main St", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = state.city,
+                    onValueChange = viewModel::updateCity,
+                    label = { Text("City *") },
+                    placeholder = { Text("Brooklyn", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = state.state,
+                        onValueChange = viewModel::updateState,
+                        label = { Text("State *") },
+                        placeholder = { Text("NY", color = TextMuted) },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters,
+                        ),
+                        modifier = Modifier.weight(0.4f),
+                    )
+
+                    OutlinedTextField(
+                        value = state.zipCode,
+                        onValueChange = viewModel::updateZipCode,
+                        label = { Text("ZIP Code *") },
+                        placeholder = { Text("11230", color = TextMuted) },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(0.6f),
+                    )
+                }
+            }
+
+            // ---- Section 4: Kosher Certification ----
+            SectionHeader(icon = Icons.Filled.VerifiedUser, title = "Kosher Certification")
+            SectionCard {
+                Text(
+                    text = "Certification Type *",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Horizontal scrollable pill/chip selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    KosherCertification.entries.forEach { cert ->
+                        val selected = state.kosherCertification == cert
+                        Box(
+                            modifier = Modifier
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(
+                                    if (selected) Orange.copy(alpha = 0.15f)
+                                    else SurfaceDarkElevated,
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (selected) Orange else SurfaceDarkElevated,
+                                    shape = RoundedCornerShape(18.dp),
+                                )
+                                .clickable { viewModel.updateKosherCertification(cert) }
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = cert.displayName,
+                                color = if (selected) Orange else TextMuted,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = state.certifyingAgency,
+                    onValueChange = viewModel::updateCertifyingAgency,
+                    label = { Text("Certifying Agency") },
+                    placeholder = { Text("e.g., Rabbi Cohen", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                ToggleRow(
+                    label = "Cholov Yisroel",
+                    checked = state.isCholovYisroel,
+                    onToggle = viewModel::toggleCholovYisroel,
+                )
+
+                ToggleRow(
+                    label = "Pas Yisroel",
+                    checked = state.isPasYisroel,
+                    onToggle = viewModel::togglePasYisroel,
+                )
+
+                ToggleRow(
+                    label = "Glatt Kosher",
+                    checked = state.isGlattKosher,
+                    onToggle = viewModel::toggleGlattKosher,
+                )
+            }
+
+            // ---- Section 5: Cuisine ----
+            SectionHeader(icon = Icons.Filled.Fastfood, title = "Cuisine")
+            SectionCard {
+                OutlinedTextField(
+                    value = state.cuisineTags,
+                    onValueChange = viewModel::updateCuisineTags,
+                    label = { Text("Cuisine Tags") },
+                    placeholder = { Text("Israeli, Grill, Sushi (comma-separated)", color = TextMuted) },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            // ---- Error ----
+            if (state.error != null) {
+                Text(
+                    text = state.error!!,
+                    color = ErrorRed,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+            }
+
+            // ---- Submit Button ----
+            Button(
+                onClick = viewModel::submit,
+                enabled = state.isFormValid && !state.isSubmitting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Orange,
+                    contentColor = TextWhite,
+                    disabledContainerColor = Orange.copy(alpha = 0.3f),
+                    disabledContentColor = TextWhite.copy(alpha = 0.6f),
+                ),
+            ) {
+                if (state.isSubmitting) {
+                    CircularProgressIndicator(
+                        color = TextWhite,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(
+                    text = "Create Restaurant",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+// ---- Reusable sub-components ----
+
+@Composable
+private fun SectionHeader(icon: ImageVector, title: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Orange,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = title,
+            color = TextWhite,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun SectionCard(content: @Composable () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(SurfaceDark)
+            .padding(16.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    label: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = TextWhite,
+            fontSize = 14.sp,
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = TextWhite,
+                checkedTrackColor = Orange,
+                uncheckedThumbColor = TextMuted,
+                uncheckedTrackColor = SurfaceDarkElevated,
+                uncheckedBorderColor = SurfaceDarkElevated,
+            ),
+        )
+    }
+}
