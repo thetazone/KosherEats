@@ -156,6 +156,7 @@ fun NavGraph() {
                 SellerLoginScreen(
                     onLoginSuccess = {
                     },
+                    viewModel = authViewModel,
                 )
             }
 
