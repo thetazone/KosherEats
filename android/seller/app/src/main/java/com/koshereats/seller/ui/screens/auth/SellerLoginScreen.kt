@@ -67,6 +67,7 @@ fun SellerLoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(state.isLoggedIn) {
         if (state.isLoggedIn) onLoginSuccess()
@@ -127,7 +128,7 @@ fun SellerLoginScreen(
 
             // Continue with Google
             Button(
-                onClick = { viewModel.signInWithGoogle() },
+                onClick = { viewModel.signInWithGoogle(context) },
                 enabled = !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()

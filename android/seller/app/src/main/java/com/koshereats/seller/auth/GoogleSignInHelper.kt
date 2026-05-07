@@ -55,6 +55,8 @@ object GoogleSignInHelper {
             Result.failure(e)
         } catch (e: GoogleIdTokenParsingException) {
             Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }
