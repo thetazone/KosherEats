@@ -237,6 +237,19 @@ data class CreateDealRequest(
     @Json(name = "expires_at") val expiresAt: String,
 )
 
+@JsonClass(generateAdapter = true)
+data class CreateMenuItemBody(
+    @Json(name = "category_id") val categoryId: String,
+    val name: String,
+    val description: String = "",
+    val price: Int,
+    @Json(name = "image_url") val imageUrl: String = "",
+    @Json(name = "is_meat") val isMeat: Boolean = false,
+    @Json(name = "is_dairy") val isDairy: Boolean = false,
+    @Json(name = "is_pareve") val isPareve: Boolean = false,
+    @Json(name = "is_available") val isAvailable: Boolean = true,
+)
+
 // --- Onboarding ---
 
 @JsonClass(generateAdapter = true)

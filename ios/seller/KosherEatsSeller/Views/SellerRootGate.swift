@@ -15,6 +15,8 @@ struct SellerRootGate: View {
     enum Phase: Equatable {
         case loading
         case empty
+        case menuBuilder
+        case complete
         case has
     }
 
@@ -28,12 +30,16 @@ struct SellerRootGate: View {
                 }
             case .empty:
                 CreateRestaurantView { _ in
-                    // Newly created — drop into the dashboard with that
-                    // restaurant pre-selected. SelectedRestaurant is a
-                    // singleton; setting `nil` makes resolveSellerRestaurant
-                    // fall back to the first owned restaurant, which is the
-                    // one we just created.
                     SelectedRestaurant.shared.id = nil
+                    phase = .menuBuilder
+                }
+            case .menuBuilder:
+                OnboardingMenuBuilderView(
+                    onComplete: { phase = .complete },
+                    onSkip: { phase = .complete }
+                )
+            case .complete:
+                OnboardingCompleteView {
                     phase = .has
                 }
             case .has:
@@ -51,9 +57,6 @@ struct SellerRootGate: View {
             let list = try await APIService.shared.listRestaurants()
             phase = list.isEmpty ? .empty : .has
         } catch {
-            // On a transient list failure, default to the dashboard rather
-            // than locking a real seller out of their data. The dashboard
-            // has its own retry UI for the followup load.
             phase = .has
         }
     }

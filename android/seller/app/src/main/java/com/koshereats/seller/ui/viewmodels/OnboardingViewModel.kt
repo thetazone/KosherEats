@@ -3,10 +3,10 @@ package com.koshereats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.MenuCategory
-import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -162,19 +162,26 @@ class OnboardingViewModel @Inject constructor(
                     return@launch
                 }
 
-                for (item in s.menuItems) {
-                    val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).toInt()
-                    if (priceCents <= 0 || item.name.isBlank()) continue
-                    val menuReq = UpdateMenuItemRequest(
-                        name = item.name.trim(),
-                        description = item.description.trim(),
-                        price = priceCents,
-                        category = item.category.name.lowercase(),
-                        isKosherPareve = item.isPareve,
-                        isDairy = item.isDairy,
-                        isMeat = item.isMeat,
-                    )
-                    apiService.createMenuItem(menuReq)
+                val grouped = s.menuItems.groupBy { it.category.name.lowercase().replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
+                for ((categoryName, categoryItems) in grouped) {
+                    val catResponse = apiService.createCategory(mapOf("name" to categoryName))
+                    val categoryId = catResponse.body()?.id ?: continue
+
+                    for (item in categoryItems) {
+                        val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).toInt()
+                        if (priceCents <= 0 || item.name.isBlank()) continue
+                        apiService.createMenuItemWithCategory(
+                            CreateMenuItemBody(
+                                categoryId = categoryId,
+                                name = item.name.trim(),
+                                description = item.description.trim(),
+                                price = priceCents,
+                                isMeat = item.isMeat,
+                                isDairy = item.isDairy,
+                                isPareve = item.isPareve,
+                            ),
+                        )
+                    }
                 }
 
                 _state.value = _state.value.copy(isSubmitting = false, isComplete = true)

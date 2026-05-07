@@ -73,9 +73,19 @@ interface ApiService {
     @GET("seller/menu")
     suspend fun getSellerMenu(): Response<List<SellerMenuCategory>>
 
+    @POST("seller/menu/categories")
+    suspend fun createCategory(
+        @Body body: Map<String, String>,
+    ): Response<SellerMenuCategory>
+
     @POST("seller/menu/items")
     suspend fun createMenuItem(
         @Body item: UpdateMenuItemRequest,
+    ): Response<MenuItem>
+
+    @POST("seller/menu/items")
+    suspend fun createMenuItemWithCategory(
+        @Body item: CreateMenuItemBody,
     ): Response<MenuItem>
 
     @PUT("seller/menu/items/{itemId}")
