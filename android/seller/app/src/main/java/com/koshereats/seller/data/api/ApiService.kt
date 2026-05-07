@@ -146,6 +146,11 @@ interface ApiService {
     @DELETE("seller/deals/{dealId}")
     suspend fun deactivateDeal(@Path("dealId") dealId: String): Response<Map<String, String>>
 
+    // --- Uploads ---
+
+    @POST("uploads/presign")
+    suspend fun presignUpload(@Body body: Map<String, String>): Response<PresignResponse>
+
     // --- Devices (push notifications) ---
 
     @POST("devices/register")

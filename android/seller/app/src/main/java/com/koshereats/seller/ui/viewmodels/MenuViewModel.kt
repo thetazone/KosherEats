@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
+import com.koshereats.seller.data.models.PresignResponse
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -247,6 +248,15 @@ class MenuViewModel @Inject constructor(
                     error = "Failed to update availability",
                 ) }
             }
+        }
+    }
+
+    suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
+        return try {
+            val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
+            if (response.isSuccessful) response.body() else null
+        } catch (_: Exception) {
+            null
         }
     }
 

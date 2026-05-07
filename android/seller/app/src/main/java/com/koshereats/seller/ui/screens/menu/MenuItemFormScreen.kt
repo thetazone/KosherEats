@@ -1,10 +1,17 @@
 package com.koshereats.seller.ui.screens.menu
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -44,13 +52,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import java.util.Locale
@@ -63,6 +76,13 @@ import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.viewmodels.MenuViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,22 +94,38 @@ fun MenuItemFormScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val isEditing = itemId != null
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(MenuCategory.MAINS) }
     var imageUrl by remember { mutableStateOf("") }
-    var prepTime by remember { mutableStateOf("15") }
     var isPareve by remember { mutableStateOf(false) }
     var isDairy by remember { mutableStateOf(false) }
     var isMeat by remember { mutableStateOf(false) }
-    var spiceLevel by remember { mutableStateOf("0") }
-    var calories by remember { mutableStateOf("") }
+    var spiceLevel by remember { mutableStateOf("") }
     var categoryExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var isUploadingImage by remember { mutableStateOf(false) }
 
-    // Load existing item data
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        isUploadingImage = true
+        scope.launch {
+            val result = uploadImage(context, uri, viewModel)
+            if (result != null) {
+                imageUrl = result
+            } else {
+                viewModel.setError("Image upload failed. Please try again.")
+            }
+            isUploadingImage = false
+        }
+    }
+
     LaunchedEffect(itemId) {
         if (itemId == null) {
             viewModel.setSelectedItem(null)
@@ -105,24 +141,20 @@ fun MenuItemFormScreen(
             price = String.format(Locale.US, "%.2f", item.price / 100.0)
             category = item.category
             imageUrl = item.imageUrl
-            prepTime = item.preparationTime.toString()
             isPareve = item.isKosherPareve
             isDairy = item.isDairy
             isMeat = item.isMeat
-            spiceLevel = item.spiceLevel.toString()
-            calories = item.calories?.toString() ?: ""
+            spiceLevel = if (item.spiceLevel > 0) item.spiceLevel.toString() else ""
         } ?: run {
             name = ""
             description = ""
             price = ""
             category = MenuCategory.MAINS
             imageUrl = ""
-            prepTime = "15"
             isPareve = false
             isDairy = false
             isMeat = false
-            spiceLevel = "0"
-            calories = ""
+            spiceLevel = ""
         }
     }
 
@@ -209,6 +241,46 @@ fun MenuItemFormScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // Image picker
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, DividerColor, RoundedCornerShape(12.dp))
+                    .background(SurfaceDark)
+                    .clickable(enabled = !isUploadingImage) {
+                        imagePicker.launch("image/*")
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isUploadingImage) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Uploading...", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                } else if (imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = "Menu item image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.AddAPhoto,
+                            contentDescription = "Add photo",
+                            tint = TextMuted,
+                            modifier = Modifier.size(40.dp),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Tap to add photo", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             // Name
             OutlinedTextField(
                 value = name,
@@ -232,35 +304,20 @@ fun MenuItemFormScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // Price + Prep Time row
-            Row(
+            // Price
+            OutlinedTextField(
+                value = price,
+                onValueChange = { v ->
+                    val filtered = v.filter { c -> c.isDigit() || c == '.' }
+                    if (filtered.count { it == '.' } <= 1) price = filtered
+                },
+                label = { Text("Price (\$)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                colors = textFieldColors,
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = price,
-                    onValueChange = { v ->
-                        val filtered = v.filter { c -> c.isDigit() || c == '.' }
-                        if (filtered.count { it == '.' } <= 1) price = filtered
-                    },
-                    label = { Text("Price ($)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    colors = textFieldColors,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = prepTime,
-                    onValueChange = { prepTime = it },
-                    label = { Text("Prep (min)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = textFieldColors,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            )
 
             // Category dropdown
             ExposedDropdownMenuBox(
@@ -301,43 +358,20 @@ fun MenuItemFormScreen(
                 }
             }
 
-            // Image URL
+            // Spice level (optional)
             OutlinedTextField(
-                value = imageUrl,
-                onValueChange = { imageUrl = it },
-                label = { Text("Image URL") },
+                value = spiceLevel,
+                onValueChange = { v ->
+                    val n = v.filter { it.isDigit() }
+                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 5) spiceLevel = n
+                },
+                label = { Text("Spice Level (0-5, optional)") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
-
-            // Spice + Calories row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedTextField(
-                    value = spiceLevel,
-                    onValueChange = { spiceLevel = it },
-                    label = { Text("Spice (0-5)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = textFieldColors,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = calories,
-                    onValueChange = { calories = it },
-                    label = { Text("Calories") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = textFieldColors,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f),
-                )
-            }
 
             // Kosher type checkboxes
             Text(
@@ -395,9 +429,8 @@ fun MenuItemFormScreen(
                         isKosherPareve = isPareve,
                         isDairy = isDairy,
                         isMeat = isMeat,
-                        preparationTime = prepTime.toIntOrNull() ?: 15,
-                        spiceLevel = spiceLevel.toIntOrNull() ?: 0,
-                        calories = calories.toIntOrNull(),
+                        spiceLevel = spiceLevel.toIntOrNull(),
+                        calories = null,
                     )
                     if (isEditing && itemId != null) {
                         viewModel.updateMenuItem(itemId, request)
@@ -405,7 +438,7 @@ fun MenuItemFormScreen(
                         viewModel.createMenuItem(request)
                     }
                 },
-                enabled = name.isNotBlank() && (price.toDoubleOrNull() ?: 0.0) > 0 && !state.isSaving,
+                enabled = name.isNotBlank() && (price.toDoubleOrNull() ?: 0.0) > 0 && !state.isSaving && !isUploadingImage,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -432,6 +465,32 @@ fun MenuItemFormScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+private suspend fun uploadImage(
+    context: android.content.Context,
+    uri: Uri,
+    viewModel: MenuViewModel,
+): String? = withContext(Dispatchers.IO) {
+    try {
+        val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        val presignResponse = viewModel.presignUpload("menu_item", contentType)
+            ?: return@withContext null
+
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: return@withContext null
+
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url(presignResponse.uploadUrl)
+            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .build()
+
+        val response = client.newCall(request).execute()
+        response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
+    } catch (_: Exception) {
+        null
     }
 }
 

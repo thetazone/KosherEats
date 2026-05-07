@@ -270,22 +270,13 @@ data class CreateMenuItemBody(
     @Json(name = "is_available") val isAvailable: Boolean = true,
 )
 
-// --- Onboarding ---
+// --- Uploads ---
 
 @JsonClass(generateAdapter = true)
-data class CreateRestaurantRequest(
-    val name: String,
-    val description: String = "",
-    val phone: String,
-    val email: String,
-    val street: String,
-    val city: String,
-    val state: String,
-    @Json(name = "zip_code") val zipCode: String,
-    @Json(name = "kosher_certification") val kosherCertification: String,
-    @Json(name = "certifying_agency") val certifyingAgency: String = "",
-    @Json(name = "cuisine_type") val cuisineType: List<String> = emptyList(),
-    @Json(name = "is_cholov_yisroel") val isCholovYisroel: Boolean = false,
-    @Json(name = "is_pas_yisroel") val isPasYisroel: Boolean = false,
-    @Json(name = "is_glatt_kosher") val isGlattKosher: Boolean = false,
+data class PresignResponse(
+    @Json(name = "upload_url") val uploadUrl: String,
+    @Json(name = "public_url") val publicUrl: String,
+    val key: String = "",
+    @Json(name = "expires_in") val expiresIn: Int = 0,
 )
+
