@@ -160,6 +160,26 @@ func (c *Client) GetAccountStatus(accountID string) (*AccountStatus, error) {
 	}, nil
 }
 
+// VerifyPaymentSucceeded checks that a PaymentIntent has actually succeeded
+// and matches the expected user and amount. In dev stub mode it always passes.
+func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expectedAmountCents int) error {
+	if !c.enabled {
+		log.Printf("[stripe stub] verify payment_intent=%s user=%s amount=%d", paymentIntentID, userID, expectedAmountCents)
+		return nil
+	}
+	pi, err := paymentintent.Get(paymentIntentID, nil)
+	if err != nil {
+		return fmt.Errorf("retrieve payment intent: %w", err)
+	}
+	if pi.Status != stripe.PaymentIntentStatusSucceeded {
+		return fmt.Errorf("payment intent status is %s, expected succeeded", pi.Status)
+	}
+	if pi.Amount != int64(expectedAmountCents) {
+		return fmt.Errorf("payment amount mismatch: got %d, expected %d", pi.Amount, expectedAmountCents)
+	}
+	return nil
+}
+
 // RefundPaymentIntent issues a full refund for the given PaymentIntent id.
 // Called when an order is rejected (either manually by the seller or
 // automatically by the stale-order sweep) so the customer isn't charged for

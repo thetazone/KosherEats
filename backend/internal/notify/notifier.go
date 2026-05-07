@@ -194,6 +194,46 @@ func (n *Notifier) CourierAutoAssigned(ctx context.Context, orderID, courierUser
 	})
 }
 
+// OrderAccepted: seller accepted the order. Push to consumer.
+func (n *Notifier) OrderAccepted(ctx context.Context, orderID, consumerID, restaurantName string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
+	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
+		Title: "Order accepted!",
+		Body:  restaurantName + " accepted your order and will start preparing it soon.",
+		Data:  map[string]string{"order_id": orderID, "type": "order_accepted"},
+	})
+}
+
+// OrderPreparing: seller started preparing the order. Push to consumer.
+func (n *Notifier) OrderPreparing(ctx context.Context, orderID, consumerID, restaurantName string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
+	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
+		Title: "Your food is being prepared",
+		Body:  restaurantName + " is preparing your order now.",
+		Data:  map[string]string{"order_id": orderID, "type": "order_preparing"},
+	})
+}
+
+// OrderRejected: seller manually rejected the order. Push to consumer.
+func (n *Notifier) OrderRejected(ctx context.Context, orderID, consumerID, restaurantName, reason string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
+	body := restaurantName + " couldn't fulfill your order. You've been refunded."
+	if reason != "" {
+		body = restaurantName + ": " + reason + ". You've been refunded."
+	}
+	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
+		Title: "Order rejected — refund issued",
+		Body:  body,
+		Data:  map[string]string{"order_id": orderID, "type": "order_rejected"},
+	})
+}
+
 // OrderAutoRejected: a pending order sat too long without seller acceptance
 // and the stale-order sweep rejected + refunded it. Notify the consumer that
 // their order was cancelled and money returned.

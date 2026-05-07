@@ -32,16 +32,18 @@ type AddAddressRequest struct {
 }
 
 func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	var u models.User
-	err := h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
 		 FROM users WHERE id = $1`, user["user_id"],
 	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.AvatarURL,
-		&u.CreatedAt, &u.UpdatedAt)
-
-	if err != nil {
+		&u.CreatedAt, &u.UpdatedAt); err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
@@ -50,7 +52,7 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, _ := getUserFromContext(r)
 
 	var req UpdateProfileRequest
 	if err := readJSON(r, &req); err != nil {
@@ -104,7 +106,7 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListAddresses(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, _ := getUserFromContext(r)
 
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT id, user_id, label, street, apt, city, state, zip_code, lat, lng, is_default
@@ -134,7 +136,7 @@ func (h *Handler) ListAddresses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AddAddress(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, _ := getUserFromContext(r)
 
 	var req AddAddressRequest
 	if err := readJSON(r, &req); err != nil {
@@ -160,7 +162,7 @@ func (h *Handler) AddAddress(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteAddress(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, _ := getUserFromContext(r)
 	addrID := chi.URLParam(r, "id")
 
 	result, err := h.db.Pool.Exec(r.Context(),
@@ -179,7 +181,7 @@ func (h *Handler) DeleteAddress(w http.ResponseWriter, r *http.Request) {
 // on every other address the user owns. Wrapped in a tx so we never end up
 // with zero or two "default" rows if the second UPDATE fails.
 func (h *Handler) SetDefaultAddress(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, _ := getUserFromContext(r)
 	addrID := chi.URLParam(r, "id")
 	ctx := r.Context()
 
@@ -213,7 +215,7 @@ func (h *Handler) SetDefaultAddress(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
-	user := getUserFromContext(r)
+	user, _ := getUserFromContext(r)
 	uid := user["user_id"]
 	ctx := r.Context()
 
