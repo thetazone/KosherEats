@@ -34,6 +34,7 @@ import com.koshereats.seller.ui.screens.deals.CreateDealScreen
 import com.koshereats.seller.ui.screens.deals.DealsScreen
 import com.koshereats.seller.ui.screens.menu.MenuItemFormScreen
 import com.koshereats.seller.ui.screens.menu.MenuManagementScreen
+import com.koshereats.seller.ui.screens.onboarding.OnboardingScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrderDetailScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrdersScreen
 import com.koshereats.seller.ui.screens.settings.RestaurantSettingsScreen
@@ -61,7 +62,11 @@ fun NavGraph() {
         return
     }
 
-    val startDestination = if (authState.isLoggedIn) Screen.Dashboard.route else Screen.Login.route
+    val startDestination = when {
+        !authState.isLoggedIn -> Screen.Login.route
+        authState.restaurant == null -> Screen.Onboarding.route
+        else -> Screen.Dashboard.route
+    }
 
     Scaffold(
         containerColor = BackgroundBlack,
@@ -126,8 +131,24 @@ fun NavGraph() {
             composable(Screen.Login.route) {
                 SellerLoginScreen(
                     onLoginSuccess = {
-                        navController.navigate(Screen.Dashboard.route) {
+                        val dest = if (authState.restaurant == null) {
+                            Screen.Onboarding.route
+                        } else {
+                            Screen.Dashboard.route
+                        }
+                        navController.navigate(dest) {
                             popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            // Onboarding
+            composable(Screen.Onboarding.route) {
+                OnboardingScreen(
+                    onComplete = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.Onboarding.route) { inclusive = true }
                         }
                     },
                 )

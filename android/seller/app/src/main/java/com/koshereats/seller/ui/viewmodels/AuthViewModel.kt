@@ -46,11 +46,9 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             val token = context.dataStore.data.map { it[PrefsKeys.AUTH_TOKEN] }.first()
             if (token != null) {
-                _state.value = AuthState(isLoggedIn = true, isLoading = false)
-                // Resumed session — re-register the current FCM token in
-                // case it rotated or never uploaded on first login.
                 PushBootstrap.registerCurrentToken(apiService)
                 loadRestaurant()
+                _state.value = _state.value.copy(isLoggedIn = true, isLoading = false)
             } else {
                 _state.value = AuthState(isLoggedIn = false, isLoading = false)
             }
@@ -86,12 +84,12 @@ class AuthViewModel @Inject constructor(
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
                     }
-                    _state.value = AuthState(
+                    PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
+                    _state.value = _state.value.copy(
                         isLoggedIn = true,
                         isLoading = false,
                     )
-                    PushBootstrap.registerCurrentToken(apiService)
-                    loadRestaurant()
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -126,12 +124,12 @@ class AuthViewModel @Inject constructor(
                     context.dataStore.edit { prefs ->
                         prefs[PrefsKeys.AUTH_TOKEN] = body.token
                     }
-                    _state.value = AuthState(
+                    PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
+                    _state.value = _state.value.copy(
                         isLoggedIn = true,
                         isLoading = false,
                     )
-                    PushBootstrap.registerCurrentToken(apiService)
-                    loadRestaurant()
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,

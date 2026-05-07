@@ -1,0 +1,189 @@
+package com.koshereats.seller.ui.viewmodels
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.models.CreateRestaurantRequest
+import com.koshereats.seller.data.models.KosherCertification
+import com.koshereats.seller.data.models.MenuCategory
+import com.koshereats.seller.data.models.UpdateMenuItemRequest
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+enum class OnboardingStep { BASICS, ADDRESS, KOSHER, MENU, REVIEW }
+
+data class OnboardingMenuItem(
+    val name: String = "",
+    val description: String = "",
+    val priceDollars: String = "",
+    val category: MenuCategory = MenuCategory.MAINS,
+    val isMeat: Boolean = false,
+    val isDairy: Boolean = false,
+    val isPareve: Boolean = false,
+)
+
+data class OnboardingState(
+    val step: OnboardingStep = OnboardingStep.BASICS,
+    // Basics
+    val restaurantName: String = "",
+    val description: String = "",
+    val phone: String = "",
+    val email: String = "",
+    // Address
+    val street: String = "",
+    val city: String = "",
+    val state: String = "",
+    val zipCode: String = "",
+    // Kosher
+    val certification: KosherCertification = KosherCertification.OU,
+    val certifyingAgency: String = "",
+    val isCholovYisroel: Boolean = false,
+    val isPasYisroel: Boolean = false,
+    val isGlattKosher: Boolean = false,
+    // Menu items
+    val menuItems: List<OnboardingMenuItem> = emptyList(),
+    // UI
+    val isSubmitting: Boolean = false,
+    val isComplete: Boolean = false,
+    val error: String? = null,
+)
+
+@HiltViewModel
+class OnboardingViewModel @Inject constructor(
+    private val apiService: ApiService,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(OnboardingState())
+    val state: StateFlow<OnboardingState> = _state.asStateFlow()
+
+    fun updateBasics(name: String, description: String, phone: String, email: String) {
+        _state.value = _state.value.copy(
+            restaurantName = name,
+            description = description,
+            phone = phone,
+            email = email,
+        )
+    }
+
+    fun updateAddress(street: String, city: String, state: String, zipCode: String) {
+        _state.value = _state.value.copy(
+            street = street, city = city, state = state, zipCode = zipCode,
+        )
+    }
+
+    fun updateKosher(
+        certification: KosherCertification,
+        agency: String,
+        cholovYisroel: Boolean,
+        pasYisroel: Boolean,
+        glattKosher: Boolean,
+    ) {
+        _state.value = _state.value.copy(
+            certification = certification,
+            certifyingAgency = agency,
+            isCholovYisroel = cholovYisroel,
+            isPasYisroel = pasYisroel,
+            isGlattKosher = glattKosher,
+        )
+    }
+
+    fun addMenuItem(item: OnboardingMenuItem) {
+        _state.value = _state.value.copy(
+            menuItems = _state.value.menuItems + item,
+        )
+    }
+
+    fun removeMenuItem(index: Int) {
+        _state.value = _state.value.copy(
+            menuItems = _state.value.menuItems.filterIndexed { i, _ -> i != index },
+        )
+    }
+
+    fun nextStep() {
+        val next = when (_state.value.step) {
+            OnboardingStep.BASICS -> OnboardingStep.ADDRESS
+            OnboardingStep.ADDRESS -> OnboardingStep.KOSHER
+            OnboardingStep.KOSHER -> OnboardingStep.MENU
+            OnboardingStep.MENU -> OnboardingStep.REVIEW
+            OnboardingStep.REVIEW -> return
+        }
+        _state.value = _state.value.copy(step = next, error = null)
+    }
+
+    fun previousStep() {
+        val prev = when (_state.value.step) {
+            OnboardingStep.BASICS -> return
+            OnboardingStep.ADDRESS -> OnboardingStep.BASICS
+            OnboardingStep.KOSHER -> OnboardingStep.ADDRESS
+            OnboardingStep.MENU -> OnboardingStep.KOSHER
+            OnboardingStep.REVIEW -> OnboardingStep.MENU
+        }
+        _state.value = _state.value.copy(step = prev, error = null)
+    }
+
+    fun setError(msg: String?) {
+        _state.value = _state.value.copy(error = msg)
+    }
+
+    fun submit() {
+        val s = _state.value
+        if (s.isSubmitting) return
+        _state.value = s.copy(isSubmitting = true, error = null)
+
+        viewModelScope.launch {
+            try {
+                val certString = s.certification.name.lowercase()
+                val req = CreateRestaurantRequest(
+                    name = s.restaurantName.trim(),
+                    description = s.description.trim(),
+                    phone = s.phone.trim(),
+                    email = s.email.trim(),
+                    street = s.street.trim(),
+                    city = s.city.trim(),
+                    state = s.state.trim(),
+                    zipCode = s.zipCode.trim(),
+                    kosherCertification = certString,
+                    certifyingAgency = s.certifyingAgency.trim(),
+                    isCholovYisroel = s.isCholovYisroel,
+                    isPasYisroel = s.isPasYisroel,
+                    isGlattKosher = s.isGlattKosher,
+                )
+
+                val restResponse = apiService.createRestaurant(req)
+                if (!restResponse.isSuccessful) {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        error = "Failed to create restaurant. Please try again.",
+                    )
+                    return@launch
+                }
+
+                for (item in s.menuItems) {
+                    val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).toInt()
+                    if (priceCents <= 0 || item.name.isBlank()) continue
+                    val menuReq = UpdateMenuItemRequest(
+                        name = item.name.trim(),
+                        description = item.description.trim(),
+                        price = priceCents,
+                        category = item.category.name.lowercase(),
+                        isKosherPareve = item.isPareve,
+                        isDairy = item.isDairy,
+                        isMeat = item.isMeat,
+                    )
+                    apiService.createMenuItem(menuReq)
+                }
+
+                _state.value = _state.value.copy(isSubmitting = false, isComplete = true)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    error = "Connection error: ${e.message}",
+                )
+            }
+        }
+    }
+}

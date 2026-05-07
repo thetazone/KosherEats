@@ -106,6 +106,11 @@ interface ApiService {
     @GET("seller/restaurants")
     suspend fun listRestaurants(): Response<List<Restaurant>>
 
+    @POST("seller/restaurants")
+    suspend fun createRestaurant(
+        @Body request: CreateRestaurantRequest,
+    ): Response<Restaurant>
+
     @GET("seller/restaurant")
     suspend fun getRestaurant(): Response<Restaurant>
 
