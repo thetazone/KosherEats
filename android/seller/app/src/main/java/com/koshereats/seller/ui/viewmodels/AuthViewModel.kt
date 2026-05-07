@@ -184,13 +184,17 @@ class AuthViewModel @Inject constructor(
 
     fun signInWithGoogle(activityContext: android.content.Context) {
         viewModelScope.launch {
+            android.util.Log.d("GoogleSignIn", "signInWithGoogle called")
             _state.value = _state.value.copy(isLoading = true, error = null)
             val result = GoogleSignInHelper.signIn(activityContext)
+            android.util.Log.d("GoogleSignIn", "signIn returned: isSuccess=${result.isSuccess}")
             result.fold(
                 onSuccess = { googleResult ->
+                    android.util.Log.d("GoogleSignIn", "success, calling socialLogin")
                     socialLogin("google", googleResult.idToken, googleResult.firstName, googleResult.lastName)
                 },
                 onFailure = { e ->
+                    android.util.Log.e("GoogleSignIn", "failure: ${e.javaClass.name} — ${e.message}")
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = e.message ?: "Google Sign-In failed",

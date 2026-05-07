@@ -1,6 +1,7 @@
 package com.koshereats.seller.auth
 
 import android.content.Context
+import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -17,6 +18,7 @@ data class GoogleSignInResult(
 )
 
 object GoogleSignInHelper {
+    private const val TAG = "GoogleSignIn"
     suspend fun signIn(context: Context): Result<GoogleSignInResult> {
         val webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
         if (webClientId.isBlank()) {
@@ -34,13 +36,16 @@ object GoogleSignInHelper {
             .addCredentialOption(googleIdOption)
             .build()
 
+        Log.d(TAG, "getCredential starting, context=${context.javaClass.name}")
         return try {
             val result = credentialManager.getCredential(context, request)
             val credential = result.credential
+            Log.d(TAG, "credential type=${credential.type}")
             if (credential is CustomCredential &&
                 credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
             ) {
                 val token = GoogleIdTokenCredential.createFrom(credential.data)
+                Log.d(TAG, "Google sign-in success, name=${token.givenName}")
                 Result.success(
                     GoogleSignInResult(
                         idToken = token.idToken,
@@ -49,13 +54,17 @@ object GoogleSignInHelper {
                     )
                 )
             } else {
+                Log.e(TAG, "Unexpected credential type: ${credential.type}")
                 Result.failure(IllegalStateException("Unexpected credential type: ${credential.type}"))
             }
         } catch (e: GetCredentialException) {
+            Log.e(TAG, "GetCredentialException: ${e.type} — ${e.message}", e)
             Result.failure(e)
         } catch (e: GoogleIdTokenParsingException) {
+            Log.e(TAG, "GoogleIdTokenParsingException: ${e.message}", e)
             Result.failure(e)
         } catch (e: Exception) {
+            Log.e(TAG, "Unexpected exception: ${e.javaClass.name} — ${e.message}", e)
             Result.failure(e)
         }
     }
