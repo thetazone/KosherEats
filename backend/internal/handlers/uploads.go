@@ -24,8 +24,9 @@ var allowedUploadKinds = map[string]bool{
 	"courier/profile":      true,
 	"delivery_proof":       true,
 	"restaurant/cover":     true,
-	"restaurant/logo":      true,
-	"menu_item":            true,
+	"restaurant/logo":         true,
+	"restaurant/certificate": true,
+	"menu_item":              true,
 }
 
 var allowedContentTypes = map[string]bool{

@@ -19,7 +19,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	const baseQuery = `SELECT id, owner_id, name, description, image_url, cover_image_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE is_active = true`
 
@@ -56,7 +56,7 @@ func scanRestaurants(rows pgx.Rows) ([]models.Restaurant, error) {
 		if err := rows.Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 			&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 			&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
-			&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
+			&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 			&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 			&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
 			&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt); err != nil {
@@ -75,13 +75,13 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1 AND is_active = true`, id,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
-		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
+		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
@@ -256,7 +256,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		 is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		 FROM restaurants
 		 WHERE is_active = true
@@ -347,7 +347,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			`SELECT id, owner_id, name, description, image_url, cover_image_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-			        is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 			   FROM restaurants
 			  WHERE id = ANY($1) AND is_active = true`, familiarIDs)
@@ -381,7 +381,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			`SELECT id, owner_id, name, description, image_url, cover_image_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-			        is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 			   FROM restaurants
 			  WHERE is_active = true AND id != ALL($1)
@@ -397,7 +397,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			`SELECT id, owner_id, name, description, image_url, cover_image_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-			        is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 			   FROM restaurants
 			  WHERE is_active = true
@@ -481,7 +481,7 @@ func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 		`SELECT r.id, r.owner_id, r.name, r.description, r.image_url, r.cover_image_url,
 		        r.phone, r.email, r.street, r.city, r.state, r.zip_code, r.lat, r.lng,
 		        r.kosher_certification, r.certifying_agency, r.is_cholov_yisroel, r.is_pas_yisroel,
-		        r.is_glatt_kosher, r.cuisine_type, r.rating, r.review_count, r.delivery_fee, r.min_order,
+		        r.is_glatt_kosher, r.kosher_certificate_url, r.cuisine_type, r.rating, r.review_count, r.delivery_fee, r.min_order,
 		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.delivery_mode, r.created_at, r.updated_at
 		   FROM restaurant_favorites f
 		   JOIN restaurants r ON f.restaurant_id = r.id

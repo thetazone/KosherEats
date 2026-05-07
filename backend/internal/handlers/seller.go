@@ -36,6 +36,7 @@ type UpdateRestaurantRequest struct {
 	IsCholovYisroel     *bool   `json:"is_cholov_yisroel"`
 	IsPasYisroel        *bool   `json:"is_pas_yisroel"`
 	IsGlattKosher       *bool   `json:"is_glatt_kosher"`
+	KosherCertificateURL *string `json:"kosher_certificate_url"`
 	DeliveryMode        *string `json:"delivery_mode"`
 }
 
@@ -174,18 +175,18 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			owner_id, name, description, image_url, cover_image_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-			is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active
 		)
 		VALUES ($1, $2, $3, '', '',
 			$4, $5, $6, $7, $8, $9, $10, $11,
 			$12, $13, $14, $15,
-			$16, $17, 0, 0, $18, $19,
+			$16, '', $17, 0, 0, $18, $19,
 			$20, $21, false, true)
 		RETURNING id, owner_id, name, description, image_url, cover_image_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-			is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at`,
 		user["user_id"], req.Name, req.Description,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
@@ -195,7 +196,7 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
-		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
+		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
@@ -223,7 +224,7 @@ func (h *Handler) ListSellerRestaurants(w http.ResponseWriter, r *http.Request) 
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		 is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		 FROM restaurants WHERE owner_id = $1 ORDER BY name`, user["user_id"])
 	if err != nil {
@@ -257,13 +258,13 @@ func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
-		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
+		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
@@ -315,27 +316,28 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 	// flipping is_open) don't blank out the rest of the row.
 	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE restaurants SET
-			name                 = COALESCE($1,  name),
-			description          = COALESCE($2,  description),
-			phone                = COALESCE($3,  phone),
-			email                = COALESCE($4,  email),
-			street               = COALESCE($5,  street),
-			city                 = COALESCE($6,  city),
-			state                = COALESCE($7,  state),
-			zip_code             = COALESCE($8,  zip_code),
-			cuisine_type         = COALESCE($9,  cuisine_type),
-			delivery_fee         = COALESCE($10, delivery_fee),
-			min_order            = COALESCE($11, min_order),
-			est_delivery_min     = COALESCE($12, est_delivery_min),
-			est_delivery_max     = COALESCE($13, est_delivery_max),
-			is_open              = COALESCE($14, is_open),
-			kosher_certification = COALESCE($15, kosher_certification),
-			certifying_agency    = COALESCE($16, certifying_agency),
-			is_cholov_yisroel    = COALESCE($17, is_cholov_yisroel),
-			is_pas_yisroel       = COALESCE($18, is_pas_yisroel),
-			is_glatt_kosher      = COALESCE($19, is_glatt_kosher),
-			delivery_mode        = COALESCE($20, delivery_mode),
-			updated_at           = NOW()
+			name                   = COALESCE($1,  name),
+			description            = COALESCE($2,  description),
+			phone                  = COALESCE($3,  phone),
+			email                  = COALESCE($4,  email),
+			street                 = COALESCE($5,  street),
+			city                   = COALESCE($6,  city),
+			state                  = COALESCE($7,  state),
+			zip_code               = COALESCE($8,  zip_code),
+			cuisine_type           = COALESCE($9,  cuisine_type),
+			delivery_fee           = COALESCE($10, delivery_fee),
+			min_order              = COALESCE($11, min_order),
+			est_delivery_min       = COALESCE($12, est_delivery_min),
+			est_delivery_max       = COALESCE($13, est_delivery_max),
+			is_open                = COALESCE($14, is_open),
+			kosher_certification   = COALESCE($15, kosher_certification),
+			certifying_agency      = COALESCE($16, certifying_agency),
+			is_cholov_yisroel      = COALESCE($17, is_cholov_yisroel),
+			is_pas_yisroel         = COALESCE($18, is_pas_yisroel),
+			is_glatt_kosher        = COALESCE($19, is_glatt_kosher),
+			delivery_mode          = COALESCE($20, delivery_mode),
+			kosher_certificate_url = COALESCE($22, kosher_certificate_url),
+			updated_at             = NOW()
 		 WHERE id = $21`,
 		req.Name, req.Description, req.Phone, req.Email,
 		req.Street, req.City, req.State, req.ZipCode,
@@ -344,7 +346,7 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		req.IsOpen, req.KosherCertification, req.CertifyingAgency,
 		req.IsCholovYisroel, req.IsPasYisroel, req.IsGlattKosher,
 		req.DeliveryMode,
-		restID)
+		restID, req.KosherCertificateURL)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update restaurant")
@@ -359,13 +361,13 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
-		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.CuisineType,
+		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
 		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)

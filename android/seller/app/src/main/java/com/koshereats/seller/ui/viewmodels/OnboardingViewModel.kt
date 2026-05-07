@@ -7,6 +7,7 @@ import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.MenuCategory
+import com.koshereats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +45,7 @@ data class OnboardingState(
     val isCholovYisroel: Boolean = false,
     val isPasYisroel: Boolean = false,
     val isGlattKosher: Boolean = false,
+    val kosherCertificateUrl: String = "",
     // Menu items
     val menuItems: List<OnboardingMenuItem> = emptyList(),
     // UI
@@ -81,6 +83,7 @@ class OnboardingViewModel @Inject constructor(
         cholovYisroel: Boolean,
         pasYisroel: Boolean,
         glattKosher: Boolean,
+        certificateUrl: String = "",
     ) {
         _state.value = _state.value.copy(
             certification = certification,
@@ -88,6 +91,7 @@ class OnboardingViewModel @Inject constructor(
             isCholovYisroel = cholovYisroel,
             isPasYisroel = pasYisroel,
             isGlattKosher = glattKosher,
+            kosherCertificateUrl = certificateUrl,
         )
     }
 
@@ -129,6 +133,13 @@ class OnboardingViewModel @Inject constructor(
         _state.value = _state.value.copy(error = msg)
     }
 
+    suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
+        return try {
+            val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
+            if (response.isSuccessful) response.body() else null
+        } catch (_: Exception) { null }
+    }
+
     fun submit() {
         val s = _state.value
         if (s.isSubmitting) return
@@ -160,6 +171,12 @@ class OnboardingViewModel @Inject constructor(
                         error = "Failed to create restaurant. Please try again.",
                     )
                     return@launch
+                }
+
+                if (s.kosherCertificateUrl.isNotBlank()) {
+                    apiService.updateRestaurant(
+                        mapOf("kosher_certificate_url" to s.kosherCertificateUrl),
+                    )
                 }
 
                 val grouped = s.menuItems.groupBy { it.category.name.lowercase().replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }

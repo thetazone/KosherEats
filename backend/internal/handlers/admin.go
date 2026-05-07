@@ -33,7 +33,7 @@ func (h *Handler) AdminListRestaurants(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, owner_id, name, description, image_url, cover_image_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		 is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		 FROM restaurants ORDER BY name`)
 	if err != nil {
@@ -119,10 +119,10 @@ func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) 
 		`INSERT INTO restaurants (owner_id, name, description, image_url, cover_image_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
-		 is_glatt_kosher, cuisine_type, delivery_fee, min_order,
+		 is_glatt_kosher, kosher_certificate_url, cuisine_type, delivery_fee, min_order,
 		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-		         $16, $17, $18, $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'platform'))
+		         $16, $17, $18, '', $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'platform'))
 		 RETURNING id`,
 		req.OwnerID, req.Name, req.Description, req.ImageURL, req.CoverImageURL,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode,

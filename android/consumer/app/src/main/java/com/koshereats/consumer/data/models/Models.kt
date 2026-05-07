@@ -167,6 +167,7 @@ data class Restaurant(
     @SerializedName("is_cholov_yisroel") val isCholovYisroel: Boolean = false,
     @SerializedName("is_pas_yisroel") val isPasYisroel: Boolean = false,
     @SerializedName("is_glatt_kosher") val isGlattKosher: Boolean = false,
+    @SerializedName("kosher_certificate_url") val kosherCertificateUrl: String = "",
     @SerializedName("is_yoshon") val isYoshon: Boolean = false,
     @SerializedName("dietary_type") val dietaryType: DietaryType? = null,
     @SerializedName("is_open") val isOpen: Boolean = true,

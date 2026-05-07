@@ -60,6 +60,7 @@ data class Restaurant(
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "kosher_certification") val kosherCertification: KosherCertification = KosherCertification.OU,
     @Json(name = "certifying_agency") val certificationDetails: String = "",
+    @Json(name = "kosher_certificate_url") val kosherCertificateUrl: String = "",
     @Json(name = "is_open") val isOpen: Boolean = false,
     @Json(name = "opening_hours") val openingHours: Map<String, String> = emptyMap(),
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,

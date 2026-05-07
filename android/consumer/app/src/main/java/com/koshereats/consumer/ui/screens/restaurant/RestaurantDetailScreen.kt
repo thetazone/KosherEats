@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,9 +30,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -47,6 +50,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -68,6 +72,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.KosherCertification
@@ -98,6 +104,7 @@ fun RestaurantDetailScreen(
     val restaurant = uiState.restaurant
     val listState = rememberLazyListState()
     var sheetItem by remember { mutableStateOf<MenuItem?>(null) }
+    var showCertificate by remember { mutableStateOf(false) }
 
     val headerHeight = 260.dp
     val headerHeightPx = with(LocalDensity.current) { headerHeight.toPx() }
@@ -238,6 +245,24 @@ fun RestaurantDetailScreen(
                             )
                         }
 
+                        if (restaurant.kosherCertificateUrl.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = { showCertificate = true },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Orange),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                            ) {
+                                Icon(
+                                    Icons.Filled.VerifiedUser,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("View Kosher Certificate", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(20.dp))
 
                         if (restaurant.description.isNotBlank()) {
@@ -375,6 +400,51 @@ fun RestaurantDetailScreen(
                         }
                     ) {
                         Icon(Icons.Filled.ShoppingCart, contentDescription = "Cart")
+                    }
+                }
+            }
+
+            if (showCertificate && restaurant.kosherCertificateUrl.isNotBlank()) {
+                Dialog(
+                    onDismissRequest = { showCertificate = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(BackgroundBlack.copy(alpha = 0.95f))
+                            .clickable { showCertificate = false },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "Kosher Certificate",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = TextWhite,
+                                )
+                                IconButton(onClick = { showCertificate = false }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = TextWhite)
+                                }
+                            }
+                            AsyncImage(
+                                model = restaurant.kosherCertificateUrl,
+                                contentDescription = "Kosher certificate",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                            )
+                        }
                     }
                 }
             }

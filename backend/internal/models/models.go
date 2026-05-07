@@ -107,6 +107,7 @@ type Restaurant struct {
 	IsCholovYisroel     bool                `json:"is_cholov_yisroel"`
 	IsPasYisroel        bool                `json:"is_pas_yisroel"`
 	IsGlattKosher       bool                `json:"is_glatt_kosher"`
+	KosherCertificateURL string             `json:"kosher_certificate_url"`
 	CuisineType         []string            `json:"cuisine_type"`
 	Rating              float64             `json:"rating"`
 	ReviewCount         int                 `json:"review_count"`
