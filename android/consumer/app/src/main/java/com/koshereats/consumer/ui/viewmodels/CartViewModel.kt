@@ -17,8 +17,21 @@ import kotlin.math.roundToInt
 import java.util.UUID
 import javax.inject.Inject
 
+/**
+ * UI state for the cart system. Supports multiple restaurant carts simultaneously.
+ *
+ * [carts] holds every active restaurant cart keyed by restaurant ID.
+ * [activeRestaurantId] tracks which single-restaurant cart the user is
+ * currently viewing / checking out (set when they tap "View cart" from the
+ * multi-cart list).
+ *
+ * Backwards-compatible properties ([cart], [subtotal], [isEmpty], etc.) are
+ * derived from [activeRestaurantId] so existing checkout / single-cart UI
+ * continues to work without changes.
+ */
 data class CartUiState(
-    val cart: Cart = Cart(),
+    val carts: Map<String, Cart> = emptyMap(),
+    val activeRestaurantId: String? = null,
     val deliveryFee: Int = 399,
     val serviceFee: Int = 249,
     val taxRate: Double = 0.08875,
@@ -34,11 +47,23 @@ data class CartUiState(
     val orderPlaced: Order? = null,
     val error: String? = null,
 ) {
+    /** The currently-active single restaurant cart (for checkout / detail view). */
+    val cart: Cart get() = activeRestaurantId?.let { carts[it] } ?: carts.values.firstOrNull() ?: Cart()
+
     val subtotal: Int get() = cart.subtotal
     val tax: Int get() = (subtotal * taxRate).roundToInt()
     val total: Int get() = subtotal + deliveryFee + serviceFee + tax + tip
     val isEmpty: Boolean get() = cart.items.isEmpty()
     val itemCount: Int get() = cart.itemCount
+
+    /** Total item count across ALL restaurant carts. */
+    val totalItemCount: Int get() = carts.values.sumOf { it.itemCount }
+
+    /** All non-empty carts as a list, ordered by restaurant name. */
+    val allCarts: List<Cart> get() = carts.values.filter { it.items.isNotEmpty() }.sortedBy { it.restaurantName }
+
+    /** True when there are items in more than one restaurant cart. */
+    val hasMultipleCarts: Boolean get() = allCarts.size > 1
 }
 
 @HiltViewModel
@@ -61,55 +86,65 @@ class CartViewModel @Inject constructor(
         logoutJob.cancel()
     }
 
-    fun addItem(menuItem: MenuItem, restaurantId: String, restaurantName: String, quantity: Int = 1) {
+    fun addItem(
+        menuItem: MenuItem,
+        restaurantId: String,
+        restaurantName: String,
+        restaurantImageUrl: String? = null,
+        quantity: Int = 1,
+        selectedCustomizations: List<SelectedCustomization> = emptyList(),
+        specialInstructions: String? = null,
+    ) {
         _uiState.update { state ->
-            val currentCart = state.cart
+            val currentCart = state.carts[restaurantId] ?: Cart(
+                restaurantId = restaurantId,
+                restaurantName = restaurantName,
+                restaurantImageUrl = restaurantImageUrl,
+            )
 
-            // If adding from a different restaurant, clear the cart first
-            if (currentCart.items.isNotEmpty() && currentCart.restaurantId != restaurantId) {
-                val newCart = Cart(
-                    restaurantId = restaurantId,
-                    restaurantName = restaurantName,
-                    items = listOf(
-                        CartItem(
-                            id = UUID.randomUUID().toString(),
-                            menuItem = menuItem,
-                            quantity = quantity,
-                        )
-                    ),
-                )
-                state.copy(cart = newCart)
-            } else {
-                // Check if item already exists in cart
-                val existingIndex = currentCart.items.indexOfFirst { it.menuItem.id == menuItem.id }
-                val updatedItems = if (existingIndex >= 0) {
-                    currentCart.items.toMutableList().apply {
-                        val existing = this[existingIndex]
-                        this[existingIndex] = existing.copy(quantity = (existing.quantity + quantity).coerceAtMost(99))
-                    }
-                } else {
-                    currentCart.items + CartItem(
-                        id = UUID.randomUUID().toString(),
-                        menuItem = menuItem,
-                        quantity = quantity.coerceIn(1, 99),
-                    )
+            val newCartItem = CartItem(
+                id = UUID.randomUUID().toString(),
+                menuItem = menuItem,
+                quantity = quantity.coerceIn(1, 99),
+                selectedCustomizations = selectedCustomizations,
+                specialInstructions = specialInstructions?.takeIf { it.isNotBlank() },
+            )
+
+            val existingIndex = if (selectedCustomizations.isEmpty()) {
+                currentCart.items.indexOfFirst {
+                    it.menuItem.id == menuItem.id && it.selectedCustomizations.isEmpty()
                 }
+            } else -1
 
-                state.copy(
-                    cart = currentCart.copy(
-                        restaurantId = restaurantId,
-                        restaurantName = restaurantName,
-                        items = updatedItems,
-                    )
-                )
+            val updatedItems = if (existingIndex >= 0) {
+                currentCart.items.toMutableList().apply {
+                    val existing = this[existingIndex]
+                    this[existingIndex] = existing.copy(quantity = (existing.quantity + quantity).coerceAtMost(99))
+                }
+            } else {
+                currentCart.items + newCartItem
             }
+
+            val updatedCart = currentCart.copy(
+                restaurantId = restaurantId,
+                restaurantName = restaurantName,
+                restaurantImageUrl = restaurantImageUrl ?: currentCart.restaurantImageUrl,
+                items = updatedItems,
+            )
+
+            state.copy(
+                carts = state.carts + (restaurantId to updatedCart),
+            )
         }
     }
 
     fun removeItem(cartItemId: String) {
         _uiState.update { state ->
-            val updatedItems = state.cart.items.filter { it.id != cartItemId }
-            state.copy(cart = state.cart.copy(items = updatedItems))
+            val updatedCarts = state.carts.mapValues { (_, cart) ->
+                val updatedItems = cart.items.filter { it.id != cartItemId }
+                cart.copy(items = updatedItems)
+            }.filterValues { it.items.isNotEmpty() }
+            state.copy(carts = updatedCarts)
         }
     }
 
@@ -120,10 +155,13 @@ class CartViewModel @Inject constructor(
         }
         val capped = newQuantity.coerceAtMost(99)
         _uiState.update { state ->
-            val updatedItems = state.cart.items.map { item ->
-                if (item.id == cartItemId) item.copy(quantity = capped) else item
+            val updatedCarts = state.carts.mapValues { (_, cart) ->
+                val updatedItems = cart.items.map { item ->
+                    if (item.id == cartItemId) item.copy(quantity = capped) else item
+                }
+                cart.copy(items = updatedItems)
             }
-            state.copy(cart = state.cart.copy(items = updatedItems))
+            state.copy(carts = updatedCarts)
         }
     }
 
@@ -136,8 +174,21 @@ class CartViewModel @Inject constructor(
         _uiState.update { it.copy(scheduledFor = value) }
     }
 
+    /** Clear all carts. */
     fun clearCart() {
         _uiState.value = CartUiState()
+    }
+
+    /** Clear a specific restaurant's cart. */
+    fun clearCartForRestaurant(restaurantId: String) {
+        _uiState.update { state ->
+            state.copy(carts = state.carts - restaurantId)
+        }
+    }
+
+    /** Set which restaurant cart is active for checkout / detail viewing. */
+    fun setActiveRestaurant(restaurantId: String) {
+        _uiState.update { it.copy(activeRestaurantId = restaurantId) }
     }
 
     fun placeOrder(
@@ -176,11 +227,13 @@ class CartViewModel @Inject constructor(
                         _uiState.update { it.copy(isPlacingOrder = true, error = null) }
                     }
                     is Resource.Success -> {
+                        val placedRestaurantId = state.cart.restaurantId
                         _uiState.update {
                             it.copy(
                                 isPlacingOrder = false,
                                 orderPlaced = result.data,
-                                cart = Cart(),
+                                carts = it.carts - placedRestaurantId,
+                                activeRestaurantId = null,
                             )
                         }
                     }

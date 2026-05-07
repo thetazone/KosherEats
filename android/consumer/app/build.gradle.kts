@@ -3,9 +3,12 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
     id("org.jetbrains.kotlin.plugin.serialization")
-    kotlin("kapt")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 // Firebase config from local.properties — see FIREBASE.md. Blank defaults
@@ -23,12 +26,17 @@ android {
 
     signingConfigs {
         create("release") {
+            val ksPassword = findProperty("KEYSTORE_PASSWORD")?.toString() ?: lp("KEYSTORE_PASSWORD")
+            val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+
+            if (ksPassword.isEmpty() && isReleaseBuild) {
+                error("KEYSTORE_PASSWORD not set — add it to local.properties or pass via -P")
+            }
+
             storeFile = file("release-upload.jks")
-            storePassword = findProperty("KEYSTORE_PASSWORD")?.toString()
-                ?: lp("KEYSTORE_PASSWORD").ifEmpty { error("KEYSTORE_PASSWORD not set — add it to local.properties or pass via -P") }
+            storePassword = ksPassword.ifEmpty { "placeholder" }
             keyAlias = "upload"
-            keyPassword = findProperty("KEYSTORE_PASSWORD")?.toString()
-                ?: lp("KEYSTORE_PASSWORD").ifEmpty { error("KEYSTORE_PASSWORD not set — add it to local.properties or pass via -P") }
+            keyPassword = ksPassword.ifEmpty { "placeholder" }
         }
     }
 
@@ -61,7 +69,7 @@ android {
         debug {
             // Swap to "https://koshereats-api.fly.dev/api/v1/" when testing Stripe
             // PaymentSheet — real test-mode keys live on Fly, not the local dev backend.
-            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
+            buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
         }
         release {
             signingConfig = signingConfigs.getByName("release")
@@ -87,10 +95,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
     }
 
     packaging {
@@ -125,8 +129,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.7.0")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.50")
-    kapt("com.google.dagger:hilt-android-compiler:2.50")
+    implementation("com.google.dagger:hilt-android:2.59.2")
+    ksp("com.google.dagger:hilt-android-compiler:2.59.2")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     // Retrofit + OkHttp
@@ -152,10 +156,13 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.0.1")
 
-    // Firebase Cloud Messaging. Manual init (no google-services plugin) —
-    // see push/PushBootstrap.kt + FIREBASE.md.
+    // Firebase: FCM + Crashlytics + Analytics. google-services plugin
+    // auto-initializes the default FirebaseApp from app/google-services.json,
+    // so PushBootstrap.init now no-ops on the already-present default app.
     implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
 
     // Stripe PaymentSheet — keys come from server via /payments/intent.
     // Test-mode keys are live in dev; production keys are swapped in on Fly.
@@ -174,6 +181,3 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
 
-kapt {
-    correctErrorTypes = true
-}

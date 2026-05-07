@@ -15,10 +15,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /**
- * Manual Firebase bootstrap for the consumer app. Values come from
- * BuildConfig (sourced from local.properties — see FIREBASE.md). Init is
- * skipped with a warning when any field is blank so the app still builds
- * on a fresh clone without Firebase set up.
+ * Firebase bootstrap for the consumer app. The google-services Gradle plugin
+ * now auto-initializes the default FirebaseApp from app/google-services.json
+ * via FirebaseInitProvider, so init() typically just records that the default
+ * app exists. The BuildConfig fallback path remains for cases where the
+ * google-services config is absent and FCM is opted out.
  */
 object PushBootstrap {
     private const val TAG = "PushBootstrap"

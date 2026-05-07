@@ -331,3 +331,39 @@ type OrderItem struct {
 	Notes             string             `json:"notes,omitempty"`
 	SelectedModifiers []SelectedModifier `json:"selected_modifiers,omitempty"`
 }
+
+// ── Deals ────────────────────────────────────────────────────
+
+type DiscountType string
+
+const (
+	DiscountPercentage DiscountType = "percentage"
+	DiscountFixed      DiscountType = "fixed"
+	DiscountBOGO       DiscountType = "bogo"
+)
+
+// Deal is a limited-time promotion a seller posts for their restaurant.
+// Consumers see active, non-expired deals on the Deals tab.
+type Deal struct {
+	ID             string       `json:"id"`
+	RestaurantID   string       `json:"restaurant_id"`
+	Title          string       `json:"title"`
+	Description    string       `json:"description"`
+	DiscountType   DiscountType `json:"discount_type"`
+	DiscountValue  int          `json:"discount_value"`
+	MinOrderAmount *int         `json:"min_order_amount,omitempty"`
+	StartsAt       time.Time    `json:"starts_at"`
+	ExpiresAt      time.Time    `json:"expires_at"`
+	IsActive       bool         `json:"is_active"`
+	CreatedAt      time.Time    `json:"created_at"`
+	UpdatedAt      time.Time    `json:"updated_at"`
+}
+
+// DealWithRestaurant is the consumer-facing shape that includes the
+// restaurant name and image so the deals list can render cards without
+// a second round-trip per deal.
+type DealWithRestaurant struct {
+	Deal
+	RestaurantName     string `json:"restaurant_name"`
+	RestaurantImageURL string `json:"restaurant_image_url"`
+}

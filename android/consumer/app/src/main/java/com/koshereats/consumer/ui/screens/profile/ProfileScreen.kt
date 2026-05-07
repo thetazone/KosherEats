@@ -23,10 +23,11 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.LocalMall
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -35,6 +36,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -46,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -57,6 +60,9 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 @Composable
 fun ProfileScreen(
     onLoginClick: () -> Unit,
+    onEditProfileClick: () -> Unit = {},
+    onSavedAddressesClick: () -> Unit = {},
+    onPaymentMethodsClick: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -68,46 +74,81 @@ fun ProfileScreen(
     ) {
         TopAppBar(
             title = {
-                Text("Profile", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(
+                    "Profile", 
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = TextWhite
+                )
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (!state.isLoggedIn) {
-            // Not logged in
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
+        if (!state.isLoggedIn || state.isGuest) {
+            // Not logged in or browsing as guest
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(Orange.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         Icons.Filled.Person,
                         contentDescription = null,
-                        tint = TextMuted,
-                        modifier = Modifier.size(80.dp),
+                        tint = Orange,
+                        modifier = Modifier.size(64.dp),
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                Text(
+                    text = "Unlock your full experience",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = TextWhite,
+                    textAlign = TextAlign.Center
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = "Sign in to track orders, save addresses, and earn rewards on every kosher meal.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextTertiary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(40.dp))
+                
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    GuestBenefitRow(icon = Icons.Filled.LocalMall, text = "Track your orders in real-time")
+                    GuestBenefitRow(icon = Icons.Filled.LocationOn, text = "Save multiple delivery addresses")
+                    GuestBenefitRow(icon = Icons.Filled.Security, text = "Secure and fast checkout")
+                }
+                
+                Spacer(modifier = Modifier.height(48.dp))
+                
+                Button(
+                    onClick = onLoginClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                ) {
                     Text(
-                        text = "Sign in to your account",
-                        color = TextWhite,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
+                        "Sign In or Register", 
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Manage your orders, addresses, and more",
-                        color = TextTertiary,
-                        fontSize = 14.sp,
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    Button(
-                        onClick = onLoginClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.padding(horizontal = 48.dp).fillMaxWidth(),
-                    ) {
-                        Text("Sign In", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
                 }
             }
         } else {
@@ -133,7 +174,7 @@ fun ProfileScreen(
                         // Avatar
                         Box(
                             modifier = Modifier
-                                .size(64.dp)
+                                .size(72.dp)
                                 .clip(CircleShape)
                                 .background(Orange.copy(alpha = 0.2f))
                                 .border(2.dp, Orange, CircleShape),
@@ -143,13 +184,13 @@ fun ProfileScreen(
                                 AsyncImage(
                                     model = url,
                                     contentDescription = "Profile",
-                                    modifier = Modifier.size(64.dp).clip(CircleShape),
+                                    modifier = Modifier.size(72.dp).clip(CircleShape),
                                 )
                             } ?: Text(
                                 text = "${state.user?.firstName?.firstOrNull() ?: ""}${state.user?.lastName?.firstOrNull() ?: ""}",
+                                style = MaterialTheme.typography.headlineSmall,
                                 color = Orange,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
                             )
                         }
 
@@ -158,20 +199,20 @@ fun ProfileScreen(
                         Column {
                             Text(
                                 text = "${state.user?.firstName} ${state.user?.lastName}",
+                                style = MaterialTheme.typography.titleLarge,
                                 color = TextWhite,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
                             )
                             Text(
                                 text = state.user?.email ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = TextTertiary,
-                                fontSize = 14.sp,
                             )
                             if (!state.user?.phone.isNullOrBlank()) {
                                 Text(
                                     text = state.user?.phone ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = TextTertiary,
-                                    fontSize = 13.sp,
                                 )
                             }
                         }
@@ -190,25 +231,19 @@ fun ProfileScreen(
                         ProfileMenuItem(
                             icon = Icons.Filled.Person,
                             title = "Edit Profile",
-                            onClick = {},
+                            onClick = onEditProfileClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.LocationOn,
                             title = "Saved Addresses",
-                            onClick = {},
+                            onClick = onSavedAddressesClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.CreditCard,
                             title = "Payment Methods",
-                            onClick = {},
-                        )
-                        HorizontalDivider(color = SurfaceDarkBorder)
-                        ProfileMenuItem(
-                            icon = Icons.Filled.Favorite,
-                            title = "Favorites",
-                            onClick = {},
+                            onClick = onPaymentMethodsClick,
                         )
                     }
                 }
@@ -269,9 +304,9 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
                             text = "Sign Out",
+                            style = MaterialTheme.typography.titleMedium,
                             color = ErrorRed,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
                         )
                     }
                 }
@@ -281,14 +316,35 @@ fun ProfileScreen(
                 // App version
                 Text(
                     text = "KosherEats v1.0.0",
+                    style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
-                    fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun GuestBenefitRow(icon: ImageVector, text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = OrangeLight,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
     }
 }
 
@@ -314,8 +370,8 @@ private fun ProfileMenuItem(
         Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = title,
+            style = MaterialTheme.typography.bodyLarge,
             color = TextWhite,
-            fontSize = 15.sp,
             modifier = Modifier.weight(1f),
         )
         Icon(

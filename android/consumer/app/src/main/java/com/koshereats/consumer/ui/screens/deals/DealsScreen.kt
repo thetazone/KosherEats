@@ -1,0 +1,295 @@
+package com.koshereats.consumer.ui.screens.deals
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import com.koshereats.consumer.data.models.Deal
+import com.koshereats.consumer.ui.theme.BackgroundBlack
+import com.koshereats.consumer.ui.theme.Orange
+import com.koshereats.consumer.ui.theme.OrangeDark
+import com.koshereats.consumer.ui.theme.SurfaceDark
+import com.koshereats.consumer.ui.theme.SurfaceDarkElevated
+import com.koshereats.consumer.ui.theme.TextMuted
+import com.koshereats.consumer.ui.theme.TextSecondary
+import com.koshereats.consumer.ui.theme.TextTertiary
+import com.koshereats.consumer.ui.theme.TextWhite
+import com.koshereats.consumer.ui.viewmodels.DealsViewModel
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DealsScreen(
+    onDealClick: (restaurantId: String) -> Unit = {},
+    viewModel: DealsViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundBlack),
+    ) {
+        TopAppBar(
+            title = {
+                Text(
+                    text = "Deals Near You",
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
+        )
+
+        PullToRefreshBox(
+            isRefreshing = state.isLoading,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            when {
+                state.isLoading && state.deals.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Orange)
+                    }
+                }
+
+                state.deals.isEmpty() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                Icons.Filled.LocalOffer,
+                                contentDescription = null,
+                                tint = Orange.copy(alpha = 0.5f),
+                                modifier = Modifier.size(64.dp),
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "No Deals Right Now",
+                                color = TextWhite,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Restaurants in your area will post limited-time deals here. Pull down to refresh!",
+                                color = TextTertiary,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 20.sp,
+                            )
+                        }
+                    }
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 16.dp,
+                            vertical = 8.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        items(state.deals, key = { it.id }) { deal ->
+                            DealCard(
+                                deal = deal,
+                                onClick = { onDealClick(deal.restaurantId) },
+                            )
+                        }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DealCard(
+    deal: Deal,
+    onClick: () -> Unit,
+) {
+    val expiryText = try {
+        val expiry = ZonedDateTime.parse(deal.expiresAt)
+        val now = ZonedDateTime.now()
+        val hours = ChronoUnit.HOURS.between(now, expiry)
+        when {
+            hours < 1 -> {
+                val mins = ChronoUnit.MINUTES.between(now, expiry)
+                "${mins}m left"
+            }
+            hours < 24 -> "${hours}h left"
+            hours < 48 -> "Ends tomorrow"
+            else -> "${hours / 24}d left"
+        }
+    } catch (_: Exception) {
+        ""
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            // Restaurant image
+            AsyncImage(
+                model = deal.restaurantImageUrl,
+                contentDescription = deal.restaurantName,
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Crop,
+            )
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                // Restaurant name
+                Text(
+                    text = deal.restaurantName,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Deal title
+                Text(
+                    text = deal.title,
+                    color = TextWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                // Description
+                if (deal.description.isNotBlank()) {
+                    Text(
+                        text = deal.description,
+                        color = TextTertiary,
+                        fontSize = 13.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 18.sp,
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Bottom row: discount badge + expiry countdown
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Discount badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Orange.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = deal.discountBadge,
+                            color = Orange,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+
+                    // Expiry countdown
+                    if (expiryText.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.AccessTime,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = expiryText,
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+
+                    // Min order if set
+                    deal.minOrderAmount?.let { minCents ->
+                        if (minCents > 0) {
+                            Text(
+                                text = "Min $${"%.2f".format(minCents / 100.0)}",
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

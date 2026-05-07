@@ -3,18 +3,18 @@ package com.koshereats.consumer.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Primary
-val Orange = Color(0xFFF97316)
-val OrangeLight = Color(0xFFFB923C)
-val OrangeDark = Color(0xFFEA580C)
+val Orange = Color(0xFFFF7A1A)
+val OrangeLight = Color(0xFFFFA64D)
+val OrangeDark = Color(0xFFE85D04)
 
 // Background
-val BackgroundBlack = Color(0xFF0A0A0A)
-val BackgroundDark = Color(0xFF171717)
+val BackgroundBlack = Color(0xFF101214)
+val BackgroundDark = Color(0xFF171A1D)
 
 // Surface / Cards
-val SurfaceDark = Color(0xFF262626)
-val SurfaceDarkElevated = Color(0xFF303030)
-val SurfaceDarkBorder = Color(0xFF3F3F3F)
+val SurfaceDark = Color(0xFF202428)
+val SurfaceDarkElevated = Color(0xFF292E33)
+val SurfaceDarkBorder = Color(0xFF3A4148)
 
 // Text
 val TextWhite = Color(0xFFFFFFFF)

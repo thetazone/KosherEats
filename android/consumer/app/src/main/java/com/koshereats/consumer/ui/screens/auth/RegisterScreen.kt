@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
@@ -56,13 +57,15 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onLoginClick: () -> Unit,
+    onGuestContinue: () -> Unit = onRegisterSuccess,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     var passwordVisible by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.isLoggedIn) {
-        if (state.isLoggedIn) onRegisterSuccess()
+    LaunchedEffect(state.isLoggedIn, state.isGuest) {
+        if (state.isLoggedIn && !state.isGuest) onRegisterSuccess()
     }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -104,33 +107,17 @@ fun RegisterScreen(
 
         // Social login buttons
         Button(
-            onClick = { viewModel.signInWithGoogle() },
+            onClick = { viewModel.signInWithGoogle(context) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color.White,
-                contentColor = Color(0xFF1F1F1F),
+                containerColor = Color(0xFF3C4043),
+                contentColor = Color.White,
             ),
         ) {
             Text("Continue with Google", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Button(
-            onClick = { viewModel.signInWithApple() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = SurfaceDark,
-                contentColor = TextWhite,
-            ),
-        ) {
-            Text("Continue with Apple", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -277,6 +264,19 @@ fun RegisterScreen(
                 modifier = Modifier.clickable(onClick = onLoginClick),
             )
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Continue as Guest
+        Text(
+            text = "Continue as Guest",
+            color = TextTertiary,
+            fontSize = 14.sp,
+            modifier = Modifier.clickable {
+                viewModel.continueAsGuest()
+                onGuestContinue()
+            },
+        )
 
         Spacer(modifier = Modifier.height(32.dp))
     }

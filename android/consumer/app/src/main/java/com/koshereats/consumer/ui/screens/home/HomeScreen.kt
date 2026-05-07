@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Badge
@@ -39,6 +41,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -62,7 +65,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.data.models.CuisineType
+import com.koshereats.consumer.ui.components.RestaurantCardShimmer
 import com.koshereats.consumer.ui.theme.*
+import com.koshereats.consumer.data.models.Address
+import com.koshereats.consumer.ui.viewmodels.AddressViewModel
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
 import com.koshereats.consumer.ui.viewmodels.HomeViewModel
 
@@ -71,18 +77,22 @@ import com.koshereats.consumer.ui.viewmodels.HomeViewModel
 fun HomeScreen(
     onRestaurantClick: (String) -> Unit,
     onCartClick: () -> Unit,
+    onRequireAuth: () -> Unit,
+    isLoggedIn: Boolean,
     cartViewModel: CartViewModel,
+    addressViewModel: AddressViewModel,
     startWithSearch: Boolean = false,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val cartState by cartViewModel.uiState.collectAsStateWithLifecycle()
+    val addressState by addressViewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var showAddressSheet by remember { mutableStateOf(false) }
 
-    // Load more when reaching the end — single long-lived effect avoids duplicate
-    // loadMore() calls that the boolean-key pattern caused on rapid scroll reversals.
+    // Load more when reaching the end
     LaunchedEffect(listState) {
         snapshotFlow {
             val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -103,7 +113,7 @@ fun HomeScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp),
+            contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
         ) {
             // Header
             item {
@@ -117,15 +127,42 @@ fun HomeScreen(
                         Text(
                             text = "KosherEats",
                             color = Orange,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.displaySmall,
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Kosher food delivered to your door",
-                            color = TextTertiary,
-                            fontSize = 14.sp,
-                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                if (isLoggedIn) showAddressSheet = true
+                                else onRequireAuth()
+                            }
+                                .padding(vertical = 2.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.LocationOn,
+                                contentDescription = null,
+                                tint = Orange,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = addressState.selectedAddress?.let { addr ->
+                                    addr.label.ifBlank { addr.streetAddress }
+                                } ?: "Set delivery address",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextWhite,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                            )
+                            Icon(
+                                Icons.Filled.KeyboardArrowDown,
+                                contentDescription = "Change address",
+                                tint = TextTertiary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
                     }
                     val activeFilterCount = (if (uiState.filterGlattOnly) 1 else 0) +
                         (if (uiState.filterCholovYisroelOnly) 1 else 0) +
@@ -138,7 +175,7 @@ fun HomeScreen(
                                     Text(
                                         activeFilterCount.toString(),
                                         color = TextWhite,
-                                        fontSize = 10.sp,
+                                        style = MaterialTheme.typography.labelSmall,
                                     )
                                 }
                             }
@@ -147,8 +184,9 @@ fun HomeScreen(
                         IconButton(
                             onClick = { showFilterSheet = true },
                             modifier = Modifier
+                                .size(42.dp)
                                 .clip(CircleShape)
-                                .background(SurfaceDark),
+                                .background(SurfaceDarkElevated),
                         ) {
                             Icon(
                                 Icons.Filled.FilterList,
@@ -181,7 +219,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .focusRequester(focusRequester),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = SurfaceDark,
@@ -194,7 +232,7 @@ fun HomeScreen(
                     ),
                     singleLine = true,
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
             // Cuisine filters
@@ -207,7 +245,7 @@ fun HomeScreen(
                         FilterChip(
                             selected = uiState.selectedCuisine == null,
                             onClick = { viewModel.selectCuisine(null) },
-                            label = { Text("All", fontSize = 13.sp) },
+                            label = { Text("All", style = MaterialTheme.typography.labelLarge) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Orange,
                                 selectedLabelColor = TextWhite,
@@ -226,7 +264,7 @@ fun HomeScreen(
                         FilterChip(
                             selected = uiState.selectedCuisine == cuisine,
                             onClick = { viewModel.selectCuisine(cuisine) },
-                            label = { Text(cuisine.displayName, fontSize = 13.sp) },
+                            label = { Text(cuisine.displayName, style = MaterialTheme.typography.labelLarge) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Orange,
                                 selectedLabelColor = TextWhite,
@@ -242,76 +280,51 @@ fun HomeScreen(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
 
-            // Kosher filter chips
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = uiState.filterGlattOnly,
-                        onClick = { viewModel.toggleGlattFilter() },
-                        label = { Text("Glatt", fontSize = 12.sp) },
-                        leadingIcon = if (uiState.filterGlattOnly) {
-                            { Icon(Icons.Filled.FilterList, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                        } else null,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = SuccessGreen.copy(alpha = 0.2f),
-                            selectedLabelColor = SuccessGreen,
-                            selectedLeadingIconColor = SuccessGreen,
-                            containerColor = SurfaceDark,
-                            labelColor = TextTertiary,
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            borderColor = SurfaceDarkBorder,
-                            selectedBorderColor = SuccessGreen.copy(alpha = 0.5f),
-                            enabled = true,
-                            selected = uiState.filterGlattOnly,
-                        ),
-                    )
-                    FilterChip(
-                        selected = uiState.filterCholovYisroelOnly,
-                        onClick = { viewModel.toggleCholovYisroelFilter() },
-                        label = { Text("Cholov Yisroel", fontSize = 12.sp) },
-                        leadingIcon = if (uiState.filterCholovYisroelOnly) {
-                            { Icon(Icons.Filled.FilterList, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                        } else null,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = DairyBlue.copy(alpha = 0.2f),
-                            selectedLabelColor = DairyBlue,
-                            selectedLeadingIconColor = DairyBlue,
-                            containerColor = SurfaceDark,
-                            labelColor = TextTertiary,
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            borderColor = SurfaceDarkBorder,
-                            selectedBorderColor = DairyBlue.copy(alpha = 0.5f),
-                            enabled = true,
-                            selected = uiState.filterCholovYisroelOnly,
-                        ),
-                    )
+            // Suggested restaurants (personalised alternating picks)
+            if (uiState.searchQuery.length < 2) {
+                val suggested = uiState.suggestedRestaurants
+                if (suggested.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Suggested for you",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = TextWhite,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(suggested, key = { it.id }) { r ->
+                                FeaturedCard(
+                                    restaurant = r,
+                                    onClick = { onRestaurantClick(r.id) },
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+                } else if (!uiState.isSuggestedLoading) {
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
             }
 
             // Search results
             if (uiState.searchQuery.length >= 2) {
                 if (uiState.isSearching) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Orange)
-                        }
+                    items(3) {
+                        RestaurantCardShimmer()
                     }
                 } else {
                     if (uiState.searchResults.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                Text("No restaurants found", color = TextMuted, fontSize = 16.sp)
+                                Text("No restaurants found", color = TextMuted, style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     } else {
@@ -319,7 +332,7 @@ fun HomeScreen(
                             RestaurantCard(
                                 restaurant = restaurant,
                                 onClick = { onRestaurantClick(restaurant.id) },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             )
                         }
                     }
@@ -328,27 +341,32 @@ fun HomeScreen(
                 // All restaurants
                 item {
                     Text(
-                        text = "All Restaurants",
+                        text = "You might like",
+                        style = MaterialTheme.typography.headlineSmall,
                         color = TextWhite,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                items(uiState.allRestaurants, key = { it.id }) { restaurant ->
-                    RestaurantCard(
-                        restaurant = restaurant,
-                        onClick = { onRestaurantClick(restaurant.id) },
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                    )
-                }
+                if (uiState.isLoading && uiState.allRestaurants.isEmpty()) {
+                    items(5) {
+                        RestaurantCardShimmer()
+                    }
+                } else {
+                    items(uiState.allRestaurants, key = { it.id }) { restaurant ->
+                        RestaurantCard(
+                            restaurant = restaurant,
+                            onClick = { onRestaurantClick(restaurant.id) },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
 
-                if (uiState.isLoading) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                    if (uiState.isLoading) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                            }
                         }
                     }
                 }
@@ -360,9 +378,9 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("No restaurants available", color = TextMuted, fontSize = 16.sp)
+                                Text("No restaurants available", style = MaterialTheme.typography.bodyLarge, color = TextMuted)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Pull down to refresh", color = TextMuted, fontSize = 13.sp)
+                                Text("Pull down to refresh", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             }
                         }
                     }
@@ -372,7 +390,7 @@ fun HomeScreen(
 
         // Floating cart button
         AnimatedVisibility(
-            visible = cartState.itemCount > 0,
+            visible = cartState.totalItemCount > 0,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
@@ -388,13 +406,23 @@ fun HomeScreen(
                 BadgedBox(
                     badge = {
                         Badge(containerColor = ErrorRed, contentColor = TextWhite) {
-                            Text(cartState.itemCount.toString())
+                            Text(cartState.totalItemCount.toString())
                         }
                     }
                 ) {
                     Icon(Icons.Filled.ShoppingCart, contentDescription = "Cart")
                 }
             }
+        }
+
+        if (showAddressSheet) {
+            AddressPickerSheet(
+                addresses = addressState.addresses,
+                selectedAddress = addressState.selectedAddress,
+                onAddressSelected = { addressViewModel.selectAddress(it) },
+                onAddAddress = { addressViewModel.addAddress(it) },
+                onDismiss = { showAddressSheet = false },
+            )
         }
 
         if (showFilterSheet) {

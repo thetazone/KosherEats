@@ -186,3 +186,52 @@ data class UpdateMenuItemRequest(
     @Json(name = "spice_level") val spiceLevel: Int? = null,
     val calories: Int? = null,
 )
+
+// --- Deals ---
+
+enum class DiscountType {
+    @Json(name = "percentage") PERCENTAGE,
+    @Json(name = "fixed") FIXED,
+    @Json(name = "bogo") BOGO;
+
+    val displayName: String
+        get() = when (this) {
+            PERCENTAGE -> "Percentage Off"
+            FIXED -> "Fixed Amount Off"
+            BOGO -> "Buy One Get One"
+        }
+}
+
+@JsonClass(generateAdapter = true)
+data class Deal(
+    val id: String = "",
+    @Json(name = "restaurant_id") val restaurantId: String = "",
+    val title: String = "",
+    val description: String = "",
+    @Json(name = "discount_type") val discountType: DiscountType = DiscountType.PERCENTAGE,
+    @Json(name = "discount_value") val discountValue: Int = 0,
+    @Json(name = "min_order_amount") val minOrderAmount: Int? = null,
+    @Json(name = "starts_at") val startsAt: String = "",
+    @Json(name = "expires_at") val expiresAt: String = "",
+    @Json(name = "is_active") val isActive: Boolean = true,
+    @Json(name = "created_at") val createdAt: String = "",
+    @Json(name = "updated_at") val updatedAt: String = "",
+) {
+    val discountLabel: String
+        get() = when (discountType) {
+            DiscountType.PERCENTAGE -> "$discountValue% Off"
+            DiscountType.FIXED -> "${discountValue.formatPrice()} Off"
+            DiscountType.BOGO -> "BOGO"
+        }
+}
+
+@JsonClass(generateAdapter = true)
+data class CreateDealRequest(
+    val title: String,
+    val description: String = "",
+    @Json(name = "discount_type") val discountType: DiscountType,
+    @Json(name = "discount_value") val discountValue: Int = 0,
+    @Json(name = "min_order_amount") val minOrderAmount: Int? = null,
+    @Json(name = "starts_at") val startsAt: String? = null,
+    @Json(name = "expires_at") val expiresAt: String,
+)

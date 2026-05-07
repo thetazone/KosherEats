@@ -2,10 +2,12 @@ package com.koshereats.seller.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Settings
@@ -36,6 +38,11 @@ sealed class Screen(
         selectedIcon = Icons.Filled.MenuBook,
         unselectedIcon = Icons.Outlined.MenuBook,
     )
+    data object Deals : Screen(
+        "deals", "Deals",
+        selectedIcon = Icons.Filled.LocalOffer,
+        unselectedIcon = Icons.Outlined.LocalOffer,
+    )
     data object Settings : Screen(
         "settings", "Settings",
         selectedIcon = Icons.Filled.Settings,
@@ -50,8 +57,9 @@ sealed class Screen(
         fun createRoute(itemId: String? = null) =
             if (itemId != null) "menu/form?itemId=$itemId" else "menu/form"
     }
+    data object CreateDeal : Screen("deals/create", "Create Deal")
 
     companion object {
-        val bottomNavItems = listOf(Dashboard, Orders, Menu, Settings)
+        val bottomNavItems = listOf(Dashboard, Orders, Menu, Deals, Settings)
     }
 }

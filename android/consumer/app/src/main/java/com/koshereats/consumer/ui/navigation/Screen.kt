@@ -1,43 +1,49 @@
 package com.koshereats.consumer.ui.navigation
 
+import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Receipt
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
     data object NearbyMap : Screen("map")
-    data object Search : Screen("search")
+    data object Deals : Screen("deals")
     data object Restaurant : Screen("restaurant/{restaurantId}") {
-        fun createRoute(restaurantId: String) = "restaurant/$restaurantId"
+        fun createRoute(restaurantId: String) = "restaurant/${Uri.encode(restaurantId)}"
     }
     data object Cart : Screen("cart")
     data object Checkout : Screen("checkout")
     data object OrderConfirmation : Screen("order-confirmation/{orderId}") {
-        fun createRoute(orderId: String) = "order-confirmation/$orderId"
+        fun createRoute(orderId: String) = "order-confirmation/${Uri.encode(orderId)}"
     }
     data object Orders : Screen("orders")
     data object OrderDetail : Screen("orders/{orderId}") {
-        fun createRoute(orderId: String) = "orders/$orderId"
+        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}"
     }
     data object OrderTracking : Screen("orders/{orderId}/tracking") {
-        fun createRoute(orderId: String) = "orders/$orderId/tracking"
+        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/tracking"
     }
     data object Chat : Screen("orders/{orderId}/chat") {
-        fun createRoute(orderId: String) = "orders/$orderId/chat"
+        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/chat"
     }
     data object Login : Screen("login")
+    data object EmailLogin : Screen("email-login")
     data object Register : Screen("register")
+    data object PhoneAuth : Screen("phone-auth")
     data object Profile : Screen("profile")
+    data object EditProfile : Screen("profile/edit")
+    data object SavedAddresses : Screen("profile/addresses")
+    data object PaymentMethods : Screen("profile/payment-methods")
 }
 
 enum class BottomNavItem(
@@ -58,11 +64,11 @@ enum class BottomNavItem(
         selectedIcon = Icons.Filled.Map,
         unselectedIcon = Icons.Outlined.Map,
     ),
-    SEARCH(
-        route = Screen.Search.route,
-        label = "Search",
-        selectedIcon = Icons.Filled.Search,
-        unselectedIcon = Icons.Outlined.Search,
+    DEALS(
+        route = Screen.Deals.route,
+        label = "Deals",
+        selectedIcon = Icons.Filled.LocalOffer,
+        unselectedIcon = Icons.Outlined.LocalOffer,
     ),
     ORDERS(
         route = Screen.Orders.route,

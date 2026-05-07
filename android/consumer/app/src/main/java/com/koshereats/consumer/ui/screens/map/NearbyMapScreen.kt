@@ -1,5 +1,10 @@
 package com.koshereats.consumer.ui.screens.map
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,12 +40,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -58,6 +66,7 @@ import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("MissingPermission")
 @Composable
 fun NearbyMapScreen(
     onRestaurantClick: (String) -> Unit,
@@ -65,6 +74,7 @@ fun NearbyMapScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var selectedId by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     val restaurants = state.allRestaurants.filter { it.address.latitude != 0.0 && it.address.longitude != 0.0 }
     val selected = restaurants.firstOrNull { it.id == selectedId }
@@ -73,7 +83,57 @@ fun NearbyMapScreen(
         position = CameraPosition.fromLatLngZoom(LatLng(40.7128, -74.0060), 11f)
     }
 
-    LaunchedEffect(restaurants.size) {
+    fun hasLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+
+    var locationGranted by remember { mutableStateOf(hasLocationPermission()) }
+    // Tracks whether we've already moved the camera to the user — prevents the
+    // restaurant bounds-fit effect below from overriding their location zoom.
+    var centeredOnUser by remember { mutableStateOf(false) }
+
+    fun centerOnUser() {
+        if (!hasLocationPermission()) return
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        client.lastLocation.addOnSuccessListener { loc ->
+            if (loc != null) {
+                cameraPositionState.position = CameraPosition.fromLatLngZoom(
+                    LatLng(loc.latitude, loc.longitude),
+                    15f, // ~10 cross streets visible — matches iOS reference
+                )
+                centeredOnUser = true
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        locationGranted = granted
+        if (granted) centerOnUser()
+    }
+
+    LaunchedEffect(Unit) {
+        if (locationGranted) {
+            centerOnUser()
+        } else {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
+    }
+
+    LaunchedEffect(restaurants.size, centeredOnUser) {
+        // Skip the bounds-fit when we've already framed the user's location —
+        // their neighborhood view is more useful than a city-wide overview.
+        if (centeredOnUser) return@LaunchedEffect
         if (restaurants.size >= 2) {
             val bounds = LatLngBounds.builder().apply {
                 restaurants.forEach { include(LatLng(it.address.latitude, it.address.longitude)) }
@@ -97,10 +157,13 @@ fun NearbyMapScreen(
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
-                properties = MapProperties(mapType = MapType.NORMAL),
+                properties = MapProperties(
+                    mapType = MapType.NORMAL,
+                    isMyLocationEnabled = locationGranted,
+                ),
                 uiSettings = MapUiSettings(
                     zoomControlsEnabled = false,
-                    myLocationButtonEnabled = false,
+                    myLocationButtonEnabled = locationGranted,
                     mapToolbarEnabled = false,
                 ),
                 onMapClick = { selectedId = null },
@@ -229,7 +292,7 @@ private fun SelectedRestaurantCard(restaurant: Restaurant, onClick: () -> Unit) 
                     Text("·", color = TextMuted)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = restaurant.kosherCertification.displayName,
+                        text = restaurant.kosherCertification?.displayName ?: "Kosher",
                         color = Orange,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,

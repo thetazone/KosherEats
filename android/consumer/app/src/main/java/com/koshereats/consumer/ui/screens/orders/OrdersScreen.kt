@@ -1,9 +1,11 @@
 package com.koshereats.consumer.ui.screens.orders
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +34,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -69,7 +72,11 @@ fun OrdersScreen(
     ) {
         TopAppBar(
             title = {
-                Text("Your Orders", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(
+                    "Your Orders", 
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = TextWhite
+                )
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
@@ -90,21 +97,21 @@ fun OrdersScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "No orders yet",
+                        style = MaterialTheme.typography.headlineSmall,
                         color = TextWhite,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Your order history will appear here",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = TextTertiary,
-                        fontSize = 14.sp,
                     )
                 }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 items(uiState.orders, key = { it.id }) { order ->
                     OrderCard(
@@ -135,54 +142,59 @@ private fun OrderCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(14.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = order.restaurantName,
+                        style = MaterialTheme.typography.titleLarge,
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "Order #${order.orderNumber}",
+                        style = MaterialTheme.typography.labelMedium,
                         color = TextTertiary,
-                        fontSize = 12.sp,
                     )
                 }
+                Spacer(modifier = Modifier.width(8.dp))
                 OrderStatusBadge(status = order.status)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider(color = SurfaceDarkBorder)
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Items summary
             order.items.take(3).forEach { item ->
                 Text(
                     text = "${item.quantity}x ${item.name}",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
-                    fontSize = 13.sp,
                 )
             }
             if (order.items.size > 3) {
                 Text(
                     text = "+${order.items.size - 3} more items",
+                    style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
-                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Total + date
             Row(
@@ -192,30 +204,34 @@ private fun OrderCard(
             ) {
                 Text(
                     text = order.total.formatPrice(),
-                    color = TextWhite,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = OrangeLight,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
                 )
                 Text(
                     text = order.createdAt.take(10),
+                    style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
-                    fontSize = 12.sp,
                 )
             }
 
             // Reorder button for delivered orders
             if (order.status == OrderStatus.DELIVERED) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
                     onClick = onReorder,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Orange),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reorder", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Reorder", 
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

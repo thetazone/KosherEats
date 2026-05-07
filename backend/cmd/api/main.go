@@ -132,9 +132,15 @@ func main() {
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(apiLimiter.PerIP)
 		r.Get("/", h.ListRestaurants)
+		r.Get("/search", h.SearchRestaurants)
+		// Suggested restaurants — uses optional auth so logged-in users get
+		// personalised results while guests get popular picks.
+		r.Group(func(r chi.Router) {
+			r.Use(h.OptionalAuthMiddleware)
+			r.Get("/suggested", h.SuggestedRestaurants)
+		})
 		r.Get("/{id}", h.GetRestaurant)
 		r.Get("/{id}/menu", h.GetMenu)
-		r.Get("/search", h.SearchRestaurants)
 	})
 
 	// Delivery fee quote (authenticated — checkout screen calls this)
@@ -240,6 +246,18 @@ func main() {
 			r.Patch("/{id}/pickup", h.SellerPickupOrder)
 			r.Patch("/{id}/deliver", h.SellerDeliverOrder)
 		})
+
+		r.Route("/deals", func(r chi.Router) {
+			r.Post("/", h.CreateDeal)
+			r.Get("/", h.ListSellerDeals)
+			r.Delete("/{dealId}", h.DeactivateDeal)
+		})
+	})
+
+	// Deals (public, IP rate limited — consumer "Deals" tab)
+	r.Route("/api/v1/deals", func(r chi.Router) {
+		r.Use(apiLimiter.PerIP)
+		r.Get("/nearby", h.ListNearbyDeals)
 	})
 
 	// Courier routes. Signup is public but IP rate limited.

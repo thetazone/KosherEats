@@ -119,6 +119,17 @@ interface ApiService {
         @Body body: Map<String, Boolean>,
     ): Response<Restaurant>
 
+    // --- Deals ---
+
+    @GET("seller/deals")
+    suspend fun getDeals(): Response<List<Deal>>
+
+    @POST("seller/deals")
+    suspend fun createDeal(@Body request: CreateDealRequest): Response<Deal>
+
+    @DELETE("seller/deals/{dealId}")
+    suspend fun deactivateDeal(@Path("dealId") dealId: String): Response<Map<String, String>>
+
     // --- Devices (push notifications) ---
 
     @POST("devices/register")

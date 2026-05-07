@@ -31,6 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -50,6 +51,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
@@ -83,13 +85,12 @@ fun CheckoutScreen(
     val ui by vm.uiState.collectAsState()
     val context = LocalContext.current
 
-    // Bootstrap exactly once per screen entry; keys are already snapshotted by NavGraph.
+    // Bootstrap exactly once per screen entry
     LaunchedEffect(Unit) {
         vm.bootstrap(localCart, restaurantId)
     }
 
-    // Stripe PaymentSheet — the composable owns the launcher; VM requests
-    // presentation via [events]. Result comes back here and flows to the VM.
+    // Stripe PaymentSheet
     val paymentSheet = rememberPaymentSheet { result: PaymentSheetResult ->
         when (result) {
             is PaymentSheetResult.Completed -> vm.onPaymentResult(success = true)
@@ -137,7 +138,13 @@ fun CheckoutScreen(
             .background(BackgroundBlack)
     ) {
         TopAppBar(
-            title = { Text("Checkout", color = TextWhite, fontWeight = FontWeight.Bold) },
+            title = {
+                Text(
+                    "Checkout", 
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = TextWhite
+                )
+            },
             navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
@@ -155,13 +162,13 @@ fun CheckoutScreen(
                 address = ui.selectedAddress?.formatted,
                 onChangeClick = { showAddressSheet = true },
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             DeliveryTimeCard(
                 scheduledFor = ui.scheduledFor,
                 onAsapClick = { vm.updateScheduledFor(null) },
                 onScheduleClick = { showScheduleSheet = true },
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             TipSelectorCard(
                 tipChoice = ui.tipChoice,
                 customTipText = ui.customTipText,
@@ -169,7 +176,7 @@ fun CheckoutScreen(
                 onSelect = vm::selectTip,
                 onCustomChange = vm::updateCustomTip,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
 
             if (ui.isLoadingBundle && ui.bundle == null) {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -180,16 +187,16 @@ fun CheckoutScreen(
             }
 
             ui.errorMessage?.let { msg ->
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 Text(
                     text = msg,
+                    style = MaterialTheme.typography.bodySmall,
                     color = ErrorRed,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
         }
 
         // Sticky pay button
@@ -200,19 +207,20 @@ fun CheckoutScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .height(56.dp),
+                .height(60.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Orange),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
             enabled = canPay,
         ) {
             if (ui.isProcessing) {
-                CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(22.dp))
+                CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
             } else {
                 Text(
                     text = "Pay $totalLabel",
+                    style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
                 )
             }
         }
@@ -253,29 +261,37 @@ fun CheckoutScreen(
 @Composable
 private fun AddressCard(address: String?, onChangeClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clickable(onClick = onChangeClick),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.LocationOn, contentDescription = null, tint = Orange, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Deliver to", color = TextTertiary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Filled.LocationOn, contentDescription = null, tint = Orange, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Deliver to",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextTertiary,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = "Change",
+                    style = MaterialTheme.typography.labelLarge,
                     color = Orange,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable { onChangeClick() },
+                    fontWeight = FontWeight.Bold,
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(10.dp))
             Text(
-                text = address ?: "Select an address",
+                text = address ?: "Set up delivery address",
+                style = MaterialTheme.typography.bodyLarge,
                 color = if (address != null) TextWhite else TextMuted,
-                fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
         }
@@ -291,17 +307,23 @@ private fun DeliveryTimeCard(
     val fmt = remember { DateTimeFormatter.ofPattern("MMM d, h:mm a") }
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Schedule, contentDescription = null, tint = Orange, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("When", color = TextTertiary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Filled.Schedule, contentDescription = null, tint = Orange, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Delivery Time", 
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextTertiary, 
+                    fontWeight = FontWeight.Bold
+                )
             }
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TimeChip(
                     text = "ASAP",
                     selected = scheduledFor == null,
@@ -328,18 +350,18 @@ private fun TimeChip(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(if (selected) Orange else SurfaceDarkElevated)
-            .border(1.dp, if (selected) Orange else SurfaceDarkBorder, RoundedCornerShape(10.dp))
+            .border(1.dp, if (selected) Orange else SurfaceDarkBorder, RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 12.dp, horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
+            style = MaterialTheme.typography.labelLarge,
             color = if (selected) TextWhite else TextSecondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -354,13 +376,19 @@ private fun TipSelectorCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Tip", color = TextTertiary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "Add a Tip", 
+                style = MaterialTheme.typography.labelMedium,
+                color = TextTertiary, 
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TipChoice.presets.forEach { preset ->
                     val selected = when {
                         tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.fraction == preset.fraction
@@ -373,25 +401,25 @@ private fun TipSelectorCard(
                             .background(if (selected) Orange else SurfaceDarkElevated)
                             .border(1.dp, if (selected) Orange else SurfaceDarkBorder, RoundedCornerShape(10.dp))
                             .clickable { onSelect(preset) }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                            .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = preset.label(subtotalCents),
+                            style = MaterialTheme.typography.labelSmall,
                             color = if (selected) TextWhite else TextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
                         )
                     }
                 }
             }
             if (tipChoice is TipChoice.Custom) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
                     value = customTipText,
                     onValueChange = onCustomChange,
-                    label = { Text("Custom tip ($)", color = TextTertiary) },
+                    label = { Text("Custom amount ($)", color = TextTertiary) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -412,34 +440,40 @@ private fun TipSelectorCard(
 private fun TotalsCard(bundle: PaymentSheetBundle) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             TotalRow("Subtotal", bundle.subtotal)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             TotalRow("Delivery fee", bundle.deliveryFee)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             TotalRow("Service fee", bundle.serviceFee)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             TotalRow("Tax", bundle.tax)
             if (bundle.tip > 0) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 TotalRow("Tip", bundle.tip)
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             HorizontalDivider(color = SurfaceDarkBorder)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Total", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text(
+                    "Total", 
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextWhite, 
+                    fontWeight = FontWeight.Bold
+                )
                 Text(
                     text = bundle.total.formatPrice(),
+                    style = MaterialTheme.typography.titleLarge,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 17.sp,
                 )
             }
         }
@@ -449,11 +483,12 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
 @Composable
 private fun TotalRow(label: String, cents: Int) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(text = label, color = TextTertiary, fontSize = 14.sp)
+        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
         Text(
             text = cents.formatPrice(),
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
-            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.Address
+import com.koshereats.consumer.data.models.formatted
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.data.models.AddToCartRequest
 import com.koshereats.consumer.data.models.CartItem
@@ -86,10 +87,12 @@ class CheckoutViewModel @Inject constructor(
 
     private var refreshBundleJob: Job? = null
     private var _bootstrapped = false
+    private var _restaurantId: String = ""
 
     fun bootstrap(localCart: List<CartItem>, restaurantId: String) {
         if (_bootstrapped) return
         _bootstrapped = true
+        _restaurantId = restaurantId
         viewModelScope.launch {
             loadAddresses()
             syncLocalCartToServer(localCart, restaurantId)
@@ -150,6 +153,7 @@ class CheckoutViewModel @Inject constructor(
 
     fun selectAddress(address: Address) {
         _uiState.update { it.copy(selectedAddress = address) }
+        viewModelScope.launch { refreshBundle() }
     }
 
     fun addAddress(address: Address) {
@@ -214,7 +218,14 @@ class CheckoutViewModel @Inject constructor(
     private suspend fun refreshBundle() {
         _uiState.update { it.copy(isLoadingBundle = true, errorMessage = null) }
         try {
-            val resp = api.createPaymentSheet(PaymentSheetRequest(tip = currentTipCents()))
+            val address = _uiState.value.selectedAddress
+            val resp = api.createPaymentSheet(
+                PaymentSheetRequest(
+                    tip = currentTipCents(),
+                    restaurantId = _restaurantId,
+                    deliveryAddress = address?.formatted.orEmpty(),
+                ),
+            )
             if (resp.isSuccessful) {
                 _uiState.update { it.copy(bundle = resp.body(), isLoadingBundle = false) }
             } else {

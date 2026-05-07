@@ -24,6 +24,12 @@ interface ApiService {
     @POST("auth/social")
     suspend fun socialLogin(@Body request: SocialLoginRequest): Response<AuthResponse>
 
+    @POST("auth/phone/start")
+    suspend fun phoneStart(@Body request: PhoneStartRequest): Response<Map<String, String>>
+
+    @POST("auth/phone/verify")
+    suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<AuthResponse>
+
     // ── User ──────────────────────────────────────────────
 
     @GET("user/profile")
@@ -63,6 +69,11 @@ interface ApiService {
         @Query("q") query: String,
         @Query("latitude") latitude: Double? = null,
         @Query("longitude") longitude: Double? = null,
+    ): Response<List<Restaurant>>
+
+    @GET("restaurants/suggested")
+    suspend fun getSuggestedRestaurants(
+        @Query("limit") limit: Int = 10,
     ): Response<List<Restaurant>>
 
     @GET("restaurants/{id}")
@@ -114,6 +125,11 @@ interface ApiService {
         @Path("id") orderId: String,
         @Body body: SendChatMessageRequest,
     ): Response<ChatMessage>
+
+    // ── Deals ────────────────────────────────────────────
+
+    @GET("deals/nearby")
+    suspend fun getNearbyDeals(): Response<List<Deal>>
 
     // ── Devices (push notifications) ─────────────────────
 

@@ -19,7 +19,6 @@
     <string name="auth_signup_title">Create account</string>
     <string name="auth_sign_in_subtitle">Sign in to continue</string>
     <string name="auth_continue_google">Continue with Google</string>
-    <string name="auth_continue_apple">Continue with Apple</string>
     <string name="auth_or_divider">or</string>
     <string name="auth_sign_in">Sign In</string>
     <string name="auth_no_account">Don\'t have an account? </string>

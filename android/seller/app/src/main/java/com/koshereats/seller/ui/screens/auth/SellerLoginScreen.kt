@@ -134,38 +134,14 @@ fun SellerLoginScreen(
                     .height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = Color(0xFF1F1F1F),
-                    disabledContainerColor = Color.White.copy(alpha = 0.4f),
-                    disabledContentColor = Color(0xFF1F1F1F).copy(alpha = 0.6f),
-                ),
-            ) {
-                Text(
-                    text = stringResource(R.string.auth_continue_google),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Continue with Apple
-            Button(
-                onClick = { viewModel.signInWithApple() },
-                enabled = !state.isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = SurfaceDark,
+                    containerColor = Color(0xFF2A2A2A),
                     contentColor = TextWhite,
-                    disabledContainerColor = SurfaceDark.copy(alpha = 0.4f),
+                    disabledContainerColor = Color(0xFF2A2A2A).copy(alpha = 0.4f),
                     disabledContentColor = TextWhite.copy(alpha = 0.6f),
                 ),
             ) {
                 Text(
-                    text = stringResource(R.string.auth_continue_apple),
+                    text = stringResource(R.string.auth_continue_google),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )

@@ -302,6 +302,56 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// OptionalAuthMiddleware is like AuthMiddleware but does NOT reject
+// unauthenticated requests. If a valid Bearer token is present it populates
+// the user context; otherwise the request proceeds with no user context.
+// Handlers behind this middleware call getUserFromContext and treat errors as
+// "guest / logged-out" rather than aborting.
+func (h *Handler) OptionalAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		claims := &jwt.MapClaims{}
+		token, err := jwt.ParseWithClaims(parts[1], claims, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected alg: %v", token.Header["alg"])
+			}
+			return []byte(h.cfg.JWTSecret), nil
+		})
+		if err != nil || !token.Valid {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if typ, _ := (*claims)["typ"].(string); typ == "refresh" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		userID, ok := (*claims)["sub"].(string)
+		if !ok {
+			next.ServeHTTP(w, r)
+			return
+		}
+		role, _ := (*claims)["role"].(string)
+
+		ctx := context.WithValue(r.Context(), userContextKey, map[string]string{
+			"user_id": userID,
+			"role":    role,
+		})
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func (h *Handler) SellerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userData, ok := r.Context().Value(userContextKey).(map[string]string)

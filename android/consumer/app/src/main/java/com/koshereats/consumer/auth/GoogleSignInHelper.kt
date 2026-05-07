@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
@@ -51,8 +53,12 @@ object GoogleSignInHelper {
             } else {
                 Result.failure(IllegalStateException("Unexpected credential type: ${credential.type}"))
             }
+        } catch (e: GetCredentialCancellationException) {
+            Result.failure(IllegalStateException("cancelled"))
+        } catch (e: NoCredentialException) {
+            Result.failure(IllegalStateException("Google Sign-In failed. Ensure a Google account is signed in on this device."))
         } catch (e: GetCredentialException) {
-            Result.failure(e)
+            Result.failure(IllegalStateException("Google Sign-In failed. Please try again."))
         } catch (e: GoogleIdTokenParsingException) {
             Result.failure(e)
         }

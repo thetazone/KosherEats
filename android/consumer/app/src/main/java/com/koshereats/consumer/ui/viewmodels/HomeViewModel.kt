@@ -19,6 +19,8 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val allRestaurants: List<Restaurant> = emptyList(),
+    val suggestedRestaurants: List<Restaurant> = emptyList(),
+    val isSuggestedLoading: Boolean = false,
     val searchResults: List<Restaurant> = emptyList(),
     val isLoading: Boolean = false,
     val isSearching: Boolean = false,
@@ -46,6 +48,26 @@ class HomeViewModel @Inject constructor(
 
     init {
         loadRestaurants()
+        loadSuggested()
+    }
+
+    private fun loadSuggested() {
+        viewModelScope.launch {
+            repository.getSuggestedRestaurants(limit = 10).collect { result ->
+                when (result) {
+                    is Resource.Loading -> {
+                        _uiState.update { it.copy(isSuggestedLoading = true) }
+                    }
+                    is Resource.Success -> {
+                        _uiState.update { it.copy(suggestedRestaurants = result.data, isSuggestedLoading = false) }
+                    }
+                    is Resource.Error -> {
+                        // Non-fatal — the home screen still works without suggestions.
+                        _uiState.update { it.copy(isSuggestedLoading = false) }
+                    }
+                }
+            }
+        }
     }
 
     fun loadRestaurants(page: Int = 1) {
@@ -85,7 +107,9 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                     is Resource.Error -> {
-                        _uiState.update { it.copy(isLoading = false, error = result.message) }
+                        // Stop pagination on error — otherwise HomeScreen's end-of-list
+                        // effect will retry indefinitely against a failing endpoint.
+                        _uiState.update { it.copy(isLoading = false, error = result.message, hasMore = false) }
                     }
                 }
             }
@@ -170,5 +194,6 @@ class HomeViewModel @Inject constructor(
     fun refresh() {
         _uiState.update { it.copy(currentPage = 1, hasMore = true) }
         loadRestaurants(page = 1)
+        loadSuggested()
     }
 }

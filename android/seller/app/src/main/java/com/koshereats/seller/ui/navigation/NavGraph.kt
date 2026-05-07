@@ -30,6 +30,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koshereats.seller.ui.screens.auth.SellerLoginScreen
 import com.koshereats.seller.ui.screens.dashboard.DashboardScreen
+import com.koshereats.seller.ui.screens.deals.CreateDealScreen
+import com.koshereats.seller.ui.screens.deals.DealsScreen
 import com.koshereats.seller.ui.screens.menu.MenuItemFormScreen
 import com.koshereats.seller.ui.screens.menu.MenuManagementScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrderDetailScreen
@@ -189,6 +191,23 @@ fun NavGraph() {
                     itemId = itemId,
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
+                )
+            }
+
+            // Deals
+            composable(Screen.Deals.route) {
+                DealsScreen(
+                    onCreateDeal = {
+                        navController.navigate(Screen.CreateDeal.route)
+                    },
+                )
+            }
+
+            // Create Deal
+            composable(Screen.CreateDeal.route) {
+                CreateDealScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { navController.popBackStack() },
                 )
             }
 

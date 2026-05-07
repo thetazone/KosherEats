@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koshereats.consumer.data.models.DietaryType
@@ -177,16 +178,31 @@ fun MenuItemDietaryDot(
     isPareve: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val color = when {
-        isMeat -> MeatRed
-        isDairy -> DairyBlue
-        isPareve -> PareveGreen
-        else -> TextMuted
+    val (color, label) = when {
+        isMeat -> MeatRed to "Meat"
+        isDairy -> DairyBlue to "Dairy"
+        isPareve -> PareveGreen to "Pareve"
+        else -> return
     }
-    Box(
-        modifier = modifier
-            .size(10.dp)
-            .clip(CircleShape)
-            .background(color)
+    Text(
+        text = label,
+        color = color,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = modifier,
     )
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF101214)
+@Composable
+fun KosherBadgePreview() {
+    KosherEatsTheme {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            KosherBadge(certification = KosherCertification.OU)
+            DietaryBadge(dietaryType = com.koshereats.consumer.data.models.DietaryType.MEAT)
+            GlattBadge()
+            CholovYisroelBadge()
+            PasYisroelBadge()
+        }
+    }
 }

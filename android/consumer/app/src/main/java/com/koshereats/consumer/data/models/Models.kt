@@ -9,7 +9,7 @@ enum class KosherCertification(val displayName: String, val abbreviation: String
     @SerializedName("OK") OK("OK Kosher", "OK"),
     @SerializedName("Star-K") STAR_K("Star-K", "★K"),
     @SerializedName("Kof-K") KOF_K("Kof-K", "KF"),
-    @SerializedName("CRC") CRC("Chicago Rabbinical Council", "cRc"),
+    @SerializedName(value = "CRC", alternate = ["cRc"]) CRC("Chicago Rabbinical Council", "cRc"),
     @SerializedName("Badatz") BADATZ("Badatz", "BD"),
     @SerializedName("CHABAD") CHABAD("Chabad", "CH"),
     @SerializedName("LOCAL") LOCAL("Local Rabbinical", "LR"),
@@ -17,9 +17,9 @@ enum class KosherCertification(val displayName: String, val abbreviation: String
 }
 
 enum class DietaryType(val displayName: String) {
-    @SerializedName("meat") MEAT("Meat"),
-    @SerializedName("dairy") DAIRY("Dairy"),
-    @SerializedName("pareve") PAREVE("Pareve"),
+    @SerializedName(value = "meat", alternate = ["Meat"]) MEAT("Meat"),
+    @SerializedName(value = "dairy", alternate = ["Dairy"]) DAIRY("Dairy"),
+    @SerializedName(value = "pareve", alternate = ["Pareve"]) PAREVE("Pareve"),
 }
 
 enum class OrderStatus(val displayName: String) {
@@ -50,20 +50,25 @@ enum class OrderStatus(val displayName: String) {
 }
 
 enum class CuisineType(val displayName: String) {
-    @SerializedName("israeli") ISRAELI("Israeli"),
-    @SerializedName("middle_eastern") MIDDLE_EASTERN("Middle Eastern"),
-    @SerializedName("american") AMERICAN("American"),
-    @SerializedName("italian") ITALIAN("Italian"),
-    @SerializedName("asian") ASIAN("Asian"),
-    @SerializedName("mexican") MEXICAN("Mexican"),
-    @SerializedName("sushi") SUSHI("Sushi"),
-    @SerializedName("pizza") PIZZA("Pizza"),
-    @SerializedName("deli") DELI("Deli"),
-    @SerializedName("bakery") BAKERY("Bakery"),
-    @SerializedName("bbq") BBQ("BBQ"),
-    @SerializedName("falafel") FALAFEL("Falafel"),
-    @SerializedName("indian") INDIAN("Indian"),
-    @SerializedName("other") OTHER("Other"),
+    @SerializedName(value = "israeli", alternate = ["Israeli"]) ISRAELI("Israeli"),
+    @SerializedName(value = "middle_eastern", alternate = ["Middle Eastern"]) MIDDLE_EASTERN("Middle Eastern"),
+    @SerializedName(value = "american", alternate = ["American"]) AMERICAN("American"),
+    @SerializedName(value = "italian", alternate = ["Italian"]) ITALIAN("Italian"),
+    @SerializedName(value = "asian", alternate = ["Asian"]) ASIAN("Asian"),
+    @SerializedName(value = "mexican", alternate = ["Mexican"]) MEXICAN("Mexican"),
+    @SerializedName(value = "sushi", alternate = ["Sushi"]) SUSHI("Sushi"),
+    @SerializedName(value = "pizza", alternate = ["Pizza"]) PIZZA("Pizza"),
+    @SerializedName(value = "deli", alternate = ["Deli"]) DELI("Deli"),
+    @SerializedName(value = "bakery", alternate = ["Bakery"]) BAKERY("Bakery"),
+    @SerializedName(value = "bbq", alternate = ["BBQ"]) BBQ("BBQ"),
+    @SerializedName(value = "falafel", alternate = ["Falafel"]) FALAFEL("Falafel"),
+    @SerializedName(value = "indian", alternate = ["Indian"]) INDIAN("Indian"),
+    @SerializedName(value = "grill", alternate = ["Grill"]) GRILL("Grill"),
+    @SerializedName(value = "dairy", alternate = ["Dairy"]) DAIRY("Dairy"),
+    @SerializedName(value = "eastern_european", alternate = ["Eastern European"]) EASTERN_EUROPEAN("Eastern European"),
+    @SerializedName(value = "comfort", alternate = ["Comfort"]) COMFORT("Comfort"),
+    @SerializedName(value = "mediterranean", alternate = ["Mediterranean"]) MEDITERRANEAN("Mediterranean"),
+    @SerializedName(value = "other", alternate = ["Other"]) OTHER("Other"),
 }
 
 // ── User ──────────────────────────────────────────────────
@@ -123,6 +128,19 @@ data class AuthResponse(
     val user: User,
 )
 
+data class PhoneStartRequest(
+    val phone: String,
+)
+
+data class PhoneVerifyRequest(
+    val phone: String,
+    val code: String,
+    val role: String = "consumer",
+    @SerializedName("first_name") val firstName: String? = null,
+    @SerializedName("last_name") val lastName: String? = null,
+    val email: String? = null,
+)
+
 // ── Restaurant ────────────────────────────────────────────
 
 data class Restaurant(
@@ -135,21 +153,30 @@ data class Restaurant(
     val phone: String = "",
     val rating: Double = 0.0,
     @SerializedName("review_count") val reviewCount: Int = 0,
-    @SerializedName("cuisine_types") val cuisineTypes: List<CuisineType> = emptyList(),
-    @SerializedName("kosher_certification") val kosherCertification: KosherCertification = KosherCertification.OTHER,
+    // Element type is nullable: Gson deserializes any cuisine string not in
+    // the CuisineType @SerializedName set to null (e.g. "Japanese"), and
+    // those nulls land in the list at runtime regardless of Kotlin's
+    // declared type. UI sites must filter or null-safe access.
+    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<CuisineType?> = emptyList(),
+    // Nullable because Gson does NOT honor Kotlin defaults — when the API
+    // sends null or omits the field, this lands as null at runtime regardless
+    // of the declared default. Call sites coalesce to OTHER.
+    @SerializedName("kosher_certification") val kosherCertification: KosherCertification? = null,
     @SerializedName("certifying_agency") val certifyingAgency: String = "",
     @SerializedName("mashgiach_name") val mashgiachName: String? = null,
     @SerializedName("is_cholov_yisroel") val isCholovYisroel: Boolean = false,
     @SerializedName("is_pas_yisroel") val isPasYisroel: Boolean = false,
     @SerializedName("is_glatt_kosher") val isGlattKosher: Boolean = false,
     @SerializedName("is_yoshon") val isYoshon: Boolean = false,
-    @SerializedName("dietary_type") val dietaryType: DietaryType = DietaryType.MEAT,
+    @SerializedName("dietary_type") val dietaryType: DietaryType? = null,
     @SerializedName("is_open") val isOpen: Boolean = true,
     @SerializedName("delivery_fee") val deliveryFee: Int = 0,
     @SerializedName("est_delivery_min") val deliveryTimeMin: Int = 0,
     @SerializedName("est_delivery_max") val deliveryTimeMax: Int = 0,
     @SerializedName("min_order") val minimumOrder: Int = 0,
-    @SerializedName("operating_hours") val operatingHours: List<OperatingHour> = emptyList(),
+    // Backend returns either {} (empty) or an array — declared as Any? so Gson
+    // accepts both shapes without throwing JsonSyntaxException. Not used in consumer UI.
+    @SerializedName("operating_hours") val operatingHours: Any? = null,
     @SerializedName("is_shabbat_closed") val isShabbatClosed: Boolean = true,
     val distance: Double? = null,
     // Flat address fields from backend (not a nested Address object)
@@ -157,6 +184,8 @@ data class Restaurant(
     val city: String = "",
     val state: String = "",
     @SerializedName("zip_code") val zipCode: String = "",
+    @SerializedName("lat") val latitude: Double = 0.0,
+    @SerializedName("lng") val longitude: Double = 0.0,
 ) {
     /** Convenience: build an [Address] from the flat fields for UI code that expects one. */
     val address: Address
@@ -165,7 +194,10 @@ data class Restaurant(
             city = city,
             state = state,
             zipCode = zipCode,
+            latitude = latitude,
+            longitude = longitude,
         )
+
 }
 
 data class OperatingHour(
@@ -228,6 +260,7 @@ data class CustomizationOption(
 data class Cart(
     @SerializedName("restaurant_id") val restaurantId: String = "",
     @SerializedName("restaurant_name") val restaurantName: String = "",
+    @SerializedName("restaurant_image_url") val restaurantImageUrl: String? = null,
     val items: List<CartItem> = emptyList(),
 ) {
     val subtotal: Int get() = items.sumOf { it.totalPrice }
@@ -329,7 +362,11 @@ data class ServerCart(
 
 // ── Payments ──────────────────────────────────────────────
 
-data class PaymentSheetRequest(val tip: Int = 0)
+data class PaymentSheetRequest(
+    val tip: Int = 0,
+    @SerializedName("restaurant_id") val restaurantId: String = "",
+    @SerializedName("delivery_address") val deliveryAddress: String = "",
+)
 
 data class PaymentSheetBundle(
     @SerializedName("publishable_key") val publishableKey: String = "",
@@ -409,3 +446,35 @@ data class Review(
     val comment: String = "",
     @SerializedName("created_at") val createdAt: String = "",
 )
+
+// ── Deals ─────────────────────────────────────────────────
+
+enum class DiscountType(val displayName: String) {
+    @SerializedName("percentage") PERCENTAGE("% Off"),
+    @SerializedName("fixed") FIXED("Off"),
+    @SerializedName("bogo") BOGO("BOGO"),
+}
+
+data class Deal(
+    val id: String = "",
+    @SerializedName("restaurant_id") val restaurantId: String = "",
+    val title: String = "",
+    val description: String = "",
+    @SerializedName("discount_type") val discountType: DiscountType = DiscountType.PERCENTAGE,
+    @SerializedName("discount_value") val discountValue: Int = 0,
+    @SerializedName("min_order_amount") val minOrderAmount: Int? = null,
+    @SerializedName("starts_at") val startsAt: String = "",
+    @SerializedName("expires_at") val expiresAt: String = "",
+    @SerializedName("is_active") val isActive: Boolean = true,
+    @SerializedName("restaurant_name") val restaurantName: String = "",
+    @SerializedName("restaurant_image_url") val restaurantImageUrl: String = "",
+    @SerializedName("created_at") val createdAt: String = "",
+    @SerializedName("updated_at") val updatedAt: String = "",
+) {
+    val discountBadge: String
+        get() = when (discountType) {
+            DiscountType.PERCENTAGE -> "$discountValue% Off"
+            DiscountType.FIXED -> "$${discountValue / 100} Off"
+            DiscountType.BOGO -> "BOGO"
+        }
+}

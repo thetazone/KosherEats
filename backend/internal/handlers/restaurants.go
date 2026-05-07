@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -276,6 +277,161 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, restaurants)
+}
+
+// SuggestedRestaurants returns a personalised alternating list of restaurants:
+// unfamiliar (never/rarely ordered), familiar (frequently ordered), unfamiliar,
+// familiar, ... For unauthenticated users or users with no order history it
+// falls back to popular restaurants sorted by rating.
+//
+// Uses OptionalAuthMiddleware so both logged-in and guest users get results.
+func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
+	limit := 10
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 50 {
+		limit = l
+	}
+
+	user, _ := getUserFromContext(r)
+	userID := ""
+	if user != nil {
+		userID = user["user_id"]
+	}
+
+	ctx := r.Context()
+
+	// If we have an authenticated user, look up their order history grouped by
+	// restaurant: count of delivered/completed orders and most recent order
+	// date. This powers the familiar vs unfamiliar split.
+	type orderStat struct {
+		RestaurantID string
+		OrderCount   int
+	}
+	var familiar []orderStat
+
+	if userID != "" {
+		statRows, err := h.db.Pool.Query(ctx,
+			`SELECT restaurant_id, COUNT(*) AS order_count
+			   FROM orders
+			  WHERE user_id = $1
+			    AND status IN ('delivered', 'completed')
+			  GROUP BY restaurant_id
+			  ORDER BY order_count DESC, MAX(created_at) DESC`, userID)
+		if err != nil {
+			slog.Warn("suggested: failed to load order stats",
+				slog.String("user_id", userID), slog.String("error", err.Error()))
+		} else {
+			for statRows.Next() {
+				var s orderStat
+				if err := statRows.Scan(&s.RestaurantID, &s.OrderCount); err == nil {
+					familiar = append(familiar, s)
+				}
+			}
+			statRows.Close()
+		}
+	}
+
+	// Build the two buckets — familiar restaurants (ordered 2+ times) and
+	// unfamiliar restaurants (everything else, preferring high-rated ones the
+	// user hasn't tried).
+	familiarIDs := make([]string, 0, len(familiar))
+	for _, s := range familiar {
+		if s.OrderCount >= 2 {
+			familiarIDs = append(familiarIDs, s.RestaurantID)
+		}
+	}
+
+	// Familiar bucket — full restaurant objects in frequency order.
+	var familiarRestaurants []models.Restaurant
+	if len(familiarIDs) > 0 {
+		famRows, err := h.db.Pool.Query(ctx,
+			`SELECT id, owner_id, name, description, image_url, cover_image_url,
+			        phone, email, street, city, state, zip_code, lat, lng,
+			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
+			        is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+			   FROM restaurants
+			  WHERE id = ANY($1) AND is_active = true`, familiarIDs)
+		if err == nil {
+			scanned, _ := scanRestaurants(famRows)
+			famRows.Close()
+			// Re-order scanned results by the original frequency order.
+			byID := map[string]models.Restaurant{}
+			for _, r := range scanned {
+				byID[r.ID] = r
+			}
+			for _, id := range familiarIDs {
+				if r, ok := byID[id]; ok {
+					familiarRestaurants = append(familiarRestaurants, r)
+				}
+			}
+		}
+	}
+
+	// Unfamiliar bucket — all active restaurants the user has never or rarely
+	// ordered from, sorted by rating descending so the best ones float up.
+	// For guests (no order history) this is effectively "top rated".
+	var allOrderedIDs []string
+	for _, s := range familiar {
+		allOrderedIDs = append(allOrderedIDs, s.RestaurantID)
+	}
+
+	var unfamiliarRestaurants []models.Restaurant
+	if len(allOrderedIDs) > 0 {
+		unfamRows, err := h.db.Pool.Query(ctx,
+			`SELECT id, owner_id, name, description, image_url, cover_image_url,
+			        phone, email, street, city, state, zip_code, lat, lng,
+			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
+			        is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+			   FROM restaurants
+			  WHERE is_active = true AND id != ALL($1)
+			  ORDER BY rating DESC
+			  LIMIT $2`, allOrderedIDs, limit)
+		if err == nil {
+			unfamiliarRestaurants, _ = scanRestaurants(unfamRows)
+			unfamRows.Close()
+		}
+	} else {
+		// Guest user or no order history — just serve top-rated restaurants.
+		unfamRows, err := h.db.Pool.Query(ctx,
+			`SELECT id, owner_id, name, description, image_url, cover_image_url,
+			        phone, email, street, city, state, zip_code, lat, lng,
+			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
+			        is_glatt_kosher, cuisine_type, rating, review_count, delivery_fee, min_order,
+			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+			   FROM restaurants
+			  WHERE is_active = true
+			  ORDER BY rating DESC
+			  LIMIT $1`, limit)
+		if err == nil {
+			unfamiliarRestaurants, _ = scanRestaurants(unfamRows)
+			unfamRows.Close()
+		}
+	}
+
+	// Interleave: unfamiliar, familiar, unfamiliar, familiar, ...
+	// If one bucket runs out, append the remainder of the other.
+	result := make([]models.Restaurant, 0, limit)
+	ui, fi := 0, 0
+	for len(result) < limit && (ui < len(unfamiliarRestaurants) || fi < len(familiarRestaurants)) {
+		if ui < len(unfamiliarRestaurants) {
+			result = append(result, unfamiliarRestaurants[ui])
+			ui++
+		}
+		if len(result) >= limit {
+			break
+		}
+		if fi < len(familiarRestaurants) {
+			result = append(result, familiarRestaurants[fi])
+			fi++
+		}
+	}
+
+	if result == nil {
+		result = []models.Restaurant{}
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 // --- Favorites ---
