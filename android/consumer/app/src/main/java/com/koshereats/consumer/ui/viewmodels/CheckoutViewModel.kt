@@ -88,11 +88,13 @@ class CheckoutViewModel @Inject constructor(
     private var refreshBundleJob: Job? = null
     private var _bootstrapped = false
     private var _restaurantId: String = ""
+    private var _appliedDealId: String? = null
 
-    fun bootstrap(localCart: List<CartItem>, restaurantId: String) {
+    fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
         if (_bootstrapped) return
         _bootstrapped = true
         _restaurantId = restaurantId
+        _appliedDealId = appliedDealId
         viewModelScope.launch {
             loadAddresses()
             syncLocalCartToServer(localCart, restaurantId)
@@ -224,6 +226,7 @@ class CheckoutViewModel @Inject constructor(
                     tip = currentTipCents(),
                     restaurantId = _restaurantId,
                     deliveryAddress = address?.formatted.orEmpty(),
+                    appliedDealId = _appliedDealId,
                 ),
             )
             if (resp.isSuccessful) {
@@ -289,6 +292,7 @@ class CheckoutViewModel @Inject constructor(
                         paymentIntentId = paymentIntentId,
                         tip = bundle.tip,
                         scheduledFor = scheduledFor,
+                        appliedDealId = _appliedDealId,
                     ),
                 )
                 if (resp.isSuccessful) {

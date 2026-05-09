@@ -5,11 +5,39 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/models"
 )
+
+// normalizeKosherCertification maps any case variant (e.g. "ou", "OU", "Ou")
+// to the canonical form the consumer apps' Codable enums expect. iOS uses
+// strict raw-value matching ("OU", "Star-K", "Kof-K", "cRc"…), so a row
+// stored as "ou" breaks decoding for the entire restaurants list. Unknown
+// values pass through unchanged so future certifications don't silently
+// disappear before someone adds them to the canonical map.
+func normalizeKosherCertification(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "ou":
+		return "OU"
+	case "ok":
+		return "OK"
+	case "kof-k":
+		return "Kof-K"
+	case "star-k":
+		return "Star-K"
+	case "crc":
+		return "cRc"
+	case "badatz":
+		return "Badatz"
+	case "chof-k":
+		return "Chof-K"
+	default:
+		return v
+	}
+}
 
 // UpdateRestaurantRequest is a partial update — every field is optional.
 // Nil means "leave this column alone"; non-nil means "write this value."
@@ -146,6 +174,10 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "kosher_certification is required")
 		return
 	}
+	// Canonicalize to the form iOS's strict Codable enum expects (e.g. "ou" → "OU").
+	// The seller app sometimes lower-cases user input; without this normalization
+	// the consumer apps fail to decode the entire restaurants list.
+	req.KosherCertification = normalizeKosherCertification(req.KosherCertification)
 	if len(req.Name) > 200 {
 		writeError(w, http.StatusBadRequest, "name too long (max 200)")
 		return
@@ -309,6 +341,12 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "delivery_mode must be platform, external, or restaurant")
 			return
 		}
+	}
+	// Canonicalize so iOS's strict Codable enum on KosherCertification keeps
+	// decoding [Restaurant] regardless of how the seller app capitalised it.
+	if req.KosherCertification != nil {
+		normalized := normalizeKosherCertification(*req.KosherCertification)
+		req.KosherCertification = &normalized
 	}
 
 	// Use COALESCE so each column only gets overwritten when the client

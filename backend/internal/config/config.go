@@ -30,10 +30,16 @@ type Config struct {
 	APNsBundlePfx  string // Bundle id prefix, e.g. "com.koshereats"
 	APNsProduction bool   // false -> sandbox
 
-	// Storage (S3 for uploads: courier documents, restaurant photos)
+	// Storage (S3 / S3-compatible for uploads: courier documents, restaurant
+	// photos, kosher certificates). On Fly we use Tigris, which auto-injects
+	// AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION / BUCKET_NAME /
+	// AWS_ENDPOINT_URL_S3 when you run `fly storage create`. The SDK picks
+	// up the access keys + region from env automatically; we read the bucket
+	// + endpoint here.
 	S3Bucket    string
 	S3Region    string
-	S3PublicURL string // optional CDN prefix (e.g. cloudfront)
+	S3Endpoint  string // empty for AWS, set to https://fly.storage.tigris.dev for Tigris
+	S3PublicURL string // optional CDN prefix (e.g. cloudfront). Computed from endpoint+bucket if empty.
 
 	// Checkr (courier background checks)
 	CheckrAPIKey     string
@@ -99,8 +105,12 @@ func Load() *Config {
 		APNsBundlePfx:  getEnv("APNS_BUNDLE_PREFIX", "com.koshereats"),
 		APNsProduction: getEnv("APNS_PRODUCTION", "") == "true",
 
-		S3Bucket:    getEnv("S3_BUCKET", ""),
-		S3Region:    getEnv("S3_REGION", "us-east-1"),
+		// Prefer Fly's auto-injected names (BUCKET_NAME, AWS_REGION,
+		// AWS_ENDPOINT_URL_S3 from `fly storage create`) and fall back to
+		// our legacy S3_* names so existing AWS-direct configs keep working.
+		S3Bucket:    firstNonEmpty(getEnv("BUCKET_NAME", ""), getEnv("S3_BUCKET", "")),
+		S3Region:    firstNonEmpty(getEnv("AWS_REGION", ""), getEnv("S3_REGION", "us-east-1")),
+		S3Endpoint:  firstNonEmpty(getEnv("AWS_ENDPOINT_URL_S3", ""), getEnv("S3_ENDPOINT", "")),
 		S3PublicURL: getEnv("S3_PUBLIC_URL", ""),
 
 		CheckrAPIKey:     getEnv("CHECKR_API_KEY", ""),
@@ -135,6 +145,15 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func getEnvInt(key string, fallback int) int {

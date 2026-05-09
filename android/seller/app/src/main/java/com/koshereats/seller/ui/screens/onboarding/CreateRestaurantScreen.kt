@@ -1,5 +1,8 @@
 package com.koshereats.seller.ui.screens.onboarding
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,16 +23,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -42,16 +49,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
@@ -63,6 +74,13 @@ import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextTertiary
 import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.viewmodels.CreateRestaurantViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +89,25 @@ fun CreateRestaurantScreen(
     viewModel: CreateRestaurantViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val certificatePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            viewModel.setUploadingCertificate(true)
+            viewModel.setCertificateError(null)
+            val url = uploadCertificate(context, uri, viewModel)
+            if (url != null) {
+                viewModel.updateCertificateUrl(url)
+            } else {
+                viewModel.setCertificateError("Upload failed. Please try again.")
+            }
+            viewModel.setUploadingCertificate(false)
+        }
+    }
 
     LaunchedEffect(state.createdRestaurant) {
         if (state.createdRestaurant != null) {
@@ -312,6 +349,131 @@ fun CreateRestaurantScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Kosher Certificate Photo *",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (state.certificateUrl.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    ) {
+                        AsyncImage(
+                            model = state.certificateUrl,
+                            contentDescription = "Kosher certificate",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop,
+                        )
+                        IconButton(
+                            onClick = { viewModel.updateCertificateUrl("") },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(BackgroundBlack.copy(alpha = 0.6f)),
+                        ) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Remove",
+                                tint = TextWhite,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(8.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Orange.copy(alpha = 0.9f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = TextWhite,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = "Uploaded",
+                                color = TextWhite,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SurfaceDarkElevated)
+                            .border(
+                                width = 1.dp,
+                                color = if (state.certificateError != null) ErrorRed else DividerColor,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            .clickable(enabled = !state.isUploadingCertificate) {
+                                certificatePicker.launch("image/*")
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (state.isUploadingCertificate) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(
+                                    color = Orange,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Uploading...",
+                                    color = TextMuted,
+                                    fontSize = 13.sp,
+                                )
+                            }
+                        } else {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Filled.UploadFile,
+                                    contentDescription = null,
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(32.dp),
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Tap to upload certificate photo",
+                                    color = TextMuted,
+                                    fontSize = 13.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (state.certificateError != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = state.certificateError!!,
+                        color = ErrorRed,
+                        fontSize = 12.sp,
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 ToggleRow(
@@ -429,6 +591,32 @@ private fun SectionCard(content: @Composable () -> Unit) {
             .padding(16.dp),
     ) {
         content()
+    }
+}
+
+private suspend fun uploadCertificate(
+    context: android.content.Context,
+    uri: Uri,
+    viewModel: CreateRestaurantViewModel,
+): String? = withContext(Dispatchers.IO) {
+    try {
+        val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        val presignResponse = viewModel.presignUpload("restaurant/certificate", contentType)
+            ?: return@withContext null
+
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: return@withContext null
+
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url(presignResponse.uploadUrl)
+            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .build()
+
+        val response = client.newCall(request).execute()
+        response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
+    } catch (_: Exception) {
+        null
     }
 }
 

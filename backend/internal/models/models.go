@@ -350,6 +350,8 @@ type Deal struct {
 	RestaurantID   string       `json:"restaurant_id"`
 	Title          string       `json:"title"`
 	Description    string       `json:"description"`
+	ImageURL       string       `json:"image_url"`
+	MenuItemID     *string      `json:"menu_item_id,omitempty"`
 	DiscountType   DiscountType `json:"discount_type"`
 	DiscountValue  int          `json:"discount_value"`
 	MinOrderAmount *int         `json:"min_order_amount,omitempty"`
@@ -360,11 +362,13 @@ type Deal struct {
 	UpdatedAt      time.Time    `json:"updated_at"`
 }
 
-// DealWithRestaurant is the consumer-facing shape that includes the
-// restaurant name and image so the deals list can render cards without
-// a second round-trip per deal.
-type DealWithRestaurant struct {
+// DealWithItem is the consumer-facing shape that includes restaurant
+// and (optionally) linked menu item info for rendering deal cards.
+type DealWithItem struct {
 	Deal
-	RestaurantName     string `json:"restaurant_name"`
-	RestaurantImageURL string `json:"restaurant_image_url"`
+	RestaurantName     string  `json:"restaurant_name"`
+	RestaurantImageURL string  `json:"restaurant_image_url"`
+	MenuItemName       *string `json:"menu_item_name,omitempty"`
+	MenuItemPrice      *int    `json:"menu_item_price,omitempty"`
+	MenuItemImageURL   *string `json:"menu_item_image_url,omitempty"`
 }

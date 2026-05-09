@@ -490,6 +490,14 @@ private fun CartDetailView(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         PriceRow("Subtotal", state.subtotal)
+                        if (state.discount > 0) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            PriceRow(
+                                label = state.appliedDeal?.title?.let { "Deal: $it" } ?: "Deal discount",
+                                cents = -state.discount,
+                                accent = true,
+                            )
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
                         PriceRow("Delivery fee", state.deliveryFee)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -661,17 +669,21 @@ private fun CartItemRow(
 }
 
 @Composable
-private fun PriceRow(label: String, amount: Int) {
+private fun PriceRow(label: String, cents: Int, accent: Boolean = false) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
         Text(
-            text = amount.formatPrice(),
+            text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-            fontWeight = FontWeight.Medium
+            color = if (accent) Orange else TextTertiary,
+        )
+        Text(
+            text = if (cents < 0) "-${(-cents).formatPrice()}" else cents.formatPrice(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (accent) Orange else TextSecondary,
+            fontWeight = FontWeight.Medium,
         )
     }
 }

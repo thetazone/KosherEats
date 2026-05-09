@@ -141,6 +141,7 @@ func main() {
 		})
 		r.Get("/{id}", h.GetRestaurant)
 		r.Get("/{id}/menu", h.GetMenu)
+		r.Get("/{id}/deals", h.ListRestaurantDeals)
 	})
 
 	// Delivery fee quote (authenticated — checkout screen calls this)

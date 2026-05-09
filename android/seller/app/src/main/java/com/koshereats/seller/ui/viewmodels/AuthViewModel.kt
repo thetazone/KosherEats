@@ -10,6 +10,7 @@ import com.koshereats.seller.data.api.PrefsKeys
 import com.koshereats.seller.data.api.SocialLoginRequest
 import com.koshereats.seller.data.api.dataStore
 import com.koshereats.seller.data.models.LoginRequest
+import com.koshereats.seller.data.models.PresignResponse
 import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.push.PushBootstrap
 import com.koshereats.seller.auth.GoogleSignInHelper
@@ -202,6 +203,25 @@ class AuthViewModel @Inject constructor(
                 },
             )
         }
+    }
+
+    fun updateRestaurantField(key: String, value: Any) {
+        viewModelScope.launch {
+            try {
+                val response = apiService.updateRestaurant(mapOf(key to value))
+                if (response.isSuccessful) {
+                    _state.value = _state.value.copy(restaurant = response.body())
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
+        val response = apiService.presignUpload(
+            mapOf("kind" to kind, "content_type" to contentType),
+        )
+        return if (response.isSuccessful) response.body() else null
     }
 
     fun toggleOpen(targetIsOpen: Boolean) {

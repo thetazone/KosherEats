@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/koshereats/backend/internal/models"
 	"github.com/stripe/stripe-go/v78/webhook"
 )
 
@@ -27,6 +28,10 @@ type CreatePaymentIntentRequest struct {
 	// the static formula.
 	RestaurantID    string `json:"restaurant_id,omitempty"`
 	DeliveryAddress string `json:"delivery_address,omitempty"`
+	// AppliedDealID, when set, applies the deal's discount to the subtotal
+	// before computing tax and the Stripe charge total. CreateOrder must
+	// receive the same id so the recorded total matches the charge.
+	AppliedDealID string `json:"applied_deal_id,omitempty"`
 }
 
 func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
@@ -39,24 +44,54 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	var req CreatePaymentIntentRequest
 	_ = readJSON(r, &req) // body optional
 
-	// Pull the current cart subtotal straight from the DB — the one source of
-	// truth. Uses ci.unit_price (modifier-adjusted snapshot) not mi.price so
-	// selected modifiers are already baked in.
-	var subtotal int
-	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT COALESCE(SUM(ci.unit_price * ci.quantity), 0)
+	// Pull the current cart and its items straight from the DB — the one
+	// source of truth. Uses ci.unit_price (modifier-adjusted snapshot) not
+	// mi.price so selected modifiers are already baked in. We fetch
+	// per-item rows (not just SUM) because BOGO discount logic needs the
+	// cheapest single-unit price.
+	var cartRestID string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT restaurant_id FROM carts WHERE user_id = $1`, user["user_id"],
+	).Scan(&cartRestID); err != nil {
+		writeError(w, http.StatusBadRequest, "cart is empty")
+		return
+	}
+
+	rows, err := h.db.Pool.Query(r.Context(),
+		`SELECT ci.unit_price, ci.quantity
 		   FROM cart_items ci
 		   JOIN carts c ON ci.cart_id = c.id
-		  WHERE c.user_id = $1`, user["user_id"],
-	).Scan(&subtotal)
+		  WHERE c.user_id = $1`, user["user_id"])
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read cart")
 		return
 	}
+	var subtotal int
+	var dealItems []models.OrderItem
+	for rows.Next() {
+		var unit, qty int
+		if err := rows.Scan(&unit, &qty); err != nil {
+			rows.Close()
+			writeError(w, http.StatusInternalServerError, "failed to scan cart item")
+			return
+		}
+		subtotal += unit * qty
+		dealItems = append(dealItems, models.OrderItem{Price: unit, Quantity: qty})
+	}
+	rows.Close()
 	if subtotal == 0 {
 		writeError(w, http.StatusBadRequest, "cart is empty")
 		return
 	}
+
+	// Apply deal discount before tax so the user pays tax on the discounted
+	// subtotal. CreateOrder applies the same logic — keep them in sync.
+	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cartRestID, subtotal, dealItems)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	discountedSubtotal := subtotal - discount
 
 	isPickup := req.FulfillmentType == "pickup"
 
@@ -79,7 +114,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	serviceFee := 0
-	tax := subtotal * h.cfg.TaxRatePercent / 100
+	tax := discountedSubtotal * h.cfg.TaxRatePercent / 100
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
@@ -91,7 +126,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}
-	total := subtotal + deliveryFee + serviceFee + tax + tip
+	total := discountedSubtotal + deliveryFee + serviceFee + tax + tip
 
 	// Fetch the user's email + name for the Stripe Customer record.
 	var email, firstName, lastName string
@@ -124,6 +159,8 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		"customer_id":           bundle.CustomerID,
 		"publishable_key":       bundle.PublishableKey,
 		"subtotal":              subtotal,
+		"discount":              discount,
+		"applied_deal_id":       req.AppliedDealID,
 		"delivery_fee":          deliveryFee,
 		"service_fee":           serviceFee,
 		"tax":                   tax,

@@ -30,6 +30,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +65,10 @@ fun EditProfileScreen(
     viewModel: EditProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(state.saved) {
+        if (state.saved) onBack()
+    }
 
     Column(
         modifier = Modifier
@@ -150,15 +155,6 @@ fun EditProfileScreen(
                     Text(
                         text = error,
                         color = ErrorRed,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 4.dp),
-                    )
-                }
-
-                if (state.saved) {
-                    Text(
-                        text = "Profile saved successfully",
-                        color = SuccessGreen,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(start = 4.dp),
                     )

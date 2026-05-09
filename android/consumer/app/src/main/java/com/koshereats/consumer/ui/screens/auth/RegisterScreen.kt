@@ -57,6 +57,7 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onLoginClick: () -> Unit,
+    onPhoneNeeded: () -> Unit = {},
     onGuestContinue: () -> Unit = onRegisterSuccess,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
@@ -64,8 +65,10 @@ fun RegisterScreen(
     val context = LocalContext.current
     var passwordVisible by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.isLoggedIn, state.isGuest) {
-        if (state.isLoggedIn && !state.isGuest) onRegisterSuccess()
+    LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
+        if (state.isLoggedIn && !state.isGuest) {
+            if (state.needsPhone) onPhoneNeeded() else onRegisterSuccess()
+        }
     }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(

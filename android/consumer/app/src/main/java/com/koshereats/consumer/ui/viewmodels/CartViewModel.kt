@@ -43,6 +43,7 @@ data class CartUiState(
      * to `pending` as the window approaches.
      */
     val scheduledFor: java.time.LocalDateTime? = null,
+    val pendingDealItem: Deal? = null,
     val isPlacingOrder: Boolean = false,
     val orderPlaced: Order? = null,
     val error: String? = null,
@@ -51,10 +52,12 @@ data class CartUiState(
     val cart: Cart get() = activeRestaurantId?.let { carts[it] } ?: carts.values.firstOrNull() ?: Cart()
 
     val subtotal: Int get() = cart.subtotal
-    val tax: Int get() = (subtotal * taxRate).roundToInt()
-    val total: Int get() = subtotal + deliveryFee + serviceFee + tax + tip
+    val discount: Int get() = cart.discount
+    val tax: Int get() = (cart.discountedSubtotal * taxRate).roundToInt()
+    val total: Int get() = cart.discountedSubtotal + deliveryFee + serviceFee + tax + tip
     val isEmpty: Boolean get() = cart.items.isEmpty()
     val itemCount: Int get() = cart.itemCount
+    val appliedDeal: Deal? get() = cart.appliedDeal
 
     /** Total item count across ALL restaurant carts. */
     val totalItemCount: Int get() = carts.values.sumOf { it.itemCount }
@@ -191,6 +194,42 @@ class CartViewModel @Inject constructor(
         _uiState.update { it.copy(activeRestaurantId = restaurantId) }
     }
 
+    /**
+     * Attach a deal to the cart for the deal's restaurant. Creates an empty
+     * cart if none exists yet so the banner shows on the restaurant page
+     * even before any items are added. One deal per cart — replaces any
+     * previously-applied deal for that restaurant.
+     */
+    fun applyDeal(deal: Deal) {
+        if (deal.restaurantId.isBlank()) return
+        _uiState.update { state ->
+            val existing = state.carts[deal.restaurantId] ?: Cart(
+                restaurantId = deal.restaurantId,
+                restaurantName = deal.restaurantName,
+                restaurantImageUrl = deal.restaurantImageUrl.takeIf { it.isNotBlank() },
+            )
+            state.copy(
+                carts = state.carts + (deal.restaurantId to existing.copy(appliedDeal = deal)),
+            )
+        }
+    }
+
+    /** Remove the deal from the given restaurant's cart (keeps the items). */
+    fun removeDeal(restaurantId: String) {
+        _uiState.update { state ->
+            val cart = state.carts[restaurantId] ?: return@update state
+            state.copy(carts = state.carts + (restaurantId to cart.copy(appliedDeal = null)))
+        }
+    }
+
+    fun setPendingDealItem(deal: Deal) {
+        _uiState.update { it.copy(pendingDealItem = deal) }
+    }
+
+    fun clearPendingDealItem() {
+        _uiState.update { it.copy(pendingDealItem = null) }
+    }
+
     fun placeOrder(
         deliveryAddress: String,
         deliveryLat: Double,
@@ -218,6 +257,7 @@ class CartViewModel @Inject constructor(
             paymentIntentId = paymentIntentId,
             tip = state.tip,
             scheduledFor = scheduledFor,
+            appliedDealId = state.cart.appliedDeal?.id,
         )
 
         viewModelScope.launch {

@@ -6,6 +6,7 @@ import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.Restaurant
+import com.koshereats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,11 @@ data class CreateRestaurantState(
     val isCholovYisroel: Boolean = false,
     val isPasYisroel: Boolean = false,
     val isGlattKosher: Boolean = false,
+
+    // Certificate upload
+    val certificateUrl: String = "",
+    val isUploadingCertificate: Boolean = false,
+    val certificateError: String? = null,
 
     // Cuisine
     val cuisineTags: String = "",
@@ -121,6 +127,25 @@ class CreateRestaurantViewModel @Inject constructor(
         _state.value = _state.value.copy(cuisineTags = value)
     }
 
+    fun updateCertificateUrl(url: String) {
+        _state.value = _state.value.copy(certificateUrl = url, certificateError = null)
+    }
+
+    fun setUploadingCertificate(uploading: Boolean) {
+        _state.value = _state.value.copy(isUploadingCertificate = uploading)
+    }
+
+    fun setCertificateError(error: String?) {
+        _state.value = _state.value.copy(certificateError = error)
+    }
+
+    suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
+        val response = apiService.presignUpload(
+            mapOf("kind" to kind, "content_type" to contentType),
+        )
+        return if (response.isSuccessful) response.body() else null
+    }
+
     // --- Submission ---
 
     fun submit() {
@@ -147,6 +172,7 @@ class CreateRestaurantViewModel @Inject constructor(
             isCholovYisroel = s.isCholovYisroel,
             isPasYisroel = s.isPasYisroel,
             isGlattKosher = s.isGlattKosher,
+            kosherCertificateUrl = s.certificateUrl,
         )
 
         viewModelScope.launch {

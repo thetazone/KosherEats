@@ -89,6 +89,7 @@ data class MenuItem(
     @Json(name = "spice_level") val spiceLevel: Int = 0,
     @Json(name = "calories") val calories: Int? = null,
     @Json(name = "sort_order") val sortOrder: Int = 0,
+    @Json(name = "modifier_groups") val modifierGroups: List<ModifierGroup> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)
@@ -212,6 +213,8 @@ data class Deal(
     @Json(name = "restaurant_id") val restaurantId: String = "",
     val title: String = "",
     val description: String = "",
+    @Json(name = "image_url") val imageUrl: String = "",
+    @Json(name = "menu_item_id") val menuItemId: String? = null,
     @Json(name = "discount_type") val discountType: DiscountType = DiscountType.PERCENTAGE,
     @Json(name = "discount_value") val discountValue: Int = 0,
     @Json(name = "min_order_amount") val minOrderAmount: Int? = null,
@@ -245,12 +248,15 @@ data class CreateRestaurantRequest(
     @Json(name = "is_cholov_yisroel") val isCholovYisroel: Boolean = false,
     @Json(name = "is_pas_yisroel") val isPasYisroel: Boolean = false,
     @Json(name = "is_glatt_kosher") val isGlattKosher: Boolean = false,
+    @Json(name = "kosher_certificate_url") val kosherCertificateUrl: String = "",
 )
 
 @JsonClass(generateAdapter = true)
 data class CreateDealRequest(
     val title: String,
     val description: String = "",
+    @Json(name = "image_url") val imageUrl: String = "",
+    @Json(name = "menu_item_id") val menuItemId: String? = null,
     @Json(name = "discount_type") val discountType: DiscountType,
     @Json(name = "discount_value") val discountValue: Int = 0,
     @Json(name = "min_order_amount") val minOrderAmount: Int? = null,
@@ -269,6 +275,53 @@ data class CreateMenuItemBody(
     @Json(name = "is_dairy") val isDairy: Boolean = false,
     @Json(name = "is_pareve") val isPareve: Boolean = false,
     @Json(name = "is_available") val isAvailable: Boolean = true,
+)
+
+// --- Modifiers ---
+
+@JsonClass(generateAdapter = true)
+data class ModifierGroup(
+    val id: String = "",
+    @Json(name = "menu_item_id") val menuItemId: String = "",
+    val name: String = "",
+    val description: String = "",
+    @Json(name = "is_required") val isRequired: Boolean = false,
+    @Json(name = "min_selections") val minSelections: Int = 0,
+    @Json(name = "max_selections") val maxSelections: Int = 1,
+    @Json(name = "sort_order") val sortOrder: Int = 0,
+    val modifiers: List<Modifier> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class Modifier(
+    val id: String = "",
+    @Json(name = "group_id") val groupId: String = "",
+    val name: String = "",
+    @Json(name = "price_delta") val priceDelta: Int = 0,
+    @Json(name = "is_default") val isDefault: Boolean = false,
+    @Json(name = "is_available") val isAvailable: Boolean = true,
+    @Json(name = "sort_order") val sortOrder: Int = 0,
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateModifierGroupRequest(
+    val name: String,
+    val description: String = "",
+    @Json(name = "is_required") val isRequired: Boolean = false,
+    @Json(name = "min_selections") val minSelections: Int = 0,
+    @Json(name = "max_selections") val maxSelections: Int = 1,
+    @Json(name = "sort_order") val sortOrder: Int = 0,
+    val modifiers: List<ModifierOptionRequest> = emptyList(),
+)
+
+@JsonClass(generateAdapter = true)
+data class ModifierOptionRequest(
+    val id: String? = null,
+    val name: String,
+    @Json(name = "price_delta") val priceDelta: Int = 0,
+    @Json(name = "is_default") val isDefault: Boolean = false,
+    @Json(name = "is_available") val isAvailable: Boolean = true,
+    @Json(name = "sort_order") val sortOrder: Int = 0,
 )
 
 // --- Uploads ---

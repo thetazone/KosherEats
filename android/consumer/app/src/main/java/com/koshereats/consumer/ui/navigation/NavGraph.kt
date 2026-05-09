@@ -48,6 +48,7 @@ import androidx.navigation.navArgument
 import com.koshereats.consumer.ui.screens.auth.EmailLoginScreen
 import com.koshereats.consumer.ui.screens.auth.LoginScreen
 import com.koshereats.consumer.ui.screens.auth.PhoneAuthScreen
+import com.koshereats.consumer.ui.screens.auth.PhonePromptScreen
 import com.koshereats.consumer.ui.screens.auth.RegisterScreen
 import com.koshereats.consumer.ui.screens.cart.CartScreen
 import com.koshereats.consumer.ui.screens.checkout.CheckoutScreen
@@ -196,8 +197,14 @@ fun KosherEatsNavHost() {
 
             composable(Screen.Deals.route) {
                 DealsScreen(
-                    onDealClick = { restaurantId ->
-                        navController.navigate(Screen.Restaurant.createRoute(restaurantId))
+                    onDealClick = { deal ->
+                        if (deal.hasLinkedItem) {
+                            cartViewModel.applyDeal(deal)
+                            cartViewModel.setPendingDealItem(deal)
+                        } else {
+                            cartViewModel.applyDeal(deal)
+                        }
+                        navController.navigate(Screen.Restaurant.createRoute(deal.restaurantId))
                     },
                 )
             }
@@ -247,9 +254,11 @@ fun KosherEatsNavHost() {
                 // Snapshot at entry so live CartViewModel updates can't re-trigger bootstrap mid-payment.
                 val snapshotItems = remember { cartState.cart.items }
                 val snapshotRestaurantId = remember { cartState.cart.restaurantId }
+                val snapshotDealId = remember { cartState.cart.appliedDeal?.id }
                 CheckoutScreen(
                     localCart = snapshotItems,
                     restaurantId = snapshotRestaurantId,
+                    appliedDealId = snapshotDealId,
                     onBack = { navController.popBackStack() },
                     onOrderPlaced = { order ->
                         cartViewModel.clearCartForRestaurant(snapshotRestaurantId)
@@ -346,6 +355,11 @@ fun KosherEatsNavHost() {
                     onEmailLoginClick = {
                         navController.navigate(Screen.EmailLogin.route)
                     },
+                    onPhoneNeeded = {
+                        navController.navigate(Screen.PhonePrompt.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    },
                     onGuestContinue = {
                         pendingGuestReturn.value = null
                         navController.navigate(Screen.Home.route) {
@@ -408,10 +422,29 @@ fun KosherEatsNavHost() {
                         }
                     },
                     onLoginClick = { navController.popBackStack() },
+                    onPhoneNeeded = {
+                        navController.navigate(Screen.PhonePrompt.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    },
                     onGuestContinue = {
                         pendingGuestReturn.value = null
                         navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    },
+                    viewModel = authViewModel,
+                )
+            }
+
+            composable(Screen.PhonePrompt.route) {
+                val returnRoute = pendingGuestReturn.value
+                PhonePromptScreen(
+                    onComplete = {
+                        pendingGuestReturn.value = null
+                        val target = returnRoute ?: Screen.Home.route
+                        navController.navigate(target) {
+                            popUpTo(Screen.PhonePrompt.route) { inclusive = true }
                         }
                     },
                     viewModel = authViewModel,

@@ -53,7 +53,16 @@ func New(cfg *config.Config) *Client {
 		log.Printf("[storage] failed to load AWS config: %v — running in dev stub mode", err)
 		return c
 	}
-	c.s3 = s3.NewFromConfig(awsCfg)
+	// When S3_ENDPOINT (or Fly's AWS_ENDPOINT_URL_S3) is set we're talking to
+	// an S3-compatible service like Tigris/R2, not AWS itself. Force path-style
+	// addressing because not every provider supports virtual-host buckets, and
+	// it sidesteps DNS/SSL issues with bucket names that contain dots.
+	c.s3 = s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		if cfg.S3Endpoint != "" {
+			o.BaseEndpoint = aws.String(cfg.S3Endpoint)
+			o.UsePathStyle = true
+		}
+	})
 	c.presigner = s3.NewPresignClient(c.s3)
 	c.enabled = true
 	return c
@@ -97,11 +106,15 @@ func (c *Client) Presign(ctx context.Context, userID, kind, contentType string) 
 }
 
 // publicURLFor returns the URL the uploaded object will be available at.
-// If S3_PUBLIC_URL is set (e.g. CloudFront) we use that; otherwise we build
-// a direct S3 URL.
+//   - If S3_PUBLIC_URL is set (e.g. CloudFront), use that as the prefix.
+//   - Else if S3_ENDPOINT is set (Tigris / R2), build a path-style URL against it.
+//   - Else default to AWS virtual-host style.
 func (c *Client) publicURLFor(key string) string {
 	if c.cfg.S3PublicURL != "" {
 		return strings.TrimRight(c.cfg.S3PublicURL, "/") + "/" + key
+	}
+	if c.cfg.S3Endpoint != "" {
+		return fmt.Sprintf("%s/%s/%s", strings.TrimRight(c.cfg.S3Endpoint, "/"), c.cfg.S3Bucket, key)
 	}
 	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", c.cfg.S3Bucket, c.cfg.S3Region, key)
 }

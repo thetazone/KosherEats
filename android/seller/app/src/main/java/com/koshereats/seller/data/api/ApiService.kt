@@ -106,6 +106,23 @@ interface ApiService {
         @Body body: Map<String, Boolean>,
     ): Response<MenuItem>
 
+    @POST("seller/menu/items/{itemId}/modifier-groups")
+    suspend fun createModifierGroup(
+        @Path("itemId") itemId: String,
+        @Body request: CreateModifierGroupRequest,
+    ): Response<ModifierGroup>
+
+    @PUT("seller/menu/modifier-groups/{groupId}")
+    suspend fun updateModifierGroup(
+        @Path("groupId") groupId: String,
+        @Body request: CreateModifierGroupRequest,
+    ): Response<ModifierGroup>
+
+    @DELETE("seller/menu/modifier-groups/{groupId}")
+    suspend fun deleteModifierGroup(
+        @Path("groupId") groupId: String,
+    ): Response<Unit>
+
     // --- Restaurant Settings ---
 
     /**

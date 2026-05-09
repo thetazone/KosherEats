@@ -415,7 +415,9 @@ private fun KosherStep(
     var glattKosher by remember { mutableStateOf(state.isGlattKosher) }
     var certExpanded by remember { mutableStateOf(false) }
     var certificateUrl by remember { mutableStateOf(state.kosherCertificateUrl) }
+    var localImageUri by remember { mutableStateOf<Uri?>(null) }
     var isUploadingCert by remember { mutableStateOf(false) }
+    var uploadError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val colors = fieldColors()
@@ -424,10 +426,16 @@ private fun KosherStep(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
+        localImageUri = uri
+        uploadError = null
         isUploadingCert = true
         scope.launch {
             val result = uploadCertificate(context, uri, viewModel)
-            if (result != null) certificateUrl = result
+            if (result != null) {
+                certificateUrl = result
+            } else {
+                uploadError = "Upload failed. Tap to retry."
+            }
             isUploadingCert = false
         }
     }
@@ -506,19 +514,46 @@ private fun KosherStep(
                 .clickable(enabled = !isUploadingCert) { certPicker.launch("image/*") },
             contentAlignment = Alignment.Center,
         ) {
-            if (isUploadingCert) {
+            val displayModel = localImageUri ?: certificateUrl.ifBlank { null }
+            if (isUploadingCert && displayModel != null) {
+                Box(Modifier.fillMaxSize()) {
+                    AsyncImage(
+                        model = displayModel,
+                        contentDescription = "Kosher certificate",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    CircularProgressIndicator(
+                        color = Orange,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .align(Alignment.Center),
+                    )
+                }
+            } else if (isUploadingCert) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Uploading...", color = TextMuted, style = MaterialTheme.typography.bodySmall)
                 }
-            } else if (certificateUrl.isNotBlank()) {
+            } else if (displayModel != null) {
                 AsyncImage(
-                    model = certificateUrl,
+                    model = displayModel,
                     contentDescription = "Kosher certificate",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
+            } else if (uploadError != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = ErrorRed,
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(uploadError!!, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+                }
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
@@ -626,9 +661,19 @@ private fun MenuStep(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (item.imageUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = item.imageUrl,
+                            contentDescription = item.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                        )
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(item.name, color = TextWhite, fontWeight = FontWeight.Medium)
                         Text(
@@ -666,6 +711,7 @@ private fun MenuStep(
                     showForm = false
                 },
                 onCancel = { showForm = false },
+                viewModel = viewModel,
             )
         } else {
             OutlinedButton(
@@ -705,6 +751,7 @@ private fun MenuStep(
 private fun AddMenuItemForm(
     onAdd: (OnboardingMenuItem) -> Unit,
     onCancel: () -> Unit,
+    viewModel: OnboardingViewModel,
 ) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -715,7 +762,29 @@ private fun AddMenuItemForm(
     var isPareve by remember { mutableStateOf(false) }
     var catExpanded by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var imageUrl by remember { mutableStateOf("") }
+    var localImageUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploadingImage by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val colors = fieldColors()
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        localImageUri = uri
+        isUploadingImage = true
+        scope.launch {
+            val result = uploadMenuItemImage(context, uri, viewModel)
+            if (result != null) {
+                imageUrl = result
+            } else {
+                error = "Image upload failed. You can still add the item."
+            }
+            isUploadingImage = false
+        }
+    }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -732,6 +801,51 @@ private fun AddMenuItemForm(
                 color = TextWhite,
                 fontWeight = FontWeight.SemiBold,
             )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, DividerColor, RoundedCornerShape(12.dp))
+                    .background(BackgroundBlack)
+                    .clickable(enabled = !isUploadingImage) { imagePicker.launch("image/*") },
+                contentAlignment = Alignment.Center,
+            ) {
+                val displayModel = localImageUri ?: imageUrl.ifBlank { null }
+                if (isUploadingImage && displayModel != null) {
+                    Box(Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = displayModel,
+                            contentDescription = "Menu item photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        CircularProgressIndicator(
+                            color = Orange,
+                            modifier = Modifier.size(28.dp).align(Alignment.Center),
+                        )
+                    }
+                } else if (displayModel != null) {
+                    AsyncImage(
+                        model = displayModel,
+                        contentDescription = "Menu item photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.AddAPhoto,
+                            contentDescription = "Add photo",
+                            tint = TextMuted,
+                            modifier = Modifier.size(32.dp),
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Add photo", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
 
             OutlinedTextField(
                 value = name,
@@ -859,6 +973,7 @@ private fun AddMenuItemForm(
                                 name = name, description = description,
                                 priceDollars = price, category = category,
                                 isMeat = isMeat, isDairy = isDairy, isPareve = isPareve,
+                                imageUrl = imageUrl,
                             ),
                         )
                     },
@@ -1121,18 +1236,79 @@ private suspend fun uploadCertificate(
 ): String? = withContext(Dispatchers.IO) {
     try {
         val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        android.util.Log.d("CertUpload", "presigning kind=restaurant/certificate ct=$contentType")
         val presignResponse = viewModel.presignUpload("restaurant/certificate", contentType)
-            ?: return@withContext null
+        if (presignResponse == null) {
+            android.util.Log.e("CertUpload", "presign returned null")
+            return@withContext null
+        }
+        android.util.Log.d("CertUpload", "uploadUrl=${presignResponse.uploadUrl}")
+        android.util.Log.d("CertUpload", "publicUrl=${presignResponse.publicUrl}")
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: return@withContext null
+        if (bytes == null) {
+            android.util.Log.e("CertUpload", "failed to read bytes from uri")
+            return@withContext null
+        }
+        android.util.Log.d("CertUpload", "uploading ${bytes.size} bytes")
         val client = OkHttpClient()
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
             .put(bytes.toRequestBody(contentType.toMediaType()))
             .build()
         val response = client.newCall(request).execute()
-        response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
-    } catch (_: Exception) {
+        response.use {
+            if (it.isSuccessful) {
+                android.util.Log.d("CertUpload", "upload OK, returning publicUrl")
+                presignResponse.publicUrl
+            } else {
+                android.util.Log.e("CertUpload", "upload failed: ${it.code} ${it.message}")
+                null
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("CertUpload", "exception: ${e.javaClass.name} ${e.message}", e)
+        null
+    }
+}
+
+private suspend fun uploadMenuItemImage(
+    context: android.content.Context,
+    uri: Uri,
+    viewModel: OnboardingViewModel,
+): String? = withContext(Dispatchers.IO) {
+    try {
+        val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        android.util.Log.d("MenuItemUpload", "presigning kind=menu_item ct=$contentType")
+        val presignResponse = viewModel.presignUpload("menu_item", contentType)
+        if (presignResponse == null) {
+            android.util.Log.e("MenuItemUpload", "presign returned null")
+            return@withContext null
+        }
+        android.util.Log.d("MenuItemUpload", "uploadUrl=${presignResponse.uploadUrl}")
+        android.util.Log.d("MenuItemUpload", "publicUrl=${presignResponse.publicUrl}")
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        if (bytes == null) {
+            android.util.Log.e("MenuItemUpload", "failed to read bytes from uri")
+            return@withContext null
+        }
+        android.util.Log.d("MenuItemUpload", "uploading ${bytes.size} bytes")
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url(presignResponse.uploadUrl)
+            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .build()
+        val response = client.newCall(request).execute()
+        response.use {
+            if (it.isSuccessful) {
+                android.util.Log.d("MenuItemUpload", "upload OK, returning publicUrl")
+                presignResponse.publicUrl
+            } else {
+                android.util.Log.e("MenuItemUpload", "upload failed: ${it.code} ${it.message}")
+                null
+            }
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("MenuItemUpload", "exception: ${e.javaClass.name} ${e.message}", e)
         null
     }
 }

@@ -3,6 +3,7 @@ package com.koshereats.consumer.ui.viewmodels
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.data.models.MenuCategory
 import com.koshereats.consumer.data.models.Restaurant
 import com.koshereats.consumer.data.repository.Resource
@@ -18,6 +19,7 @@ import javax.inject.Inject
 data class RestaurantUiState(
     val restaurant: Restaurant? = null,
     val menuCategories: List<MenuCategory> = emptyList(),
+    val restaurantDeals: List<Deal> = emptyList(),
     val selectedCategoryIndex: Int = 0,
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -40,6 +42,7 @@ class RestaurantViewModel @Inject constructor(
         } else {
             loadRestaurant(restaurantId)
             loadMenu(restaurantId)
+            loadDeals(restaurantId)
         }
     }
 
@@ -72,6 +75,20 @@ class RestaurantViewModel @Inject constructor(
                     is Resource.Error -> {
                         _uiState.update { it.copy(error = result.message) }
                     }
+                }
+            }
+        }
+    }
+
+    private fun loadDeals(restaurantId: String) {
+        viewModelScope.launch {
+            repository.getRestaurantDeals(restaurantId).collect { result ->
+                when (result) {
+                    is Resource.Loading -> {}
+                    is Resource.Success -> {
+                        _uiState.update { it.copy(restaurantDeals = result.data) }
+                    }
+                    is Resource.Error -> {}
                 }
             }
         }

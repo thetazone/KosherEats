@@ -180,6 +180,13 @@ UPDATE restaurants SET image_url = 'https://images.unsplash.com/photo-1579584425
 UPDATE restaurants SET image_url = 'https://images.unsplash.com/photo-1540914124281-342587941389?w=800&auto=format', cover_image_url = 'https://images.unsplash.com/photo-1561651823-34feb02250e4?w=1200&auto=format' WHERE id = '22222222-2222-2222-2222-222222222204';
 UPDATE restaurants SET image_url = 'https://images.unsplash.com/photo-1547592180-85f173990554?w=800&auto=format', cover_image_url = 'https://images.unsplash.com/photo-1495147466023-ac5c588e2e94?w=1200&auto=format' WHERE id = '22222222-2222-2222-2222-222222222205';
 
+-- Kosher certificate images (placeholder document photos for dev).
+UPDATE restaurants SET kosher_certificate_url = 'https://images.unsplash.com/photo-1568667256549-094345857637?w=800&auto=format' WHERE id = '22222222-2222-2222-2222-222222222201';
+UPDATE restaurants SET kosher_certificate_url = 'https://images.unsplash.com/photo-1586282391129-76a6df230234?w=800&auto=format' WHERE id = '22222222-2222-2222-2222-222222222202';
+UPDATE restaurants SET kosher_certificate_url = 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=800&auto=format' WHERE id = '22222222-2222-2222-2222-222222222203';
+UPDATE restaurants SET kosher_certificate_url = 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&auto=format' WHERE id = '22222222-2222-2222-2222-222222222204';
+UPDATE restaurants SET kosher_certificate_url = 'https://images.unsplash.com/photo-1507925921958-8a62f3d1a50d?w=800&auto=format' WHERE id = '22222222-2222-2222-2222-222222222205';
+
 -- Menu items keyed by name (IDs are auto-generated).
 UPDATE menu_items SET image_url = 'https://images.unsplash.com/photo-1529006557810-274b9b2fc783?w=600&auto=format' WHERE name = 'Chicken Shawarma Platter';
 UPDATE menu_items SET image_url = 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600&auto=format' WHERE name = 'Lamb Kebab';
@@ -370,3 +377,50 @@ VALUES ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'admin@koshereats.dev',
         '$2b$12$5hX4CZDucMnwBEmFL7HWGuvF9reUSI9Gi/iHDk9s1iKQ4xJJ67rQ.',
         'Dev', 'Admin', '+15553330000', 'admin')
 ON CONFLICT (id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+
+-- ── Deals ───────────────────────────────────────────────────
+-- Active limited-time promotions. Re-running refreshes expires_at so
+-- deals don't silently disappear after the original window passes.
+
+INSERT INTO deals (id, restaurant_id, title, description, discount_type, discount_value, min_order_amount, expires_at)
+VALUES
+    -- Shalom Grill — Lunch Special
+    ('44444444-4444-4444-4444-444444444401',
+     '22222222-2222-2222-2222-222222222201',
+     'Lunch Special — $5 Off',
+     'Save $5 on any order weekdays 11am–3pm. Min order $20.',
+     'fixed', 500, 2000,
+     NOW() + INTERVAL '14 days'),
+
+    -- The Sushi Rebbe — Buy 1 Get 1 Free
+    ('44444444-4444-4444-4444-444444444402',
+     '22222222-2222-2222-2222-222222222203',
+     'Buy 1 Roll, Get 1 Free',
+     'Order any signature roll and get a second one on us. While supplies last.',
+     'bogo', 0, NULL,
+     NOW() + INTERVAL '7 days'),
+
+    -- Milk & Honey Cafe — 25% Off
+    ('44444444-4444-4444-4444-444444444403',
+     '22222222-2222-2222-2222-222222222202',
+     '25% Off Pizza & Pasta',
+     'Save 25% on your full order this week. Min order $15.',
+     'percentage', 25, 1500,
+     NOW() + INTERVAL '7 days'),
+
+    -- Pita Express — Lunch Combo
+    ('44444444-4444-4444-4444-444444444404',
+     '22222222-2222-2222-2222-222222222204',
+     'Lunch Combo — 15% Off',
+     '15% off all wraps and pitas, weekdays 11am–2pm. Min order $10.',
+     'percentage', 15, 1000,
+     NOW() + INTERVAL '14 days')
+ON CONFLICT (id) DO UPDATE SET
+    title           = EXCLUDED.title,
+    description     = EXCLUDED.description,
+    discount_type   = EXCLUDED.discount_type,
+    discount_value  = EXCLUDED.discount_value,
+    min_order_amount = EXCLUDED.min_order_amount,
+    expires_at      = EXCLUDED.expires_at,
+    is_active       = true,
+    updated_at      = NOW();

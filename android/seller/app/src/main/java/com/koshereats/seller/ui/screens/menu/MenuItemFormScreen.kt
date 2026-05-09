@@ -64,8 +64,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.koshereats.seller.data.models.CreateModifierGroupRequest
 import com.koshereats.seller.data.models.MenuCategory
+import com.koshereats.seller.data.models.ModifierGroup
+import com.koshereats.seller.data.models.ModifierOptionRequest
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
+import com.koshereats.seller.data.models.formatPrice
 import java.util.Locale
 import kotlin.math.roundToInt
 import com.koshereats.seller.ui.theme.BackgroundBlack
@@ -73,7 +77,9 @@ import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.SurfaceDark
+import com.koshereats.seller.ui.theme.SurfaceDarkElevated
 import com.koshereats.seller.ui.theme.TextMuted
+import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.viewmodels.MenuViewModel
 import kotlinx.coroutines.Dispatchers
@@ -399,6 +405,54 @@ fun MenuItemFormScreen(
                 }
             }
 
+            // Modifier Groups (only when editing an existing item)
+            if (isEditing && itemId != null) {
+                var showModifierDialog by remember { mutableStateOf(false) }
+                var editingGroup by remember { mutableStateOf<ModifierGroup?>(null) }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Modifier Groups",
+                        color = TextWhite,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    TextButton(onClick = { editingGroup = null; showModifierDialog = true }) {
+                        Text("+ Add", color = Orange)
+                    }
+                }
+
+                val groups = state.selectedItem?.modifierGroups ?: emptyList()
+                groups.forEach { group ->
+                    ModifierGroupCard(
+                        group = group,
+                        onEdit = { editingGroup = group; showModifierDialog = true },
+                        onDelete = { viewModel.deleteModifierGroup(group.id, itemId) },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (showModifierDialog) {
+                    ModifierGroupDialog(
+                        existing = editingGroup,
+                        onDismiss = { showModifierDialog = false },
+                        onSave = { request ->
+                            showModifierDialog = false
+                            if (editingGroup != null) {
+                                viewModel.updateModifierGroup(editingGroup!!.id, itemId, request)
+                            } else {
+                                viewModel.createModifierGroup(itemId, request)
+                            }
+                            editingGroup = null
+                        },
+                    )
+                }
+            }
+
             // Error
             state.error?.let { error ->
                 Text(
@@ -517,4 +571,226 @@ private fun KosherCheckbox(
             color = TextWhite,
         )
     }
+}
+
+@Composable
+private fun ModifierGroupCard(
+    group: ModifierGroup,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(SurfaceDark)
+            .clickable(onClick = onEdit)
+            .padding(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(group.name, color = TextWhite, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (group.isRequired) "Required" else "Optional",
+                    color = if (group.isRequired) Orange else TextMuted,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (group.isRequired) Orange.copy(alpha = 0.15f) else SurfaceDarkElevated)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+            }
+        }
+        if (group.modifiers.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            group.modifiers.forEach { mod ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(mod.name, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                    if (mod.priceDelta > 0) {
+                        Text("+${mod.priceDelta.formatPrice()}", color = Orange, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        if (group.maxSelections > 1) {
+            Text(
+                text = "Select ${group.minSelections}-${group.maxSelections}",
+                color = TextMuted,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModifierGroupDialog(
+    existing: ModifierGroup?,
+    onDismiss: () -> Unit,
+    onSave: (CreateModifierGroupRequest) -> Unit,
+) {
+    var groupName by remember { mutableStateOf(existing?.name ?: "") }
+    var isRequired by remember { mutableStateOf(existing?.isRequired ?: false) }
+    var minSel by remember { mutableStateOf((existing?.minSelections ?: 0).toString()) }
+    var maxSel by remember { mutableStateOf((existing?.maxSelections ?: 1).toString()) }
+
+    data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true)
+
+    var options by remember {
+        mutableStateOf(
+            existing?.modifiers?.map {
+                OptionEntry(id = it.id, name = it.name, priceDelta = String.format(Locale.US, "%.2f", it.priceDelta / 100.0), isAvailable = it.isAvailable)
+            } ?: listOf(OptionEntry()),
+        )
+    }
+
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextWhite,
+        unfocusedTextColor = TextWhite,
+        focusedBorderColor = Orange,
+        unfocusedBorderColor = SurfaceDarkElevated,
+        cursorColor = Orange,
+        focusedLabelColor = Orange,
+        unfocusedLabelColor = TextMuted,
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceDark,
+        title = { Text(if (existing != null) "Edit Modifier Group" else "Add Modifier Group", color = TextWhite) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = groupName,
+                    onValueChange = { groupName = it },
+                    label = { Text("Group Name") },
+                    placeholder = { Text("e.g., Size, Toppings", color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = textFieldColors,
+                    singleLine = true,
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = isRequired,
+                        onCheckedChange = {
+                            isRequired = it
+                            if (it && (minSel.toIntOrNull() ?: 0) < 1) minSel = "1"
+                        },
+                        colors = CheckboxDefaults.colors(checkedColor = Orange, uncheckedColor = TextMuted, checkmarkColor = TextWhite),
+                    )
+                    Text("Required", color = TextWhite)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = minSel,
+                        onValueChange = { minSel = it.filter { c -> c.isDigit() } },
+                        label = { Text("Min") },
+                        modifier = Modifier.weight(1f),
+                        colors = textFieldColors,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    OutlinedTextField(
+                        value = maxSel,
+                        onValueChange = { maxSel = it.filter { c -> c.isDigit() } },
+                        label = { Text("Max") },
+                        modifier = Modifier.weight(1f),
+                        colors = textFieldColors,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
+
+                Text("Options", color = TextWhite, fontWeight = FontWeight.SemiBold)
+
+                options.forEachIndexed { index, option ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedTextField(
+                            value = option.name,
+                            onValueChange = { v ->
+                                options = options.toMutableList().also { it[index] = option.copy(name = v) }
+                            },
+                            label = { Text("Name") },
+                            modifier = Modifier.weight(1f),
+                            colors = textFieldColors,
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = option.priceDelta,
+                            onValueChange = { v ->
+                                val filtered = v.filter { c -> c.isDigit() || c == '.' }
+                                options = options.toMutableList().also { it[index] = option.copy(priceDelta = filtered) }
+                            },
+                            label = { Text("+$") },
+                            modifier = Modifier.width(80.dp),
+                            colors = textFieldColors,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        )
+                        if (options.size > 1) {
+                            IconButton(
+                                onClick = { options = options.toMutableList().also { it.removeAt(index) } },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = ErrorRed, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+
+                TextButton(onClick = { options = options + OptionEntry() }) {
+                    Text("+ Add Option", color = Orange)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val request = CreateModifierGroupRequest(
+                        name = groupName.trim(),
+                        isRequired = isRequired,
+                        minSelections = minSel.toIntOrNull() ?: 0,
+                        maxSelections = maxSel.toIntOrNull() ?: 1,
+                        modifiers = options.filter { it.name.isNotBlank() }.mapIndexed { i, opt ->
+                            ModifierOptionRequest(
+                                id = opt.id,
+                                name = opt.name.trim(),
+                                priceDelta = ((opt.priceDelta.toDoubleOrNull() ?: 0.0) * 100).toInt(),
+                                isAvailable = opt.isAvailable,
+                                sortOrder = i,
+                            )
+                        },
+                    )
+                    onSave(request)
+                },
+                enabled = groupName.isNotBlank() && options.any { it.name.isNotBlank() },
+            ) {
+                Text("Save", color = Orange)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextMuted)
+            }
+        },
+    )
 }

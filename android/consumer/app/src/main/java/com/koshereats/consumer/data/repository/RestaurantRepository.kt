@@ -151,6 +151,23 @@ class RestaurantRepository @Inject constructor(
         }
     }
 
+    fun getRestaurantDeals(restaurantId: String): Flow<Resource<List<Deal>>> = flow {
+        emit(Resource.Loading)
+        try {
+            val response = apiService.getRestaurantDeals(restaurantId)
+            if (response.isSuccessful) {
+                response.body()?.let { emit(Resource.Success(it)) }
+                    ?: emit(Resource.Error("No deals found"))
+            } else {
+                emit(Resource.Error("Failed to load deals", response.code()))
+            }
+        } catch (e: IOException) {
+            emit(Resource.Error("Network error", null))
+        } catch (e: Exception) {
+            emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
+        }
+    }
+
     fun createOrder(request: CreateOrderRequest): Flow<Resource<Order>> = flow {
         emit(Resource.Loading)
         try {

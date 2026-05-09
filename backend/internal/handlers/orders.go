@@ -28,6 +28,10 @@ type CreateOrderRequest struct {
 	// when the customer arrives. Empty/missing defaults to delivery for
 	// back-compat with older clients that don't know about pickup.
 	FulfillmentType string `json:"fulfillment_type,omitempty"`
+	// AppliedDealID, when set, applies the deal's discount to the subtotal
+	// before tax. Must match the id passed to /payments/intent so the
+	// recorded order total agrees with the Stripe charge.
+	AppliedDealID string `json:"applied_deal_id,omitempty"`
 }
 
 func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +137,16 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	serviceFee := 0
-	tax := subtotal * h.cfg.TaxRatePercent / 100
+	// Apply the deal discount before tax so the recorded total agrees with
+	// the Stripe charge that CreatePaymentIntent computed using the same
+	// helper. resolveDealDiscount returns 0 when AppliedDealID is empty.
+	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cart.RestaurantID, subtotal, items)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	discountedSubtotal := subtotal - discount
+	tax := discountedSubtotal * h.cfg.TaxRatePercent / 100
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
@@ -146,7 +159,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}
-	total := subtotal + deliveryFee + serviceFee + tax + tip
+	total := discountedSubtotal + deliveryFee + serviceFee + tax + tip
 
 	if err := h.stripe.VerifyPaymentSucceeded(req.PaymentIntentID, user["user_id"], total); err != nil {
 		slog.Warn("CreateOrder: payment verification failed",
@@ -165,11 +178,19 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		initialStatus = models.OrderScheduled
 	}
 
+	// applied_deal_id is nullable in the DB — pass NULL when no deal was used
+	// so we don't violate the FK to deals(id).
+	var dealIDArg interface{}
+	if req.AppliedDealID != "" {
+		dealIDArg = req.AppliedDealID
+	}
+
 	var order models.Order
 	err = tx.QueryRow(r.Context(),
 		`INSERT INTO orders (user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
-		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, scheduled_for, fulfillment_type)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, scheduled_for, fulfillment_type,
+		 applied_deal_id, discount_amount)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		 RETURNING id, user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, est_delivery_time,
 		 fulfillment_type, created_at, updated_at`,
@@ -177,6 +198,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		subtotal, deliveryFee, serviceFee, tax, total,
 		req.DeliveryAddress, req.DeliveryLat, req.DeliveryLng, req.PaymentIntentID, tip, req.ScheduledFor,
 		fulfillmentType,
+		dealIDArg, discount,
 	).Scan(&order.ID, &order.UserID, &order.RestaurantID, &order.Status,
 		&order.Subtotal, &order.DeliveryFee, &order.ServiceFee, &order.Tax, &order.Total,
 		&order.DeliveryAddress, &order.DeliveryLat, &order.DeliveryLng,

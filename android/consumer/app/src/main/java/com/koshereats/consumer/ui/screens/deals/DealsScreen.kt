@@ -4,12 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,11 +22,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -61,7 +65,7 @@ import java.time.temporal.ChronoUnit
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DealsScreen(
-    onDealClick: (restaurantId: String) -> Unit = {},
+    onDealClick: (deal: Deal) -> Unit = {},
     viewModel: DealsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -78,6 +82,15 @@ fun DealsScreen(
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
                 )
+            },
+            actions = {
+                IconButton(onClick = { viewModel.refresh() }) {
+                    Icon(
+                        Icons.Filled.Refresh,
+                        contentDescription = "Refresh",
+                        tint = TextWhite,
+                    )
+                }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
@@ -98,37 +111,43 @@ fun DealsScreen(
                 }
 
                 state.deals.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                        ) {
-                            Icon(
-                                Icons.Filled.LocalOffer,
-                                contentDescription = null,
-                                tint = Orange.copy(alpha = 0.5f),
-                                modifier = Modifier.size(64.dp),
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "No Deals Right Now",
-                                color = TextWhite,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Restaurants in your area will post limited-time deals here. Pull down to refresh!",
-                                color = TextTertiary,
-                                fontSize = 14.sp,
-                                textAlign = TextAlign.Center,
-                                lineHeight = 20.sp,
-                            )
+                    // LazyColumn with a single full-height item — gives PullToRefreshBox a
+                    // scrollable child so pull gestures register even when there are no deals.
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val minH = maxHeight
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = minH)
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.LocalOffer,
+                                        contentDescription = null,
+                                        tint = Orange.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(64.dp),
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "No Deals Right Now",
+                                        color = TextWhite,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Restaurants in your area will post limited-time deals here. Pull down or tap refresh.",
+                                        color = TextTertiary,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 20.sp,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -145,7 +164,7 @@ fun DealsScreen(
                         items(state.deals, key = { it.id }) { deal ->
                             DealCard(
                                 deal = deal,
-                                onClick = { onDealClick(deal.restaurantId) },
+                                onClick = { onDealClick(deal) },
                             )
                         }
                         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -191,9 +210,9 @@ private fun DealCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            // Restaurant image
+            // Deal/restaurant image
             AsyncImage(
-                model = deal.restaurantImageUrl,
+                model = deal.displayImageUrl,
                 contentDescription = deal.restaurantName,
                 modifier = Modifier
                     .size(64.dp)

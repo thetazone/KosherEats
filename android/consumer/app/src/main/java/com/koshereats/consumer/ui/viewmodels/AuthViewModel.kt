@@ -49,6 +49,7 @@ data class AuthUiState(
     val otpCode: String = "",
     val phoneIsSending: Boolean = false,
     val phoneIsVerifying: Boolean = false,
+    val needsPhone: Boolean = false,
 )
 
 @HiltViewModel
@@ -226,6 +227,7 @@ class AuthViewModel @Inject constructor(
                             isGuest = false,
                             user = authData.user,
                             isLoading = false,
+                            needsPhone = authData.user.phone.isBlank(),
                         )
                     }
                     PushBootstrap.registerCurrentToken(apiService)
@@ -369,6 +371,32 @@ class AuthViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    fun submitPhone(phone: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val user = _uiState.value.user
+                val body = mapOf(
+                    "first_name" to (user?.firstName.orEmpty()),
+                    "last_name" to (user?.lastName.orEmpty()),
+                    "phone" to phone,
+                )
+                val response = apiService.updateProfileFields(body)
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(isLoading = false, needsPhone = false, user = response.body()) }
+                } else {
+                    _uiState.update { it.copy(isLoading = false, error = "Failed to save phone number") }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    fun skipPhone() {
+        _uiState.update { it.copy(needsPhone = false) }
     }
 
     fun logout() {

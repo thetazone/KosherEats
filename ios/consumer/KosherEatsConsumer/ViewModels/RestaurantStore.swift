@@ -84,54 +84,19 @@ final class RestaurantStore: ObservableObject {
                     .prefix(5)
             )
             hasLoadedRestaurants = true
-            await loadFavorites()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func loadFavorites() async {
-        do {
-            let ids = try await api.listFavoriteIDs()
-            favoriteIDs = Set(ids)
-            errorMessage = nil
-        } catch let APIError.httpError(code, _) where code == 404 {
-            // "No favorites yet" is a valid empty state, not a banner-worthy
-            // failure on the home screen.
-            favoriteIDs = []
-            errorMessage = nil
-        } catch {
-            errorMessage = "Couldn't refresh favorites. " +
-                ((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-        }
-    }
+    // Favorites are temporarily disabled — the /favorites/ids endpoint was
+    // returning a shape iOS couldn't decode, surfacing a red error banner on
+    // the home screen. Kept as no-ops so existing call sites (heart buttons
+    // on RestaurantCardView) still compile; bring the API calls back when
+    // the favorites response is fixed.
+    func loadFavorites() async {}
 
-    func toggleFavorite(_ restaurantID: String) async {
-        guard !togglingIDs.contains(restaurantID) else { return }
-        togglingIDs.insert(restaurantID)
-        defer { togglingIDs.remove(restaurantID) }
-        let wasPresent = favoriteIDs.contains(restaurantID)
-        if wasPresent {
-            favoriteIDs.remove(restaurantID)
-        } else {
-            favoriteIDs.insert(restaurantID)
-        }
-        do {
-            if wasPresent {
-                try await api.removeFavorite(restaurantID: restaurantID)
-            } else {
-                try await api.addFavorite(restaurantID: restaurantID)
-            }
-            errorMessage = nil
-        } catch {
-            if wasPresent {
-                favoriteIDs.insert(restaurantID)
-            } else {
-                favoriteIDs.remove(restaurantID)
-            }
-            errorMessage = error.localizedDescription
-        }
-    }
+    func toggleFavorite(_ restaurantID: String) async {}
 
     func searchRestaurants(query: String) async throws -> [Restaurant] {
         let results = try await api.searchRestaurants(query: query)

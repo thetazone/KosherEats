@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
@@ -76,19 +77,22 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.MenuItem
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.data.models.formatPriceWhole
 import com.koshereats.consumer.ui.components.KosherInfoRow
-import com.koshereats.consumer.ui.components.MenuItemDietaryDot
 import com.koshereats.consumer.ui.components.MenuItemShimmer
 import com.koshereats.consumer.ui.components.ShimmerBrush
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
 import com.koshereats.consumer.ui.viewmodels.RestaurantViewModel
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -209,6 +213,18 @@ fun RestaurantDetailScreen(
                     }
                 }
 
+                // Applied deal banner — shows when user came from Deals tab
+                val appliedDealForThisRestaurant = cartState.carts[restaurant.id]?.appliedDeal
+                if (appliedDealForThisRestaurant != null) {
+                    item {
+                        DealBanner(
+                            deal = appliedDealForThisRestaurant,
+                            currentSubtotal = cartState.carts[restaurant.id]?.subtotal ?: 0,
+                            onRemove = { cartViewModel.removeDeal(restaurant.id) },
+                        )
+                    }
+                }
+
                 // Restaurant info
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -277,6 +293,45 @@ fun RestaurantDetailScreen(
                     }
                 }
 
+                // Deals section
+                if (uiState.restaurantDeals.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Deals",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                    item {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(uiState.restaurantDeals, key = { it.id }) { deal ->
+                                RestaurantDealCard(
+                                    deal = deal,
+                                    onClick = {
+                                        if (deal.hasLinkedItem) {
+                                            val linkedItem = uiState.menuCategories
+                                                .flatMap { it.items }
+                                                .find { it.id == deal.menuItemId }
+                                            if (linkedItem != null) {
+                                                cartViewModel.applyDeal(deal)
+                                                sheetItem = linkedItem
+                                            }
+                                        } else {
+                                            cartViewModel.applyDeal(deal)
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+
                 // Category tabs
                 if (uiState.menuCategories.isNotEmpty()) {
                     item {
@@ -307,7 +362,7 @@ fun RestaurantDetailScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    // Menu items for selected category
+                    // Menu items for selected category — horizontal carousel
                     val selectedCategory = uiState.menuCategories.getOrNull(uiState.selectedCategoryIndex)
                     if (selectedCategory != null) {
                         item {
@@ -326,14 +381,18 @@ fun RestaurantDetailScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                        }
-
-                        items(selectedCategory.items, key = { it.id }) { menuItem ->
-                            MenuItemCard(
-                                menuItem = menuItem,
-                                onAddToCart = { sheetItem = menuItem },
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                            )
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                items(selectedCategory.items, key = { it.id }) { menuItem ->
+                                    HorizontalMenuItemCard(
+                                        menuItem = menuItem,
+                                        onClick = { sheetItem = menuItem },
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
@@ -450,6 +509,19 @@ fun RestaurantDetailScreen(
             }
         }
 
+        val pendingDeal = cartState.pendingDealItem
+        LaunchedEffect(pendingDeal, uiState.menuCategories) {
+            if (pendingDeal != null && uiState.menuCategories.isNotEmpty()) {
+                val linkedItem = uiState.menuCategories
+                    .flatMap { it.items }
+                    .find { it.id == pendingDeal.menuItemId }
+                if (linkedItem != null) {
+                    sheetItem = linkedItem
+                }
+                cartViewModel.clearPendingDealItem()
+            }
+        }
+
         sheetItem?.let { item ->
             MenuItemSheet(
                 menuItem = item,
@@ -471,124 +543,191 @@ fun RestaurantDetailScreen(
 }
 
 @Composable
-fun MenuItemCard(
+private fun DealBanner(
+    deal: com.koshereats.consumer.data.models.Deal,
+    currentSubtotal: Int,
+    onRemove: () -> Unit,
+) {
+    val minOrder = deal.minOrderAmount ?: 0
+    val needsMore = (minOrder - currentSubtotal).coerceAtLeast(0)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Orange.copy(alpha = 0.12f))
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.LocalOffer,
+            contentDescription = null,
+            tint = Orange,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = deal.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (needsMore > 0)
+                    "Add ${needsMore.formatPrice()} more to unlock this deal"
+                else
+                    "Deal applied — discount appears at checkout",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (needsMore > 0) Orange else TextTertiary,
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = "Remove deal",
+                tint = TextTertiary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+fun HorizontalMenuItemCard(
     menuItem: MenuItem,
-    onAddToCart: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Column(
+        modifier = modifier
+            .width(158.dp)
+            .clickable(onClick = onClick),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    MenuItemDietaryDot(
-                        isMeat = menuItem.isMeat,
-                        isDairy = menuItem.isDairy,
-                        isPareve = menuItem.isPareve,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = menuItem.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextWhite,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                if (menuItem.description.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = menuItem.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextTertiary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 18.sp,
+        Box(modifier = Modifier.size(158.dp)) {
+            AsyncImage(
+                model = menuItem.imageUrl,
+                contentDescription = menuItem.name,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Crop,
+            )
+            if (menuItem.isAvailable) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(TextWhite)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "Add to cart",
+                        tint = BackgroundBlack,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = menuItem.name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextWhite,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 18.sp,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = menuItem.price.formatPrice(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+        )
+    }
+}
 
-                Spacer(modifier = Modifier.height(12.dp))
+@Composable
+private fun RestaurantDealCard(
+    deal: Deal,
+    onClick: () -> Unit,
+) {
+    val expiryText = try {
+        val expiry = ZonedDateTime.parse(deal.expiresAt)
+        val hours = ChronoUnit.HOURS.between(ZonedDateTime.now(), expiry)
+        when {
+            hours < 1 -> "${ChronoUnit.MINUTES.between(ZonedDateTime.now(), expiry)}m left"
+            hours < 24 -> "${hours}h left"
+            hours < 48 -> "Ends tomorrow"
+            else -> "${hours / 24}d left"
+        }
+    } catch (_: Exception) { "" }
 
+    Card(
+        modifier = Modifier
+            .width(200.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    ) {
+        Column {
+            AsyncImage(
+                model = deal.displayImageUrl,
+                contentDescription = deal.title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                contentScale = ContentScale.Crop,
+            )
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                    text = deal.title,
+                    color = TextWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(
-                        text = menuItem.price.formatPrice(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextWhite,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    if (menuItem.isPopular) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Orange.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    ) {
                         Text(
-                            text = "Popular",
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Orange.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                            text = deal.discountBadge,
                             color = Orange,
-                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                         )
                     }
-                    if (menuItem.isSpicy) {
-                        Text(text = "🌶", fontSize = 14.sp)
+                    if (expiryText.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.Schedule,
+                                contentDescription = null,
+                                tint = TextMuted,
+                                modifier = Modifier.size(12.dp),
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = expiryText,
+                                color = TextMuted,
+                                fontSize = 11.sp,
+                            )
+                        }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                if (menuItem.imageUrl != null) {
-                    AsyncImage(
-                        model = menuItem.imageUrl,
-                        contentDescription = menuItem.name,
-                        modifier = Modifier
-                            .size(100.dp)
-                            .clip(RoundedCornerShape(12.dp)),
-                        contentScale = ContentScale.Crop,
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
-                if (menuItem.isAvailable) {
-                    IconButton(
-                        onClick = onAddToCart,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Orange),
-                    ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = "Add to cart",
-                            tint = TextWhite,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                } else {
-                    Text(
-                        text = "Unavailable",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextMuted,
-                    )
                 }
             }
         }

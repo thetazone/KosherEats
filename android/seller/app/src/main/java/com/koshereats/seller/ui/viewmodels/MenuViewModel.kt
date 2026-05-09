@@ -3,8 +3,11 @@ package com.koshereats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.models.CreateMenuItemBody
+import com.koshereats.seller.data.models.CreateModifierGroupRequest
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
+import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.PresignResponse
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -129,7 +132,38 @@ class MenuViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
             try {
-                val response = apiService.createMenuItem(request)
+                val categoryName = request.category
+                    ?.replace('_', ' ')
+                    ?.replaceFirstChar { it.uppercase() }
+                    ?: "Mains"
+
+                val menuResponse = apiService.getSellerMenu()
+                val existingCategory = menuResponse.body()
+                    ?.firstOrNull { it.name.equals(categoryName, ignoreCase = true) }
+
+                val categoryId = if (existingCategory != null) {
+                    existingCategory.id
+                } else {
+                    val catResp = apiService.createCategory(mapOf("name" to categoryName))
+                    catResp.body()?.id
+                }
+
+                if (categoryId == null) {
+                    _state.update { it.copy(isSaving = false, error = "Failed to resolve category") }
+                    return@launch
+                }
+
+                val body = CreateMenuItemBody(
+                    categoryId = categoryId,
+                    name = request.name ?: "",
+                    description = request.description ?: "",
+                    price = request.price ?: 0,
+                    imageUrl = request.imageUrl ?: "",
+                    isMeat = request.isMeat ?: false,
+                    isDairy = request.isDairy ?: false,
+                    isPareve = request.isKosherPareve ?: false,
+                )
+                val response = apiService.createMenuItemWithCategory(body)
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         isSaving = false,
@@ -257,6 +291,60 @@ class MenuViewModel @Inject constructor(
             if (response.isSuccessful) response.body() else null
         } catch (_: Exception) {
             null
+        }
+    }
+
+    fun createModifierGroup(itemId: String, request: CreateModifierGroupRequest) {
+        viewModelScope.launch {
+            _state.update { it.copy(isSaving = true, error = null) }
+            try {
+                val response = apiService.createModifierGroup(itemId, request)
+                if (response.isSuccessful) {
+                    loadMenuItem(itemId)
+                    _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group added") }
+                } else {
+                    _state.update { it.copy(isSaving = false, error = "Failed to add modifier group") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(isSaving = false, error = "Connection error") }
+            }
+        }
+    }
+
+    fun updateModifierGroup(groupId: String, itemId: String, request: CreateModifierGroupRequest) {
+        viewModelScope.launch {
+            _state.update { it.copy(isSaving = true, error = null) }
+            try {
+                val response = apiService.updateModifierGroup(groupId, request)
+                if (response.isSuccessful) {
+                    loadMenuItem(itemId)
+                    _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group updated") }
+                } else {
+                    _state.update { it.copy(isSaving = false, error = "Failed to update modifier group") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(isSaving = false, error = "Connection error") }
+            }
+        }
+    }
+
+    fun deleteModifierGroup(groupId: String, itemId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isSaving = true, error = null) }
+            try {
+                val response = apiService.deleteModifierGroup(groupId)
+                if (response.isSuccessful) {
+                    loadMenuItem(itemId)
+                    _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group deleted") }
+                } else {
+                    _state.update { it.copy(isSaving = false, error = "Failed to delete modifier group") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(isSaving = false, error = "Connection error") }
+            }
         }
     }
 

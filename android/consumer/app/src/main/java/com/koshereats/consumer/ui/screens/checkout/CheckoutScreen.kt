@@ -78,6 +78,7 @@ import java.time.format.DateTimeFormatter
 fun CheckoutScreen(
     localCart: List<CartItem>,
     restaurantId: String,
+    appliedDealId: String? = null,
     onBack: () -> Unit,
     onOrderPlaced: (Order) -> Unit,
     vm: CheckoutViewModel = hiltViewModel(),
@@ -87,7 +88,7 @@ fun CheckoutScreen(
 
     // Bootstrap exactly once per screen entry
     LaunchedEffect(Unit) {
-        vm.bootstrap(localCart, restaurantId)
+        vm.bootstrap(localCart, restaurantId, appliedDealId)
     }
 
     // Stripe PaymentSheet
@@ -446,6 +447,10 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             TotalRow("Subtotal", bundle.subtotal)
+            if (bundle.discount > 0) {
+                Spacer(Modifier.height(8.dp))
+                TotalRow("Deal discount", -bundle.discount, accent = true)
+            }
             Spacer(Modifier.height(8.dp))
             TotalRow("Delivery fee", bundle.deliveryFee)
             Spacer(Modifier.height(8.dp))
@@ -481,14 +486,18 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
 }
 
 @Composable
-private fun TotalRow(label: String, cents: Int) {
+private fun TotalRow(label: String, cents: Int, accent: Boolean = false) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
         Text(
-            text = cents.formatPrice(),
+            text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-            fontWeight = FontWeight.Medium
+            color = if (accent) Orange else TextTertiary,
+        )
+        Text(
+            text = if (cents < 0) "-${(-cents).formatPrice()}" else cents.formatPrice(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (accent) Orange else TextSecondary,
+            fontWeight = FontWeight.Medium,
         )
     }
 }

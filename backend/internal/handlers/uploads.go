@@ -27,6 +27,7 @@ var allowedUploadKinds = map[string]bool{
 	"restaurant/logo":         true,
 	"restaurant/certificate": true,
 	"menu_item":              true,
+	"deal":                   true,
 }
 
 var allowedContentTypes = map[string]bool{
@@ -67,8 +68,8 @@ func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "seller role required for this upload kind")
 		return
 	}
-	if req.Kind == "menu_item" && user["role"] != "seller" && user["role"] != "admin" {
-		writeError(w, http.StatusForbidden, "seller role required for menu item uploads")
+	if (req.Kind == "menu_item" || req.Kind == "deal") && user["role"] != "seller" && user["role"] != "admin" {
+		writeError(w, http.StatusForbidden, "seller role required for this upload kind")
 		return
 	}
 	if req.Kind == "delivery_proof" && user["role"] != "courier" && user["role"] != "admin" {

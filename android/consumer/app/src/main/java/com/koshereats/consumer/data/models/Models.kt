@@ -263,9 +263,31 @@ data class Cart(
     @SerializedName("restaurant_name") val restaurantName: String = "",
     @SerializedName("restaurant_image_url") val restaurantImageUrl: String? = null,
     val items: List<CartItem> = emptyList(),
+    val appliedDeal: Deal? = null,
 ) {
     val subtotal: Int get() = items.sumOf { it.totalPrice }
     val itemCount: Int get() = items.sumOf { it.quantity }
+    /** Cents discounted by the applied deal (0 when no deal or min order unmet). */
+    val discount: Int get() = appliedDeal?.let { computeDiscount(it, subtotal, items) } ?: 0
+    val discountedSubtotal: Int get() = (subtotal - discount).coerceAtLeast(0)
+}
+
+/**
+ * Mirrors the backend's resolveDealDiscount semantics so the UI can preview
+ * the same discount the server will compute. Server is source of truth at
+ * order time — this is purely for display.
+ */
+private fun computeDiscount(deal: Deal, subtotal: Int, items: List<CartItem>): Int {
+    val minOrder = deal.minOrderAmount ?: 0
+    if (subtotal < minOrder) return 0
+    return when (deal.discountType) {
+        DiscountType.PERCENTAGE -> (subtotal * deal.discountValue / 100).coerceAtMost(subtotal)
+        DiscountType.FIXED -> deal.discountValue.coerceAtMost(subtotal)
+        DiscountType.BOGO -> {
+            val totalQty = items.sumOf { it.quantity }
+            if (totalQty < 2) 0 else items.minOfOrNull { it.menuItem.price } ?: 0
+        }
+    }
 }
 
 data class CartItem(
@@ -343,6 +365,8 @@ data class CreateOrderRequest(
      * the delivery window approaches.
      */
     @SerializedName("scheduled_for") val scheduledFor: String? = null,
+    /** UUID of a deal being redeemed, or null. Must match what was sent to /payments/intent. */
+    @SerializedName("applied_deal_id") val appliedDealId: String? = null,
 )
 
 // ── Cart (server-backed) ──────────────────────────────────
@@ -367,6 +391,7 @@ data class PaymentSheetRequest(
     val tip: Int = 0,
     @SerializedName("restaurant_id") val restaurantId: String = "",
     @SerializedName("delivery_address") val deliveryAddress: String = "",
+    @SerializedName("applied_deal_id") val appliedDealId: String? = null,
 )
 
 data class PaymentSheetBundle(
@@ -380,6 +405,8 @@ data class PaymentSheetBundle(
     val tax: Int = 0,
     val tip: Int = 0,
     val total: Int = 0,
+    val discount: Int = 0,
+    @SerializedName("applied_deal_id") val appliedDealId: String? = null,
     @SerializedName("is_stub") val isStub: Boolean = false,
 )
 
@@ -461,6 +488,8 @@ data class Deal(
     @SerializedName("restaurant_id") val restaurantId: String = "",
     val title: String = "",
     val description: String = "",
+    @SerializedName("image_url") val imageUrl: String = "",
+    @SerializedName("menu_item_id") val menuItemId: String? = null,
     @SerializedName("discount_type") val discountType: DiscountType = DiscountType.PERCENTAGE,
     @SerializedName("discount_value") val discountValue: Int = 0,
     @SerializedName("min_order_amount") val minOrderAmount: Int? = null,
@@ -469,9 +498,19 @@ data class Deal(
     @SerializedName("is_active") val isActive: Boolean = true,
     @SerializedName("restaurant_name") val restaurantName: String = "",
     @SerializedName("restaurant_image_url") val restaurantImageUrl: String = "",
+    @SerializedName("menu_item_name") val menuItemName: String? = null,
+    @SerializedName("menu_item_price") val menuItemPrice: Int? = null,
+    @SerializedName("menu_item_image_url") val menuItemImageUrl: String? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
 ) {
+    val hasLinkedItem: Boolean get() = menuItemId != null
+
+    val displayImageUrl: String
+        get() = imageUrl.takeIf { it.isNotBlank() }
+            ?: menuItemImageUrl?.takeIf { it.isNotBlank() }
+            ?: restaurantImageUrl
+
     val discountBadge: String
         get() = when (discountType) {
             DiscountType.PERCENTAGE -> "$discountValue% Off"

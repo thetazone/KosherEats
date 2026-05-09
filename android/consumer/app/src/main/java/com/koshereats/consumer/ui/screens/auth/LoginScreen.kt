@@ -54,14 +54,17 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onPhoneCodeSent: () -> Unit,
     onEmailLoginClick: () -> Unit,
+    onPhoneNeeded: () -> Unit = {},
     onGuestContinue: () -> Unit = onLoginSuccess,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    LaunchedEffect(state.isLoggedIn, state.isGuest) {
-        if (state.isLoggedIn && !state.isGuest) onLoginSuccess()
+    LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
+        if (state.isLoggedIn && !state.isGuest) {
+            if (state.needsPhone) onPhoneNeeded() else onLoginSuccess()
+        }
     }
 
     // When OTP send succeeds, advance to the code-entry screen.

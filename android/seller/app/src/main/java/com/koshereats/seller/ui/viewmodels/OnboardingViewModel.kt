@@ -25,6 +25,7 @@ data class OnboardingMenuItem(
     val isMeat: Boolean = false,
     val isDairy: Boolean = false,
     val isPareve: Boolean = false,
+    val imageUrl: String = "",
 )
 
 data class OnboardingState(
@@ -193,6 +194,7 @@ class OnboardingViewModel @Inject constructor(
                                 name = item.name.trim(),
                                 description = item.description.trim(),
                                 price = priceCents,
+                                imageUrl = item.imageUrl,
                                 isMeat = item.isMeat,
                                 isDairy = item.isDairy,
                                 isPareve = item.isPareve,

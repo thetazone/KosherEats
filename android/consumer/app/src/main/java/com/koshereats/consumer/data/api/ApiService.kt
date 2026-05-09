@@ -38,6 +38,9 @@ interface ApiService {
     @PUT("user/profile")
     suspend fun updateProfile(@Body user: User): Response<User>
 
+    @PUT("user/profile")
+    suspend fun updateProfileFields(@Body body: Map<String, String>): Response<User>
+
     @GET("user/addresses")
     suspend fun getAddresses(): Response<List<Address>>
 
@@ -130,6 +133,9 @@ interface ApiService {
 
     @GET("deals/nearby")
     suspend fun getNearbyDeals(): Response<List<Deal>>
+
+    @GET("restaurants/{id}/deals")
+    suspend fun getRestaurantDeals(@Path("id") restaurantId: String): Response<List<Deal>>
 
     // ── Devices (push notifications) ─────────────────────
 

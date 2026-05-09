@@ -6,7 +6,11 @@ import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.CreateDealRequest
 import com.koshereats.seller.data.models.Deal
 import com.koshereats.seller.data.models.DiscountType
+import com.koshereats.seller.data.models.MenuItem
+import com.koshereats.seller.data.models.PresignResponse
+import com.koshereats.seller.data.models.SellerMenuCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +19,7 @@ import javax.inject.Inject
 
 data class DealsState(
     val deals: List<Deal> = emptyList(),
+    val menuItems: List<MenuItem> = emptyList(),
     val isLoading: Boolean = false,
     val isCreating: Boolean = false,
     val error: String? = null,
@@ -58,9 +63,24 @@ class DealsViewModel @Inject constructor(
         }
     }
 
+    fun loadMenuItems() {
+        viewModelScope.launch {
+            try {
+                val response = apiService.getSellerMenu()
+                if (response.isSuccessful) {
+                    _state.value = _state.value.copy(
+                        menuItems = response.body().orEmpty().flatMap { it.items },
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     fun createDeal(
         title: String,
         description: String,
+        imageUrl: String,
+        menuItemId: String?,
         discountType: DiscountType,
         discountValue: Int,
         minOrderAmount: Int?,
@@ -73,6 +93,8 @@ class DealsViewModel @Inject constructor(
                 val request = CreateDealRequest(
                     title = title,
                     description = description,
+                    imageUrl = imageUrl,
+                    menuItemId = menuItemId?.takeIf { it.isNotBlank() },
                     discountType = discountType,
                     discountValue = discountValue,
                     minOrderAmount = minOrderAmount,
@@ -118,6 +140,20 @@ class DealsViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
+        return try {
+            val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
+    }
+
+    fun setError(message: String?) {
+        _state.value = _state.value.copy(error = message)
     }
 
     fun clearCreateSuccess() {
