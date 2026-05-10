@@ -30,8 +30,8 @@ targets:
         INFOPLIST_FILE: KosherEatsConsumer/Info.plist
         CODE_SIGN_ENTITLEMENTS: KosherEatsConsumer/KosherEatsConsumer.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.koshereats.consumer
-        MARKETING_VERSION: "2.2"
-        CURRENT_PROJECT_VERSION: "14"
+        MARKETING_VERSION: "4.1"
+        CURRENT_PROJECT_VERSION: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         GENERATE_INFOPLIST_FILE: YES
@@ -69,5 +69,5 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.koshereats.consumer.DeliveryActivity
-        MARKETING_VERSION: "2.2"
-        CURRENT_PROJECT_VERSION: "14"
+        MARKETING_VERSION: "4.1"
+        CURRENT_PROJECT_VERSION: "1"
