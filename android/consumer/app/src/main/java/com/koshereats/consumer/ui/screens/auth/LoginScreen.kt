@@ -1,5 +1,7 @@
 package com.koshereats.consumer.ui.screens.auth
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -237,6 +240,22 @@ fun LoginScreen(
                 )
             },
         )
+
+        TextButton(
+            onClick = {
+                context.startActivity(
+                    Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                        putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                    }
+                )
+            },
+        ) {
+            Text(
+                text = "Use a different Google account",
+                style = MaterialTheme.typography.bodySmall,
+                color = Orange,
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
 

@@ -34,6 +34,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -488,9 +489,18 @@ fun CreateDealScreen(
             }
 
             if (showDatePicker) {
+                val todayMillis = remember {
+                    Instant.now().atZone(ZoneId.systemDefault())
+                        .toLocalDate().atStartOfDay(ZoneId.systemDefault())
+                        .toInstant().toEpochMilli()
+                }
                 val datePickerState = rememberDatePickerState(
                     initialSelectedDateMillis = expiresAtMillis
                         ?: (System.currentTimeMillis() + 7 * 24 * 3600 * 1000L),
+                    selectableDates = object : SelectableDates {
+                        override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                            utcTimeMillis >= todayMillis
+                    },
                 )
                 DatePickerDialog(
                     onDismissRequest = { showDatePicker = false },

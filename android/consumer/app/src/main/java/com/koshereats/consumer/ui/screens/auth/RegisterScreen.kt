@@ -1,5 +1,7 @@
 package com.koshereats.consumer.ui.screens.auth
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -123,7 +126,23 @@ fun RegisterScreen(
             Text("Continue with Google", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        TextButton(
+            onClick = {
+                context.startActivity(
+                    Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                        putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                    }
+                )
+            },
+        ) {
+            Text(
+                text = "Use a different Google account",
+                fontSize = 13.sp,
+                color = Orange,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // "or" divider
         Row(

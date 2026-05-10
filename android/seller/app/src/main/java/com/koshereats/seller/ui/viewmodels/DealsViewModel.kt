@@ -109,9 +109,17 @@ class DealsViewModel @Inject constructor(
                     )
                     loadDeals()
                 } else {
+                    val errorBody = response.errorBody()?.string()
+                    val serverMsg = try {
+                        errorBody?.let {
+                            com.squareup.moshi.Moshi.Builder().build()
+                                .adapter(Map::class.java)
+                                .fromJson(it)?.get("error") as? String
+                        }
+                    } catch (_: Exception) { null }
                     _state.value = _state.value.copy(
                         isCreating = false,
-                        error = "Failed to create deal (HTTP ${response.code()})",
+                        error = serverMsg ?: "Failed to create deal (HTTP ${response.code()})",
                     )
                 }
             } catch (e: Exception) {

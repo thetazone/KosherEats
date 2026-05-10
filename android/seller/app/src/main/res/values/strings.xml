@@ -14,6 +14,7 @@
     <string name="auth_brand_name">KosherEats</string>
     <string name="auth_seller_dashboard">Seller Dashboard</string>
     <string name="auth_continue_google">Continue with Google</string>
+    <string name="auth_use_different_google">Use a different Google account</string>
     <string name="auth_continue_apple">Continue with Apple</string>
     <string name="auth_or_divider">or</string>
     <string name="auth_email_placeholder">restaurant@example.com</string>
