@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -267,12 +266,6 @@ fun RestaurantSettingsScreen(
                             modifier = Modifier.padding(start = 42.dp, top = 4.dp),
                         )
                     }
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = Icons.Filled.Schedule,
-                        label = "Avg Prep Time",
-                        value = "${restaurant.averagePrepTime} min",
-                    )
                 }
             }
 

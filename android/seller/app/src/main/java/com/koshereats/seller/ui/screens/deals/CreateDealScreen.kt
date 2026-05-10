@@ -104,7 +104,7 @@ fun CreateDealScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var isGeneralDeal by remember { mutableStateOf(false) }
+    var isGeneralDeal by remember { mutableStateOf(true) }
     var selectedItem by remember { mutableStateOf<MenuItem?>(null) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -112,7 +112,13 @@ fun CreateDealScreen(
     var discountValue by remember { mutableStateOf("") }
     var minOrderAmount by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
-    var expiresAtMillis by remember { mutableStateOf<Long?>(null) }
+    var expiresAtMillis by remember {
+        mutableStateOf<Long?>(
+            Instant.now().atZone(ZoneId.of("UTC"))
+                .toLocalDate().atStartOfDay(ZoneId.of("UTC"))
+                .toInstant().toEpochMilli()
+        )
+    }
     var selectedHalfHour by remember { mutableIntStateOf(47) }
     var imageUrl by remember { mutableStateOf("") }
     var isUploadingImage by remember { mutableStateOf(false) }
@@ -477,9 +483,9 @@ fun CreateDealScreen(
             ) {
                 Text(
                     text = if (expiresAtMillis != null) {
-                        val zdt = Instant.ofEpochMilli(expiresAtMillis!!)
-                            .atZone(ZoneId.systemDefault())
-                        zdt.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+                        Instant.ofEpochMilli(expiresAtMillis!!)
+                            .atZone(ZoneId.of("UTC"))
+                            .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
                     } else {
                         "Select expiration date"
                     },
@@ -490,13 +496,12 @@ fun CreateDealScreen(
 
             if (showDatePicker) {
                 val todayMillis = remember {
-                    Instant.now().atZone(ZoneId.systemDefault())
-                        .toLocalDate().atStartOfDay(ZoneId.systemDefault())
+                    Instant.now().atZone(ZoneId.of("UTC"))
+                        .toLocalDate().atStartOfDay(ZoneId.of("UTC"))
                         .toInstant().toEpochMilli()
                 }
                 val datePickerState = rememberDatePickerState(
-                    initialSelectedDateMillis = expiresAtMillis
-                        ?: (System.currentTimeMillis() + 7 * 24 * 3600 * 1000L),
+                    initialSelectedDateMillis = expiresAtMillis ?: todayMillis,
                     selectableDates = object : SelectableDates {
                         override fun isSelectableDate(utcTimeMillis: Long): Boolean =
                             utcTimeMillis >= todayMillis
@@ -556,9 +561,11 @@ fun CreateDealScreen(
                     val minute = if (selectedHalfHour % 2 == 0) 0 else 30
 
                     val expiresAtStr = expiresAtMillis?.let { millis ->
-                        Instant.ofEpochMilli(millis)
+                        val date = Instant.ofEpochMilli(millis)
+                            .atZone(ZoneId.of("UTC"))
+                            .toLocalDate()
+                        date.atTime(hour, minute)
                             .atZone(ZoneId.systemDefault())
-                            .withHour(hour).withMinute(minute).withSecond(0)
                             .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
                     } ?: return@Button
 

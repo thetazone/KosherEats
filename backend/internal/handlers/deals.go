@@ -95,6 +95,11 @@ func (h *Handler) CreateDeal(w http.ResponseWriter, r *http.Request) {
 		startsAt = *req.StartsAt
 	}
 
+	minOrderAmount := 0
+	if req.MinOrderAmount != nil {
+		minOrderAmount = *req.MinOrderAmount
+	}
+
 	// Validate and optionally auto-populate image from linked menu item.
 	if req.MenuItemID != nil && *req.MenuItemID != "" {
 		var itemRestID, itemImageURL string
@@ -124,7 +129,7 @@ func (h *Handler) CreateDeal(w http.ResponseWriter, r *http.Request) {
 		    discount_type, discount_value, min_order_amount, starts_at, expires_at,
 		    is_active, created_at, updated_at`,
 		restID, req.Title, req.Description, req.ImageURL, req.MenuItemID,
-		req.DiscountType, req.DiscountValue, req.MinOrderAmount, startsAt, req.ExpiresAt,
+		req.DiscountType, req.DiscountValue, minOrderAmount, startsAt, req.ExpiresAt,
 	).Scan(&deal.ID, &deal.RestaurantID, &deal.Title, &deal.Description,
 		&deal.ImageURL, &deal.MenuItemID, &deal.DiscountType, &deal.DiscountValue,
 		&deal.MinOrderAmount, &deal.StartsAt, &deal.ExpiresAt, &deal.IsActive,

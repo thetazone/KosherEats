@@ -11,7 +11,7 @@ struct CreateDealView: View {
     @State private var discountType: DiscountType = .percentage
     @State private var discountValue = ""
     @State private var minOrderAmount = ""
-    @State private var expiresAt = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    @State private var expiresAt = Date()
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var imageUrl = ""
