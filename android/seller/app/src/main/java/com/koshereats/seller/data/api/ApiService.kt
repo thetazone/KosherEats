@@ -25,6 +25,12 @@ interface ApiService {
     @POST("auth/social")
     suspend fun socialLogin(@Body request: SocialLoginRequest): Response<LoginResponse>
 
+    @POST("auth/phone/start")
+    suspend fun phoneStart(@Body request: PhoneStartRequest): Response<Map<String, String>>
+
+    @POST("auth/phone/verify")
+    suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<LoginResponse>
+
     // --- Dashboard ---
 
     @GET("seller/dashboard/stats")

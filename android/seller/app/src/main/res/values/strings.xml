@@ -22,6 +22,10 @@
     <string name="auth_password_hide">Hide password</string>
     <string name="auth_sign_in">Sign In</string>
     <string name="auth_contact_support">Contact support if you need access</string>
+    <string name="auth_continue_phone">Continue with Phone</string>
+    <string name="auth_send_code">Send code</string>
+    <string name="auth_verify">Verify</string>
+    <string name="auth_resend_code">Didn\'t get it? Resend code</string>
 
     <!-- Chat -->
     <string name="chat_title">Chat</string>

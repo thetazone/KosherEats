@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -64,6 +66,7 @@ import com.koshereats.seller.ui.viewmodels.AuthViewModel
 @Composable
 fun SellerLoginScreen(
     onLoginSuccess: () -> Unit,
+    onPhoneLoginClick: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -187,6 +190,36 @@ fun SellerLoginScreen(
                 Divider(
                     modifier = Modifier.weight(1f),
                     color = DividerColor,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Continue with Phone
+            Button(
+                onClick = onPhoneLoginClick,
+                enabled = !state.isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF2A2A2A),
+                    contentColor = TextWhite,
+                    disabledContainerColor = Color(0xFF2A2A2A).copy(alpha = 0.4f),
+                    disabledContentColor = TextWhite.copy(alpha = 0.6f),
+                ),
+            ) {
+                Icon(
+                    Icons.Filled.Phone,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.auth_continue_phone),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
 

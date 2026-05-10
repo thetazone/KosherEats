@@ -12,6 +12,8 @@ final class UploadService {
         case menuItem = "menu_item"
         case restaurantCover = "restaurant/cover"
         case restaurantLogo = "restaurant/logo"
+        case deal = "deal"
+        case certificate = "certificate"
     }
 
     private let plainHttp: URLSession = {

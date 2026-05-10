@@ -77,6 +77,8 @@
 		F5B9155BDD745D05AC32D326 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673D1479DC5055E75F603745 /* AuthViewModel.swift */; };
 		FA068F0755EA02FADC9B891B /* KosherBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1511B23D9E29EA6CF456DB /* KosherBadge.swift */; };
 		FAC2051D7A23C59D1CF3EF0D /* AppleSignInHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */; };
+		5D8B42E1F09A73C4B2E61F83 /* KosherCertificateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7C91D4E82F5B06A1D39E70 /* KosherCertificateSheet.swift */; };
+		9F4CE73A28B1D6055E3A9C42 /* ConnectedAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2FA8B3C71D04E9D5B827A1 /* ConnectedAccountsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -174,6 +176,8 @@
 		F7B617D74DB756E030DDC71A /* PushEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEvents.swift; sourceTree = "<group>"; };
 		F940AFDF40BDC9601E6AD669 /* RestaurantCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantCardView.swift; sourceTree = "<group>"; };
 		FF97B3F6AB7D955152EAF372 /* OrderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderDetailView.swift; sourceTree = "<group>"; };
+		3A7C91D4E82F5B06A1D39E70 /* KosherCertificateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherCertificateSheet.swift; sourceTree = "<group>"; };
+		6E2FA8B3C71D04E9D5B827A1 /* ConnectedAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAccountsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -195,6 +199,7 @@
 		1A0A0226E549F02D551039C7 /* Profile */ = {
 			isa = PBXGroup;
 			children = (
+				6E2FA8B3C71D04E9D5B827A1 /* ConnectedAccountsView.swift */,
 				97F6096900B2C0DDFC557F5D /* AddressFormSheet.swift */,
 				02A6FE9ADAC5E7FD4B950F72 /* NotificationPreferencesView.swift */,
 				9D438C700F30D552DCA0A050 /* PaymentMethodsView.swift */,
@@ -296,6 +301,7 @@
 		AC74FEE50AF4261CCD471CE2 /* Restaurant */ = {
 			isa = PBXGroup;
 			children = (
+				3A7C91D4E82F5B06A1D39E70 /* KosherCertificateSheet.swift */,
 				A45B39CCD6CEDE249E944741 /* MenuItemView.swift */,
 				07ECCFC7FC5B9A1BCDD2C943 /* RestaurantDetailView.swift */,
 			);
@@ -548,6 +554,7 @@
 				3D723789E7DC58FFBA9B9BFC /* CheckoutView.swift in Sources */,
 				66D106AD75B35F584F41ACB9 /* CheckoutViewModel.swift in Sources */,
 				AEBC2B3DE2B0DC6E30103739 /* Colors.swift in Sources */,
+				9F4CE73A28B1D6055E3A9C42 /* ConnectedAccountsView.swift in Sources */,
 				392510B6F95C364C82D2A8EE /* ConsumerPhoneOTPView.swift in Sources */,
 				AD4BF730111708F5B170A85D /* Country.swift in Sources */,
 				E6D701811302D70A6470A612 /* CountryCodePickerSheet.swift in Sources */,
@@ -560,6 +567,7 @@
 				71CE7B8B1DAEB5A6D8F15C0C /* HomeView.swift in Sources */,
 				2A61E46162A21B68880BED6C /* KeychainHelper.swift in Sources */,
 				FA068F0755EA02FADC9B891B /* KosherBadge.swift in Sources */,
+				5D8B42E1F09A73C4B2E61F83 /* KosherCertificateSheet.swift in Sources */,
 				C151FA0D2A924B4E9E81EBA3 /* KosherEatsConsumerApp.swift in Sources */,
 				2F98DEED740C75D26424A107 /* KosherFilterSheet.swift in Sources */,
 				E655EA47DF433AEE5D260948 /* LegalURLs.swift in Sources */,

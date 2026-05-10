@@ -147,6 +147,18 @@ data class LoginResponse(
     val user: User,
 )
 
+@JsonClass(generateAdapter = true)
+data class PhoneStartRequest(
+    val phone: String,
+)
+
+@JsonClass(generateAdapter = true)
+data class PhoneVerifyRequest(
+    val phone: String,
+    val code: String,
+    val role: String = "seller",
+)
+
 // --- API Responses ---
 
 @JsonClass(generateAdapter = true)

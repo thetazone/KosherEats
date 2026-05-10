@@ -725,6 +725,27 @@ class APIService: ObservableObject {
         try await requestVoid(method: "DELETE", path: "/user/account", authenticated: true)
     }
 
+    // MARK: - Linked Providers (Account Linking)
+
+    func listLinkedProviders() async throws -> [LinkedProvider] {
+        try await request(method: "GET", path: "/user/linked-providers", authenticated: true)
+    }
+
+    func linkProvider(provider: String, token: String, nonce: String? = nil) async throws {
+        var body: [String: String] = ["provider": provider, "token": token]
+        if let nonce { body["nonce"] = nonce }
+        try await requestVoid(method: "POST", path: "/user/linked-providers", body: body, authenticated: true)
+    }
+
+    func linkPhone(phone: String, code: String) async throws {
+        let body: [String: String] = ["provider": "phone", "phone": phone, "code": code]
+        try await requestVoid(method: "POST", path: "/user/linked-providers", body: body, authenticated: true)
+    }
+
+    func unlinkProvider(_ provider: String) async throws {
+        try await requestVoid(method: "DELETE", path: "/user/linked-providers/\(provider)", authenticated: true)
+    }
+
     // MARK: - Device tokens (push)
 
     func registerDevice(token: String, platform: String, app: String) async throws {

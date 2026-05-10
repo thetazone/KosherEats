@@ -26,6 +26,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.koshereats.seller.ui.screens.auth.PhoneLoginScreen
 import com.koshereats.seller.ui.screens.auth.SellerLoginScreen
 import com.koshereats.seller.ui.screens.dashboard.DashboardScreen
 import com.koshereats.seller.ui.screens.deals.CreateDealScreen
@@ -154,8 +155,18 @@ fun NavGraph() {
             // Auth
             composable(Screen.Login.route) {
                 SellerLoginScreen(
-                    onLoginSuccess = {
+                    onLoginSuccess = {},
+                    onPhoneLoginClick = {
+                        navController.navigate(Screen.PhoneLogin.route)
                     },
+                    viewModel = authViewModel,
+                )
+            }
+
+            composable(Screen.PhoneLogin.route) {
+                PhoneLoginScreen(
+                    onLoginSuccess = {},
+                    onBack = { navController.popBackStack() },
                     viewModel = authViewModel,
                 )
             }

@@ -183,6 +183,7 @@ struct Restaurant: Codable, Identifiable {
     var isCholovYisroel: Bool
     var isPasYisroel: Bool
     var isGlattKosher: Bool
+    var kosherCertificateUrl: String?
     var cuisineType: [String]
     var rating: Double
     var reviewCount: Int
@@ -222,6 +223,7 @@ struct Restaurant: Codable, Identifiable {
         case isCholovYisroel = "is_cholov_yisroel"
         case isPasYisroel = "is_pas_yisroel"
         case isGlattKosher = "is_glatt_kosher"
+        case kosherCertificateUrl = "kosher_certificate_url"
         case cuisineType = "cuisine_type"
         case reviewCount = "review_count"
         case deliveryFee = "delivery_fee"
@@ -641,6 +643,38 @@ struct CreateOrderRequest: Codable {
         case deliveryAddress = "delivery_address"
         case deliveryLat = "delivery_lat"
         case deliveryLng = "delivery_lng"
+    }
+}
+
+// MARK: - Linked Providers (Account Linking)
+
+struct LinkedProvider: Codable, Identifiable {
+    let provider: String
+    let createdAt: String
+
+    var id: String { provider }
+
+    var displayName: String {
+        switch provider {
+        case "apple": return "Apple"
+        case "google": return "Google"
+        case "phone": return "Phone"
+        default: return provider.capitalized
+        }
+    }
+
+    var iconName: String {
+        switch provider {
+        case "apple": return "apple.logo"
+        case "google": return "g.circle.fill"
+        case "phone": return "phone.fill"
+        default: return "person.fill"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case createdAt = "created_at"
     }
 }
 

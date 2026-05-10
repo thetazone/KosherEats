@@ -166,6 +166,7 @@ struct Restaurant: Codable, Identifiable {
     var isCholovYisroel: Bool
     var isPasYisroel: Bool
     var isGlattKosher: Bool
+    var kosherCertificateUrl: String?
     var cuisineType: [String]
     var rating: Double
     var reviewCount: Int
@@ -191,6 +192,7 @@ struct Restaurant: Codable, Identifiable {
         case isCholovYisroel = "is_cholov_yisroel"
         case isPasYisroel = "is_pas_yisroel"
         case isGlattKosher = "is_glatt_kosher"
+        case kosherCertificateUrl = "kosher_certificate_url"
         case cuisineType = "cuisine_type"
         case reviewCount = "review_count"
         case deliveryFee = "delivery_fee"
@@ -540,6 +542,87 @@ struct SelectedModifier: Codable, Hashable, Identifiable {
         case id, name
         case groupName = "group_name"
         case priceDelta = "price_delta"
+    }
+}
+
+// MARK: - Deals
+
+enum DiscountType: String, Codable, CaseIterable, Identifiable {
+    case percentage
+    case fixed
+    case bogo
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .percentage: return "Percentage Off"
+        case .fixed: return "Fixed Amount Off"
+        case .bogo: return "Buy One Get One"
+        }
+    }
+}
+
+struct Deal: Codable, Identifiable {
+    let id: String
+    let restaurantId: String
+    var title: String
+    var description: String
+    var imageUrl: String
+    var menuItemId: String?
+    var discountType: DiscountType
+    var discountValue: Int
+    var minOrderAmount: Int?
+    var startsAt: String?
+    var expiresAt: String
+    var isActive: Bool
+    var createdAt: String
+    var updatedAt: String
+
+    var discountLabel: String {
+        switch discountType {
+        case .percentage: return "\(discountValue)% Off"
+        case .fixed: return CurrencyFormat.string(fromCents: discountValue) + " Off"
+        case .bogo: return "BOGO"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, description
+        case restaurantId = "restaurant_id"
+        case imageUrl = "image_url"
+        case menuItemId = "menu_item_id"
+        case discountType = "discount_type"
+        case discountValue = "discount_value"
+        case minOrderAmount = "min_order_amount"
+        case startsAt = "starts_at"
+        case expiresAt = "expires_at"
+        case isActive = "is_active"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct CreateDealRequest: Encodable {
+    let title: String
+    let description: String
+    let imageUrl: String
+    let menuItemId: String?
+    let discountType: DiscountType
+    let discountValue: Int
+    let minOrderAmount: Int?
+    let startsAt: String?
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case title, description
+        case imageUrl = "image_url"
+        case menuItemId = "menu_item_id"
+        case discountType = "discount_type"
+        case discountValue = "discount_value"
+        case minOrderAmount = "min_order_amount"
+        case startsAt = "starts_at"
+        case expiresAt = "expires_at"
     }
 }
 

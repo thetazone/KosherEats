@@ -479,6 +479,20 @@ actor APIService {
         try await requestVoid("DELETE", path: await sellerPath("/seller/menu/modifier-groups/\(groupID)"))
     }
 
+    // MARK: - Deals
+
+    func getDeals() async throws -> [Deal] {
+        try await request("GET", path: await sellerPath("/seller/deals"))
+    }
+
+    func createDeal(_ deal: CreateDealRequest) async throws -> Deal {
+        try await request("POST", path: await sellerPath("/seller/deals"), body: deal)
+    }
+
+    func deactivateDeal(id: String) async throws {
+        try await requestVoid("DELETE", path: await sellerPath("/seller/deals/\(id)"))
+    }
+
     // MARK: - Linked Providers (Account Linking)
 
     func listLinkedProviders() async throws -> [LinkedProvider] {

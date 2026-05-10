@@ -11,6 +11,9 @@
 		024629DF097B579F1BD361F1 /* SellerOrderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD06DE0EBA89049E9CB9A3CB /* SellerOrderDetailView.swift */; };
 		037867EC3E520E12117F72C1 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E946A8FFE94C5890B89B631 /* DashboardView.swift */; };
 		04E8253FB0FF7C3DC09F4B08 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EAED930B2182569DE930190 /* Colors.swift */; };
+		8ECF5A6B7C8D9E0F1A2B3C4D /* DealsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B9C2D3E4F5A6B7C8D9E0F1A /* DealsView.swift */; };
+		7DBE4F5A6B7C8D9E0F1A2B3C /* DealsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8B1C2D3E4F5A6B7C8D9E0F /* DealsViewModel.swift */; };
+		9FDA6B7C8D9E0F1A2B3C4D5E /* CreateDealView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CAD3E4F5A6B7C8D9E0F1A2B /* CreateDealView.swift */; };
 		0B06ED772B70BFFC18B26839 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 919D30E2C6D91D9EE2DA0A0C /* Assets.xcassets */; };
 		1C7024D908300485FE413860 /* ErrorStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6B2F3E34FF12AE55BA4307 /* ErrorStateView.swift */; };
 		1D4ECC6C8106546FF76D900A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D0C860531AB1C6D24C787C43 /* PrivacyInfo.xcprivacy */; };
@@ -61,6 +64,9 @@
 		0841615AD688E1AFF2E0C546 /* SelectedRestaurant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedRestaurant.swift; sourceTree = "<group>"; };
 		142B193CEACAB6A23385BECA /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		1A7744C043E90D9C8743BDB7 /* CreateRestaurantView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateRestaurantView.swift; sourceTree = "<group>"; };
+		4A8B1C2D3E4F5A6B7C8D9E0F /* DealsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsViewModel.swift; sourceTree = "<group>"; };
+		5B9C2D3E4F5A6B7C8D9E0F1A /* DealsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsView.swift; sourceTree = "<group>"; };
+		6CAD3E4F5A6B7C8D9E0F1A2B /* CreateDealView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateDealView.swift; sourceTree = "<group>"; };
 		1BAE6C68FFBA836A954C70BD /* reviewer login creds.rtf */ = {isa = PBXFileReference; lastKnownFileType = text.rtf; path = "reviewer login creds.rtf"; sourceTree = "<group>"; };
 		1E946A8FFE94C5890B89B631 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		2E0E527284825A85852A2D46 /* SellerOrdersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOrdersView.swift; sourceTree = "<group>"; };
@@ -131,11 +137,21 @@
 				D8F904B52F2AA7259B18161F /* Auth */,
 				D6A511D6DDB79E7A2E04F72F /* Components */,
 				ED8B05616FBB3AEBB72EB3F2 /* Dashboard */,
+				AE0B7C8D9E0F1A2B3C4D5E6F /* Deals */,
 				21732CA90062D02DAA99CB6A /* Menu */,
 				460EE84AE930E935B97B94A7 /* Orders */,
 				57EEF44A473EC415647690E6 /* Settings */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		AE0B7C8D9E0F1A2B3C4D5E6F /* Deals */ = {
+			isa = PBXGroup;
+			children = (
+				6CAD3E4F5A6B7C8D9E0F1A2B /* CreateDealView.swift */,
+				5B9C2D3E4F5A6B7C8D9E0F1A /* DealsView.swift */,
+			);
+			path = Deals;
 			sourceTree = "<group>";
 		};
 		21732CA90062D02DAA99CB6A /* Menu */ = {
@@ -249,6 +265,7 @@
 			children = (
 				7D2FA59443B5C673249532C2 /* AuthViewModel.swift */,
 				3549B7131DB87E7F1F129052 /* DashboardViewModel.swift */,
+				4A8B1C2D3E4F5A6B7C8D9E0F /* DealsViewModel.swift */,
 				974440267F22F40FB9157133 /* MenuViewModel.swift */,
 				63BC77F71B8BE4175E230F98 /* OrdersViewModel.swift */,
 			);
@@ -388,7 +405,10 @@
 				5BD459D39ED442FF0B8E7DB0 /* CountryCodePickerSheet.swift in Sources */,
 				8B96C3FA84C8B5C72218547B /* CreateRestaurantView.swift in Sources */,
 				037867EC3E520E12117F72C1 /* DashboardView.swift in Sources */,
+				9FDA6B7C8D9E0F1A2B3C4D5E /* CreateDealView.swift in Sources */,
 				2DD2A57FC4451D0238CE7056 /* DashboardViewModel.swift in Sources */,
+				8ECF5A6B7C8D9E0F1A2B3C4D /* DealsView.swift in Sources */,
+				7DBE4F5A6B7C8D9E0F1A2B3C /* DealsViewModel.swift in Sources */,
 				27EBBBDF26242EC894340852 /* EmailAuthView.swift in Sources */,
 				1C7024D908300485FE413860 /* ErrorStateView.swift in Sources */,
 				9FBA82ED350C51E3DB606E63 /* Haptics.swift in Sources */,

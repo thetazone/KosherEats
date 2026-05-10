@@ -20,6 +20,11 @@ struct MainTabView: View {
                     Label("Menu", systemImage: "menucard.fill")
                 }
 
+            DealsView()
+                .tabItem {
+                    Label("Deals", systemImage: "tag.fill")
+                }
+
             RestaurantSettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gearshape.fill")

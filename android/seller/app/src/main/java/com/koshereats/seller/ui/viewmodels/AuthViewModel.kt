@@ -10,6 +10,8 @@ import com.koshereats.seller.data.api.PrefsKeys
 import com.koshereats.seller.data.api.SocialLoginRequest
 import com.koshereats.seller.data.api.dataStore
 import com.koshereats.seller.data.models.LoginRequest
+import com.koshereats.seller.data.models.PhoneStartRequest
+import com.koshereats.seller.data.models.PhoneVerifyRequest
 import com.koshereats.seller.data.models.PresignResponse
 import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.push.PushBootstrap
@@ -31,6 +33,14 @@ data class AuthState(
     val isTogglingOpen: Boolean = false,
     /** null = not yet checked, true = seller owns at least one restaurant. */
     val hasRestaurants: Boolean? = null,
+    // Phone auth
+    val phoneCountryCode: String = "+1",
+    val phoneNumber: String = "",
+    val phoneE164: String = "",
+    val otpSent: Boolean = false,
+    val otpCode: String = "",
+    val phoneIsSending: Boolean = false,
+    val phoneIsVerifying: Boolean = false,
 )
 
 @HiltViewModel
@@ -240,6 +250,120 @@ class AuthViewModel @Inject constructor(
                 }
             } catch (_: Exception) {
                 _state.value = _state.value.copy(isTogglingOpen = false)
+            }
+        }
+    }
+
+    fun updatePhoneCountryCode(value: String) {
+        _state.value = _state.value.copy(phoneCountryCode = value)
+    }
+
+    fun updatePhoneNumber(value: String) {
+        _state.value = _state.value.copy(phoneNumber = value)
+    }
+
+    fun updateOtpCode(value: String) {
+        _state.value = _state.value.copy(otpCode = value)
+    }
+
+    fun backToPhoneEntry() {
+        _state.value = _state.value.copy(otpSent = false, otpCode = "", error = null)
+    }
+
+    fun resetPhoneFlow() {
+        _state.value = _state.value.copy(
+            phoneNumber = "",
+            phoneE164 = "",
+            otpSent = false,
+            otpCode = "",
+            phoneIsSending = false,
+            phoneIsVerifying = false,
+            error = null,
+        )
+    }
+
+    fun startPhoneLogin() {
+        val current = _state.value
+        val e164 = "${current.phoneCountryCode}${current.phoneNumber}"
+        if (current.phoneNumber.length < 7) {
+            _state.value = current.copy(error = "Enter a valid phone number")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(phoneIsSending = true, error = null)
+            try {
+                val response = apiService.phoneStart(PhoneStartRequest(phone = e164))
+                if (response.isSuccessful) {
+                    _state.value = _state.value.copy(
+                        phoneE164 = e164,
+                        otpSent = true,
+                        otpCode = "",
+                        phoneIsSending = false,
+                    )
+                } else {
+                    val msg = when (response.code()) {
+                        400 -> "Invalid phone number format"
+                        502 -> "SMS service unavailable — try again"
+                        else -> "Couldn't send code"
+                    }
+                    _state.value = _state.value.copy(phoneIsSending = false, error = msg)
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    phoneIsSending = false,
+                    error = e.localizedMessage ?: "Network error",
+                )
+            }
+        }
+    }
+
+    fun verifyPhoneCode() {
+        val current = _state.value
+        if (current.otpCode.length != 6) {
+            _state.value = current.copy(error = "Enter the 6-digit code")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(phoneIsVerifying = true, error = null)
+            try {
+                val response = apiService.phoneVerify(
+                    PhoneVerifyRequest(
+                        phone = current.phoneE164,
+                        code = current.otpCode,
+                        role = "seller",
+                    )
+                )
+                if (response.isSuccessful) {
+                    val body = response.body()!!
+                    if (body.user.role != "seller" && body.user.role != "admin") {
+                        _state.value = _state.value.copy(
+                            phoneIsVerifying = false,
+                            error = "This account is not a seller account.",
+                        )
+                        return@launch
+                    }
+                    context.dataStore.edit { prefs ->
+                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
+                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
+                    }
+                    NetworkModule.cachedToken = body.token
+                    NetworkModule.cachedRefreshToken = body.refreshToken
+                    _state.value = AuthState(isLoggedIn = true, isLoading = false)
+                    PushBootstrap.registerCurrentToken(apiService)
+                    loadRestaurant()
+                } else {
+                    val msg = when (response.code()) {
+                        401 -> "Invalid or expired code"
+                        429 -> "Too many failed attempts — try again in 10 minutes"
+                        else -> "Verification failed"
+                    }
+                    _state.value = _state.value.copy(phoneIsVerifying = false, error = msg)
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    phoneIsVerifying = false,
+                    error = e.localizedMessage ?: "Network error",
+                )
             }
         }
     }

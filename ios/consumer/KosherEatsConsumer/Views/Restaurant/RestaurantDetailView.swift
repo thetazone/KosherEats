@@ -5,6 +5,7 @@ struct RestaurantDetailView: View {
     @StateObject private var vm = RestaurantViewModel()
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
+    @State private var showCertificate = false
 
     var body: some View {
         ZStack {
@@ -171,6 +172,26 @@ struct RestaurantDetailView: View {
                     Text("Certifying Agency: \(restaurant.certifyingAgency)")
                         .font(.system(size: 13))
                         .foregroundColor(.keTextSecondary)
+                }
+            }
+
+            if let certUrl = restaurant.kosherCertificateUrl, !certUrl.isEmpty {
+                Button {
+                    showCertificate = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                        Text("View Kosher Certificate")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.kePrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(Color.kePrimary.opacity(0.1))
+                    .cornerRadius(10)
+                }
+                .sheet(isPresented: $showCertificate) {
+                    KosherCertificateSheet(url: certUrl, restaurantName: restaurant.name)
                 }
             }
 

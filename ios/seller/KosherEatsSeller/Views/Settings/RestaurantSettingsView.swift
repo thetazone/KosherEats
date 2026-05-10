@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct RestaurantSettingsView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -23,6 +24,11 @@ struct RestaurantSettingsView: View {
     @State private var isCholovYisroel = false
     @State private var isPasYisroel = false
     @State private var isGlattKosher = false
+
+    @State private var kosherCertificateUrl: String?
+    @State private var certPickerItem: PhotosPickerItem?
+    @State private var certImage: UIImage?
+    @State private var isUploadingCert = false
 
     @State private var isSaving = false
     @State private var showSaved = false
@@ -160,6 +166,63 @@ struct RestaurantSettingsView: View {
                         kosherToggleRow("Cholov Yisroel", isOn: $isCholovYisroel)
                         kosherToggleRow("Pas Yisroel", isOn: $isPasYisroel)
                         kosherToggleRow("Glatt Kosher", isOn: $isGlattKosher)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Certificate Document")
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+
+                            if let certImage {
+                                Image(uiImage: certImage)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxHeight: 180)
+                                    .cornerRadius(10)
+                            } else if let url = kosherCertificateUrl, !url.isEmpty, let imageURL = URL(string: url) {
+                                AsyncImage(url: imageURL) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image.resizable().scaledToFit().frame(maxHeight: 180).cornerRadius(10)
+                                    default:
+                                        Text("Certificate uploaded")
+                                            .font(.caption)
+                                            .foregroundColor(.keSuccess)
+                                    }
+                                }
+                            }
+
+                            PhotosPicker(selection: $certPickerItem, matching: .images) {
+                                HStack {
+                                    if isUploadingCert {
+                                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .kePrimary))
+                                    } else {
+                                        Image(systemName: "doc.badge.arrow.up")
+                                        Text(kosherCertificateUrl != nil ? "Replace Certificate" : "Upload Certificate")
+                                    }
+                                }
+                                .font(.subheadline.bold())
+                                .foregroundColor(.kePrimary)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(Color.kePrimary.opacity(0.12))
+                                .cornerRadius(10)
+                            }
+                            .disabled(isUploadingCert)
+                            .onChange(of: certPickerItem) { _, newItem in
+                                Task {
+                                    guard let data = try? await newItem?.loadTransferable(type: Data.self),
+                                          let image = UIImage(data: data) else { return }
+                                    certImage = image
+                                    isUploadingCert = true
+                                    do {
+                                        kosherCertificateUrl = try await UploadService.shared.uploadImage(image, kind: .certificate)
+                                    } catch {
+                                        errorMessage = "Certificate upload failed"
+                                    }
+                                    isUploadingCert = false
+                                }
+                            }
+                        }
                     }
 
                     // Save Button
@@ -424,6 +487,7 @@ struct RestaurantSettingsView: View {
         isCholovYisroel = r.isCholovYisroel
         isPasYisroel = r.isPasYisroel
         isGlattKosher = r.isGlattKosher
+        kosherCertificateUrl = r.kosherCertificateUrl
     }
 
     private func save() async {
@@ -450,6 +514,7 @@ struct RestaurantSettingsView: View {
         restaurant.isCholovYisroel = isCholovYisroel
         restaurant.isPasYisroel = isPasYisroel
         restaurant.isGlattKosher = isGlattKosher
+        restaurant.kosherCertificateUrl = kosherCertificateUrl
 
         do {
             let updated = try await APIService.shared.updateRestaurant(restaurant)

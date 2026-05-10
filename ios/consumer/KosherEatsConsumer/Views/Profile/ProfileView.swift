@@ -46,6 +46,11 @@ struct ProfileView: View {
                             } label: {
                                 ProfileMenuRow(icon: "bell.fill", title: "Notifications", color: .keWarning)
                             }
+                            NavigationLink {
+                                ConnectedAccountsView()
+                            } label: {
+                                ProfileMenuRow(icon: "link.circle.fill", title: "Connected Accounts", color: .kePrimary)
+                            }
                             ProfileMenuItem(icon: "shield.fill", title: "Privacy Policy", color: .keDairy) {
                                 openURL(LegalURLs.privacyPolicy)
                             }

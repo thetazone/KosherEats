@@ -21,6 +21,7 @@ sealed class Screen(
 ) {
     // Auth
     data object Login : Screen("login", "Login")
+    data object PhoneLogin : Screen("phone-login", "Phone Login")
     data object Onboarding : Screen("onboarding", "Onboarding")
 
     // Bottom nav tabs
