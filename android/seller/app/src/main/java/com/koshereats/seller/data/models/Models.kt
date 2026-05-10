@@ -25,13 +25,13 @@ enum class OrderStatus(val displayName: String) {
 }
 
 enum class KosherCertification(val displayName: String) {
-    @Json(name = "ou") OU("OU"),
-    @Json(name = "ok") OK("OK"),
-    @Json(name = "kof_k") KOF_K("Kof-K"),
-    @Json(name = "star_k") STAR_K("Star-K"),
-    @Json(name = "crc") CRC("cRc"),
-    @Json(name = "badatz") BADATZ("Badatz"),
-    @Json(name = "chof_k") CHOF_K("Chof-K"),
+    @Json(name = "OU") OU("OU"),
+    @Json(name = "OK") OK("OK"),
+    @Json(name = "Kof-K") KOF_K("Kof-K"),
+    @Json(name = "Star-K") STAR_K("Star-K"),
+    @Json(name = "cRc") CRC("cRc"),
+    @Json(name = "Badatz") BADATZ("Badatz"),
+    @Json(name = "Chof-K") CHOF_K("Chof-K"),
     @Json(name = "other") OTHER("Other"),
 }
 
