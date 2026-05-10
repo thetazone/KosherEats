@@ -105,6 +105,10 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    func silentResendOTP(phone: String) async {
+        try? await api.startPhoneLogin(phone: phone)
+    }
+
     /// Verifies the SMS code and signs the courier in. Returns true iff
     /// authenticated. Surfaces "no account" (404) and "not a courier" (403)
     /// with distinct messages so the user knows whether to retry or sign up.

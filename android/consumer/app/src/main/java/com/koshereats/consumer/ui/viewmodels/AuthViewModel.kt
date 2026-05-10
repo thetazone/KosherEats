@@ -308,6 +308,16 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun silentResend() {
+        val state = _uiState.value
+        if (!state.otpSent || state.phoneE164.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                apiService.phoneStart(PhoneStartRequest(phone = state.phoneE164))
+            } catch (_: Exception) {}
+        }
+    }
+
     fun verifyPhoneCode() {
         val state = _uiState.value
         if (state.otpCode.length != 4) {
@@ -387,7 +397,16 @@ class AuthViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _uiState.update { it.copy(isLoading = false, needsPhone = false, user = response.body()) }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Failed to save phone number") }
+                    val serverMsg = try {
+                        val body = response.errorBody()?.string().orEmpty()
+                        com.google.gson.JsonParser.parseString(body).asJsonObject
+                            .get("error")?.asString
+                    } catch (_: Exception) { null }
+                    val msg = when {
+                        response.code() == 409 -> serverMsg ?: "That phone number is already linked to another account"
+                        else -> serverMsg ?: "Failed to save phone number"
+                    }
+                    _uiState.update { it.copy(isLoading = false, error = msg) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }

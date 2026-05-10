@@ -317,6 +317,16 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun silentResend() {
+        val current = _state.value
+        if (!current.otpSent || current.phoneE164.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                apiService.phoneStart(PhoneStartRequest(phone = current.phoneE164))
+            } catch (_: Exception) {}
+        }
+    }
+
     fun verifyPhoneCode() {
         val current = _state.value
         if (current.otpCode.length != 4) {

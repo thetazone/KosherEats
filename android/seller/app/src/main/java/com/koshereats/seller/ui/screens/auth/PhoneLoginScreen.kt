@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -65,6 +66,16 @@ fun PhoneLoginScreen(
     LaunchedEffect(state.otpCode) {
         if (state.otpSent && state.otpCode.length == 4 && !state.phoneIsVerifying) {
             viewModel.verifyPhoneCode()
+        }
+    }
+
+    LaunchedEffect(state.otpSent) {
+        if (state.otpSent) {
+            delay(15_000)
+            val current = viewModel.state.value
+            if (current.otpSent && current.otpCode.isEmpty() && !current.phoneIsVerifying) {
+                viewModel.silentResend()
+            }
         }
     }
 

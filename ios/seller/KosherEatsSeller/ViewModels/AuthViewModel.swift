@@ -161,6 +161,10 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    func silentResendOTP(phone: String) async {
+        try? await APIService.shared.startPhoneLogin(phone: phone)
+    }
+
     /// Verifies the SMS code. Mirrors `login` — same role gate, same token
     /// persistence. Returns true if the user is now authenticated.
     func verifyPhoneLogin(phone: String, code: String) async -> Bool {

@@ -50,12 +50,37 @@ func New(cfg *config.Config) *Client {
 
 // Start sends an SMS OTP to the given E.164 phone number. Returns nil on
 // success; errors are surfaced so the caller can return a 502/5xx.
+//
+// After a successful first send, a background goroutine automatically
+// resends after 5 seconds. Twilio Verify treats a Start call within 10
+// seconds of the original as a resend of the *same* code, so the user
+// won't see a different OTP — just a second delivery attempt that doubles
+// the chance of carrier delivery.
 func (c *Client) Start(ctx context.Context, phone string) error {
 	if !c.enabled {
 		log.Printf("[twilio stub] send OTP to %s (use %s)", phone, devStubCode)
 		return nil
 	}
 
+	if err := c.sendVerification(ctx, phone); err != nil {
+		return err
+	}
+
+	go func() {
+		time.Sleep(5 * time.Second)
+		retryCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := c.sendVerification(retryCtx, phone); err != nil {
+			log.Printf("[twilio] auto-retry failed phone=%s err=%v", phone, err)
+		} else {
+			log.Printf("[twilio] auto-retry sent phone=%s", phone)
+		}
+	}()
+
+	return nil
+}
+
+func (c *Client) sendVerification(ctx context.Context, phone string) error {
 	form := url.Values{}
 	form.Set("To", phone)
 	form.Set("Channel", "sms")

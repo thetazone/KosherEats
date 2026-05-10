@@ -11,6 +11,7 @@ struct ConsumerPhoneOTPView: View {
 
     @State private var code = ""
     @State private var isResending = false
+    @State private var autoResendTask: Task<Void, Never>?
     @FocusState private var codeFieldFocused: Bool
 
     var body: some View {
@@ -92,7 +93,16 @@ struct ConsumerPhoneOTPView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { codeFieldFocused = true }
+        .onAppear {
+            codeFieldFocused = true
+            autoResendTask = Task {
+                try? await Task.sleep(for: .seconds(15))
+                if !Task.isCancelled && code.isEmpty {
+                    await authVM.silentResendOTP(phone: phoneE164)
+                }
+            }
+        }
+        .onDisappear { autoResendTask?.cancel() }
     }
 
     private func submit() async {

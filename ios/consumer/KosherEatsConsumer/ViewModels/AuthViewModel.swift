@@ -107,6 +107,10 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    func silentResendOTP(phone: String) async {
+        try? await api.startPhoneLogin(phone: phone)
+    }
+
     /// Verifies the SMS code. Returns true iff authenticated.
     func verifyPhoneLogin(phone: String, code: String) async -> Bool {
         isLoading = true
