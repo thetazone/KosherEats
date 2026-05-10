@@ -63,7 +63,7 @@ fun PhoneLoginScreen(
     }
 
     LaunchedEffect(state.otpCode) {
-        if (state.otpSent && state.otpCode.length == 6 && !state.phoneIsVerifying) {
+        if (state.otpSent && state.otpCode.length == 4 && !state.phoneIsVerifying) {
             viewModel.verifyPhoneCode()
         }
     }
@@ -119,7 +119,7 @@ fun PhoneLoginScreen(
 
             Text(
                 text = if (state.otpSent) {
-                    "We texted a 6-digit code to ${state.phoneE164}"
+                    "We texted a 4-digit code to ${state.phoneE164}"
                 } else {
                     "We'll text you a code to verify your identity."
                 },
@@ -165,7 +165,7 @@ fun PhoneLoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = phoneFieldColors(),
-                    placeholder = { Text("123456", color = TextMuted) },
+                    placeholder = { Text("1234", color = TextMuted) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 )

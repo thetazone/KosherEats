@@ -54,9 +54,9 @@ fun PhoneAuthScreen(
         if (state.isLoggedIn && !state.isGuest) onAuthSuccess()
     }
 
-    // Auto-submit when 6-digit code complete.
+    // Auto-submit when 4-digit code complete.
     LaunchedEffect(state.otpCode) {
-        if (state.otpSent && state.otpCode.length == 6 && !state.phoneIsVerifying) {
+        if (state.otpSent && state.otpCode.length == 4 && !state.phoneIsVerifying) {
             viewModel.verifyPhoneCode()
         }
     }
@@ -110,7 +110,7 @@ fun PhoneAuthScreen(
 
             Text(
                 text = if (state.otpSent) {
-                    "We texted a 6-digit code to ${state.phoneE164}"
+                    "We texted a 4-digit code to ${state.phoneE164}"
                 } else {
                     "We'll text you a code to verify it's really you. Used for sign-in and order tracking."
                 },
@@ -226,7 +226,7 @@ private fun CodeEntry(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = phoneFieldColors(),
-        placeholder = { Text("123456", color = TextMuted) },
+        placeholder = { Text("1234", color = TextMuted) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
     )

@@ -148,7 +148,7 @@ private struct PhoneLinkSheet: View {
                         Text("Verification Code")
                             .font(.caption)
                             .foregroundColor(.keTextSecondary)
-                        TextField("123456", text: $code)
+                        TextField("1234", text: $code)
                             .keyboardType(.numberPad)
                             .padding()
                             .background(Color.keCard)

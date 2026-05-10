@@ -263,7 +263,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun updateOtpCode(value: String) {
-        _state.value = _state.value.copy(otpCode = value)
+        _state.value = _state.value.copy(otpCode = value.filter { it.isDigit() }.take(4))
     }
 
     fun backToPhoneEntry() {
@@ -319,8 +319,8 @@ class AuthViewModel @Inject constructor(
 
     fun verifyPhoneCode() {
         val current = _state.value
-        if (current.otpCode.length != 6) {
-            _state.value = current.copy(error = "Enter the 6-digit code")
+        if (current.otpCode.length != 4) {
+            _state.value = current.copy(error = "Enter the 4-digit code")
             return
         }
         viewModelScope.launch {

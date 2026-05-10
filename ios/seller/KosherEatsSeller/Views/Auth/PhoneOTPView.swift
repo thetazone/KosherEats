@@ -33,7 +33,7 @@ struct PhoneOTPView: View {
                             .foregroundColor(.keTextSecondary)
                     }
 
-                    TextField("123456", text: $code)
+                    TextField("1234", text: $code)
                         .keyboardType(.numberPad)
                         .textContentType(.oneTimeCode)
                         .font(.system(size: 28, weight: .semibold, design: .monospaced))

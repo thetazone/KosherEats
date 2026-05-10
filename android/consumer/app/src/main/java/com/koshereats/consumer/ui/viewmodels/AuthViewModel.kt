@@ -252,7 +252,7 @@ class AuthViewModel @Inject constructor(
 
     fun updatePhoneCountryCode(value: String) = _uiState.update { it.copy(phoneCountryCode = value) }
     fun updatePhoneNumber(value: String) = _uiState.update { it.copy(phoneNumber = value.filter { c -> c.isDigit() }) }
-    fun updateOtpCode(value: String) = _uiState.update { it.copy(otpCode = value.filter { c -> c.isDigit() }.take(6)) }
+    fun updateOtpCode(value: String) = _uiState.update { it.copy(otpCode = value.filter { c -> c.isDigit() }.take(4)) }
 
     fun resetPhoneFlow() {
         _uiState.update {
@@ -310,8 +310,8 @@ class AuthViewModel @Inject constructor(
 
     fun verifyPhoneCode() {
         val state = _uiState.value
-        if (state.otpCode.length != 6) {
-            _uiState.update { it.copy(error = "Enter the 6-digit code") }
+        if (state.otpCode.length != 4) {
+            _uiState.update { it.copy(error = "Enter the 4-digit code") }
             return
         }
         viewModelScope.launch {
