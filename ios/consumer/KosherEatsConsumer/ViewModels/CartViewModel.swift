@@ -7,12 +7,39 @@ class CartViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showCartCleared = false
     @Published private(set) var isReordering = false
+    @Published var appliedDeal: Deal?
 
     private let api = APIService.shared
     private var cartGeneration = 0
 
     var itemCount: Int { cart?.itemCount ?? 0 }
     var isEmpty: Bool { cart?.items.isEmpty ?? true }
+
+    var discount: Int {
+        guard let deal = appliedDeal, let cart = cart, cart.subtotal > 0 else { return 0 }
+        if let min = deal.minOrderAmount, cart.subtotal < min { return 0 }
+        switch deal.discountType {
+        case .percentage:
+            return min(cart.subtotal, Int(Double(cart.subtotal) * Double(deal.discountValue) / 100.0))
+        case .fixed:
+            return min(deal.discountValue, cart.subtotal)
+        case .bogo:
+            guard cart.items.count >= 2 else { return 0 }
+            return cart.items.map(\.price).min() ?? 0
+        }
+    }
+
+    var discountedSubtotal: Int {
+        (cart?.subtotal ?? 0) - discount
+    }
+
+    func applyDeal(_ deal: Deal) {
+        appliedDeal = deal
+    }
+
+    func removeDeal() {
+        appliedDeal = nil
+    }
 
     // MARK: - Load
 
@@ -135,6 +162,7 @@ class CartViewModel: ObservableObject {
 
     func clearCart() async {
         cartGeneration &+= 1
+        appliedDeal = nil
         if !api.isAuthenticated {
             cart = nil
             showCartCleared = true

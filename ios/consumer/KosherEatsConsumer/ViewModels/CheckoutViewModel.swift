@@ -70,6 +70,8 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     @Published var paymentSucceeded: Bool = false
     @Published var orderCreationFailed: Bool = false
 
+    var appliedDealId: String?
+
     private let api = APIService.shared
     private var activeSheet: PaymentSheet?
     private var bundleGeneration = 0
@@ -124,7 +126,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
         do {
             let tip = currentTipCents()
-            let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType)
+            let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId)
             guard gen == bundleGeneration, !Task.isCancelled else { return }
             bundle = fresh
         } catch {
@@ -272,10 +274,18 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         }
         var items: [PKPaymentSummaryItem] = [
             item("Subtotal", bundle.subtotal),
+        ]
+        if let discount = bundle.discount, discount > 0 {
+            items.append(PKPaymentSummaryItem(
+                label: "Deal discount",
+                amount: NSDecimalNumber(value: -Double(discount) / 100)
+            ))
+        }
+        items.append(contentsOf: [
             item("Tax", bundle.tax),
             item("Service fee", bundle.serviceFee),
             item("Delivery", bundle.deliveryFee),
-        ]
+        ])
         if bundle.tip > 0 {
             items.append(item("Driver tip", bundle.tip))
         }
@@ -315,7 +325,8 @@ final class CheckoutViewModel: NSObject, ObservableObject {
                         paymentIntentId: paymentIntentId,
                         tip: bundle.tip,
                         scheduledFor: scheduledFor,
-                        fulfillmentType: fulfillmentType
+                        fulfillmentType: fulfillmentType,
+                        appliedDealId: appliedDealId
                     )
                 } catch let APIError.httpError(code, _) where code == 409 {
                     // Duplicate payment_intent_id — the order was already created

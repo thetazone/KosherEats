@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var vm: RestaurantStore
     @EnvironmentObject var cartVM: CartViewModel
+    @StateObject private var dealsVM = DealsViewModel()
     @State private var showKosherFilter = false
     @State private var searchText = ""
     @State private var selectedCuisine: String?
@@ -32,6 +33,11 @@ struct HomeView: View {
                             .padding(.horizontal)
                         }
 
+                        // Deals
+                        if !dealsVM.deals.isEmpty {
+                            dealsSection
+                        }
+
                         // Featured Section
                         if !vm.featuredRestaurants.isEmpty {
                             featuredSection
@@ -53,6 +59,7 @@ struct HomeView: View {
             .task {
                 await vm.ensureRestaurantsLoaded()
                 await cartVM.loadCart()
+                await dealsVM.load()
             }
             .refreshable {
                 Haptics.impact(.light)
@@ -159,6 +166,43 @@ struct HomeView: View {
                 }
             }
             .padding(.horizontal)
+        }
+    }
+
+    // MARK: - Deals
+
+    private var dealsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Deals Near You")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.keTextPrimary)
+                Spacer()
+                NavigationLink {
+                    DealsView()
+                        .environmentObject(cartVM)
+                } label: {
+                    Text("See All")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.kePrimary)
+                }
+            }
+            .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(dealsVM.deals.prefix(6)) { deal in
+                        NavigationLink(destination: RestaurantDetailView(restaurantID: deal.restaurantId)) {
+                            DealCard(deal: deal) {
+                                cartVM.applyDeal(deal)
+                                Haptics.success()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+            }
         }
     }
 

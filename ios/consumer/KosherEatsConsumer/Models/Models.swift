@@ -678,6 +678,71 @@ struct LinkedProvider: Codable, Identifiable {
     }
 }
 
+// MARK: - Deals
+
+enum DiscountType: String, Codable {
+    case percentage
+    case fixed
+    case bogo
+}
+
+struct Deal: Codable, Identifiable {
+    let id: String
+    let restaurantId: String
+    let title: String
+    let description: String
+    let imageUrl: String?
+    let menuItemId: String?
+    let discountType: DiscountType
+    let discountValue: Int
+    let minOrderAmount: Int?
+    let startsAt: String?
+    let expiresAt: String?
+    let isActive: Bool
+    let restaurantName: String?
+    let restaurantImageUrl: String?
+    let menuItemName: String?
+    let menuItemPrice: Int?
+    let menuItemImageUrl: String?
+
+    var hasLinkedItem: Bool { menuItemId != nil }
+
+    var displayImageUrl: String? {
+        imageUrl ?? menuItemImageUrl ?? restaurantImageUrl
+    }
+
+    var discountBadge: String {
+        switch discountType {
+        case .percentage: return "\(discountValue)% Off"
+        case .fixed: return "$\(String(format: "%.2f", Double(discountValue) / 100)) Off"
+        case .bogo: return "Buy 1 Get 1 Free"
+        }
+    }
+
+    var minOrderFormatted: String? {
+        guard let min = minOrderAmount, min > 0 else { return nil }
+        return "$\(String(format: "%.2f", Double(min) / 100))"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, description
+        case restaurantId = "restaurant_id"
+        case imageUrl = "image_url"
+        case menuItemId = "menu_item_id"
+        case discountType = "discount_type"
+        case discountValue = "discount_value"
+        case minOrderAmount = "min_order_amount"
+        case startsAt = "starts_at"
+        case expiresAt = "expires_at"
+        case isActive = "is_active"
+        case restaurantName = "restaurant_name"
+        case restaurantImageUrl = "restaurant_image_url"
+        case menuItemName = "menu_item_name"
+        case menuItemPrice = "menu_item_price"
+        case menuItemImageUrl = "menu_item_image_url"
+    }
+}
+
 // MARK: - API Error Response
 
 struct APIErrorResponse: Codable {

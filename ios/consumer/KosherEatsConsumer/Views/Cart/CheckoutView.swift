@@ -88,11 +88,9 @@ struct CheckoutView: View {
         .navigationTitle("Checkout")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            vm.appliedDealId = cartVM.appliedDeal?.id
             await vm.loadAddresses()
             await vm.refreshBundle()
-            // If the user has no saved address AND they're checking out for
-            // delivery, immediately open the picker. Pickup orders skip this
-            // since the address card is hidden in pickup mode anyway.
             if vm.selectedAddress == nil && vm.fulfillmentType == "delivery" {
                 showAddressPicker = true
             }
@@ -533,11 +531,23 @@ private struct TotalsCard: View {
     var body: some View {
         VStack(spacing: Theme.spacingSM) {
             totalsRow("Subtotal", bundle.subtotal)
+            if let discount = bundle.discount, discount > 0 {
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 11))
+                        Text("Deal discount")
+                            .font(.subheadline)
+                    }
+                    .foregroundColor(.keSuccess)
+                    Spacer()
+                    Text("-\(format(discount))")
+                        .font(.subheadline.bold())
+                        .foregroundColor(.keSuccess)
+                }
+            }
             totalsRow("Tax", bundle.tax)
             totalsRow("Service fee", bundle.serviceFee)
-            // Pickup orders have no delivery fee — hide the row entirely
-            // instead of showing "Delivery fee $0.00" which is dead weight
-            // and slightly confusing on a pickup receipt.
             if bundle.deliveryFee > 0 {
                 totalsRow("Delivery fee", bundle.deliveryFee)
             }

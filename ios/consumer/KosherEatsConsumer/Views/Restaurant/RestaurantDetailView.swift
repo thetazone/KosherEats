@@ -42,6 +42,11 @@ struct RestaurantDetailView: View {
                         // Kashrus Details
                         kashrusSection(restaurant)
 
+                        // Deals
+                        if !vm.deals.isEmpty {
+                            dealsSection
+                        }
+
                         // Menu
                         menuSection
                     }
@@ -198,6 +203,32 @@ struct RestaurantDetailView: View {
             Divider().background(Color.keDivider)
         }
         .padding(.horizontal)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Deals
+
+    private var dealsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Deals")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.keTextPrimary)
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(vm.deals) { deal in
+                        DealCard(deal: deal) {
+                            cartVM.applyDeal(deal)
+                            Haptics.success()
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+
+            Divider().background(Color.keDivider).padding(.horizontal)
+        }
         .padding(.bottom, 8)
     }
 

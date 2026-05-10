@@ -102,6 +102,35 @@ struct CartView: View {
     private func orderSummary(cart: Cart) -> some View {
         VStack(spacing: 10) {
             SummaryRow(label: "Subtotal", value: cart.subtotalFormatted)
+
+            if let deal = cartVM.appliedDeal {
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 12))
+                        Text(deal.title)
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.keSuccess)
+
+                    Spacer()
+
+                    if cartVM.discount > 0 {
+                        Text("-$\(String(format: "%.2f", Double(cartVM.discount) / 100))")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.keSuccess)
+                    }
+
+                    Button {
+                        cartVM.removeDeal()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.keTextMuted)
+                    }
+                }
+            }
+
             SummaryRow(label: "Delivery Fee", value: "Calculated at checkout")
             SummaryRow(label: "Service Fee", value: "Calculated at checkout")
 
@@ -112,7 +141,7 @@ struct CartView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.keTextPrimary)
                 Spacer()
-                Text(cart.subtotalFormatted)
+                Text("$\(String(format: "%.2f", Double(cartVM.discountedSubtotal) / 100))")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.kePrimary)
             }

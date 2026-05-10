@@ -396,6 +396,16 @@ class APIService: ObservableObject {
         return try await request(method: "GET", path: "/restaurants/search?q=\(encoded)")
     }
 
+    // MARK: - Deals
+
+    func getNearbyDeals() async throws -> [Deal] {
+        try await request(method: "GET", path: "/deals/nearby")
+    }
+
+    func getRestaurantDeals(restaurantID: String) async throws -> [Deal] {
+        try await request(method: "GET", path: "/restaurants/\(restaurantID)/deals")
+    }
+
     // MARK: - Favorites
 
     func listFavoriteIDs() async throws -> [String] {
@@ -455,7 +465,8 @@ class APIService: ObservableObject {
         paymentIntentId: String,
         tip: Int,
         scheduledFor: Date? = nil,
-        fulfillmentType: String = "delivery"
+        fulfillmentType: String = "delivery",
+        appliedDealId: String? = nil
     ) async throws -> Order {
         struct Body: Encodable {
             let deliveryAddress: String
@@ -465,6 +476,7 @@ class APIService: ObservableObject {
             let tip: Int
             let scheduledFor: Date?
             let fulfillmentType: String
+            let appliedDealId: String?
             enum CodingKeys: String, CodingKey {
                 case deliveryAddress = "delivery_address"
                 case deliveryLat = "delivery_lat"
@@ -473,11 +485,12 @@ class APIService: ObservableObject {
                 case tip
                 case scheduledFor = "scheduled_for"
                 case fulfillmentType = "fulfillment_type"
+                case appliedDealId = "applied_deal_id"
             }
         }
         let body = Body(deliveryAddress: deliveryAddress, deliveryLat: lat, deliveryLng: lng,
                         paymentIntentId: paymentIntentId, tip: tip, scheduledFor: scheduledFor,
-                        fulfillmentType: fulfillmentType)
+                        fulfillmentType: fulfillmentType, appliedDealId: appliedDealId)
         return try await request(method: "POST", path: "/orders", body: body, authenticated: true)
     }
 
@@ -494,6 +507,8 @@ class APIService: ObservableObject {
         let tax: Int
         let tip: Int
         let total: Int
+        let discount: Int?
+        let appliedDealId: String?
         let defaultCardBrand: String?
         let defaultCardLast4: String?
 
@@ -502,29 +517,30 @@ class APIService: ObservableObject {
             case ephemeralKeySecret = "ephemeral_key_secret"
             case customerId = "customer_id"
             case publishableKey = "publishable_key"
-            case subtotal, tax, tip, total
+            case subtotal, tax, tip, total, discount
             case deliveryFee = "delivery_fee"
             case serviceFee = "service_fee"
+            case appliedDealId = "applied_deal_id"
             case defaultCardBrand = "default_card_brand"
             case defaultCardLast4 = "default_card_last4"
         }
 
-        /// Dev-stub mode when the backend has no STRIPE_SECRET_KEY. iOS should
-        /// skip presenting PaymentSheet in this case and go straight to createOrder.
         var isStub: Bool { paymentIntentSecret.hasPrefix("pi_stub_") }
     }
 
-    func createPaymentSheet(tip: Int, fulfillmentType: String = "delivery") async throws -> PaymentSheetBundle {
+    func createPaymentSheet(tip: Int, fulfillmentType: String = "delivery", appliedDealId: String? = nil) async throws -> PaymentSheetBundle {
         struct Body: Encodable {
             let tip: Int
             let fulfillmentType: String
+            let appliedDealId: String?
             enum CodingKeys: String, CodingKey {
                 case tip
                 case fulfillmentType = "fulfillment_type"
+                case appliedDealId = "applied_deal_id"
             }
         }
         return try await request(method: "POST", path: "/payments/intent",
-                                 body: Body(tip: tip, fulfillmentType: fulfillmentType), authenticated: true)
+                                 body: Body(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId), authenticated: true)
     }
 
     // CustomerSheet bundle — used by Profile → Payment Methods to let the
