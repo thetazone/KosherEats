@@ -8,6 +8,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.koshereats.consumer.BuildConfig
@@ -26,41 +27,61 @@ object GoogleSignInHelper {
         }
 
         val credentialManager = CredentialManager.create(context)
-        val googleIdOption = GetGoogleIdOption.Builder()
-            .setServerClientId(webClientId)
-            .setFilterByAuthorizedAccounts(false)
-            .setAutoSelectEnabled(false)
-            .build()
 
+        // SignInWithGoogleOption shows the full Google branded account
+        // chooser with all available accounts plus a "Use another account"
+        // entry — matching the standard "Continue with Google" web flow.
+        // GetGoogleIdOption (a bottom sheet) often auto-uses the most recent
+        // account and hides the picker entirely.
+        val signInOption = GetSignInWithGoogleOption.Builder(webClientId).build()
         val request = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
+            .addCredentialOption(signInOption)
             .build()
 
         return try {
-            val result = credentialManager.getCredential(context, request)
-            val credential = result.credential
-            if (credential is CustomCredential &&
-                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-            ) {
-                val token = GoogleIdTokenCredential.createFrom(credential.data)
-                Result.success(
-                    GoogleSignInResult(
-                        idToken = token.idToken,
-                        firstName = token.givenName.orEmpty(),
-                        lastName = token.familyName.orEmpty(),
-                    )
-                )
-            } else {
-                Result.failure(IllegalStateException("Unexpected credential type: ${credential.type}"))
-            }
+            parseCredential(credentialManager.getCredential(context, request))
         } catch (e: GetCredentialCancellationException) {
             Result.failure(IllegalStateException("cancelled"))
         } catch (e: NoCredentialException) {
-            Result.failure(IllegalStateException("Google Sign-In failed. Ensure a Google account is signed in on this device."))
+            // Some devices lack the SignInWithGoogle UI — fall back to the
+            // bottom-sheet flow rather than failing outright.
+            try {
+                val fallback = GetCredentialRequest.Builder()
+                    .addCredentialOption(
+                        GetGoogleIdOption.Builder()
+                            .setServerClientId(webClientId)
+                            .setFilterByAuthorizedAccounts(false)
+                            .setAutoSelectEnabled(false)
+                            .build()
+                    )
+                    .build()
+                parseCredential(credentialManager.getCredential(context, fallback))
+            } catch (_: Exception) {
+                Result.failure(IllegalStateException("Google Sign-In failed. Ensure a Google account is signed in on this device."))
+            }
         } catch (e: GetCredentialException) {
             Result.failure(IllegalStateException("Google Sign-In failed. Please try again."))
         } catch (e: GoogleIdTokenParsingException) {
             Result.failure(e)
         }
+    }
+
+    private fun parseCredential(
+        result: androidx.credentials.GetCredentialResponse,
+    ): Result<GoogleSignInResult> {
+        val credential = result.credential
+        if (credential is CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            val token = GoogleIdTokenCredential.createFrom(credential.data)
+            return Result.success(
+                GoogleSignInResult(
+                    idToken = token.idToken,
+                    firstName = token.givenName.orEmpty(),
+                    lastName = token.familyName.orEmpty(),
+                )
+            )
+        }
+        return Result.failure(IllegalStateException("Unexpected credential type: ${credential.type}"))
     }
 }

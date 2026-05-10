@@ -28,30 +28,35 @@ object GoogleSignInHelper {
 
         val credentialManager = CredentialManager.create(context)
 
-        val googleIdOption = GetGoogleIdOption.Builder()
-            .setServerClientId(webClientId)
-            .setFilterByAuthorizedAccounts(false)
-            .setAutoSelectEnabled(false)
-            .build()
-
+        // SignInWithGoogleOption shows the full Google branded account chooser
+        // (matching the screen users see on web/desktop sign-ins), with all
+        // available Google accounts and a "Use another account" entry. The
+        // older GetGoogleIdOption bottom-sheet often auto-uses the most-recent
+        // account and hides the picker — not what we want for "Continue with
+        // Google."
+        val signInOption = GetSignInWithGoogleOption.Builder(webClientId).build()
         val request = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
+            .addCredentialOption(signInOption)
             .build()
 
-        Log.d(TAG, "getCredential starting (GoogleIdOption), context=${context.javaClass.name}")
+        Log.d(TAG, "getCredential starting (SignInWithGoogleOption), context=${context.javaClass.name}")
         return try {
             parseCredential(credentialManager.getCredential(context, request))
         } catch (e: GetCredentialException) {
-            Log.w(TAG, "GoogleIdOption failed (${e.type}), retrying with SignInWithGoogleOption")
+            Log.w(TAG, "SignInWithGoogleOption failed (${e.type}), retrying with GoogleIdOption")
             try {
                 val fallback = GetCredentialRequest.Builder()
                     .addCredentialOption(
-                        GetSignInWithGoogleOption.Builder(webClientId).build()
+                        GetGoogleIdOption.Builder()
+                            .setServerClientId(webClientId)
+                            .setFilterByAuthorizedAccounts(false)
+                            .setAutoSelectEnabled(false)
+                            .build()
                     )
                     .build()
                 parseCredential(credentialManager.getCredential(context, fallback))
             } catch (e2: GetCredentialException) {
-                Log.e(TAG, "SignInWithGoogleOption also failed: ${e2.type} — ${e2.message}", e2)
+                Log.e(TAG, "GoogleIdOption fallback also failed: ${e2.type} — ${e2.message}", e2)
                 Result.failure(e2)
             }
         } catch (e: GoogleIdTokenParsingException) {

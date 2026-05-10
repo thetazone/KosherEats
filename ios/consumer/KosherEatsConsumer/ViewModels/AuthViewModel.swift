@@ -180,6 +180,12 @@ class AuthViewModel: ObservableObject {
         }
         isSocialSignInInFlight = true
 
+        // Sign out any cached GID user first so the sheet always shows the
+        // account chooser (with "Use another account") instead of silently
+        // reusing the last-signed-in account. Our backend tokens — not the
+        // GIDSignIn state — drive whether the user is logged into the app.
+        GIDSignIn.sharedInstance.signOut()
+
         GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { [weak self] result, error in
             guard let self else { return }
             if let error = error {
