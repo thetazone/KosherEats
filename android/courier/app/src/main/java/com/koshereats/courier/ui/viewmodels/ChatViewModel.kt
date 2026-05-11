@@ -42,8 +42,7 @@ class ChatViewModel @Inject constructor(
     private var pollJob: Job? = null
 
     init {
-        if (orderId.isBlank()) return
-        startPolling()
+        if (orderId.isNotBlank()) startPolling()
     }
 
     fun pausePolling() {
