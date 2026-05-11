@@ -138,6 +138,70 @@ func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
 }
 
+// AdminSetRestaurantApproval lets an admin override the approval state of any
+// restaurant — including reversing a previously-recorded decision. The magic-
+// link flow in restaurant_approval.go is intentionally one-shot and refuses to
+// re-decide once a decision is made; this endpoint is the escape hatch (for
+// example, when a kosher cert was misjudged on first review).
+//
+// status must be one of: approved, rejected, pending. Setting "pending" resets
+// the row so the original admin email's magic link works again. Setting
+// approved/rejected emails the seller — but only when the status actually
+// changes, so re-saving the same status doesn't spam them.
+type AdminSetRestaurantApprovalRequest struct {
+	Status string `json:"status"`
+	Notes  string `json:"notes"`
+}
+
+func (h *Handler) AdminSetRestaurantApproval(w http.ResponseWriter, r *http.Request) {
+	restID := chi.URLParam(r, "id")
+	var req AdminSetRestaurantApprovalRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	switch req.Status {
+	case "approved", "rejected", "pending":
+	default:
+		writeError(w, http.StatusBadRequest, "status must be approved, rejected, or pending")
+		return
+	}
+
+	var prevStatus string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT approval_status FROM restaurants WHERE id = $1`, restID,
+	).Scan(&prevStatus); err != nil {
+		writeError(w, http.StatusNotFound, "restaurant not found")
+		return
+	}
+
+	isActive := req.Status == "approved"
+	var reviewedAt any = time.Now()
+	if req.Status == "pending" {
+		reviewedAt = nil
+	}
+
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE restaurants
+		    SET approval_status = $1,
+		        approval_notes  = $2,
+		        is_active       = $3,
+		        reviewed_at     = $4,
+		        updated_at      = NOW()
+		  WHERE id = $5`,
+		req.Status, req.Notes, isActive, reviewedAt, restID,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update approval")
+		return
+	}
+
+	if req.Status != prevStatus && (req.Status == "approved" || req.Status == "rejected") {
+		h.sendDecisionEmail(restID, req.Status, req.Notes)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": req.Status})
+}
+
 // AdminListCouriers returns every courier with their profile info. The
 // approval queue is the subset where onboarding_status != 'approved'.
 func (h *Handler) AdminListCouriers(w http.ResponseWriter, r *http.Request) {

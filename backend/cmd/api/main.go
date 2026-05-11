@@ -331,6 +331,7 @@ func main() {
 
 		r.Get("/restaurants", h.AdminListRestaurants)
 		r.Post("/restaurants", h.AdminCreateRestaurant)
+		r.Patch("/restaurants/{id}/approval", h.AdminSetRestaurantApproval)
 
 		r.Post("/sellers", h.AdminCreateSeller)
 

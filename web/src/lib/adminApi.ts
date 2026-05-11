@@ -80,6 +80,7 @@ export interface AdminRestaurant {
   est_delivery_max: number;
   is_open: boolean;
   is_active: boolean;
+  approval_status?: "pending" | "approved" | "rejected";
 }
 
 export interface AdminCourier {
@@ -152,6 +153,11 @@ export const adminApi = {
     adminFetch<{ id: string }>("/admin/restaurants", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  setRestaurantApproval: (id: string, status: "approved" | "rejected" | "pending", notes = "") =>
+    adminFetch<{ status: string }>(`/admin/restaurants/${id}/approval`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, notes }),
     }),
 
   createSeller: (body: { email: string; password: string; first_name: string; last_name: string; phone: string }) =>
