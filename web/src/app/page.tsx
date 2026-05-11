@@ -16,6 +16,17 @@ import {
 
 const CERTIFICATIONS = ["OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
 
+// Download / beta-tester links. iOS URLs need to be pasted in once the
+// App Store listings are public; until then the buttons point to '#' and
+// stay disabled-looking.
+const APP_LINKS = {
+  groupJoin: "https://groups.google.com/g/koshereatstesters",
+  androidConsumerOptIn: "https://play.google.com/apps/testing/com.koshereats.consumer",
+  androidSellerOptIn: "https://play.google.com/apps/testing/com.koshereats.seller",
+  iosConsumer: "https://apps.apple.com/us/app/koshereats/id6761736422",
+  iosSeller: "https://apps.apple.com/us/app/koshereatsseller/id6762100630",
+};
+
 const HOW_IT_WORKS = [
   {
     icon: MapPin,
@@ -81,6 +92,65 @@ const COURIER_BENEFITS = [
     description: "Background check, vehicle info, and you're ready to go. Start earning within days.",
   },
 ];
+
+function AppCard({
+  title,
+  subtitle,
+  iosHref,
+  androidHref,
+  androidLabel,
+}: {
+  title: string;
+  subtitle: string;
+  iosHref: string;
+  androidHref: string;
+  androidLabel: string;
+}) {
+  const iosReady = iosHref !== "";
+  return (
+    <div className="card p-6">
+      <div className="mb-5">
+        <h3 className="text-xl font-bold">{title}</h3>
+        <p className="text-dark-400 text-sm">{subtitle}</p>
+      </div>
+      <div className="flex flex-col gap-3">
+        <a
+          href={iosReady ? iosHref : undefined}
+          target={iosReady ? "_blank" : undefined}
+          rel={iosReady ? "noopener noreferrer" : undefined}
+          aria-disabled={!iosReady}
+          className={`inline-flex items-center gap-3 rounded-xl px-5 py-3 transition-colors ${
+            iosReady
+              ? "bg-white text-black hover:bg-dark-100"
+              : "bg-dark-800 text-dark-500 cursor-not-allowed"
+          }`}
+        >
+          <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+          </svg>
+          <div className="text-left">
+            <div className="text-xs">{iosReady ? "Download on the" : "Coming soon to"}</div>
+            <div className="text-lg font-semibold -mt-1">App Store</div>
+          </div>
+        </a>
+        <a
+          href={androidHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl px-5 py-3 transition-colors"
+        >
+          <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3.18 23.67c-.37-.2-.63-.55-.63-1.02V1.35C2.55.53 3.32.1 4.04.5l9.56 5.52-2.6 2.52L3.18 23.67zM20.17 10.72l-2.76-1.6-3 2.88 3 2.88 2.76-1.6c.83-.48.83-1.68 0-2.16v-.4zM4.53.69l11.19 11.19-2.4 2.4L4.53.69zM4.53 23.31l8.79-13.59 2.4 2.4L4.53 23.31z" />
+          </svg>
+          <div className="text-left">
+            <div className="text-xs">{androidLabel}</div>
+            <div className="text-lg font-semibold -mt-1">Google Play</div>
+          </div>
+        </a>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   return (
@@ -360,49 +430,56 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Download / CTA */}
+        {/* Get the apps */}
         <section id="download" className="py-24 bg-dark-950 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-brand-500/5 to-transparent" />
-          <div className="relative max-w-4xl mx-auto px-4 text-center">
-            <h2 className="text-4xl md:text-5xl font-extrabold mb-6">
-              Ready to order?
-            </h2>
-            <p className="text-dark-300 text-xl mb-10 max-w-2xl mx-auto">
-              Download KosherEats on iOS or Android. Browse restaurants, place your order,
-              and get kosher food delivered to your door.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {/* App Store button */}
-              <a
-                href="#"
-                className="inline-flex items-center gap-3 bg-white text-black rounded-xl px-6 py-3 hover:bg-dark-100 transition-colors"
-              >
-                <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
-                </svg>
-                <div className="text-left">
-                  <div className="text-xs">Download on the</div>
-                  <div className="text-lg font-semibold -mt-1">App Store</div>
-                </div>
-              </a>
-
-              {/* Google Play button */}
-              <a
-                href="#"
-                className="inline-flex items-center gap-3 bg-white text-black rounded-xl px-6 py-3 hover:bg-dark-100 transition-colors"
-              >
-                <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3.18 23.67c-.37-.2-.63-.55-.63-1.02V1.35C2.55.53 3.32.1 4.04.5l9.56 5.52-2.6 2.52L3.18 23.67zM20.17 10.72l-2.76-1.6-3 2.88 3 2.88 2.76-1.6c.83-.48.83-1.68 0-2.16v-.4zM4.53.69l11.19 11.19-2.4 2.4L4.53.69zM4.53 23.31l8.79-13.59 2.4 2.4L4.53 23.31z" />
-                </svg>
-                <div className="text-left">
-                  <div className="text-xs">GET IT ON</div>
-                  <div className="text-lg font-semibold -mt-1">Google Play</div>
-                </div>
-              </a>
+          <div className="relative max-w-5xl mx-auto px-4">
+            <div className="text-center mb-12">
+              <span className="text-brand-400 font-semibold text-sm uppercase tracking-wider">Beta</span>
+              <h2 className="text-4xl md:text-5xl font-extrabold mt-3 mb-4">
+                Get the apps
+              </h2>
+              <p className="text-dark-300 text-lg max-w-2xl mx-auto">
+                iOS is live on the App Store. Android is in closed beta — join our
+                tester group below to install on Android.
+              </p>
             </div>
 
-            <p className="text-dark-500 text-sm mt-6">Coming soon to iOS and Android</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+              <AppCard
+                title="KosherEats"
+                subtitle="For diners"
+                iosHref={APP_LINKS.iosConsumer}
+                androidHref={APP_LINKS.androidConsumerOptIn}
+                androidLabel="Join Android beta"
+              />
+              <AppCard
+                title="KosherEats Seller"
+                subtitle="For restaurants"
+                iosHref={APP_LINKS.iosSeller}
+                androidHref={APP_LINKS.androidSellerOptIn}
+                androidLabel="Join Android beta"
+              />
+            </div>
+
+            <div className="card p-8 text-center">
+              <Users className="w-8 h-8 text-brand-400 mx-auto mb-4" />
+              <h3 className="text-2xl font-bold mb-2">Help us test on Android</h3>
+              <p className="text-dark-400 mb-6 max-w-xl mx-auto">
+                We need testers to opt in before Google will let us launch publicly.
+                Join the tester group with your Google account, then tap the &ldquo;Join Android beta&rdquo;
+                button above for the app you want to try.
+              </p>
+              <a
+                href={APP_LINKS.groupJoin}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary inline-flex items-center gap-2 text-lg py-4 px-8"
+              >
+                <Users className="w-5 h-5" />
+                Join the tester group
+              </a>
+            </div>
           </div>
         </section>
       </main>
