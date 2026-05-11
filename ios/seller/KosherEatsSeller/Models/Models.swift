@@ -153,6 +153,7 @@ struct Restaurant: Codable, Identifiable {
     var description: String
     var imageUrl: String
     var coverImageUrl: String?
+    var logoUrl: String?
     var phone: String
     var email: String
     var street: String
@@ -186,6 +187,7 @@ struct Restaurant: Codable, Identifiable {
         case ownerId = "owner_id"
         case imageUrl = "image_url"
         case coverImageUrl = "cover_image_url"
+        case logoUrl = "logo_url"
         case zipCode = "zip_code"
         case kosherCertification = "kosher_certification"
         case certifyingAgency = "certifying_agency"

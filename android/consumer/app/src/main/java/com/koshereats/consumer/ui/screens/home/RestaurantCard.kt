@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -64,6 +65,24 @@ fun RestaurantCard(
                         .background(SurfaceDark),
                     contentScale = ContentScale.Crop,
                 )
+
+                // Optional logo badge overlaid on the hero photo (bottom-left).
+                // Sellers upload this during onboarding when their brand mark
+                // is distinct from the food photo — gives an extra at-a-glance
+                // differentiator beyond the restaurant name.
+                if (!restaurant.logoUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = restaurant.logoUrl,
+                        contentDescription = "${restaurant.name} logo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                            .size(36.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(TextWhite),
+                    )
+                }
 
                 if (!restaurant.isOpen) {
                     Box(

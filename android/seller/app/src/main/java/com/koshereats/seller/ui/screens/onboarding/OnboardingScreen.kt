@@ -209,25 +209,50 @@ private fun BasicsStep(
     var description by remember { mutableStateOf(state.description) }
     var phone by remember { mutableStateOf(state.phone) }
     var email by remember { mutableStateOf(state.email) }
+
+    var pictureUrl by remember { mutableStateOf(state.pictureUrl) }
+    var localPictureUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploadingPicture by remember { mutableStateOf(false) }
+    var pictureUploadError by remember { mutableStateOf<String?>(null) }
+
     var logoUrl by remember { mutableStateOf(state.logoUrl) }
     var localLogoUri by remember { mutableStateOf<Uri?>(null) }
     var isUploadingLogo by remember { mutableStateOf(false) }
     var logoUploadError by remember { mutableStateOf<String?>(null) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val colors = fieldColors()
 
-    val logoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
-    ) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
+    val pictureCropLauncher = rememberLauncherForActivityResult(
+        contract = com.canhub.cropper.CropImageContract(),
+    ) { result ->
+        val uri = result.uriContent ?: return@rememberLauncherForActivityResult
+        localPictureUri = uri
+        pictureUploadError = null
+        isUploadingPicture = true
+        scope.launch {
+            val uploaded = uploadRestaurantImage(context, uri, viewModel, kind = "restaurant/cover")
+            if (uploaded != null) {
+                pictureUrl = uploaded
+            } else {
+                pictureUploadError = "Upload failed. Tap to retry."
+            }
+            isUploadingPicture = false
+        }
+    }
+
+    val logoCropLauncher = rememberLauncherForActivityResult(
+        contract = com.canhub.cropper.CropImageContract(),
+    ) { result ->
+        val uri = result.uriContent ?: return@rememberLauncherForActivityResult
         localLogoUri = uri
         logoUploadError = null
         isUploadingLogo = true
         scope.launch {
-            val result = uploadRestaurantLogo(context, uri, viewModel)
-            if (result != null) {
-                logoUrl = result
+            val uploaded = uploadRestaurantImage(context, uri, viewModel, kind = "restaurant/logo")
+            if (uploaded != null) {
+                logoUrl = uploaded
             } else {
                 logoUploadError = "Upload failed. Tap to retry."
             }
@@ -244,70 +269,149 @@ private fun BasicsStep(
     ) {
         Spacer(Modifier.height(4.dp))
 
+        // ─── Required: Restaurant Picture (the hero/cover photo) ───
         Text(
-            "Restaurant Logo",
+            "Restaurant Picture *",
             style = MaterialTheme.typography.titleSmall,
             color = TextWhite,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "Shown to customers in the marketplace and on your restaurant page",
+            "Required — this is the photo shown to customers in the marketplace. Crop to a wide rectangle.",
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(140.dp),
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, DividerColor, RoundedCornerShape(12.dp))
+                .background(SurfaceDark)
+                .clickable(enabled = !isUploadingPicture) {
+                    pictureCropLauncher.launch(
+                        com.canhub.cropper.CropImageContractOptions(
+                            uri = null,
+                            cropImageOptions = com.canhub.cropper.CropImageOptions(
+                                aspectRatioX = 16,
+                                aspectRatioY = 9,
+                                fixAspectRatio = true,
+                                outputCompressFormat = android.graphics.Bitmap.CompressFormat.JPEG,
+                                outputCompressQuality = 85,
+                            ),
+                        ),
+                    )
+                },
             contentAlignment = Alignment.Center,
+        ) {
+            val displayModel = localPictureUri ?: pictureUrl.ifBlank { null }
+            if (displayModel != null) {
+                AsyncImage(
+                    model = displayModel,
+                    contentDescription = "Restaurant picture",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (isUploadingPicture) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(BackgroundBlack.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                    }
+                }
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.AddAPhoto,
+                        contentDescription = "Add picture",
+                        tint = Orange,
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text("Tap to add restaurant picture", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        pictureUploadError?.let {
+            Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+        }
+
+        // ─── Optional: Logo (small badge) ───
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Restaurant Logo (optional)",
+            style = MaterialTheme.typography.titleSmall,
+            color = TextWhite,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Small mark shown as a badge on your card. Use if your logo differs from your picture.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(120.dp)
+                    .size(80.dp)
                     .clip(CircleShape)
                     .border(1.dp, DividerColor, CircleShape)
                     .background(SurfaceDark)
-                    .clickable(enabled = !isUploadingLogo) { logoPicker.launch("image/*") },
+                    .clickable(enabled = !isUploadingLogo) {
+                        logoCropLauncher.launch(
+                            com.canhub.cropper.CropImageContractOptions(
+                                uri = null,
+                                cropImageOptions = com.canhub.cropper.CropImageOptions(
+                                    aspectRatioX = 1,
+                                    aspectRatioY = 1,
+                                    fixAspectRatio = true,
+                                    cropShape = com.canhub.cropper.CropImageView.CropShape.OVAL,
+                                    outputCompressFormat = android.graphics.Bitmap.CompressFormat.JPEG,
+                                    outputCompressQuality = 85,
+                                ),
+                            ),
+                        )
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 val displayModel = localLogoUri ?: logoUrl.ifBlank { null }
-                if (isUploadingLogo && displayModel != null) {
-                    Box(Modifier.fillMaxSize()) {
-                        AsyncImage(
-                            model = displayModel,
-                            contentDescription = "Restaurant logo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        CircularProgressIndicator(
-                            color = Orange,
-                            modifier = Modifier
-                                .size(28.dp)
-                                .align(Alignment.Center),
-                        )
-                    }
-                } else if (isUploadingLogo) {
-                    CircularProgressIndicator(color = Orange, modifier = Modifier.size(28.dp))
-                } else if (displayModel != null) {
+                if (displayModel != null) {
                     AsyncImage(
                         model = displayModel,
                         contentDescription = "Restaurant logo",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Filled.AddAPhoto,
-                            contentDescription = "Add logo",
-                            tint = TextMuted,
-                            modifier = Modifier.size(32.dp),
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text("Add logo", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    if (isUploadingLogo) {
+                        Box(Modifier.fillMaxSize().background(BackgroundBlack.copy(alpha = 0.4f))) {
+                            CircularProgressIndicator(
+                                color = Orange,
+                                modifier = Modifier.size(22.dp).align(Alignment.Center),
+                            )
+                        }
                     }
+                } else {
+                    Icon(
+                        Icons.Filled.AddAPhoto,
+                        contentDescription = "Add logo",
+                        tint = TextMuted,
+                        modifier = Modifier.size(24.dp),
+                    )
                 }
             }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                if (logoUrl.isBlank()) "Skip if your picture already includes your logo." else "Logo added",
+                color = TextMuted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
         }
         logoUploadError?.let {
             Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
@@ -376,11 +480,15 @@ private fun BasicsStep(
                     viewModel.setError("Valid email is required")
                     return@Button
                 }
-                if (isUploadingLogo) {
-                    viewModel.setError("Logo is still uploading…")
+                if (pictureUrl.isBlank()) {
+                    viewModel.setError("Restaurant picture is required")
                     return@Button
                 }
-                viewModel.updateBasics(name, description, logoUrl, phone, email)
+                if (isUploadingPicture || isUploadingLogo) {
+                    viewModel.setError("Photo is still uploading…")
+                    return@Button
+                }
+                viewModel.updateBasics(name, description, pictureUrl, logoUrl, phone, email)
                 viewModel.nextStep()
             },
             modifier = Modifier
@@ -681,6 +789,10 @@ private fun KosherStep(
 
         Button(
             onClick = {
+                if (certificateUrl.isBlank()) {
+                    viewModel.setError("Kosher certificate photo is required")
+                    return@Button
+                }
                 viewModel.updateKosher(certification, agency, cholovYisroel, pasYisroel, glattKosher, certificateUrl)
                 viewModel.nextStep()
             },
@@ -1368,14 +1480,15 @@ private suspend fun uploadCertificate(
     }
 }
 
-private suspend fun uploadRestaurantLogo(
+private suspend fun uploadRestaurantImage(
     context: android.content.Context,
     uri: Uri,
     viewModel: OnboardingViewModel,
+    kind: String,
 ): String? = withContext(Dispatchers.IO) {
     try {
         val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        val presignResponse = viewModel.presignUpload("restaurant/logo", contentType) ?: return@withContext null
+        val presignResponse = viewModel.presignUpload(kind, contentType) ?: return@withContext null
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
         val client = OkHttpClient()
         val request = Request.Builder()
@@ -1386,7 +1499,7 @@ private suspend fun uploadRestaurantLogo(
             if (response.isSuccessful) presignResponse.publicUrl else null
         }
     } catch (e: Exception) {
-        android.util.Log.e("LogoUpload", "exception: ${e.javaClass.name} ${e.message}", e)
+        android.util.Log.e("ImgUpload", "exception: ${e.javaClass.name} ${e.message}", e)
         null
     }
 }

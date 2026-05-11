@@ -389,6 +389,7 @@ actor APIService {
         let name: String
         let description: String
         let imageUrl: String
+        let logoUrl: String
         let phone: String
         let email: String
         let street: String
@@ -397,6 +398,7 @@ actor APIService {
         let zipCode: String
         let kosherCertification: String
         let certifyingAgency: String
+        let kosherCertificateUrl: String
         let cuisineType: [String]
         let isCholovYisroel: Bool
         let isPasYisroel: Bool
@@ -405,9 +407,11 @@ actor APIService {
         enum CodingKeys: String, CodingKey {
             case name, description, phone, email, street, city, state
             case imageUrl = "image_url"
+            case logoUrl = "logo_url"
             case zipCode = "zip_code"
             case kosherCertification = "kosher_certification"
             case certifyingAgency = "certifying_agency"
+            case kosherCertificateUrl = "kosher_certificate_url"
             case cuisineType = "cuisine_type"
             case isCholovYisroel = "is_cholov_yisroel"
             case isPasYisroel = "is_pas_yisroel"

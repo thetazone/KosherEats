@@ -10,6 +10,12 @@ import PhotosUI
 // Single screen, all required fields, no multi-step wizard — keeps the path
 // short for App Review and real first-time sellers. lat/lng default to NYC
 // at the backend; the seller can correct that in Settings later.
+//
+// Required photos: restaurant picture (hero shown on consumer cards) and
+// kosher certificate. Optional: logo badge (small mark distinct from the
+// picture). The PhotosPicker built-in editor lets the seller crop before
+// upload — we keep the picker rendered as fixed-aspect-ratio frames so the
+// preview matches how consumers will see it.
 struct CreateRestaurantView: View {
     @EnvironmentObject var authVM: AuthViewModel
     let onCreated: (Restaurant) -> Void
@@ -29,17 +35,34 @@ struct CreateRestaurantView: View {
     @State private var isPasYisroel = false
     @State private var isGlattKosher = false
 
+    // Required: hero picture shown to consumers on the marketplace card.
+    @State private var pictureItem: PhotosPickerItem?
+    @State private var pictureImage: UIImage?
+    @State private var pictureUrl = ""
+    @State private var isUploadingPicture = false
+    @State private var pictureUploadError: String?
+
+    // Optional: small logo badge shown on the consumer card.
     @State private var logoItem: PhotosPickerItem?
     @State private var logoImage: UIImage?
     @State private var logoUrl = ""
     @State private var isUploadingLogo = false
     @State private var logoUploadError: String?
 
+    // Required: kosher certificate photo.
+    @State private var certItem: PhotosPickerItem?
+    @State private var certImage: UIImage?
+    @State private var kosherCertificateUrl = ""
+    @State private var isUploadingCert = false
+    @State private var certUploadError: String?
+
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
     private var canSubmit: Bool {
-        !isSubmitting && !isUploadingLogo &&
+        !isSubmitting && !isUploadingPicture && !isUploadingLogo && !isUploadingCert &&
+            !pictureUrl.isEmpty &&
+            !kosherCertificateUrl.isEmpty &&
             !name.trimmingCharacters(in: .whitespaces).isEmpty &&
             !street.trimmingCharacters(in: .whitespaces).isEmpty &&
             !city.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -57,7 +80,8 @@ struct CreateRestaurantView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     header
 
-                    logoPickerSection
+                    pictureSection
+                    logoSection
 
                     section("Basics", icon: "storefront.fill") {
                         textField("Restaurant Name *", text: $name)
@@ -103,6 +127,8 @@ struct CreateRestaurantView: View {
                         kosherToggleRow("Cholov Yisroel", isOn: $isCholovYisroel)
                         kosherToggleRow("Pas Yisroel", isOn: $isPasYisroel)
                         kosherToggleRow("Glatt Kosher", isOn: $isGlattKosher)
+
+                        certificatePicker
                     }
 
                     section("Cuisine", icon: "fork.knife") {
@@ -132,76 +158,214 @@ struct CreateRestaurantView: View {
         }
     }
 
-    private var logoPickerSection: some View {
+    // MARK: - Picture (Required, Rectangle)
+
+    private var pictureSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "photo.circle.fill").foregroundColor(.kePrimary)
-                Text("Restaurant Logo")
+                Image(systemName: "photo.fill").foregroundColor(.kePrimary)
+                Text("Restaurant Picture *")
                     .font(.headline)
                     .foregroundColor(.keTextPrimary)
             }
-            Text("Shown to customers in the marketplace and on your restaurant page.")
+            Text("Required — the photo customers see in the marketplace. Tap to pick, then crop in the Photos editor for best fit.")
                 .font(.caption)
                 .foregroundColor(.keTextSecondary)
 
-            HStack {
-                Spacer()
+            PhotosPicker(selection: $pictureItem, matching: .images) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.keCard)
+                        .aspectRatio(16/9, contentMode: .fit)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.keSurface, lineWidth: 1))
+
+                    if let pictureImage {
+                        Image(uiImage: pictureImage)
+                            .resizable()
+                            .scaledToFill()
+                            .aspectRatio(16/9, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        VStack(spacing: 6) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(.kePrimary)
+                            Text("Tap to add restaurant picture")
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+                        }
+                    }
+
+                    if isUploadingPicture {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.black.opacity(0.4))
+                            .aspectRatio(16/9, contentMode: .fit)
+                        ProgressView().tint(.white)
+                    }
+                }
+            }
+            .onChange(of: pictureItem) { _, newItem in
+                Task { await handlePicture(newItem) }
+            }
+
+            if let pictureUploadError {
+                Text(pictureUploadError).font(.caption).foregroundColor(.keError)
+            }
+        }
+    }
+
+    private func handlePicture(_ item: PhotosPickerItem?) async {
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else { return }
+        pictureImage = image
+        pictureUploadError = nil
+        isUploadingPicture = true
+        do {
+            pictureUrl = try await UploadService.shared.uploadImage(image, kind: .restaurantCover)
+        } catch {
+            pictureUploadError = "Upload failed. Tap to retry."
+        }
+        isUploadingPicture = false
+    }
+
+    // MARK: - Logo (Optional, Circle)
+
+    private var logoSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "rosette").foregroundColor(.kePrimary)
+                Text("Restaurant Logo (optional)")
+                    .font(.headline)
+                    .foregroundColor(.keTextPrimary)
+            }
+            Text("Small mark shown as a badge on your card. Skip if your picture already includes your logo.")
+                .font(.caption)
+                .foregroundColor(.keTextSecondary)
+
+            HStack(spacing: 14) {
                 PhotosPicker(selection: $logoItem, matching: .images) {
                     ZStack {
                         Circle()
                             .fill(Color.keCard)
-                            .frame(width: 120, height: 120)
+                            .frame(width: 88, height: 88)
                             .overlay(Circle().stroke(Color.keSurface, lineWidth: 1))
 
                         if let logoImage {
                             Image(uiImage: logoImage)
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 120, height: 120)
+                                .frame(width: 88, height: 88)
                                 .clipShape(Circle())
                         } else {
-                            VStack(spacing: 4) {
-                                Image(systemName: "camera.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.kePrimary)
-                                Text("Add logo")
-                                    .font(.caption)
-                                    .foregroundColor(.keTextSecondary)
-                            }
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.kePrimary)
                         }
 
                         if isUploadingLogo {
-                            Circle().fill(Color.black.opacity(0.4)).frame(width: 120, height: 120)
+                            Circle().fill(Color.black.opacity(0.4)).frame(width: 88, height: 88)
                             ProgressView().tint(.white)
                         }
                     }
                 }
                 .onChange(of: logoItem) { _, newItem in
-                    Task {
-                        guard let newItem,
-                              let data = try? await newItem.loadTransferable(type: Data.self),
-                              let image = UIImage(data: data) else { return }
-                        logoImage = image
-                        logoUploadError = nil
-                        isUploadingLogo = true
-                        do {
-                            logoUrl = try await UploadService.shared.uploadImage(image, kind: .restaurantLogo)
-                        } catch {
-                            logoUploadError = "Upload failed. Tap to retry."
-                        }
-                        isUploadingLogo = false
-                    }
+                    Task { await handleLogo(newItem) }
                 }
+
+                Text(logoUrl.isEmpty ? "Optional — adds a tag to your listing." : "Logo added")
+                    .font(.caption)
+                    .foregroundColor(.keTextSecondary)
                 Spacer()
             }
 
             if let logoUploadError {
-                Text(logoUploadError)
-                    .font(.caption)
-                    .foregroundColor(.keError)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                Text(logoUploadError).font(.caption).foregroundColor(.keError)
             }
         }
+    }
+
+    private func handleLogo(_ item: PhotosPickerItem?) async {
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else { return }
+        logoImage = image
+        logoUploadError = nil
+        isUploadingLogo = true
+        do {
+            logoUrl = try await UploadService.shared.uploadImage(image, kind: .restaurantLogo)
+        } catch {
+            logoUploadError = "Upload failed. Tap to retry."
+        }
+        isUploadingLogo = false
+    }
+
+    // MARK: - Certificate (Required, Rectangle)
+
+    private var certificatePicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Kosher Certificate Photo *")
+                .font(.caption.bold())
+                .foregroundColor(.keTextSecondary)
+            Text("Required — a clear photo of your current kosher certificate.")
+                .font(.caption)
+                .foregroundColor(.keTextSecondary)
+
+            PhotosPicker(selection: $certItem, matching: .images) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.keSurface)
+                        .aspectRatio(4/3, contentMode: .fit)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.keCard, lineWidth: 1))
+
+                    if let certImage {
+                        Image(uiImage: certImage)
+                            .resizable()
+                            .scaledToFill()
+                            .aspectRatio(4/3, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else {
+                        VStack(spacing: 4) {
+                            Image(systemName: "doc.badge.plus")
+                                .font(.system(size: 26))
+                                .foregroundColor(.kePrimary)
+                            Text("Tap to add certificate")
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+                        }
+                    }
+
+                    if isUploadingCert {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.black.opacity(0.4))
+                            .aspectRatio(4/3, contentMode: .fit)
+                        ProgressView().tint(.white)
+                    }
+                }
+            }
+            .onChange(of: certItem) { _, newItem in
+                Task { await handleCert(newItem) }
+            }
+
+            if let certUploadError {
+                Text(certUploadError).font(.caption).foregroundColor(.keError)
+            }
+        }
+    }
+
+    private func handleCert(_ item: PhotosPickerItem?) async {
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else { return }
+        certImage = image
+        certUploadError = nil
+        isUploadingCert = true
+        do {
+            kosherCertificateUrl = try await UploadService.shared.uploadImage(image, kind: .certificate)
+        } catch {
+            certUploadError = "Upload failed. Tap to retry."
+        }
+        isUploadingCert = false
     }
 
     private var header: some View {
@@ -248,7 +412,8 @@ struct CreateRestaurantView: View {
         let body = APIService.CreateRestaurantBody(
             name: name.trimmingCharacters(in: .whitespaces),
             description: description.trimmingCharacters(in: .whitespaces),
-            imageUrl: logoUrl,
+            imageUrl: pictureUrl,
+            logoUrl: logoUrl,
             phone: phone.trimmingCharacters(in: .whitespaces),
             email: email.trimmingCharacters(in: .whitespaces),
             street: street.trimmingCharacters(in: .whitespaces),
@@ -257,6 +422,7 @@ struct CreateRestaurantView: View {
             zipCode: zipCode.trimmingCharacters(in: .whitespaces),
             kosherCertification: kosherCert.rawValue,
             certifyingAgency: certifyingAgency.trimmingCharacters(in: .whitespaces),
+            kosherCertificateUrl: kosherCertificateUrl,
             cuisineType: cuisine,
             isCholovYisroel: isCholovYisroel,
             isPasYisroel: isPasYisroel,

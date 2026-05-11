@@ -33,7 +33,8 @@ data class OnboardingState(
     // Basics
     val restaurantName: String = "",
     val description: String = "",
-    val logoUrl: String = "",
+    val pictureUrl: String = "", // Required hero image shown on consumer cards
+    val logoUrl: String = "",    // Optional small badge overlayed on the card
     val phone: String = "",
     val email: String = "",
     // Address
@@ -64,10 +65,18 @@ class OnboardingViewModel @Inject constructor(
     private val _state = MutableStateFlow(OnboardingState())
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
-    fun updateBasics(name: String, description: String, logoUrl: String, phone: String, email: String) {
+    fun updateBasics(
+        name: String,
+        description: String,
+        pictureUrl: String,
+        logoUrl: String,
+        phone: String,
+        email: String,
+    ) {
         _state.value = _state.value.copy(
             restaurantName = name,
             description = description,
+            pictureUrl = pictureUrl,
             logoUrl = logoUrl,
             phone = phone,
             email = email,
@@ -146,6 +155,14 @@ class OnboardingViewModel @Inject constructor(
     fun submit() {
         val s = _state.value
         if (s.isSubmitting) return
+        if (s.pictureUrl.isBlank()) {
+            _state.value = s.copy(error = "Restaurant picture is required", step = OnboardingStep.BASICS)
+            return
+        }
+        if (s.kosherCertificateUrl.isBlank()) {
+            _state.value = s.copy(error = "Kosher certificate photo is required", step = OnboardingStep.KOSHER)
+            return
+        }
         _state.value = s.copy(isSubmitting = true, error = null)
 
         viewModelScope.launch {
@@ -154,7 +171,8 @@ class OnboardingViewModel @Inject constructor(
                 val req = CreateRestaurantRequest(
                     name = s.restaurantName.trim(),
                     description = s.description.trim(),
-                    imageUrl = s.logoUrl,
+                    imageUrl = s.pictureUrl,
+                    logoUrl = s.logoUrl,
                     phone = s.phone.trim(),
                     email = s.email.trim(),
                     street = s.street.trim(),
@@ -166,6 +184,7 @@ class OnboardingViewModel @Inject constructor(
                     isCholovYisroel = s.isCholovYisroel,
                     isPasYisroel = s.isPasYisroel,
                     isGlattKosher = s.isGlattKosher,
+                    kosherCertificateUrl = s.kosherCertificateUrl,
                 )
 
                 val restResponse = apiService.createRestaurant(req)
@@ -175,12 +194,6 @@ class OnboardingViewModel @Inject constructor(
                         error = "Failed to create restaurant. Please try again.",
                     )
                     return@launch
-                }
-
-                if (s.kosherCertificateUrl.isNotBlank()) {
-                    apiService.updateRestaurant(
-                        mapOf("kosher_certificate_url" to s.kosherCertificateUrl),
-                    )
                 }
 
                 val grouped = s.menuItems.groupBy { it.category.name.lowercase().replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }

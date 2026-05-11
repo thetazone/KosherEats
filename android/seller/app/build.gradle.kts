@@ -89,6 +89,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -131,6 +134,9 @@ dependencies {
 
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
+
+    // Image cropper for restaurant picture / logo uploads
+    implementation("com.vanniktech:android-image-cropper:4.5.0")
 
     // DataStore for local prefs
     implementation("androidx.datastore:datastore-preferences:1.0.0")

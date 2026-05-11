@@ -12,6 +12,17 @@ struct RestaurantCardView: View {
                     .frame(width: 90, height: 90)
                     .cornerRadius(Theme.cornerRadiusMedium)
 
+                // Optional logo badge in the bottom-right of the hero photo.
+                // Sellers upload it during onboarding when their brand mark is
+                // distinct from the picture.
+                if let logoURL = restaurant.logoURL, !logoURL.isEmpty {
+                    RemoteImage(url: logoURL)
+                        .frame(width: 28, height: 28)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                        .offset(x: -4, y: 58)
+                }
+
                 Button {
                     onToggleFavorite?()
                 } label: {

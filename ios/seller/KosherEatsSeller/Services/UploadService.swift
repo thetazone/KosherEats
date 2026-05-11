@@ -13,7 +13,7 @@ final class UploadService {
         case restaurantCover = "restaurant/cover"
         case restaurantLogo = "restaurant/logo"
         case deal = "deal"
-        case certificate = "certificate"
+        case certificate = "restaurant/certificate"
     }
 
     private let plainHttp: URLSession = {
