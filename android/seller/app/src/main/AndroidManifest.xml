@@ -12,10 +12,10 @@
          gallery picker via ActivityResultContracts.GetContent). Strip it
          from the merged manifest so Play Console doesn't require a privacy
          policy for a permission we don't use. -->
-    <uses-permission android:name="android.permission.CAMERA" tools:node="removeAll" />
-    <uses-feature android:name="android.hardware.camera" tools:node="removeAll" />
-    <uses-feature android:name="android.hardware.camera.autofocus" tools:node="removeAll" />
-    <uses-feature android:name="android.hardware.camera.any" tools:node="removeAll" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera.autofocus" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera.any" tools:node="remove" />
 
     <application
         android:name=".KosherEatsSellerApp"
