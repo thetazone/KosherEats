@@ -224,10 +224,10 @@ private fun BasicsStep(
     val scope = rememberCoroutineScope()
     val colors = fieldColors()
 
-    val pictureCropLauncher = rememberLauncherForActivityResult(
-        contract = com.canhub.cropper.CropImageContract(),
-    ) { result ->
-        val uri = result.uriContent ?: return@rememberLauncherForActivityResult
+    val picturePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
         localPictureUri = uri
         pictureUploadError = null
         isUploadingPicture = true
@@ -242,10 +242,10 @@ private fun BasicsStep(
         }
     }
 
-    val logoCropLauncher = rememberLauncherForActivityResult(
-        contract = com.canhub.cropper.CropImageContract(),
-    ) { result ->
-        val uri = result.uriContent ?: return@rememberLauncherForActivityResult
+    val logoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
         localLogoUri = uri
         logoUploadError = null
         isUploadingLogo = true
@@ -277,7 +277,7 @@ private fun BasicsStep(
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "Required — this is the photo shown to customers in the marketplace. Crop to a wide rectangle.",
+            "Required — the photo customers see in the marketplace. Pick a wide, landscape-friendly photo (crop in your Gallery app first for best fit).",
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
@@ -288,20 +288,7 @@ private fun BasicsStep(
                 .clip(RoundedCornerShape(12.dp))
                 .border(1.dp, DividerColor, RoundedCornerShape(12.dp))
                 .background(SurfaceDark)
-                .clickable(enabled = !isUploadingPicture) {
-                    pictureCropLauncher.launch(
-                        com.canhub.cropper.CropImageContractOptions(
-                            uri = null,
-                            cropImageOptions = com.canhub.cropper.CropImageOptions(
-                                aspectRatioX = 16,
-                                aspectRatioY = 9,
-                                fixAspectRatio = true,
-                                outputCompressFormat = android.graphics.Bitmap.CompressFormat.JPEG,
-                                outputCompressQuality = 85,
-                            ),
-                        ),
-                    )
-                },
+                .clickable(enabled = !isUploadingPicture) { picturePicker.launch("image/*") },
             contentAlignment = Alignment.Center,
         ) {
             val displayModel = localPictureUri ?: pictureUrl.ifBlank { null }
@@ -363,21 +350,7 @@ private fun BasicsStep(
                     .clip(CircleShape)
                     .border(1.dp, DividerColor, CircleShape)
                     .background(SurfaceDark)
-                    .clickable(enabled = !isUploadingLogo) {
-                        logoCropLauncher.launch(
-                            com.canhub.cropper.CropImageContractOptions(
-                                uri = null,
-                                cropImageOptions = com.canhub.cropper.CropImageOptions(
-                                    aspectRatioX = 1,
-                                    aspectRatioY = 1,
-                                    fixAspectRatio = true,
-                                    cropShape = com.canhub.cropper.CropImageView.CropShape.OVAL,
-                                    outputCompressFormat = android.graphics.Bitmap.CompressFormat.JPEG,
-                                    outputCompressQuality = 85,
-                                ),
-                            ),
-                        )
-                    },
+                    .clickable(enabled = !isUploadingLogo) { logoPicker.launch("image/*") },
                 contentAlignment = Alignment.Center,
             ) {
                 val displayModel = localLogoUri ?: logoUrl.ifBlank { null }
