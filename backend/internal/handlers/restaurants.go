@@ -83,7 +83,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
-		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
+		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive, &rest.ApprovalStatus,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 
 	if err != nil {
@@ -478,11 +478,11 @@ func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT r.id, r.owner_id, r.name, r.description, r.image_url, r.cover_image_url,
+		`SELECT r.id, r.owner_id, r.name, r.description, r.image_url, r.cover_image_url, r.logo_url,
 		        r.phone, r.email, r.street, r.city, r.state, r.zip_code, r.lat, r.lng,
 		        r.kosher_certification, r.certifying_agency, r.is_cholov_yisroel, r.is_pas_yisroel,
 		        r.is_glatt_kosher, r.kosher_certificate_url, r.cuisine_type, r.rating, r.review_count, r.delivery_fee, r.min_order,
-		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.delivery_mode, r.created_at, r.updated_at
+		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.approval_status, r.delivery_mode, r.created_at, r.updated_at
 		   FROM restaurant_favorites f
 		   JOIN restaurants r ON f.restaurant_id = r.id
 		  WHERE f.user_id = $1
