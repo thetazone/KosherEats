@@ -71,10 +71,13 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			 WHERE id = $5`,
 			req.FirstName, req.LastName, req.Phone, email, user["user_id"])
 		if err != nil {
-			// 23505 = unique_violation — another account owns this email.
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				writeError(w, http.StatusConflict, "that email is already in use")
+				if strings.Contains(pgErr.ConstraintName, "phone") {
+					writeError(w, http.StatusConflict, "that phone number is already linked to another account")
+				} else {
+					writeError(w, http.StatusConflict, "that email is already in use")
+				}
 				return
 			}
 			writeError(w, http.StatusBadRequest, "failed to update profile")
@@ -86,6 +89,11 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			 WHERE id = $4`,
 			req.FirstName, req.LastName, req.Phone, user["user_id"])
 		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				writeError(w, http.StatusConflict, "that phone number is already linked to another account")
+				return
+			}
 			writeError(w, http.StatusBadRequest, "failed to update profile")
 			return
 		}

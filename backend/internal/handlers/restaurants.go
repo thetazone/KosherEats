@@ -16,7 +16,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	lat := r.URL.Query().Get("lat")
 	lng := r.URL.Query().Get("lng")
 
-	const baseQuery = `SELECT id, owner_id, name, description, image_url, cover_image_url,
+	const baseQuery = `SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
@@ -53,7 +53,7 @@ func scanRestaurants(rows pgx.Rows) ([]models.Restaurant, error) {
 	out := []models.Restaurant{}
 	for rows.Next() {
 		var rest models.Restaurant
-		if err := rows.Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
+		if err := rows.Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 			&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 			&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 			&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
@@ -72,13 +72,13 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 
 	var rest models.Restaurant
 	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url,
+		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1 AND is_active = true`, id,
-	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
+	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
@@ -253,7 +253,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url,
+		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
@@ -344,7 +344,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	var familiarRestaurants []models.Restaurant
 	if len(familiarIDs) > 0 {
 		famRows, err := h.db.Pool.Query(ctx,
-			`SELECT id, owner_id, name, description, image_url, cover_image_url,
+			`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
@@ -378,7 +378,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	var unfamiliarRestaurants []models.Restaurant
 	if len(allOrderedIDs) > 0 {
 		unfamRows, err := h.db.Pool.Query(ctx,
-			`SELECT id, owner_id, name, description, image_url, cover_image_url,
+			`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
@@ -394,7 +394,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Guest user or no order history — just serve top-rated restaurants.
 		unfamRows, err := h.db.Pool.Query(ctx,
-			`SELECT id, owner_id, name, description, image_url, cover_image_url,
+			`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,

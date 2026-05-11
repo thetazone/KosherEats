@@ -66,6 +66,8 @@ type UpdateRestaurantRequest struct {
 	IsGlattKosher       *bool   `json:"is_glatt_kosher"`
 	KosherCertificateURL *string `json:"kosher_certificate_url"`
 	DeliveryMode        *string `json:"delivery_mode"`
+	ImageURL            *string `json:"image_url"`
+	LogoURL             *string `json:"logo_url"`
 }
 
 type CreateMenuItemRequest struct {
@@ -114,21 +116,23 @@ func (h *Handler) resolveSellerRestaurant(r *http.Request, userID string) (strin
 // rather than at the DB layer so we can return a useful 400 instead of a
 // generic "null value violates NOT NULL constraint" error.
 type CreateRestaurantRequest struct {
-	Name                string   `json:"name"`
-	Description         string   `json:"description"`
-	ImageURL            string   `json:"image_url"`
-	Phone               string   `json:"phone"`
-	Email               string   `json:"email"`
-	Street              string   `json:"street"`
-	City                string   `json:"city"`
-	State               string   `json:"state"`
-	ZipCode             string   `json:"zip_code"`
-	KosherCertification string   `json:"kosher_certification"`
-	CertifyingAgency    string   `json:"certifying_agency"`
-	CuisineType         []string `json:"cuisine_type"`
-	IsCholovYisroel     bool     `json:"is_cholov_yisroel"`
-	IsPasYisroel        bool     `json:"is_pas_yisroel"`
-	IsGlattKosher       bool     `json:"is_glatt_kosher"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	ImageURL             string   `json:"image_url"`
+	LogoURL              string   `json:"logo_url"`
+	Phone                string   `json:"phone"`
+	Email                string   `json:"email"`
+	Street               string   `json:"street"`
+	City                 string   `json:"city"`
+	State                string   `json:"state"`
+	ZipCode              string   `json:"zip_code"`
+	KosherCertification  string   `json:"kosher_certification"`
+	CertifyingAgency     string   `json:"certifying_agency"`
+	KosherCertificateURL string   `json:"kosher_certificate_url"`
+	CuisineType          []string `json:"cuisine_type"`
+	IsCholovYisroel      bool     `json:"is_cholov_yisroel"`
+	IsPasYisroel         bool     `json:"is_pas_yisroel"`
+	IsGlattKosher        bool     `json:"is_glatt_kosher"`
 }
 
 // CreateRestaurant inserts a new restaurant owned by the calling seller.
@@ -175,6 +179,14 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "kosher_certification is required")
 		return
 	}
+	if req.ImageURL == "" {
+		writeError(w, http.StatusBadRequest, "image_url (restaurant picture) is required")
+		return
+	}
+	if req.KosherCertificateURL == "" {
+		writeError(w, http.StatusBadRequest, "kosher_certificate_url is required")
+		return
+	}
 	// Canonicalize to the form iOS's strict Codable enum expects (e.g. "ou" → "OU").
 	// The seller app sometimes lower-cases user input; without this normalization
 	// the consumer apps fail to decode the entire restaurants list.
@@ -205,28 +217,28 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 	var rest models.Restaurant
 	err = h.db.Pool.QueryRow(r.Context(),
 		`INSERT INTO restaurants (
-			owner_id, name, description, image_url, cover_image_url,
+			owner_id, name, description, image_url, cover_image_url, logo_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active
 		)
-		VALUES ($1, $2, $3, $4, '',
-			$5, $6, $7, $8, $9, $10, $11, $12,
-			$13, $14, $15, $16,
-			$17, '', $18, 0, 0, $19, $20,
-			$21, $22, false, true)
-		RETURNING id, owner_id, name, description, image_url, cover_image_url,
+		VALUES ($1, $2, $3, $4, '', $5,
+			$6, $7, $8, $9, $10, $11, $12, $13,
+			$14, $15, $16, $17,
+			$18, $19, $20, 0, 0, $21, $22,
+			$23, $24, false, true)
+		RETURNING id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at`,
-		user["user_id"], req.Name, req.Description, req.ImageURL,
+		user["user_id"], req.Name, req.Description, req.ImageURL, req.LogoURL,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
 		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
-		req.IsGlattKosher, cuisine, defaultDeliveryFee, defaultMinOrder,
+		req.IsGlattKosher, req.KosherCertificateURL, cuisine, defaultDeliveryFee, defaultMinOrder,
 		defaultEstMin, defaultEstMax,
-	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
+	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
@@ -288,13 +300,13 @@ func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
 
 	var rest models.Restaurant
 	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url,
+		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
-	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
+	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
@@ -376,6 +388,8 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 			is_glatt_kosher        = COALESCE($19, is_glatt_kosher),
 			delivery_mode          = COALESCE($20, delivery_mode),
 			kosher_certificate_url = COALESCE($22, kosher_certificate_url),
+			image_url              = COALESCE($23, image_url),
+			logo_url               = COALESCE($24, logo_url),
 			updated_at             = NOW()
 		 WHERE id = $21`,
 		req.Name, req.Description, req.Phone, req.Email,
@@ -385,7 +399,7 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		req.IsOpen, req.KosherCertification, req.CertifyingAgency,
 		req.IsCholovYisroel, req.IsPasYisroel, req.IsGlattKosher,
 		req.DeliveryMode,
-		restID, req.KosherCertificateURL)
+		restID, req.KosherCertificateURL, req.ImageURL, req.LogoURL)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update restaurant")
@@ -397,13 +411,13 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 	// keeps the seller UI and DB in lockstep).
 	var rest models.Restaurant
 	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url,
+		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
-	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL,
+	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,

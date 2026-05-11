@@ -94,6 +94,7 @@ type Restaurant struct {
 	Description         string              `json:"description"`
 	ImageURL            string              `json:"image_url"`
 	CoverImageURL       string              `json:"cover_image_url,omitempty"`
+	LogoURL             string              `json:"logo_url"`
 	Phone               string              `json:"phone"`
 	Email               string              `json:"email"`
 	Street              string              `json:"street"`
