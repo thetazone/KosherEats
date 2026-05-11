@@ -21,7 +21,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
-		FROM restaurants WHERE is_active = true AND approval_status = 'approved' AND approval_status = 'approved'`
+		FROM restaurants WHERE is_active = true AND approval_status = 'approved'`
 
 	var rows pgx.Rows
 	var err error

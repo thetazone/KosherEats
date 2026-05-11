@@ -277,7 +277,7 @@ func (h *Handler) ListSellerRestaurants(w http.ResponseWriter, r *http.Request) 
 	}
 
 	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url,
+		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
