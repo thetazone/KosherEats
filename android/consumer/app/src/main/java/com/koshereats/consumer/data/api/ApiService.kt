@@ -56,8 +56,8 @@ interface ApiService {
     suspend fun getRestaurants(
         @Query("page") page: Int = 1,
         @Query("per_page") perPage: Int = 20,
-        @Query("latitude") latitude: Double? = null,
-        @Query("longitude") longitude: Double? = null,
+        @Query("lat") latitude: Double? = null,
+        @Query("lng") longitude: Double? = null,
         @Query("cuisine") cuisine: String? = null,
         @Query("dietary_type") dietaryType: String? = null,
         @Query("kosher_certification") kosherCertification: String? = null,
@@ -70,8 +70,8 @@ interface ApiService {
     @GET("restaurants/search")
     suspend fun searchRestaurants(
         @Query("q") query: String,
-        @Query("latitude") latitude: Double? = null,
-        @Query("longitude") longitude: Double? = null,
+        @Query("lat") latitude: Double? = null,
+        @Query("lng") longitude: Double? = null,
     ): Response<List<Restaurant>>
 
     @GET("restaurants/suggested")

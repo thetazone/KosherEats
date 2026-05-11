@@ -574,10 +574,14 @@ private fun DealBanner(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = if (needsMore > 0)
-                    "Add ${needsMore.formatPrice()} more to unlock this deal"
-                else
-                    "Deal applied — discount appears at checkout",
+                text = when {
+                    needsMore <= 0 -> "Deal applied — discount appears at checkout"
+                    minOrder > 0 && currentSubtotal > 0 ->
+                        "Order: ${currentSubtotal.formatPrice()} / ${minOrder.formatPrice()} — add ${needsMore.formatPrice()} more"
+                    minOrder > 0 ->
+                        "Minimum ${minOrder.formatPrice()} — add items to unlock"
+                    else -> "Add items to unlock this deal"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (needsMore > 0) Orange else TextTertiary,
             )

@@ -30,10 +30,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -42,9 +44,11 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -110,6 +114,11 @@ fun HomeScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -378,15 +387,32 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("No restaurants available", style = MaterialTheme.typography.bodyLarge, color = TextMuted)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("Pull down to refresh", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                                if (uiState.error != null) {
+                                    Text(
+                                        uiState.error!!,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = TextMuted,
+                                    )
+                                } else {
+                                    Text("No restaurants available", style = MaterialTheme.typography.bodyLarge, color = TextMuted)
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                OutlinedButton(
+                                    onClick = { viewModel.refresh() },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Orange),
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Try again")
+                                }
                             }
                         }
                     }
                 }
             }
         }
+        } // PullToRefreshBox
 
         // Floating cart button
         AnimatedVisibility(

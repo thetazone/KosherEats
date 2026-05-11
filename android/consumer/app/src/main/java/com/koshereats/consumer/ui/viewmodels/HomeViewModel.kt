@@ -23,6 +23,7 @@ data class HomeUiState(
     val isSuggestedLoading: Boolean = false,
     val searchResults: List<Restaurant> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val isSearching: Boolean = false,
     val searchQuery: String = "",
     val selectedCuisine: CuisineType? = null,
@@ -96,20 +97,17 @@ class HomeViewModel @Inject constructor(
                             } else {
                                 state.allRestaurants + filtered
                             }
-                            // Backend caps at 50 per call and doesn't expose a cursor;
-                            // treat a short page as "that was the last one".
                             state.copy(
                                 allRestaurants = newItems,
                                 isLoading = false,
+                                isRefreshing = false,
                                 currentPage = page,
                                 hasMore = result.data.size >= 50,
                             )
                         }
                     }
                     is Resource.Error -> {
-                        // Stop pagination on error — otherwise HomeScreen's end-of-list
-                        // effect will retry indefinitely against a failing endpoint.
-                        _uiState.update { it.copy(isLoading = false, error = result.message, hasMore = false) }
+                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = false) }
                     }
                 }
             }
@@ -192,7 +190,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun refresh() {
-        _uiState.update { it.copy(currentPage = 1, hasMore = true) }
+        _uiState.update { it.copy(currentPage = 1, hasMore = true, isRefreshing = true, error = null) }
         loadRestaurants(page = 1)
         loadSuggested()
     }

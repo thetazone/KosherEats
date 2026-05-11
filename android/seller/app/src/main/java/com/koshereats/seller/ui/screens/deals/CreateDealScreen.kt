@@ -553,6 +553,26 @@ fun CreateDealScreen(
                 )
             }
 
+            val hasDiscountValue = discountType == DiscountType.BOGO
+                    || (discountValue.toIntOrNull() ?: 0) > 0
+            val canCreate = title.isNotBlank()
+                    && hasDiscountValue
+                    && expiresAtMillis != null
+                    && !state.isCreating
+                    && !isUploadingImage
+                    && (isGeneralDeal || selectedItem != null)
+
+            val validationHint = when {
+                title.isBlank() -> "Enter a deal title"
+                !hasDiscountValue -> "Enter a discount value"
+                !isGeneralDeal && selectedItem == null -> "Select a menu item"
+                isUploadingImage -> "Image upload in progress…"
+                else -> null
+            }
+            if (!canCreate && validationHint != null && !state.isCreating) {
+                Text(validationHint, color = TextMuted, fontSize = 13.sp)
+            }
+
             // Create button
             Spacer(modifier = Modifier.height(8.dp))
             Button(
@@ -591,9 +611,7 @@ fun CreateDealScreen(
                         expiresAt = expiresAtStr,
                     )
                 },
-                enabled = title.isNotBlank() && expiresAtMillis != null && !state.isCreating
-                        && !isUploadingImage
-                        && (isGeneralDeal || selectedItem != null),
+                enabled = canCreate,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
