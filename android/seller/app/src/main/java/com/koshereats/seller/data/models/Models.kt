@@ -155,6 +155,11 @@ data class PhoneStartRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class PhoneStartResponse(
+    val status: String,
+)
+
+@JsonClass(generateAdapter = true)
 data class PhoneVerifyRequest(
     val phone: String,
     val code: String,
