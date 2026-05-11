@@ -209,7 +209,31 @@ private fun BasicsStep(
     var description by remember { mutableStateOf(state.description) }
     var phone by remember { mutableStateOf(state.phone) }
     var email by remember { mutableStateOf(state.email) }
+    var logoUrl by remember { mutableStateOf(state.logoUrl) }
+    var localLogoUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploadingLogo by remember { mutableStateOf(false) }
+    var logoUploadError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val colors = fieldColors()
+
+    val logoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        localLogoUri = uri
+        logoUploadError = null
+        isUploadingLogo = true
+        scope.launch {
+            val result = uploadRestaurantLogo(context, uri, viewModel)
+            if (result != null) {
+                logoUrl = result
+            } else {
+                logoUploadError = "Upload failed. Tap to retry."
+            }
+            isUploadingLogo = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -219,6 +243,75 @@ private fun BasicsStep(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Spacer(Modifier.height(4.dp))
+
+        Text(
+            "Restaurant Logo",
+            style = MaterialTheme.typography.titleSmall,
+            color = TextWhite,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Shown to customers in the marketplace and on your restaurant page",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(140.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .border(1.dp, DividerColor, CircleShape)
+                    .background(SurfaceDark)
+                    .clickable(enabled = !isUploadingLogo) { logoPicker.launch("image/*") },
+                contentAlignment = Alignment.Center,
+            ) {
+                val displayModel = localLogoUri ?: logoUrl.ifBlank { null }
+                if (isUploadingLogo && displayModel != null) {
+                    Box(Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = displayModel,
+                            contentDescription = "Restaurant logo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        CircularProgressIndicator(
+                            color = Orange,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .align(Alignment.Center),
+                        )
+                    }
+                } else if (isUploadingLogo) {
+                    CircularProgressIndicator(color = Orange, modifier = Modifier.size(28.dp))
+                } else if (displayModel != null) {
+                    AsyncImage(
+                        model = displayModel,
+                        contentDescription = "Restaurant logo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.AddAPhoto,
+                            contentDescription = "Add logo",
+                            tint = TextMuted,
+                            modifier = Modifier.size(32.dp),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text("Add logo", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        logoUploadError?.let {
+            Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+        }
 
         OutlinedTextField(
             value = name,
@@ -283,7 +376,11 @@ private fun BasicsStep(
                     viewModel.setError("Valid email is required")
                     return@Button
                 }
-                viewModel.updateBasics(name, description, phone, email)
+                if (isUploadingLogo) {
+                    viewModel.setError("Logo is still uploading…")
+                    return@Button
+                }
+                viewModel.updateBasics(name, description, logoUrl, phone, email)
                 viewModel.nextStep()
             },
             modifier = Modifier
@@ -1267,6 +1364,29 @@ private suspend fun uploadCertificate(
         }
     } catch (e: Exception) {
         android.util.Log.e("CertUpload", "exception: ${e.javaClass.name} ${e.message}", e)
+        null
+    }
+}
+
+private suspend fun uploadRestaurantLogo(
+    context: android.content.Context,
+    uri: Uri,
+    viewModel: OnboardingViewModel,
+): String? = withContext(Dispatchers.IO) {
+    try {
+        val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        val presignResponse = viewModel.presignUpload("restaurant/logo", contentType) ?: return@withContext null
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
+        val client = OkHttpClient()
+        val request = Request.Builder()
+            .url(presignResponse.uploadUrl)
+            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful) presignResponse.publicUrl else null
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("LogoUpload", "exception: ${e.javaClass.name} ${e.message}", e)
         null
     }
 }

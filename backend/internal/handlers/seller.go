@@ -116,6 +116,7 @@ func (h *Handler) resolveSellerRestaurant(r *http.Request, userID string) (strin
 type CreateRestaurantRequest struct {
 	Name                string   `json:"name"`
 	Description         string   `json:"description"`
+	ImageURL            string   `json:"image_url"`
 	Phone               string   `json:"phone"`
 	Email               string   `json:"email"`
 	Street              string   `json:"street"`
@@ -210,17 +211,17 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active
 		)
-		VALUES ($1, $2, $3, '', '',
-			$4, $5, $6, $7, $8, $9, $10, $11,
-			$12, $13, $14, $15,
-			$16, '', $17, 0, 0, $18, $19,
-			$20, $21, false, true)
+		VALUES ($1, $2, $3, $4, '',
+			$5, $6, $7, $8, $9, $10, $11, $12,
+			$13, $14, $15, $16,
+			$17, '', $18, 0, 0, $19, $20,
+			$21, $22, false, true)
 		RETURNING id, owner_id, name, description, image_url, cover_image_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at`,
-		user["user_id"], req.Name, req.Description,
+		user["user_id"], req.Name, req.Description, req.ImageURL,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
 		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
 		req.IsGlattKosher, cuisine, defaultDeliveryFee, defaultMinOrder,

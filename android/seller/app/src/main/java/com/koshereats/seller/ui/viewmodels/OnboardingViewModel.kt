@@ -33,6 +33,7 @@ data class OnboardingState(
     // Basics
     val restaurantName: String = "",
     val description: String = "",
+    val logoUrl: String = "",
     val phone: String = "",
     val email: String = "",
     // Address
@@ -63,10 +64,11 @@ class OnboardingViewModel @Inject constructor(
     private val _state = MutableStateFlow(OnboardingState())
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
-    fun updateBasics(name: String, description: String, phone: String, email: String) {
+    fun updateBasics(name: String, description: String, logoUrl: String, phone: String, email: String) {
         _state.value = _state.value.copy(
             restaurantName = name,
             description = description,
+            logoUrl = logoUrl,
             phone = phone,
             email = email,
         )
@@ -152,6 +154,7 @@ class OnboardingViewModel @Inject constructor(
                 val req = CreateRestaurantRequest(
                     name = s.restaurantName.trim(),
                     description = s.description.trim(),
+                    imageUrl = s.logoUrl,
                     phone = s.phone.trim(),
                     email = s.email.trim(),
                     street = s.street.trim(),

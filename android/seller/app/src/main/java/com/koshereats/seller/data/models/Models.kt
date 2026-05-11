@@ -248,6 +248,7 @@ data class Deal(
 data class CreateRestaurantRequest(
     val name: String,
     val description: String = "",
+    @Json(name = "image_url") val imageUrl: String = "",
     val phone: String,
     val email: String,
     val street: String,

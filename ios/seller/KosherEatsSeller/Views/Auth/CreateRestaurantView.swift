@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 // Shown to authenticated sellers who don't yet own a restaurant — the
 // post-Phase-2 self-service "create your first restaurant" flow. Replaces the
@@ -28,11 +29,17 @@ struct CreateRestaurantView: View {
     @State private var isPasYisroel = false
     @State private var isGlattKosher = false
 
+    @State private var logoItem: PhotosPickerItem?
+    @State private var logoImage: UIImage?
+    @State private var logoUrl = ""
+    @State private var isUploadingLogo = false
+    @State private var logoUploadError: String?
+
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
     private var canSubmit: Bool {
-        !isSubmitting &&
+        !isSubmitting && !isUploadingLogo &&
             !name.trimmingCharacters(in: .whitespaces).isEmpty &&
             !street.trimmingCharacters(in: .whitespaces).isEmpty &&
             !city.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -49,6 +56,8 @@ struct CreateRestaurantView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
                     header
+
+                    logoPickerSection
 
                     section("Basics", icon: "storefront.fill") {
                         textField("Restaurant Name *", text: $name)
@@ -123,6 +132,78 @@ struct CreateRestaurantView: View {
         }
     }
 
+    private var logoPickerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "photo.circle.fill").foregroundColor(.kePrimary)
+                Text("Restaurant Logo")
+                    .font(.headline)
+                    .foregroundColor(.keTextPrimary)
+            }
+            Text("Shown to customers in the marketplace and on your restaurant page.")
+                .font(.caption)
+                .foregroundColor(.keTextSecondary)
+
+            HStack {
+                Spacer()
+                PhotosPicker(selection: $logoItem, matching: .images) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.keCard)
+                            .frame(width: 120, height: 120)
+                            .overlay(Circle().stroke(Color.keSurface, lineWidth: 1))
+
+                        if let logoImage {
+                            Image(uiImage: logoImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                        } else {
+                            VStack(spacing: 4) {
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.kePrimary)
+                                Text("Add logo")
+                                    .font(.caption)
+                                    .foregroundColor(.keTextSecondary)
+                            }
+                        }
+
+                        if isUploadingLogo {
+                            Circle().fill(Color.black.opacity(0.4)).frame(width: 120, height: 120)
+                            ProgressView().tint(.white)
+                        }
+                    }
+                }
+                .onChange(of: logoItem) { _, newItem in
+                    Task {
+                        guard let newItem,
+                              let data = try? await newItem.loadTransferable(type: Data.self),
+                              let image = UIImage(data: data) else { return }
+                        logoImage = image
+                        logoUploadError = nil
+                        isUploadingLogo = true
+                        do {
+                            logoUrl = try await UploadService.shared.uploadImage(image, kind: .restaurantLogo)
+                        } catch {
+                            logoUploadError = "Upload failed. Tap to retry."
+                        }
+                        isUploadingLogo = false
+                    }
+                }
+                Spacer()
+            }
+
+            if let logoUploadError {
+                Text(logoUploadError)
+                    .font(.caption)
+                    .foregroundColor(.keError)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Create your restaurant")
@@ -167,6 +248,7 @@ struct CreateRestaurantView: View {
         let body = APIService.CreateRestaurantBody(
             name: name.trimmingCharacters(in: .whitespaces),
             description: description.trimmingCharacters(in: .whitespaces),
+            imageUrl: logoUrl,
             phone: phone.trimmingCharacters(in: .whitespaces),
             email: email.trimmingCharacters(in: .whitespaces),
             street: street.trimmingCharacters(in: .whitespaces),

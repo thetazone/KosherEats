@@ -388,6 +388,7 @@ actor APIService {
     struct CreateRestaurantBody: Encodable {
         let name: String
         let description: String
+        let imageUrl: String
         let phone: String
         let email: String
         let street: String
@@ -403,6 +404,7 @@ actor APIService {
 
         enum CodingKeys: String, CodingKey {
             case name, description, phone, email, street, city, state
+            case imageUrl = "image_url"
             case zipCode = "zip_code"
             case kosherCertification = "kosher_certification"
             case certifyingAgency = "certifying_agency"
