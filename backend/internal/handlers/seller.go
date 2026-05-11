@@ -239,7 +239,7 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-			est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at`,
+			est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at`,
 		user["user_id"], req.Name, req.Description, req.ImageURL, req.LogoURL,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
 		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
@@ -250,7 +250,7 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
-		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
+		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive, &rest.ApprovalStatus,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 
 	if err != nil {
@@ -281,7 +281,7 @@ func (h *Handler) ListSellerRestaurants(w http.ResponseWriter, r *http.Request) 
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		 est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		 FROM restaurants WHERE owner_id = $1 ORDER BY name`, user["user_id"])
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list restaurants")
@@ -315,14 +315,14 @@ func (h *Handler) GetSellerRestaurant(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
-		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
+		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive, &rest.ApprovalStatus,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 
 	if err != nil {
@@ -371,6 +371,23 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 	if req.KosherCertification != nil {
 		normalized := normalizeKosherCertification(*req.KosherCertification)
 		req.KosherCertification = &normalized
+	}
+
+	// Guard: a seller can't open a restaurant for orders before the platform
+	// admin has approved it. We let them toggle the flag in their UI for
+	// convenience while editing, but the actual marketplace gate is the
+	// is_active + approval_status filter on the consumer endpoints. Reject
+	// here so the seller doesn't think they're live when they're not.
+	if req.IsOpen != nil && *req.IsOpen {
+		var currentStatus string
+		err := h.db.Pool.QueryRow(r.Context(),
+			`SELECT approval_status FROM restaurants WHERE id = $1`, restID,
+		).Scan(&currentStatus)
+		if err == nil && currentStatus != "approved" {
+			writeError(w, http.StatusForbidden,
+				"restaurant must be approved before it can be opened for orders")
+			return
+		}
 	}
 
 	// Use COALESCE so each column only gets overwritten when the client
@@ -426,14 +443,14 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1`, restID,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 		&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 		&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
-		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
+		&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive, &rest.ApprovalStatus,
 		&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "updated but failed to reload restaurant")
@@ -728,6 +745,19 @@ func (h *Handler) ToggleRestaurantStatus(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
+	}
+
+	// Don't let a seller flip "open for orders" until the platform admin
+	// has approved the restaurant. Closing (false) is always allowed.
+	if req.IsOpen {
+		var status string
+		if err := h.db.Pool.QueryRow(r.Context(),
+			`SELECT approval_status FROM restaurants WHERE id = $1`, restID,
+		).Scan(&status); err == nil && status != "approved" {
+			writeError(w, http.StatusForbidden,
+				"restaurant must be approved before it can be opened for orders")
+			return
+		}
 	}
 
 	_, err = h.db.Pool.Exec(r.Context(),

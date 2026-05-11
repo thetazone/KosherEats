@@ -122,45 +122,67 @@ fun DashboardScreen(
                 }
             }
 
-            // Open / Closed toggle
+            // Open / Closed toggle. Disabled while the restaurant is still
+            // awaiting platform approval — the toggle is enforced server-side
+            // too, but greying it out keeps the UI honest about why a seller
+            // can't go live yet.
             val restaurant = authState.restaurant
             if (restaurant != null) {
+                val isApproved = restaurant.approvalStatus.equals("approved", ignoreCase = true)
                 item {
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column {
-                                Text(
-                                    text = if (restaurant.isOpen) "Open for orders" else "Closed",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (restaurant.isOpen) SuccessGreen else ErrorRed,
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column {
+                                    Text(
+                                        text = when {
+                                            !isApproved -> "Pending approval"
+                                            restaurant.isOpen -> "Open for orders"
+                                            else -> "Closed"
+                                        },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = when {
+                                            !isApproved -> Orange
+                                            restaurant.isOpen -> SuccessGreen
+                                            else -> ErrorRed
+                                        },
+                                    )
+                                    Text(
+                                        text = restaurant.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextMuted,
+                                    )
+                                }
+                                Switch(
+                                    checked = isApproved && restaurant.isOpen,
+                                    onCheckedChange = { authViewModel.toggleOpen(it) },
+                                    enabled = isApproved && !authState.isTogglingOpen,
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = TextWhite,
+                                        checkedTrackColor = SuccessGreen,
+                                        uncheckedThumbColor = TextWhite,
+                                        uncheckedTrackColor = TextMuted,
+                                        disabledCheckedTrackColor = TextMuted.copy(alpha = 0.5f),
+                                        disabledUncheckedTrackColor = TextMuted.copy(alpha = 0.5f),
+                                    ),
                                 )
+                            }
+                            if (!isApproved) {
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = restaurant.name,
+                                    text = "We'll email you once the platform admin reviews your application. You can edit your menu and settings while you wait.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextMuted,
                                 )
                             }
-                            Switch(
-                                checked = restaurant.isOpen,
-                                onCheckedChange = { authViewModel.toggleOpen(it) },
-                                enabled = !authState.isTogglingOpen,
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = TextWhite,
-                                    checkedTrackColor = SuccessGreen,
-                                    uncheckedThumbColor = TextWhite,
-                                    uncheckedTrackColor = TextMuted,
-                                ),
-                            )
                         }
                     }
                 }

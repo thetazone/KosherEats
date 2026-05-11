@@ -20,7 +20,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE is_active = true AND approval_status = 'approved'`
 
 	var rows pgx.Rows
@@ -58,7 +58,7 @@ func scanRestaurants(rows pgx.Rows) ([]models.Restaurant, error) {
 			&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
 			&rest.IsCholovYisroel, &rest.IsPasYisroel, &rest.IsGlattKosher, &rest.KosherCertificateURL, &rest.CuisineType,
 			&rest.Rating, &rest.ReviewCount, &rest.DeliveryFee, &rest.MinOrder,
-			&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive,
+			&rest.EstDeliveryMin, &rest.EstDeliveryMax, &rest.IsOpen, &rest.IsActive, &rest.ApprovalStatus,
 			&rest.DeliveryMode, &rest.CreatedAt, &rest.UpdatedAt); err != nil {
 			continue
 		}
@@ -76,7 +76,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1 AND is_active = true AND approval_status = 'approved'`, id,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
@@ -257,7 +257,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		 est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		 FROM restaurants
 		 WHERE is_active = true AND approval_status = 'approved'
 		   AND (name ILIKE $1 OR EXISTS (
@@ -348,7 +348,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
 			  WHERE id = ANY($1) AND is_active = true AND approval_status = 'approved'`, familiarIDs)
 		if err == nil {
@@ -382,7 +382,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
 			  WHERE is_active = true AND approval_status = 'approved' AND id != ALL($1)
 			  ORDER BY rating DESC
@@ -398,7 +398,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-			        est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
 			  WHERE is_active = true AND approval_status = 'approved'
 			  ORDER BY rating DESC

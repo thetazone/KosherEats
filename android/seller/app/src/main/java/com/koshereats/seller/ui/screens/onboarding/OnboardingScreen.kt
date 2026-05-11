@@ -758,12 +758,16 @@ private fun KosherStep(
         LabeledCheckbox("Pas Yisroel", pasYisroel) { pasYisroel = it }
         LabeledCheckbox("Glatt Kosher", glattKosher) { glattKosher = it }
 
+        state.error?.let {
+            Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+        }
+
         Spacer(Modifier.weight(1f))
 
         Button(
             onClick = {
                 if (certificateUrl.isBlank()) {
-                    viewModel.setError("Kosher certificate photo is required")
+                    viewModel.setError("Kosher certificate photo is required — sellers must upload a clear photo of their current cert before continuing.")
                     return@Button
                 }
                 viewModel.updateKosher(certification, agency, cholovYisroel, pasYisroel, glattKosher, certificateUrl)

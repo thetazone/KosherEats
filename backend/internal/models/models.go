@@ -118,6 +118,7 @@ type Restaurant struct {
 	EstDeliveryMax      int                 `json:"est_delivery_max"`
 	IsOpen              bool                `json:"is_open"`
 	IsActive            bool                `json:"is_active"`
+	ApprovalStatus      string              `json:"approval_status,omitempty"`
 	DeliveryMode        string              `json:"delivery_mode"`
 	CreatedAt           time.Time           `json:"created_at"`
 	UpdatedAt           time.Time           `json:"updated_at"`

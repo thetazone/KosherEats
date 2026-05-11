@@ -34,7 +34,7 @@ func (h *Handler) AdminListRestaurants(w http.ResponseWriter, r *http.Request) {
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode, created_at, updated_at
+		 est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		 FROM restaurants ORDER BY name`)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list restaurants")
