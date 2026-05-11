@@ -214,6 +214,11 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 	const defaultEstMin = 25
 	const defaultEstMax = 45
 
+	// New restaurants land pending — the platform admin reviews them via
+	// the emailed magic links before they become visible to consumers.
+	// is_active is gated on the approval decision, not the seller's input.
+	approvalToken := generateApprovalToken()
+
 	var rest models.Restaurant
 	err = h.db.Pool.QueryRow(r.Context(),
 		`INSERT INTO restaurants (
@@ -221,13 +226,15 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
-			est_delivery_min, est_delivery_max, is_open, is_active
+			est_delivery_min, est_delivery_max, is_open, is_active,
+			approval_status, approval_token
 		)
 		VALUES ($1, $2, $3, $4, '', $5,
 			$6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, 0, 0, $21, $22,
-			$23, $24, false, true)
+			$23, $24, false, false,
+			'pending', $25)
 		RETURNING id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
@@ -237,7 +244,7 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
 		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
 		req.IsGlattKosher, req.KosherCertificateURL, cuisine, defaultDeliveryFee, defaultMinOrder,
-		defaultEstMin, defaultEstMax,
+		defaultEstMin, defaultEstMax, approvalToken,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
@@ -252,6 +259,10 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create restaurant")
 		return
 	}
+
+	// Fire off the admin notification asynchronously — never block the
+	// seller's response on a flaky mail server.
+	go h.sendNewSubmissionAdminEmail(rest.ID, approvalToken)
 
 	writeJSON(w, http.StatusCreated, rest)
 }

@@ -86,6 +86,13 @@ func main() {
 
 	// ── Health check (pings DB so load balancers see the app as degraded
 	//    when DB is unreachable) ─────────────────────────────────────────
+	// Restaurant approval magic-link endpoint. Auth gate is the random
+	// approval_token in the URL — only the admin who received the email
+	// knows it. Lives outside /api/v1/admin specifically so AuthMiddleware
+	// doesn't block the link.
+	r.Get("/admin/restaurants/decision", h.RestaurantDecisionPage)
+	r.Post("/admin/restaurants/decision", h.RestaurantDecisionPage)
+
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()

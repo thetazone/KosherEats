@@ -8,6 +8,7 @@ import (
 	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/config"
 	"github.com/koshereats/backend/internal/database"
+	"github.com/koshereats/backend/internal/email"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
 	"github.com/koshereats/backend/internal/sms"
@@ -25,6 +26,7 @@ type Handler struct {
 	checkr   *background.Checkr
 	location *broker.Broker
 	sms      *sms.Client
+	email    *email.Client
 	uber     *uberdirect.Client
 	doordash *doordash.Client
 }
@@ -41,6 +43,7 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 		checkr:   background.New(cfg, db.Pool),
 		location: broker.New(),
 		sms:      sms.New(cfg),
+		email:    email.New(),
 		uber: uberdirect.New(uberdirect.Config{
 			ClientID:     cfg.UberDirectClientID,
 			ClientSecret: cfg.UberDirectClientSecret,
