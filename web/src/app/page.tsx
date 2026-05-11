@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   Truck,
   ShieldCheck,
@@ -16,12 +17,14 @@ import {
 
 const CERTIFICATIONS = ["OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
 
-// Download / beta-tester links. iOS URLs need to be pasted in once the
-// App Store listings are public; until then the buttons point to '#' and
-// stay disabled-looking.
+// Download / beta-tester links. Each Android app has two URLs:
+//   - storeUrl: deep-links into Play Store (best on Android phone)
+//   - optInUrl: web page where the user taps "Become a tester" (use Chrome)
 const APP_LINKS = {
   groupJoin: "https://groups.google.com/g/koshereatstesters",
+  androidConsumerStore: "https://play.google.com/store/apps/details?id=com.koshereats.consumer",
   androidConsumerOptIn: "https://play.google.com/apps/testing/com.koshereats.consumer",
+  androidSellerStore: "https://play.google.com/store/apps/details?id=com.koshereats.seller",
   androidSellerOptIn: "https://play.google.com/apps/testing/com.koshereats.seller",
   iosConsumer: "https://apps.apple.com/us/app/koshereats/id6761736422",
   iosSeller: "https://apps.apple.com/us/app/koshereatsseller/id6762100630",
@@ -93,18 +96,40 @@ const COURIER_BENEFITS = [
   },
 ];
 
+function PlayBadge({ href, line1, line2, variant }: { href: string; line1: string; line2: string; variant: "store" | "optin" }) {
+  const cls = variant === "store"
+    ? "bg-white text-black hover:bg-dark-100"
+    : "bg-brand-500 text-white hover:bg-brand-600";
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`inline-flex items-center gap-3 rounded-xl px-5 py-3 transition-colors ${cls}`}
+    >
+      <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M3.18 23.67c-.37-.2-.63-.55-.63-1.02V1.35C2.55.53 3.32.1 4.04.5l9.56 5.52-2.6 2.52L3.18 23.67zM20.17 10.72l-2.76-1.6-3 2.88 3 2.88 2.76-1.6c.83-.48.83-1.68 0-2.16v-.4zM4.53.69l11.19 11.19-2.4 2.4L4.53.69zM4.53 23.31l8.79-13.59 2.4 2.4L4.53 23.31z" />
+      </svg>
+      <div className="text-left">
+        <div className="text-xs">{line1}</div>
+        <div className="text-lg font-semibold -mt-1">{line2}</div>
+      </div>
+    </a>
+  );
+}
+
 function AppCard({
   title,
   subtitle,
   iosHref,
-  androidHref,
-  androidLabel,
+  androidStoreHref,
+  androidOptInHref,
 }: {
   title: string;
   subtitle: string;
   iosHref: string;
-  androidHref: string;
-  androidLabel: string;
+  androidStoreHref: string;
+  androidOptInHref: string;
 }) {
   const iosReady = iosHref !== "";
   return (
@@ -133,20 +158,8 @@ function AppCard({
             <div className="text-lg font-semibold -mt-1">App Store</div>
           </div>
         </a>
-        <a
-          href={androidHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl px-5 py-3 transition-colors"
-        >
-          <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3.18 23.67c-.37-.2-.63-.55-.63-1.02V1.35C2.55.53 3.32.1 4.04.5l9.56 5.52-2.6 2.52L3.18 23.67zM20.17 10.72l-2.76-1.6-3 2.88 3 2.88 2.76-1.6c.83-.48.83-1.68 0-2.16v-.4zM4.53.69l11.19 11.19-2.4 2.4L4.53.69zM4.53 23.31l8.79-13.59 2.4 2.4L4.53 23.31z" />
-          </svg>
-          <div className="text-left">
-            <div className="text-xs">{androidLabel}</div>
-            <div className="text-lg font-semibold -mt-1">Google Play</div>
-          </div>
-        </a>
+        <PlayBadge href={androidStoreHref} line1="On Android, open" line2="Play Store" variant="store" />
+        <PlayBadge href={androidOptInHref} line1="On web (use Chrome)" line2="Opt in to beta" variant="optin" />
       </div>
     </div>
   );
@@ -195,40 +208,53 @@ export default function Home() {
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-brand-500/5 rounded-full blur-3xl" />
 
           <div className="relative max-w-7xl mx-auto px-4 py-24 md:py-36">
-            <div className="max-w-3xl">
-              <div className="inline-flex items-center gap-2 bg-brand-500/10 border border-brand-500/20 rounded-full px-4 py-1.5 mb-6">
-                <ShieldCheck className="w-4 h-4 text-brand-400" />
-                <span className="text-brand-400 text-sm font-medium">Every restaurant kosher-certified</span>
+            <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-brand-500/10 border border-brand-500/20 rounded-full px-4 py-1.5 mb-6">
+                  <ShieldCheck className="w-4 h-4 text-brand-400" />
+                  <span className="text-brand-400 text-sm font-medium">Every restaurant kosher-certified</span>
+                </div>
+
+                <h1 className="text-5xl md:text-7xl font-extrabold leading-tight mb-6">
+                  Kosher food,{" "}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-brand-600">
+                    delivered.
+                  </span>
+                </h1>
+
+                <p className="text-dark-300 text-xl md:text-2xl mb-10 max-w-2xl leading-relaxed">
+                  Order from verified kosher restaurants near you. OU, OK, Star-K, Kof-K
+                  and more — filter by the certification you trust. Glatt, Cholov Yisroel,
+                  Pas Yisroel, meat, dairy, or pareve.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <a
+                    href="#download"
+                    className="btn-primary text-lg py-4 px-8 flex items-center justify-center gap-2"
+                  >
+                    <Smartphone className="w-5 h-5" />
+                    Download the app
+                  </a>
+                  <a
+                    href="#how-it-works"
+                    className="btn-secondary text-lg py-4 px-8 flex items-center justify-center gap-2"
+                  >
+                    Learn more
+                    <ChevronRight className="w-5 h-5" />
+                  </a>
+                </div>
               </div>
 
-              <h1 className="text-5xl md:text-7xl font-extrabold leading-tight mb-6">
-                Kosher food,{" "}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-brand-600">
-                  delivered.
-                </span>
-              </h1>
-
-              <p className="text-dark-300 text-xl md:text-2xl mb-10 max-w-2xl leading-relaxed">
-                Order from verified kosher restaurants near you. OU, OK, Star-K, Kof-K
-                and more — filter by the certification you trust. Glatt, Cholov Yisroel,
-                Pas Yisroel, meat, dairy, or pareve.
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <a
-                  href="#download"
-                  className="btn-primary text-lg py-4 px-8 flex items-center justify-center gap-2"
-                >
-                  <Smartphone className="w-5 h-5" />
-                  Download the app
-                </a>
-                <a
-                  href="#how-it-works"
-                  className="btn-secondary text-lg py-4 px-8 flex items-center justify-center gap-2"
-                >
-                  Learn more
-                  <ChevronRight className="w-5 h-5" />
-                </a>
+              <div className="hidden lg:block">
+                <Image
+                  src="/k-hero.png"
+                  alt="KosherEats — burger, pizza, and chicken with the K! mascot"
+                  width={1024}
+                  height={500}
+                  priority
+                  className="w-full h-auto rounded-2xl"
+                />
               </div>
             </div>
           </div>
@@ -450,15 +476,15 @@ export default function Home() {
                 title="KosherEats"
                 subtitle="For diners"
                 iosHref={APP_LINKS.iosConsumer}
-                androidHref={APP_LINKS.androidConsumerOptIn}
-                androidLabel="Join Android beta"
+                androidStoreHref={APP_LINKS.androidConsumerStore}
+                androidOptInHref={APP_LINKS.androidConsumerOptIn}
               />
               <AppCard
                 title="KosherEats Seller"
                 subtitle="For restaurants"
                 iosHref={APP_LINKS.iosSeller}
-                androidHref={APP_LINKS.androidSellerOptIn}
-                androidLabel="Join Android beta"
+                androidStoreHref={APP_LINKS.androidSellerStore}
+                androidOptInHref={APP_LINKS.androidSellerOptIn}
               />
             </div>
 
@@ -467,8 +493,9 @@ export default function Home() {
               <h3 className="text-2xl font-bold mb-2">Help us test on Android</h3>
               <p className="text-dark-400 mb-6 max-w-xl mx-auto">
                 We need testers to opt in before Google will let us launch publicly.
-                Join the tester group with your Google account, then tap the &ldquo;Join Android beta&rdquo;
-                button above for the app you want to try.
+                <strong className="text-dark-200"> Use Chrome (not Safari)</strong> &mdash;
+                join the tester group with your Google account, then tap an
+                &ldquo;Opt in to beta&rdquo; button above for the app you want to try.
               </p>
               <a
                 href={APP_LINKS.groupJoin}
