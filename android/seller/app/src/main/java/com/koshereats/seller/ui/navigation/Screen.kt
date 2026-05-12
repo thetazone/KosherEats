@@ -63,6 +63,7 @@ sealed class Screen(
             if (itemId != null) "menu/form?itemId=$itemId" else "menu/form"
     }
     data object CreateDeal : Screen("deals/create", "Create Deal")
+    data object Integrations : Screen("settings/integrations", "Integrations")
 
     companion object {
         val bottomNavItems = listOf(Dashboard, Orders, Menu, Deals, Settings)

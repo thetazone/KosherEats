@@ -178,4 +178,18 @@ interface ApiService {
 
     @POST("devices/register")
     suspend fun registerDevice(@Body body: RegisterDeviceRequest): Response<Map<String, String>>
+
+    // --- POS Integrations ---
+
+    @GET("seller/integrations")
+    suspend fun listIntegrations(): Response<List<POSIntegration>>
+
+    @GET("seller/integrations/clover/connect-url")
+    suspend fun cloverConnectURL(): Response<CloverConnectURLResponse>
+
+    @POST("seller/integrations/{id}/test")
+    suspend fun testIntegration(@Path("id") id: String): Response<Map<String, String>>
+
+    @DELETE("seller/integrations/{id}")
+    suspend fun disconnectIntegration(@Path("id") id: String): Response<Map<String, String>>
 }

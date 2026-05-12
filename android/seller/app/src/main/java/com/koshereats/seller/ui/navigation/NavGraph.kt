@@ -36,6 +36,7 @@ import com.koshereats.seller.ui.screens.menu.MenuManagementScreen
 import com.koshereats.seller.ui.screens.onboarding.OnboardingScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrderDetailScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrdersScreen
+import com.koshereats.seller.ui.screens.settings.IntegrationsScreen
 import com.koshereats.seller.ui.screens.settings.RestaurantSettingsScreen
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.BackgroundDark
@@ -270,6 +271,15 @@ fun NavGraph() {
                             popUpTo(0) { inclusive = true }
                         }
                     },
+                    onIntegrations = {
+                        navController.navigate(Screen.Integrations.route)
+                    },
+                )
+            }
+
+            composable(Screen.Integrations.route) {
+                IntegrationsScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
         }

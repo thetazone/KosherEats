@@ -86,6 +86,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 @Composable
 fun RestaurantSettingsScreen(
     onLogout: () -> Unit,
+    onIntegrations: () -> Unit = {},
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     val authState by authViewModel.state.collectAsState()
@@ -422,7 +423,23 @@ fun RestaurantSettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Integrations (POS — Clover etc.)
+        OutlinedButton(
+            onClick = onIntegrations,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+        ) {
+            Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Integrations", fontWeight = FontWeight.SemiBold)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Logout
         Button(

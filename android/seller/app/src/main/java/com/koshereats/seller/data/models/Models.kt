@@ -355,3 +355,20 @@ data class PresignResponse(
     @Json(name = "expires_in") val expiresIn: Int = 0,
 )
 
+// --- POS Integrations ---
+
+@JsonClass(generateAdapter = true)
+data class POSIntegration(
+    val id: String,
+    val provider: String,
+    @Json(name = "merchant_id") val merchantId: String,
+    @Json(name = "is_active") val isActive: Boolean,
+    @Json(name = "created_at") val createdAt: String,
+    @Json(name = "last_used_at") val lastUsedAt: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class CloverConnectURLResponse(
+    @Json(name = "connect_url") val connectUrl: String,
+)
+
