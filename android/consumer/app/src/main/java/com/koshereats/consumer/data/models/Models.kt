@@ -132,6 +132,10 @@ data class PhoneStartRequest(
     val phone: String,
 )
 
+data class PhoneStartResponse(
+    val status: String = "",
+)
+
 data class PhoneVerifyRequest(
     val phone: String,
     val code: String,
