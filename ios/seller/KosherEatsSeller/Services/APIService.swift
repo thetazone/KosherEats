@@ -467,6 +467,44 @@ actor APIService {
         try await requestVoid("DELETE", path: await sellerPath("/seller/menu/categories/\(id)"))
     }
 
+    // MARK: - POS Integrations
+
+    struct POSIntegration: Codable, Identifiable {
+        let id: String
+        let provider: String
+        let merchantId: String
+        let isActive: Bool
+        let createdAt: Date
+        let lastUsedAt: Date?
+
+        enum CodingKeys: String, CodingKey {
+            case id, provider
+            case merchantId = "merchant_id"
+            case isActive = "is_active"
+            case createdAt = "created_at"
+            case lastUsedAt = "last_used_at"
+        }
+    }
+
+    func listIntegrations() async throws -> [POSIntegration] {
+        try await request("GET", path: await sellerPath("/seller/integrations"))
+    }
+
+    private struct ConnectURLResponse: Codable { let connectUrl: String; enum CodingKeys: String, CodingKey { case connectUrl = "connect_url" } }
+
+    func cloverConnectURL() async throws -> String {
+        let r: ConnectURLResponse = try await request("GET", path: await sellerPath("/seller/integrations/clover/connect-url"))
+        return r.connectUrl
+    }
+
+    func testIntegration(id: String) async throws {
+        try await requestVoid("POST", path: await sellerPath("/seller/integrations/\(id)/test"))
+    }
+
+    func disconnectIntegration(id: String) async throws {
+        try await requestVoid("DELETE", path: await sellerPath("/seller/integrations/\(id)"))
+    }
+
     // MARK: - Menu item modifiers
 
     func createModifierGroup(itemID: String, _ body: ModifierGroupRequest) async throws -> ModifierGroup {

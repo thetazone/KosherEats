@@ -276,6 +276,29 @@ struct RestaurantSettingsView: View {
                         .cornerRadius(12)
                     }
 
+                    // POS Integrations (Clover today; Square/Toast soon)
+                    NavigationLink {
+                        IntegrationsView()
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "printer.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.kePrimary)
+                                .frame(width: 24)
+                            Text("Integrations")
+                                .font(.system(size: 15))
+                                .foregroundColor(.keTextPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13))
+                                .foregroundColor(.keTextMuted)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Color.keCard)
+                        .cornerRadius(12)
+                    }
+
                     // Legal — required in-app by App Store Review
                     // (guideline 5.1.1). External URLs open in Safari
                     // so we don't have to host an in-app webview.
