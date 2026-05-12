@@ -44,3 +44,24 @@ targets:
       - package: GoogleSignIn
         product: GoogleSignIn
       - sdk: AuthenticationServices.framework
+
+# Explicit shared scheme — without this, xcodegen deletes the
+# previously-tracked KosherEatsSeller.xcscheme on every regen, and
+# Xcode Cloud / `xcodebuild -scheme` stop working until someone
+# manually restores the file. Pinned here so the scheme survives
+# regenerations.
+schemes:
+  KosherEatsSeller:
+    build:
+      targets:
+        KosherEatsSeller: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
