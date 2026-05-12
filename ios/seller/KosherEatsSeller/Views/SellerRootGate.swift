@@ -2,12 +2,12 @@ import SwiftUI
 
 // Sits between SellerApp's auth check and MainTabView. After sign-in we ask
 // the backend for the seller's restaurant list — if it's empty, we route to
-// CreateRestaurantView before letting them touch the dashboard (which would
+// SellerOnboardingFlow before letting them touch the dashboard (which would
 // otherwise 404 on every endpoint with "restaurant not found").
 //
-// This is the post-Phase-2 "no admin needed to create my first restaurant"
-// path; previously sellers had to email support to get a restaurant assigned
-// to their account.
+// The 5-step onboarding wizard handles restaurant creation + menu items
+// inline (see SellerOnboardingFlow), so we no longer route through a
+// separate post-create menu builder.
 struct SellerRootGate: View {
     @EnvironmentObject var authVM: AuthViewModel
     @State private var phase: Phase = .loading
@@ -15,7 +15,6 @@ struct SellerRootGate: View {
     enum Phase: Equatable {
         case loading
         case empty
-        case menuBuilder
         case complete
         case has
     }
@@ -29,15 +28,10 @@ struct SellerRootGate: View {
                     ProgressView().tint(.kePrimary)
                 }
             case .empty:
-                CreateRestaurantView { _ in
+                SellerOnboardingFlow { _ in
                     SelectedRestaurant.shared.id = nil
-                    phase = .menuBuilder
+                    phase = .complete
                 }
-            case .menuBuilder:
-                OnboardingMenuBuilderView(
-                    onComplete: { phase = .complete },
-                    onSkip: { phase = .complete }
-                )
             case .complete:
                 OnboardingCompleteView {
                     phase = .has
