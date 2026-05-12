@@ -260,7 +260,18 @@ func main() {
 			r.Get("/", h.ListSellerDeals)
 			r.Delete("/{dealId}", h.DeactivateDeal)
 		})
+
+		r.Route("/integrations", func(r chi.Router) {
+			r.Get("/", h.ListPOSIntegrations)
+			r.Get("/clover/connect-url", h.CloverConnectURL)
+			r.Post("/{id}/test", h.TestPOSIntegration)
+			r.Delete("/{id}", h.DisconnectPOSIntegration)
+		})
 	})
+
+	// POS OAuth callback — public (browser redirect from Clover), guarded
+	// by the HMAC state token rather than session auth.
+	r.Get("/api/v1/integrations/clover/callback", h.CloverOAuthCallback)
 
 	// Deals (public, IP rate limited — consumer "Deals" tab)
 	r.Route("/api/v1/deals", func(r chi.Router) {

@@ -13,6 +13,8 @@ import (
 	"github.com/koshereats/backend/internal/payments"
 	"github.com/koshereats/backend/internal/sms"
 	"github.com/koshereats/backend/internal/doordash"
+	"github.com/koshereats/backend/internal/pos"
+	"github.com/koshereats/backend/internal/pos/clover"
 	"github.com/koshereats/backend/internal/storage"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
@@ -27,8 +29,9 @@ type Handler struct {
 	location *broker.Broker
 	sms      *sms.Client
 	email    *email.Client
-	uber     *uberdirect.Client
-	doordash *doordash.Client
+	uber        *uberdirect.Client
+	doordash    *doordash.Client
+	posRegistry *pos.Registry
 }
 
 func New(db *database.DB, cfg *config.Config) *Handler {
@@ -56,6 +59,7 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 			SigningKey:   cfg.DoorDashSigningKey,
 			WebhookSec:  cfg.DoorDashWebhookSec,
 		}),
+		posRegistry: pos.NewRegistry(db.Pool, clover.New()),
 	}
 }
 

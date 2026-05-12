@@ -853,10 +853,73 @@ func (h *Handler) AcceptOrder(w http.ResponseWriter, r *http.Request) {
 	if !h.updateSellerOrderStatus(w, r, models.OrderAccepted, models.OrderPending) {
 		return
 	}
-	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r, chi.URLParam(r, "id"))
+	orderID := chi.URLParam(r, "id")
+	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r, orderID)
 	if consumerID != "" && restaurantName != "" {
-		go h.notify.OrderAccepted(context.Background(), chi.URLParam(r, "id"), consumerID, restaurantName)
+		go h.notify.OrderAccepted(context.Background(), orderID, consumerID, restaurantName)
 	}
+
+	// Fire-and-forget POS push (Clover, etc). Loads the connected
+	// integration for this restaurant and pushes the order so the kitchen
+	// printer fires. Errors are logged inside PushOrderToPOS — they never
+	// surface to the seller, since the order itself was already accepted.
+	go h.pushAcceptedOrderToPOS(orderID)
+}
+
+func (h *Handler) pushAcceptedOrderToPOS(orderID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var restaurantID string
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT restaurant_id FROM orders WHERE id = $1`, orderID,
+	).Scan(&restaurantID); err != nil {
+		return
+	}
+	order, err := h.loadOrderByID(ctx, orderID)
+	if err != nil {
+		return
+	}
+	h.PushOrderToPOS(ctx, restaurantID, order)
+}
+
+// loadOrderByID is a thin wrapper around the existing order-load helpers
+// for the POS hook. Returns a complete Order with items so adapters can
+// build their payloads.
+func (h *Handler) loadOrderByID(ctx context.Context, orderID string) (*models.Order, error) {
+	var o models.Order
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT o.id, o.user_id, o.restaurant_id, rest.name,
+		        o.status, o.subtotal, o.delivery_fee, o.service_fee,
+		        o.tax, o.total, o.delivery_address, o.delivery_lat, o.delivery_lng,
+		        COALESCE(u.first_name || ' ' || u.last_name, ''), COALESCE(u.phone, '')
+		   FROM orders o
+		   JOIN restaurants rest ON o.restaurant_id = rest.id
+		   LEFT JOIN users u ON o.user_id = u.id
+		  WHERE o.id = $1`, orderID,
+	).Scan(
+		&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName,
+		&o.Status, &o.Subtotal, &o.DeliveryFee, &o.ServiceFee,
+		&o.Tax, &o.Total, &o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
+		&o.CustomerName, &o.CustomerPhone,
+	); err != nil {
+		return nil, err
+	}
+	rows, err := h.db.Pool.Query(ctx,
+		`SELECT id, order_id, menu_item_id, name, price, quantity, COALESCE(notes,'')
+		   FROM order_items WHERE order_id = $1 ORDER BY id`, orderID)
+	if err != nil {
+		return &o, nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var it models.OrderItem
+		if err := rows.Scan(&it.ID, &it.OrderID, &it.MenuItemID, &it.Name, &it.Price, &it.Quantity, &it.Notes); err != nil {
+			continue
+		}
+		o.Items = append(o.Items, it)
+	}
+	return &o, nil
 }
 
 func (h *Handler) MarkOrderPreparing(w http.ResponseWriter, r *http.Request) {
