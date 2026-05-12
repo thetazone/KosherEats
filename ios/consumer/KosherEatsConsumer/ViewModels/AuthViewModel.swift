@@ -224,6 +224,10 @@ class AuthViewModel: ObservableObject {
         do {
             user = try await api.getProfile()
         } catch {
+            // Surface the error so a "?" avatar isn't silent. Decode failures
+            // and transient errors used to disappear here — making the Profile
+            // screen show "?" with no breadcrumb. Console-only; not user-facing.
+            print("⚠️ loadProfile failed: \(error)")
             if case APIError.unauthorized = error {
                 logout()
             }
