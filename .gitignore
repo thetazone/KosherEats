@@ -46,3 +46,8 @@ ios/koshereats-c463e-firebase-adminsdk-fbsvc-c484c84a3c.json
 # Go build cache — do not commit. Added 2026-04-16 after bug-hunt ISS-004 escalated
 # due to 265MB of backend/.gocache/ being scooped by `git add -A`.
 backend/.gocache/
+
+# Compiled Go binary — local build output, ~22MB Mach-O. Was tracked by
+# accident (an initial commit). Now ignored; stop tracking via
+# `git rm --cached backend/api`.
+backend/api
