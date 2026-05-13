@@ -70,6 +70,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Bundle native debug symbols so Play Console can symbolicate native
+            // crashes/ANRs (Stripe/SQLite/Compose pull in .so files transitively).
+            // SYMBOL_TABLE gives function names; FULL adds line numbers (~10× larger).
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
         debug {
             buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
