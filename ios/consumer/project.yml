@@ -71,3 +71,24 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.koshereats.consumer.DeliveryActivity
         MARKETING_VERSION: "4.1"
         CURRENT_PROJECT_VERSION: "1"
+
+# Explicit shared scheme — without this, xcodegen deletes the
+# previously-tracked KosherEatsConsumer.xcscheme on every regen, and
+# Xcode Cloud / `xcodebuild -scheme` stop working until someone
+# manually restores the file. Pinned here so the scheme survives
+# regenerations. Mirrors the same fix added to ios/seller/project.yml.
+schemes:
+  KosherEatsConsumer:
+    build:
+      targets:
+        KosherEatsConsumer: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
