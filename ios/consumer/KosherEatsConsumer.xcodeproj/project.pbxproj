@@ -40,7 +40,10 @@
 		747930ED98E98F155B1360CB /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4E015ADE24EE8A8E26A79D4 /* LocationManager.swift */; };
 		760A7AB095704F53848AA780 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C3889D3852F82910204CE4 /* ProfileView.swift */; };
 		7C66DE74965DF1BD5E62A49B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A97F847B89A67ADE01ABA8 /* Theme.swift */; };
+		7CD5A081DB15E60F0300EF3F /* KosherCertificateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F43D8805A84AC1DD4432DF /* KosherCertificateSheet.swift */; };
 		7DAE855C67AA152C7B800F9B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01335D3A72F34D64E37688CC /* Models.swift */; };
+		84E2E9183EC0AF5FE33CF4DC /* ConnectedAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95243B5D39DC171742669DCF /* ConnectedAccountsView.swift */; };
+		85F211760D969A2D00A1F58E /* DealsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD356B0D26E416B86AF58FBE /* DealsView.swift */; };
 		89426127EA95D498631EC092 /* RestaurantCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F940AFDF40BDC9601E6AD669 /* RestaurantCardView.swift */; };
 		8CB8B16112FD9E146C979DF5 /* PassKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B273206D7F8E69B68E24AD10 /* PassKit.framework */; };
 		955AFAE3B0F5AE925D510190 /* DeliveryActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5306981A9C15467FACCA2132 /* DeliveryActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -77,9 +80,6 @@
 		F5B9155BDD745D05AC32D326 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673D1479DC5055E75F603745 /* AuthViewModel.swift */; };
 		FA068F0755EA02FADC9B891B /* KosherBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1511B23D9E29EA6CF456DB /* KosherBadge.swift */; };
 		FAC2051D7A23C59D1CF3EF0D /* AppleSignInHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78A27F52900C08F18AF0D0D0 /* AppleSignInHelper.swift */; };
-		5D8B42E1F09A73C4B2E61F83 /* KosherCertificateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7C91D4E82F5B06A1D39E70 /* KosherCertificateSheet.swift */; };
-		9F4CE73A28B1D6055E3A9C42 /* ConnectedAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E2FA8B3C71D04E9D5B827A1 /* ConnectedAccountsView.swift */; };
-		B7D3E91A4C2F8D03E5A17B60 /* DealsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F82C6D91E7B4A502D68E13 /* DealsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -150,6 +150,7 @@
 		90906256C000F3E7B2857B94 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		915C21DC5033205D046A0A9C /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
 		93C35EE84FA77BAA6AD45CD7 /* DeliveryAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryAttributes.swift; sourceTree = "<group>"; };
+		95243B5D39DC171742669DCF /* ConnectedAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAccountsView.swift; sourceTree = "<group>"; };
 		97F6096900B2C0DDFC557F5D /* AddressFormSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressFormSheet.swift; sourceTree = "<group>"; };
 		9D438C700F30D552DCA0A050 /* PaymentMethodsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentMethodsView.swift; sourceTree = "<group>"; };
 		A45B39CCD6CEDE249E944741 /* MenuItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemView.swift; sourceTree = "<group>"; };
@@ -163,6 +164,8 @@
 		BEB01527A737127B2C41C3B9 /* KosherEatsConsumer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KosherEatsConsumer.entitlements; sourceTree = "<group>"; };
 		BF1511B23D9E29EA6CF456DB /* KosherBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherBadge.swift; sourceTree = "<group>"; };
 		C2387357CFF98C4B377742F2 /* Country.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Country.swift; sourceTree = "<group>"; };
+		C9F43D8805A84AC1DD4432DF /* KosherCertificateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherCertificateSheet.swift; sourceTree = "<group>"; };
+		CD356B0D26E416B86AF58FBE /* DealsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsView.swift; sourceTree = "<group>"; };
 		D0C3889D3852F82910204CE4 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		D281D6A3AE606A35DE4EE8C8 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		D4EA3F0BB7FA0256BA619A66 /* RestaurantViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantViewModel.swift; sourceTree = "<group>"; };
@@ -177,9 +180,6 @@
 		F7B617D74DB756E030DDC71A /* PushEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEvents.swift; sourceTree = "<group>"; };
 		F940AFDF40BDC9601E6AD669 /* RestaurantCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantCardView.swift; sourceTree = "<group>"; };
 		FF97B3F6AB7D955152EAF372 /* OrderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderDetailView.swift; sourceTree = "<group>"; };
-		3A7C91D4E82F5B06A1D39E70 /* KosherCertificateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherCertificateSheet.swift; sourceTree = "<group>"; };
-		6E2FA8B3C71D04E9D5B827A1 /* ConnectedAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAccountsView.swift; sourceTree = "<group>"; };
-		A3F82C6D91E7B4A502D68E13 /* DealsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -201,8 +201,8 @@
 		1A0A0226E549F02D551039C7 /* Profile */ = {
 			isa = PBXGroup;
 			children = (
-				6E2FA8B3C71D04E9D5B827A1 /* ConnectedAccountsView.swift */,
 				97F6096900B2C0DDFC557F5D /* AddressFormSheet.swift */,
+				95243B5D39DC171742669DCF /* ConnectedAccountsView.swift */,
 				02A6FE9ADAC5E7FD4B950F72 /* NotificationPreferencesView.swift */,
 				9D438C700F30D552DCA0A050 /* PaymentMethodsView.swift */,
 				E3E45C5C966394713AE63B31 /* ProfileOrdersView.swift */,
@@ -303,19 +303,11 @@
 		AC74FEE50AF4261CCD471CE2 /* Restaurant */ = {
 			isa = PBXGroup;
 			children = (
-				3A7C91D4E82F5B06A1D39E70 /* KosherCertificateSheet.swift */,
+				C9F43D8805A84AC1DD4432DF /* KosherCertificateSheet.swift */,
 				A45B39CCD6CEDE249E944741 /* MenuItemView.swift */,
 				07ECCFC7FC5B9A1BCDD2C943 /* RestaurantDetailView.swift */,
 			);
 			path = Restaurant;
-			sourceTree = "<group>";
-		};
-		C4E29B7F3D1A86E4F0B52C91 /* Deals */ = {
-			isa = PBXGroup;
-			children = (
-				A3F82C6D91E7B4A502D68E13 /* DealsView.swift */,
-			);
-			path = Deals;
 			sourceTree = "<group>";
 		};
 		AD637FFDFF0AB02777958738 /* Views */ = {
@@ -326,7 +318,7 @@
 				D7B4563D0127F3B1D95E0A33 /* Cart */,
 				C6765A3CF9499AFD4F29217F /* Chat */,
 				CB1D074048C7C3132C1EC3C0 /* Components */,
-				C4E29B7F3D1A86E4F0B52C91 /* Deals */,
+				E481899275E57CD110FA093F /* Deals */,
 				ABFFC73D2B1AC06F91C6BFA4 /* Home */,
 				9956F23566E7A7BAA18957D8 /* Map */,
 				255B8C81A54A44E676C8A822 /* Orders */,
@@ -419,6 +411,14 @@
 				F43399ABE7040035BB1376F7 /* Localizable.xcstrings */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		E481899275E57CD110FA093F /* Deals */ = {
+			isa = PBXGroup;
+			children = (
+				CD356B0D26E416B86AF58FBE /* DealsView.swift */,
+			);
+			path = Deals;
 			sourceTree = "<group>";
 		};
 		E82223B434C6EEA291CCFD6F /* Services */ = {
@@ -565,12 +565,12 @@
 				3D723789E7DC58FFBA9B9BFC /* CheckoutView.swift in Sources */,
 				66D106AD75B35F584F41ACB9 /* CheckoutViewModel.swift in Sources */,
 				AEBC2B3DE2B0DC6E30103739 /* Colors.swift in Sources */,
-				9F4CE73A28B1D6055E3A9C42 /* ConnectedAccountsView.swift in Sources */,
+				84E2E9183EC0AF5FE33CF4DC /* ConnectedAccountsView.swift in Sources */,
 				392510B6F95C364C82D2A8EE /* ConsumerPhoneOTPView.swift in Sources */,
 				AD4BF730111708F5B170A85D /* Country.swift in Sources */,
 				E6D701811302D70A6470A612 /* CountryCodePickerSheet.swift in Sources */,
 				33AB27B36D5B8602CF5E84B7 /* CourierRatingSheet.swift in Sources */,
-				B7D3E91A4C2F8D03E5A17B60 /* DealsView.swift in Sources */,
+				85F211760D969A2D00A1F58E /* DealsView.swift in Sources */,
 				BD91E1FBCC9144DB4457E448 /* DeliveryActivityManager.swift in Sources */,
 				2C16F01F50E7D16D12007F35 /* DeliveryAttributes.swift in Sources */,
 				6F9E0FBE81C995BCB59F5B61 /* EmailAuthView.swift in Sources */,
@@ -579,7 +579,7 @@
 				71CE7B8B1DAEB5A6D8F15C0C /* HomeView.swift in Sources */,
 				2A61E46162A21B68880BED6C /* KeychainHelper.swift in Sources */,
 				FA068F0755EA02FADC9B891B /* KosherBadge.swift in Sources */,
-				5D8B42E1F09A73C4B2E61F83 /* KosherCertificateSheet.swift in Sources */,
+				7CD5A081DB15E60F0300EF3F /* KosherCertificateSheet.swift in Sources */,
 				C151FA0D2A924B4E9E81EBA3 /* KosherEatsConsumerApp.swift in Sources */,
 				2F98DEED740C75D26424A107 /* KosherFilterSheet.swift in Sources */,
 				E655EA47DF433AEE5D260948 /* LegalURLs.swift in Sources */,

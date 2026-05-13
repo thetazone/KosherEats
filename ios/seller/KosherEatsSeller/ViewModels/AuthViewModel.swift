@@ -199,28 +199,6 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Signs in as the App Store review team's shared demo seller. Paired
-    /// with POST /auth/reviewer/seller on the backend — temporary, meant to
-    /// be deleted once a self-serve demo path exists.
-    func reviewerSellerLogin() async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            let response = try await APIService.shared.reviewerSellerLogin()
-
-            KeychainHelper.save(response.token, forKey: tokenKey)
-            KeychainHelper.save(response.refreshToken, forKey: refreshTokenKey)
-            await APIService.shared.setToken(response.token)
-            await APIService.shared.setRefreshToken(response.refreshToken)
-
-            self.user = response.user
-            self.isAuthenticated = true
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async {
         isLoading = true
         errorMessage = nil

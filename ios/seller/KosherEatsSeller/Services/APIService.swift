@@ -354,17 +354,6 @@ actor APIService {
         return try await request("POST", path: "/auth/phone/verify", body: body)
     }
 
-    // MARK: - App Store Reviewer Bypass
-    //
-    // Signs in as the shared App Review demo seller. Paired with the
-    // /auth/reviewer/seller backend handler — exists only so Apple's
-    // reviewer can reach the dashboard without a human approving a real
-    // seller application. Remove once a self-serve demo path ships.
-
-    func reviewerSellerLogin() async throws -> AuthResponse {
-        try await request("POST", path: "/auth/reviewer/seller", headers: ["X-Reviewer-Secret": "ke-review-2026"])
-    }
-
     // MARK: - Restaurant
 
     // Every seller call below runs through `sellerPath(_:)` which appends the

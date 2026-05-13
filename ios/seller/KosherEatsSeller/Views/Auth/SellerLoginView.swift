@@ -192,28 +192,6 @@ struct SellerLoginView: View {
                                 .padding(.horizontal)
                         }
 
-                        // Temporary — lets Apple's App Review team skip the
-                        // seller-approval gate without a real onboarding flow.
-                        // Calls /auth/reviewer/seller which provisions (or
-                        // reuses) a shared demo seller account + restaurant.
-                        // Remove once we ship a self-serve demo path.
-                        Button {
-                            Task { await authVM.reviewerSellerLogin() }
-                        } label: {
-                            VStack(spacing: 2) {
-                                Text("App Store Reviewer Sign-In")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.keTextSecondary)
-                                Text("Demo seller account — testing only")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.keTextSecondary.opacity(0.7))
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .disabled(authVM.isLoading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 4)
-
                         Spacer().frame(height: 40)
                     }
                     .adaptiveContentWidth(520)
