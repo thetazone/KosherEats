@@ -185,9 +185,14 @@ class AuthViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                android.util.Log.e(
+                    "SellerAuth",
+                    "socialLogin threw: ${e.javaClass.simpleName} — ${e.message}",
+                    e,
+                )
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Connection error. Please check your network.",
+                    error = "Connection error: ${e.javaClass.simpleName} — ${e.message ?: "no message"}",
                 )
             }
         }

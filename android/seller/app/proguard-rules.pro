@@ -24,6 +24,11 @@
 # Kotlin metadata
 -keep class kotlin.Metadata { *; }
 
+# Preserve Throwable subclass names so surfaced exception class names
+# (UnknownHostException, SSLException, JsonDataException, etc.) remain readable
+# in obfuscated release builds for in-UI error diagnostics.
+-keepnames class * extends java.lang.Throwable
+
 # Firebase
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
