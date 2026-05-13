@@ -59,6 +59,11 @@ class CourierRepository @Inject constructor(
         r.body()?.deliveries ?: emptyList()
     }
 
+    suspend fun listUpcoming(): Result<List<AvailableDelivery>> = runCatching {
+        val r = api.listUpcoming()
+        r.body()?.deliveries ?: emptyList()
+    }
+
     suspend fun listActive(): Result<List<CourierOrder>> = runCatching {
         val r = api.listActive()
         r.body()?.orders ?: emptyList()

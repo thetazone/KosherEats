@@ -15,9 +15,14 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import okhttp3.Authenticator
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Route
 import okhttp3.logging.HttpLoggingInterceptor
+import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -41,6 +46,9 @@ class TokenStore @Inject constructor(
 
     suspend fun getAccessToken(): String? =
         dataStore.data.map { it[PrefsKeys.AUTH_TOKEN] }.first()
+
+    suspend fun getRefreshToken(): String? =
+        dataStore.data.map { it[PrefsKeys.REFRESH_TOKEN] }.first()
 
     suspend fun save(access: String, refresh: String) {
         dataStore.edit {
@@ -78,9 +86,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(auth: Interceptor): OkHttpClient {
+    fun provideOkHttpClient(auth: Interceptor, store: TokenStore): OkHttpClient {
         val b = OkHttpClient.Builder()
             .addInterceptor(auth)
+            .authenticator(TokenAuthenticator(store))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -102,4 +111,80 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideApiService(retrofit: Retrofit): ApiService = retrofit.create(ApiService::class.java)
+}
+
+private class TokenAuthenticator(
+    private val store: TokenStore,
+) : Authenticator {
+
+    private val lock = Any()
+
+    private val refreshClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    override fun authenticate(route: Route?, response: okhttp3.Response): okhttp3.Request? {
+        if (responseCount(response) > 1) return null
+
+        val path = response.request.url.encodedPath
+        if (path.contains("/auth/")) return null
+
+        synchronized(lock) {
+            val currentToken = runBlocking { store.getAccessToken() }
+            val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
+
+            if (currentToken != null && currentToken != requestToken) {
+                return response.request.newBuilder()
+                    .header("Authorization", "Bearer $currentToken")
+                    .build()
+            }
+
+            val refreshToken = runBlocking { store.getRefreshToken() } ?: run {
+                runBlocking { store.clear() }
+                return null
+            }
+
+            val newTokens = tryRefresh(refreshToken) ?: run {
+                runBlocking { store.clear() }
+                return null
+            }
+
+            runBlocking { store.save(newTokens.first, newTokens.second) }
+
+            return response.request.newBuilder()
+                .header("Authorization", "Bearer ${newTokens.first}")
+                .build()
+        }
+    }
+
+    private fun tryRefresh(refreshToken: String): Pair<String, String>? {
+        val json = JSONObject().put("refresh_token", refreshToken).toString()
+        val body = json.toRequestBody("application/json".toMediaType())
+        val request = okhttp3.Request.Builder()
+            .url(BuildConfig.BASE_URL + "auth/refresh")
+            .post(body)
+            .build()
+
+        return try {
+            refreshClient.newCall(request).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val parsed = JSONObject(resp.body?.string() ?: return null)
+                    Pair(parsed.getString("token"), parsed.getString("refresh_token"))
+                } else null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun responseCount(response: okhttp3.Response): Int {
+        var count = 1
+        var prior = response.priorResponse
+        while (prior != null) {
+            count++
+            prior = prior.priorResponse
+        }
+        return count
+    }
 }

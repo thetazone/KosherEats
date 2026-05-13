@@ -18,12 +18,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.courier.data.models.CourierProfile
+import com.koshereats.courier.ui.theme.ErrorRed
 import com.koshereats.courier.ui.theme.Orange
 import com.koshereats.courier.ui.theme.SuccessGreen
 import com.koshereats.courier.ui.theme.SurfaceDark
@@ -47,6 +53,7 @@ fun CourierProfileScreen(
 ) {
     val state by authViewModel.state.collectAsState()
     val profile = state.profile ?: return
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -66,6 +73,39 @@ fun CourierProfileScreen(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp),
         ) { Text("Log out", color = Orange, fontWeight = FontWeight.SemiBold) }
+
+        OutlinedButton(
+            onClick = { showDeleteConfirm = true },
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+        ) { Text("Delete account", color = ErrorRed, fontWeight = FontWeight.SemiBold) }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            containerColor = SurfaceDark,
+            title = { Text("Delete account?", color = TextWhite) },
+            text = {
+                Text(
+                    "This permanently deletes your courier account, earnings history, and payout setup. This cannot be undone.",
+                    color = TextTertiary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    authViewModel.deleteAccount()
+                }) {
+                    Text("Delete", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = TextTertiary)
+                }
+            },
+        )
     }
 }
 

@@ -427,6 +427,32 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun deleteAccount(onComplete: (success: Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val response = apiService.deleteAccount()
+                if (response.isSuccessful) {
+                    PushBootstrap.deleteToken()
+                    clearAuth()
+                    sessionManager.signalLogout()
+                    _uiState.update { AuthUiState() }
+                    onComplete(true)
+                } else {
+                    val msg = when (response.code()) {
+                        401 -> "Session expired"
+                        else -> "Couldn't delete account (${response.code()})"
+                    }
+                    _uiState.update { it.copy(isLoading = false, error = msg) }
+                    onComplete(false)
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                onComplete(false)
+            }
+        }
+    }
+
     private suspend fun saveAuth(token: String, refreshToken: String, userId: String) {
         dataStore.edit { prefs ->
             prefs[PrefsKeys.AUTH_TOKEN] = token

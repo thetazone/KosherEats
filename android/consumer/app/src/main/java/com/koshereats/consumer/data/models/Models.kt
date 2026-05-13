@@ -105,6 +105,7 @@ val Address.formatted: String get() = "$streetAddress, $city, $state $zipCode"
 data class LoginRequest(
     val email: String,
     val password: String,
+    val role: String = "consumer",
 )
 
 data class RegisterRequest(
@@ -113,6 +114,7 @@ data class RegisterRequest(
     @SerializedName("first_name") val firstName: String,
     @SerializedName("last_name") val lastName: String,
     val phone: String,
+    val role: String = "consumer",
 )
 
 data class SocialLoginRequest(
@@ -120,6 +122,18 @@ data class SocialLoginRequest(
     val token: String,
     @SerializedName("first_name") val firstName: String,
     @SerializedName("last_name") val lastName: String,
+    val role: String = "consumer",
+)
+
+data class EmailCheckRequest(
+    val email: String,
+    val role: String = "consumer",
+)
+
+data class EmailCheckResponse(
+    val exists: Boolean = false,
+    @SerializedName("has_password") val hasPassword: Boolean = false,
+    @SerializedName("linked_providers") val linkedProviders: List<String> = emptyList(),
 )
 
 data class AuthResponse(
@@ -333,7 +347,9 @@ data class Order(
     val tax: Int = 0,
     val tip: Int = 0,
     val total: Int = 0,
-    @SerializedName("delivery_address") val deliveryAddress: Address = Address(),
+    @SerializedName("delivery_address") val deliveryAddress: String = "",
+    @SerializedName("delivery_lat") val deliveryLat: Double = 0.0,
+    @SerializedName("delivery_lng") val deliveryLng: Double = 0.0,
     @SerializedName("estimated_delivery_time") val estimatedDeliveryTime: String? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
@@ -369,6 +385,8 @@ data class CreateOrderRequest(
      * the delivery window approaches.
      */
     @SerializedName("scheduled_for") val scheduledFor: String? = null,
+    /** "delivery" or "pickup". Defaults to delivery when omitted. */
+    @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
     /** UUID of a deal being redeemed, or null. Must match what was sent to /payments/intent. */
     @SerializedName("applied_deal_id") val appliedDealId: String? = null,
 )
@@ -395,7 +413,71 @@ data class PaymentSheetRequest(
     val tip: Int = 0,
     @SerializedName("restaurant_id") val restaurantId: String = "",
     @SerializedName("delivery_address") val deliveryAddress: String = "",
+    @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
     @SerializedName("applied_deal_id") val appliedDealId: String? = null,
+)
+
+data class CustomerBundle(
+    @SerializedName("customer_id") val customerId: String = "",
+    @SerializedName("ephemeral_key_secret") val ephemeralKeySecret: String = "",
+    @SerializedName("publishable_key") val publishableKey: String = "",
+) {
+    val isStub: Boolean get() = customerId.startsWith("cus_stub_")
+}
+
+data class SetupIntentResponse(
+    @SerializedName("client_secret") val clientSecret: String = "",
+)
+
+data class DeliveryQuoteRequest(
+    @SerializedName("restaurant_id") val restaurantId: String,
+    @SerializedName("delivery_lat") val deliveryLat: Double,
+    @SerializedName("delivery_lng") val deliveryLng: Double,
+    @SerializedName("delivery_address") val deliveryAddress: String,
+)
+
+data class DeliveryQuoteResponse(
+    @SerializedName("delivery_fee") val deliveryFeeCents: Int = 0,
+    @SerializedName("est_minutes") val estMinutes: Int = 0,
+    val provider: String = "",
+    @SerializedName("provider_fee") val providerFeeCents: Int = 0,
+)
+
+data class RateOrderRequest(
+    val stars: Int,
+    val comment: String = "",
+)
+
+data class UpdateCartItemRequest(
+    val quantity: Int,
+    val notes: String = "",
+)
+
+data class NotificationPreferences(
+    @SerializedName("order_updates") val orderUpdates: Boolean = true,
+    @SerializedName("chat_messages") val chatMessages: Boolean = true,
+    val promotions: Boolean = true,
+)
+
+data class LinkedProvider(
+    val provider: String = "",
+    @SerializedName("created_at") val createdAt: String = "",
+) {
+    val displayName: String
+        get() = when (provider) {
+            "apple" -> "Apple"
+            "google" -> "Google"
+            "phone" -> "Phone"
+            else -> provider.replaceFirstChar { it.uppercase() }
+        }
+}
+
+data class LinkProviderRequest(
+    val provider: String,
+    val token: String? = null,
+    val phone: String? = null,
+    val code: String? = null,
+    val nonce: String? = null,
 )
 
 data class PaymentSheetBundle(

@@ -5,7 +5,12 @@ import com.koshereats.courier.data.api.TokenStore
 import com.koshereats.courier.data.models.AuthResponse
 import com.koshereats.courier.data.models.CourierProfile
 import com.koshereats.courier.data.models.CourierRegisterRequest
+import com.koshereats.courier.data.models.EmailCheckRequest
+import com.koshereats.courier.data.models.EmailCheckResponse
 import com.koshereats.courier.data.models.LoginRequest
+import com.koshereats.courier.data.models.PhoneStartRequest
+import com.koshereats.courier.data.models.PhoneVerifyRequest
+import com.koshereats.courier.data.models.SocialLoginRequest
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -61,4 +66,78 @@ class AuthRepository @Inject constructor(
     suspend fun isAuthenticated(): Boolean = tokens.isAuthenticated()
 
     suspend fun logout() = tokens.clear()
+
+    suspend fun deleteAccount(): Result<Unit> = runCatching {
+        val response = api.deleteAccount()
+        if (!response.isSuccessful) {
+            throw IllegalStateException(errorMessage(response, "Couldn't delete account"))
+        }
+        tokens.clear()
+    }
+
+    suspend fun checkEmail(email: String): Result<EmailCheckResponse> = runCatching {
+        val response = api.checkEmail(EmailCheckRequest(email))
+        response.body() ?: throw IllegalStateException(errorMessage(response, "Couldn't check email"))
+    }
+
+    suspend fun startPhoneLogin(phone: String): Result<Unit> = runCatching {
+        val response = api.phoneStart(PhoneStartRequest(phone))
+        if (!response.isSuccessful) {
+            throw IllegalStateException(errorMessage(response, "Couldn't send code"))
+        }
+    }
+
+    suspend fun verifyPhoneLogin(
+        phone: String,
+        code: String,
+        firstName: String? = null,
+        lastName: String? = null,
+        email: String? = null,
+    ): Result<AuthResponse> = runCatching {
+        val response = api.phoneVerify(
+            PhoneVerifyRequest(
+                phone = phone,
+                code = code,
+                firstName = firstName,
+                lastName = lastName,
+                email = email,
+            )
+        )
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            if (body.user.role != "courier") {
+                throw IllegalStateException("This phone number isn't linked to a courier account")
+            }
+            tokens.save(body.token, body.refreshToken)
+            body
+        } else {
+            throw IllegalStateException(errorMessage(response, "Verification failed"))
+        }
+    }
+
+    suspend fun socialLogin(
+        provider: String,
+        token: String,
+        firstName: String,
+        lastName: String,
+    ): Result<AuthResponse> = runCatching {
+        val response = api.socialLogin(
+            SocialLoginRequest(
+                provider = provider,
+                token = token,
+                firstName = firstName,
+                lastName = lastName,
+            )
+        )
+        val body = response.body()
+        if (response.isSuccessful && body != null) {
+            if (body.user.role != "courier") {
+                throw IllegalStateException("This account is not a courier account")
+            }
+            tokens.save(body.token, body.refreshToken)
+            body
+        } else {
+            throw IllegalStateException(errorMessage(response, "Social login failed"))
+        }
+    }
 }

@@ -31,11 +31,49 @@ data class CourierRegisterRequest(
     @SerializedName("first_name") val firstName: String,
     @SerializedName("last_name") val lastName: String,
     val phone: String,
+    val role: String = "courier",
 )
 
 data class LoginRequest(
     val email: String,
     val password: String,
+    val role: String = "courier",
+)
+
+data class RefreshRequest(
+    @SerializedName("refresh_token") val refreshToken: String,
+)
+
+data class EmailCheckRequest(
+    val email: String,
+    val role: String = "courier",
+)
+
+data class EmailCheckResponse(
+    val exists: Boolean = false,
+    @SerializedName("has_password") val hasPassword: Boolean = false,
+    @SerializedName("linked_providers") val linkedProviders: List<String> = emptyList(),
+)
+
+data class PhoneStartRequest(
+    val phone: String,
+)
+
+data class PhoneVerifyRequest(
+    val phone: String,
+    val code: String,
+    val role: String = "courier",
+    @SerializedName("first_name") val firstName: String? = null,
+    @SerializedName("last_name") val lastName: String? = null,
+    val email: String? = null,
+)
+
+data class SocialLoginRequest(
+    val provider: String,
+    val token: String,
+    @SerializedName("first_name") val firstName: String,
+    @SerializedName("last_name") val lastName: String,
+    val role: String = "courier",
 )
 
 data class ApiError(val error: String)

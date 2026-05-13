@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -330,7 +332,8 @@ fun SavedAddressesScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     state.addresses.forEach { address ->
-                        val isDefault = state.selectedAddress?.id == address.id
+                        val isSelected = state.selectedAddress?.id == address.id
+                        val isDefault = address.isDefault
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -338,7 +341,7 @@ fun SavedAddressesScreen(
                                 .clickable { viewModel.selectAddress(address) },
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isDefault) Orange.copy(alpha = 0.08f) else SurfaceDark,
+                                containerColor = if (isSelected) Orange.copy(alpha = 0.08f) else SurfaceDark,
                             ),
                         ) {
                             Row(
@@ -385,6 +388,19 @@ fun SavedAddressesScreen(
                                         color = TextTertiary,
                                         fontSize = 13.sp,
                                         maxLines = 2,
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        if (isDefault) viewModel.clearDefault(address.id)
+                                        else viewModel.setDefault(address.id)
+                                    },
+                                ) {
+                                    Icon(
+                                        if (isDefault) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                        contentDescription = if (isDefault) "Unset default" else "Make default",
+                                        tint = if (isDefault) Orange else TextMuted,
+                                        modifier = Modifier.size(20.dp),
                                     )
                                 }
                                 IconButton(

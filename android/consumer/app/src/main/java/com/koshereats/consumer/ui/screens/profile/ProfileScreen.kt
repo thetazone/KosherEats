@@ -23,12 +23,17 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.LocalMall
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,6 +48,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,9 +71,13 @@ fun ProfileScreen(
     onEditProfileClick: () -> Unit = {},
     onSavedAddressesClick: () -> Unit = {},
     onPaymentMethodsClick: () -> Unit = {},
+    onFavoritesClick: () -> Unit = {},
+    onNotificationPreferencesClick: () -> Unit = {},
+    onConnectedAccountsClick: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -245,6 +257,12 @@ fun ProfileScreen(
                             title = "Payment Methods",
                             onClick = onPaymentMethodsClick,
                         )
+                        HorizontalDivider(color = SurfaceDarkBorder)
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Favorite,
+                            title = "Favorites",
+                            onClick = onFavoritesClick,
+                        )
                     }
                 }
 
@@ -260,14 +278,14 @@ fun ProfileScreen(
                     Column {
                         ProfileMenuItem(
                             icon = Icons.Filled.Notifications,
-                            title = "Notifications",
-                            onClick = {},
+                            title = "Notification Preferences",
+                            onClick = onNotificationPreferencesClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
-                            icon = Icons.Filled.Settings,
-                            title = "Settings",
-                            onClick = {},
+                            icon = Icons.Filled.Link,
+                            title = "Connected Accounts",
+                            onClick = onConnectedAccountsClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
@@ -311,6 +329,39 @@ fun ProfileScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Delete account
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clickable { showDeleteConfirm = true },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Filled.DeleteForever,
+                            contentDescription = null,
+                            tint = ErrorRed,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Delete Account",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = ErrorRed,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // App version
@@ -324,6 +375,33 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            containerColor = SurfaceDark,
+            title = { Text("Delete account?", color = TextWhite) },
+            text = {
+                Text(
+                    "This permanently deletes your account, order history, saved addresses, and payment methods. This cannot be undone.",
+                    color = TextSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    viewModel.deleteAccount()
+                }) {
+                    Text("Delete", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+        )
     }
 }
 

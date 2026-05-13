@@ -31,6 +31,9 @@ interface ApiService {
     @POST("auth/phone/verify")
     suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<LoginResponse>
 
+    @POST("auth/reviewer/seller")
+    suspend fun reviewerLogin(@Header("X-Reviewer-Secret") secret: String): Response<LoginResponse>
+
     // --- Dashboard ---
 
     @GET("seller/dashboard/stats")
@@ -84,6 +87,9 @@ interface ApiService {
     suspend fun createCategory(
         @Body body: Map<String, String>,
     ): Response<SellerMenuCategory>
+
+    @DELETE("seller/menu/categories/{id}")
+    suspend fun deleteCategory(@Path("id") categoryId: String): Response<Unit>
 
     @POST("seller/menu/items")
     suspend fun createMenuItem(

@@ -30,6 +30,13 @@ class AuthViewModel @Inject constructor(
         val profile: CourierProfile? = null,
         val isLoading: Boolean = false,
         val errorMessage: String? = null,
+        // Phone OTP flow
+        val phoneE164: String = "",
+        val otpSent: Boolean = false,
+        val phoneIsSending: Boolean = false,
+        val phoneIsVerifying: Boolean = false,
+        // Email-check unified flow
+        val emailExists: Boolean? = null,
     )
 
     private val _state = MutableStateFlow(State())
@@ -102,5 +109,94 @@ class AuthViewModel @Inject constructor(
             authRepository.logout()
             _state.update { State() } // reset everything
         }
+    }
+
+    fun deleteAccount() {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
+            authRepository.deleteAccount()
+                .onSuccess {
+                    PushBootstrap.deleteToken()
+                    _state.update { State() }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isLoading = false, errorMessage = e.message ?: "Couldn't delete account") }
+                }
+        }
+    }
+
+    fun checkEmail(email: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            authRepository.checkEmail(email)
+                .onSuccess { resp ->
+                    _state.update { it.copy(emailExists = resp.exists) }
+                    onResult(resp.exists)
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(errorMessage = e.message ?: "Couldn't check email") }
+                    onResult(false)
+                }
+        }
+    }
+
+    fun startPhoneLogin(phoneE164: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(phoneIsSending = true, errorMessage = null) }
+            authRepository.startPhoneLogin(phoneE164)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            phoneE164 = phoneE164,
+                            otpSent = true,
+                            phoneIsSending = false,
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(phoneIsSending = false, errorMessage = e.message ?: "Couldn't send code")
+                    }
+                }
+        }
+    }
+
+    fun verifyPhoneLogin(code: String, firstName: String? = null, lastName: String? = null) {
+        val phone = _state.value.phoneE164
+        if (phone.isEmpty()) return
+        viewModelScope.launch {
+            _state.update { it.copy(phoneIsVerifying = true, errorMessage = null) }
+            authRepository.verifyPhoneLogin(phone, code, firstName, lastName)
+                .onSuccess {
+                    _state.update { s -> s.copy(isAuthenticated = true, phoneIsVerifying = false, otpSent = false) }
+                    loadProfile()
+                    PushBootstrap.registerCurrentToken(courierRepository)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(phoneIsVerifying = false, errorMessage = e.message ?: "Verification failed")
+                    }
+                }
+        }
+    }
+
+    fun socialLogin(provider: String, token: String, firstName: String, lastName: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
+            authRepository.socialLogin(provider, token, firstName, lastName)
+                .onSuccess {
+                    _state.update { s -> s.copy(isAuthenticated = true, isLoading = false) }
+                    loadProfile()
+                    PushBootstrap.registerCurrentToken(courierRepository)
+                }
+                .onFailure { e ->
+                    _state.update {
+                        it.copy(isLoading = false, errorMessage = e.message ?: "Social login failed")
+                    }
+                }
+        }
+    }
+
+    fun resetPhoneFlow() {
+        _state.update { it.copy(phoneE164 = "", otpSent = false, errorMessage = null) }
     }
 }

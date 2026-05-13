@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.Address
+import com.koshereats.consumer.data.models.DeliveryQuoteRequest
 import com.koshereats.consumer.data.models.formatted
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.data.models.AddToCartRequest
@@ -49,11 +50,16 @@ sealed interface TipChoice {
 data class CheckoutUiState(
     val addresses: List<Address> = emptyList(),
     val selectedAddress: Address? = null,
+    /** "delivery" or "pickup". Pickup skips address, courier tip, and delivery fee. */
+    val fulfillmentType: String = "delivery",
     val tipChoice: TipChoice = TipChoice.Percent(0.18),
     val customTipText: String = "",
     val scheduledFor: LocalDateTime? = null,
     val bundle: PaymentSheetBundle? = null,
     val isLoadingBundle: Boolean = false,
+    /** Quick delivery-fee preview from /delivery-quote — shown while bundle is loading. */
+    val deliveryQuoteCents: Int? = null,
+    val deliveryQuoteMinutes: Int? = null,
     val isProcessing: Boolean = false,
     val errorMessage: String? = null,
     val placedOrder: Order? = null,
@@ -155,6 +161,45 @@ class CheckoutViewModel @Inject constructor(
 
     fun selectAddress(address: Address) {
         _uiState.update { it.copy(selectedAddress = address) }
+        viewModelScope.launch {
+            fetchDeliveryQuote(address)
+            refreshBundle()
+        }
+    }
+
+    private suspend fun fetchDeliveryQuote(address: Address) {
+        if (_restaurantId.isEmpty()) return
+        if (_uiState.value.fulfillmentType == "pickup") {
+            _uiState.update { it.copy(deliveryQuoteCents = 0, deliveryQuoteMinutes = null) }
+            return
+        }
+        try {
+            val resp = api.getDeliveryQuote(
+                DeliveryQuoteRequest(
+                    restaurantId = _restaurantId,
+                    deliveryLat = address.latitude,
+                    deliveryLng = address.longitude,
+                    deliveryAddress = address.formatted,
+                )
+            )
+            if (resp.isSuccessful) {
+                val q = resp.body()
+                _uiState.update {
+                    it.copy(
+                        deliveryQuoteCents = q?.deliveryFeeCents,
+                        deliveryQuoteMinutes = q?.estMinutes,
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            // Preview is best-effort — bundle has authoritative fees.
+        }
+    }
+
+    fun setFulfillmentType(type: String) {
+        if (type != "delivery" && type != "pickup") return
+        if (_uiState.value.fulfillmentType == type) return
+        _uiState.update { it.copy(fulfillmentType = type) }
         viewModelScope.launch { refreshBundle() }
     }
 
@@ -221,11 +266,13 @@ class CheckoutViewModel @Inject constructor(
         _uiState.update { it.copy(isLoadingBundle = true, errorMessage = null) }
         try {
             val address = _uiState.value.selectedAddress
+            val state = _uiState.value
             val resp = api.createPaymentSheet(
                 PaymentSheetRequest(
-                    tip = currentTipCents(),
+                    tip = if (state.fulfillmentType == "pickup") 0 else currentTipCents(),
                     restaurantId = _restaurantId,
-                    deliveryAddress = address?.formatted.orEmpty(),
+                    deliveryAddress = if (state.fulfillmentType == "pickup") "" else address?.formatted.orEmpty(),
+                    fulfillmentType = state.fulfillmentType,
                     appliedDealId = _appliedDealId,
                 ),
             )
@@ -270,7 +317,9 @@ class CheckoutViewModel @Inject constructor(
 
     private fun finalizeOrder(paymentIntentId: String) {
         val state = _uiState.value
-        val address = state.selectedAddress ?: run {
+        val isPickup = state.fulfillmentType == "pickup"
+        val address = state.selectedAddress
+        if (!isPickup && address == null) {
             _uiState.update { it.copy(errorMessage = "Select a delivery address") }
             return
         }
@@ -286,12 +335,14 @@ class CheckoutViewModel @Inject constructor(
             try {
                 val resp = api.createOrder(
                     CreateOrderRequest(
-                        deliveryAddress = "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
-                        deliveryLat = address.latitude,
-                        deliveryLng = address.longitude,
+                        restaurantId = _restaurantId,
+                        deliveryAddress = if (isPickup) "" else "${address!!.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
+                        deliveryLat = if (isPickup) 0.0 else address!!.latitude,
+                        deliveryLng = if (isPickup) 0.0 else address!!.longitude,
                         paymentIntentId = paymentIntentId,
                         tip = bundle.tip,
                         scheduledFor = scheduledFor,
+                        fulfillmentType = state.fulfillmentType,
                         appliedDealId = _appliedDealId,
                     ),
                 )

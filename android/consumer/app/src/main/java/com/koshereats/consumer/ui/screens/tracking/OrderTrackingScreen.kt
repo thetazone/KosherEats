@@ -145,7 +145,7 @@ fun OrderTrackingScreen(
                         onChat = { onChat(orderId) },
                     )
                 }
-                AddressCard(address = "${order.deliveryAddress.streetAddress}, ${order.deliveryAddress.city}, ${order.deliveryAddress.state} ${order.deliveryAddress.zipCode}")
+                AddressCard(address = order.deliveryAddress)
             }
         }
     }
@@ -156,7 +156,7 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
     val restaurant = order.restaurantLat?.let { lat ->
         order.restaurantLng?.let { lng -> LatLng(lat, lng) }
     }
-    val delivery = LatLng(order.deliveryAddress.latitude, order.deliveryAddress.longitude)
+    val delivery = LatLng(order.deliveryLat, order.deliveryLng)
     val courier = order.courier?.let { c ->
         val lat = c.lat
         val lng = c.lng

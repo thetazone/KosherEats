@@ -18,6 +18,24 @@ interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequest): Response<AuthResponse>
 
+    @POST("auth/refresh")
+    suspend fun refreshToken(@Body body: RefreshRequest): Response<AuthResponse>
+
+    @POST("auth/email/check")
+    suspend fun checkEmail(@Body body: EmailCheckRequest): Response<EmailCheckResponse>
+
+    @POST("auth/phone/start")
+    suspend fun phoneStart(@Body body: PhoneStartRequest): Response<Map<String, String>>
+
+    @POST("auth/phone/verify")
+    suspend fun phoneVerify(@Body body: PhoneVerifyRequest): Response<AuthResponse>
+
+    @POST("auth/social")
+    suspend fun socialLogin(@Body body: SocialLoginRequest): Response<AuthResponse>
+
+    @DELETE("user/account")
+    suspend fun deleteAccount(): Response<Unit>
+
     // ── Onboarding / profile ─────────────────────────────────
 
     @GET("courier/profile")
@@ -50,6 +68,9 @@ interface ApiService {
 
     @GET("courier/orders/history")
     suspend fun listHistory(): Response<HistoryResponse>
+
+    @GET("courier/deliveries/upcoming")
+    suspend fun listUpcoming(): Response<AvailableDeliveriesResponse>
 
     @POST("courier/orders/{id}/claim")
     suspend fun claim(@Path("id") id: String): Response<Map<String, String>>

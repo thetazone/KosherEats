@@ -42,6 +42,7 @@ class DashboardViewModel @Inject constructor(
     data class State(
         val isOnline: Boolean = false,
         val available: List<AvailableDelivery> = emptyList(),
+        val upcoming: List<AvailableDelivery> = emptyList(),
         val active: List<CourierOrder> = emptyList(),
         val isLoading: Boolean = false,
         val isSubmitting: Boolean = false,
@@ -115,11 +116,13 @@ class DashboardViewModel @Inject constructor(
         _state.update { it.copy(isLoading = true, errorMessage = null) }
         val availableResult = repo.listAvailable()
         val activeResult = repo.listActive()
+        val upcomingResult = repo.listUpcoming()
         _state.update { st ->
             st.copy(
                 isLoading = false,
                 available = availableResult.getOrNull() ?: st.available,
                 active = activeResult.getOrNull() ?: st.active,
+                upcoming = upcomingResult.getOrNull() ?: st.upcoming,
             )
         }
     }
@@ -163,6 +166,7 @@ class DashboardViewModel @Inject constructor(
         _state.update { it.copy(isLoading = true, errorMessage = null) }
         val availableResult = repo.listAvailable()
         val activeResult = repo.listActive()
+        val upcomingResult = repo.listUpcoming()
         val bothFailed = availableResult.isFailure && activeResult.isFailure
         if (bothFailed) {
             consecutiveFailures++
@@ -174,6 +178,7 @@ class DashboardViewModel @Inject constructor(
                 isLoading = false,
                 available = availableResult.getOrNull() ?: st.available,
                 active = activeResult.getOrNull() ?: st.active,
+                upcoming = upcomingResult.getOrNull() ?: st.upcoming,
                 connectionLost = consecutiveFailures >= 3,
             )
         }

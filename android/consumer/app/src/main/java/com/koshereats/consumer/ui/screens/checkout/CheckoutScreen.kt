@@ -159,25 +159,34 @@ fun CheckoutScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState()),
         ) {
-            AddressCard(
-                address = ui.selectedAddress?.formatted,
-                onChangeClick = { showAddressSheet = true },
+            FulfillmentToggle(
+                selected = ui.fulfillmentType,
+                onSelect = vm::setFulfillmentType,
             )
             Spacer(Modifier.height(16.dp))
+            if (ui.fulfillmentType == "delivery") {
+                AddressCard(
+                    address = ui.selectedAddress?.formatted,
+                    onChangeClick = { showAddressSheet = true },
+                )
+                Spacer(Modifier.height(16.dp))
+            }
             DeliveryTimeCard(
                 scheduledFor = ui.scheduledFor,
                 onAsapClick = { vm.updateScheduledFor(null) },
                 onScheduleClick = { showScheduleSheet = true },
             )
             Spacer(Modifier.height(16.dp))
-            TipSelectorCard(
-                tipChoice = ui.tipChoice,
-                customTipText = ui.customTipText,
-                subtotalCents = ui.bundle?.subtotal ?: 0,
-                onSelect = vm::selectTip,
-                onCustomChange = vm::updateCustomTip,
-            )
-            Spacer(Modifier.height(16.dp))
+            if (ui.fulfillmentType == "delivery") {
+                TipSelectorCard(
+                    tipChoice = ui.tipChoice,
+                    customTipText = ui.customTipText,
+                    subtotalCents = ui.bundle?.subtotal ?: 0,
+                    onSelect = vm::selectTip,
+                    onCustomChange = vm::updateCustomTip,
+                )
+                Spacer(Modifier.height(16.dp))
+            }
 
             if (ui.isLoadingBundle && ui.bundle == null) {
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -201,7 +210,9 @@ fun CheckoutScreen(
         }
 
         // Sticky pay button
-        val canPay = ui.bundle != null && ui.selectedAddress != null && !ui.isProcessing
+        val canPay = ui.bundle != null &&
+            (ui.fulfillmentType == "pickup" || ui.selectedAddress != null) &&
+            !ui.isProcessing
         val totalLabel = ui.bundle?.let { it.total.formatPrice() } ?: "--"
         Button(
             onClick = { vm.onPayTapped() },
@@ -256,6 +267,62 @@ fun CheckoutScreen(
             },
             onDismiss = { showScheduleSheet = false },
         )
+    }
+}
+
+@Composable
+private fun FulfillmentToggle(selected: String, onSelect: (String) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FulfillmentTile(
+            label = "Delivery",
+            selected = selected == "delivery",
+            onClick = { onSelect("delivery") },
+            modifier = Modifier.weight(1f),
+        )
+        FulfillmentTile(
+            label = "Pickup",
+            selected = selected == "pickup",
+            onClick = { onSelect("pickup") },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun FulfillmentTile(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier
+            .height(56.dp)
+            .clickable(onClick = onClick)
+            .then(
+                if (selected) Modifier.border(2.dp, Orange, RoundedCornerShape(12.dp))
+                else Modifier
+            ),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Orange.copy(alpha = 0.12f) else SurfaceDark,
+        ),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                color = if (selected) Orange else TextWhite,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 

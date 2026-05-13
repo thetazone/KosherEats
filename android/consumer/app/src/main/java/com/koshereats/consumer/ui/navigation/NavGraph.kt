@@ -474,6 +474,15 @@ fun KosherEatsNavHost() {
                     onPaymentMethodsClick = {
                         navController.navigate(Screen.PaymentMethods.route)
                     },
+                    onFavoritesClick = {
+                        navController.navigate(Screen.Favorites.route)
+                    },
+                    onNotificationPreferencesClick = {
+                        navController.navigate(Screen.NotificationPreferences.route)
+                    },
+                    onConnectedAccountsClick = {
+                        navController.navigate(Screen.ConnectedAccounts.route)
+                    },
                     viewModel = authViewModel,
                 )
             }
@@ -493,6 +502,38 @@ fun KosherEatsNavHost() {
 
             composable(Screen.PaymentMethods.route) {
                 PaymentMethodsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Screen.Favorites.route) {
+                com.koshereats.consumer.ui.screens.profile.FavoritesScreen(
+                    onBack = { navController.popBackStack() },
+                    onRestaurantClick = { id ->
+                        navController.navigate(Screen.Restaurant.createRoute(id))
+                    },
+                )
+            }
+
+            composable(Screen.NotificationPreferences.route) {
+                com.koshereats.consumer.ui.screens.profile.NotificationPreferencesScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Screen.ConnectedAccounts.route) {
+                com.koshereats.consumer.ui.screens.profile.ConnectedAccountsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Screen.Rating.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val orderId = backStackEntry.arguments?.getString("orderId").orEmpty()
+                com.koshereats.consumer.ui.screens.orders.RatingScreen(
+                    orderId = orderId,
                     onBack = { navController.popBackStack() },
                 )
             }

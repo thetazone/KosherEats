@@ -30,6 +30,9 @@ interface ApiService {
     @POST("auth/phone/verify")
     suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<AuthResponse>
 
+    @POST("auth/email/check")
+    suspend fun checkEmail(@Body request: EmailCheckRequest): Response<EmailCheckResponse>
+
     // ── User ──────────────────────────────────────────────
 
     @GET("user/profile")
@@ -49,6 +52,30 @@ interface ApiService {
 
     @DELETE("user/addresses/{id}")
     suspend fun deleteAddress(@Path("id") addressId: String): Response<Unit>
+
+    @PATCH("user/addresses/{id}/default")
+    suspend fun setDefaultAddress(@Path("id") addressId: String): Response<Unit>
+
+    @DELETE("user/addresses/{id}/default")
+    suspend fun clearDefaultAddress(@Path("id") addressId: String): Response<Unit>
+
+    @DELETE("user/account")
+    suspend fun deleteAccount(): Response<Unit>
+
+    @GET("user/notification-preferences")
+    suspend fun getNotificationPreferences(): Response<NotificationPreferences>
+
+    @PUT("user/notification-preferences")
+    suspend fun updateNotificationPreferences(@Body prefs: NotificationPreferences): Response<NotificationPreferences>
+
+    @GET("user/linked-providers")
+    suspend fun getLinkedProviders(): Response<List<LinkedProvider>>
+
+    @POST("user/linked-providers")
+    suspend fun linkProvider(@Body request: LinkProviderRequest): Response<Unit>
+
+    @DELETE("user/linked-providers/{provider}")
+    suspend fun unlinkProvider(@Path("provider") provider: String): Response<Unit>
 
     // ── Restaurants ───────────────────────────────────────
 
@@ -93,13 +120,47 @@ interface ApiService {
     @POST("cart/items")
     suspend fun addToCart(@Body request: AddToCartRequest): Response<ServerCart>
 
+    @PATCH("cart/items/{id}")
+    suspend fun updateCartItem(
+        @Path("id") itemId: String,
+        @Body request: UpdateCartItemRequest,
+    ): Response<ServerCart>
+
+    @DELETE("cart/items/{id}")
+    suspend fun removeCartItem(@Path("id") itemId: String): Response<ServerCart>
+
     @DELETE("cart")
     suspend fun clearServerCart(): Response<Unit>
+
+    // ── Favorites ─────────────────────────────────────────
+
+    @GET("favorites")
+    suspend fun getFavorites(): Response<List<Restaurant>>
+
+    @GET("favorites/ids")
+    suspend fun getFavoriteIds(): Response<List<String>>
+
+    @POST("favorites/{restaurant_id}")
+    suspend fun addFavorite(@Path("restaurant_id") restaurantId: String): Response<Map<String, String>>
+
+    @DELETE("favorites/{restaurant_id}")
+    suspend fun removeFavorite(@Path("restaurant_id") restaurantId: String): Response<Map<String, String>>
 
     // ── Payments ──────────────────────────────────────────
 
     @POST("payments/intent")
     suspend fun createPaymentSheet(@Body request: PaymentSheetRequest): Response<PaymentSheetBundle>
+
+    @GET("payments/customer")
+    suspend fun getPaymentCustomer(): Response<CustomerBundle>
+
+    @POST("payments/setup-intent")
+    suspend fun createSetupIntent(@Body body: Map<String, String> = emptyMap()): Response<SetupIntentResponse>
+
+    // ── Delivery quote ────────────────────────────────────
+
+    @POST("delivery-quote/")
+    suspend fun getDeliveryQuote(@Body request: DeliveryQuoteRequest): Response<DeliveryQuoteResponse>
 
     // ── Orders ────────────────────────────────────────────
 
@@ -117,6 +178,12 @@ interface ApiService {
 
     @PATCH("orders/{id}/cancel")
     suspend fun cancelOrder(@Path("id") orderId: String): Response<Order>
+
+    @POST("orders/{id}/rating")
+    suspend fun rateOrder(
+        @Path("id") orderId: String,
+        @Body request: RateOrderRequest,
+    ): Response<Unit>
 
     // ── Order chat ──────────────────────────────────────────
 

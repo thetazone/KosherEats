@@ -108,6 +108,36 @@ class AddressViewModel @Inject constructor(
         }
     }
 
+    fun setDefault(addressId: String) {
+        viewModelScope.launch {
+            try {
+                val response = apiService.setDefaultAddress(addressId)
+                if (response.isSuccessful) {
+                    _uiState.update { state ->
+                        val updated = state.addresses.map { it.copy(isDefault = it.id == addressId) }
+                        state.copy(addresses = updated)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun clearDefault(addressId: String) {
+        viewModelScope.launch {
+            try {
+                val response = apiService.clearDefaultAddress(addressId)
+                if (response.isSuccessful) {
+                    _uiState.update { state ->
+                        val updated = state.addresses.map {
+                            if (it.id == addressId) it.copy(isDefault = false) else it
+                        }
+                        state.copy(addresses = updated)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     companion object {
         private val SELECTED_ADDRESS_ID = stringPreferencesKey("selected_address_id")
     }

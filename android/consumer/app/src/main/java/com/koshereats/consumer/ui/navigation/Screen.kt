@@ -45,6 +45,12 @@ sealed class Screen(val route: String) {
     data object EditProfile : Screen("profile/edit")
     data object SavedAddresses : Screen("profile/addresses")
     data object PaymentMethods : Screen("profile/payment-methods")
+    data object Favorites : Screen("profile/favorites")
+    data object NotificationPreferences : Screen("profile/notification-preferences")
+    data object ConnectedAccounts : Screen("profile/connected-accounts")
+    data object Rating : Screen("orders/{orderId}/rating") {
+        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/rating"
+    }
 }
 
 enum class BottomNavItem(
