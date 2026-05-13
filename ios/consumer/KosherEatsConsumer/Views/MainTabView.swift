@@ -33,10 +33,10 @@ struct MainTabView: View {
                 .tabItem { Image(systemName: "map.fill") }
                 .tag(AppTab.nearby)
 
-            SearchView()
+            DealsView()
                 .environmentObject(restaurantVM)
-                .tabItem { Image(systemName: "magnifyingglass") }
-                .tag(AppTab.search)
+                .tabItem { Image(systemName: "tag.fill") }
+                .tag(AppTab.deals)
 
             // Cart slot — the "what's happening now" tab. Currently maps to
             // OrdersListView's Active segment (in-flight deliveries). Past
@@ -77,7 +77,8 @@ struct MainTabView: View {
         }) {
             LoginView()
                 .environmentObject(authVM)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: Binding(
             // Triggered when an authenticated user is still missing core

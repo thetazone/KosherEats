@@ -8,6 +8,8 @@ package com.koshereats.courier.ui.navigation
 sealed class Screen(val route: String) {
     data object AuthLanding : Screen("auth_landing")
     data object Login : Screen("login")
+    data object EmailLogin : Screen("email_login")
+    data object PhoneAuth : Screen("phone_auth")
     data object Signup : Screen("signup")
     data object Onboarding : Screen("onboarding")
     data object Dashboard : Screen("dashboard")

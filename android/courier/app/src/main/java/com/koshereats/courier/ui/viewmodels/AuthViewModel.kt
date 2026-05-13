@@ -196,6 +196,26 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    /** Run the device-side Google Sign-In sheet, then exchange the id_token with our backend. */
+    fun signInWithGoogle(context: android.content.Context) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
+            com.koshereats.courier.auth.GoogleSignInHelper.signIn(context)
+                .onSuccess { result ->
+                    socialLogin("google", result.idToken, result.firstName, result.lastName)
+                }
+                .onFailure { e ->
+                    val msg = e.message ?: "Google Sign-In failed"
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = if (msg == "cancelled") null else msg,
+                        )
+                    }
+                }
+        }
+    }
+
     fun resetPhoneFlow() {
         _state.update { it.copy(phoneE164 = "", otpSent = false, errorMessage = null) }
     }

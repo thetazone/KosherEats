@@ -2,20 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>KE Courier</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>CFBundleDisplayName</key>
 	<string>KosherEats Courier</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>KosherEats Courier uses your location to show nearby deliveries and navigate to pickups.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>KosherEats Courier needs background location to keep customers updated on delivery progress.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>KosherEats Courier needs camera access to capture your drivers license and vehicle documents.</string>
-	<key>GIDClientID</key>
-	<string>98949098353-8568fbvmkbgers6ug8o9henrji87g2ku.apps.googleusercontent.com</string>
+	<key>CFBundleName</key>
+	<string>KE Courier</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -23,28 +13,14 @@
 			<string>Google Sign-In</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.98949098353-8568fbvmkbgers6ug8o9henrji87g2ku</string>
+				<string>com.googleusercontent.apps.189270494419-i6msfcfk8ce2igdfe7824g074t9m741r</string>
 			</array>
 		</dict>
 	</array>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-		<string>fetch</string>
-	</array>
+	<key>GIDClientID</key>
+	<string>189270494419-i6msfcfk8ce2igdfe7824g074t9m741r.apps.googleusercontent.com</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>comgooglemaps</string>
@@ -65,5 +41,29 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>KosherEats Courier needs camera access to capture your drivers license and vehicle documents.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>KosherEats Courier needs background location to keep customers updated on delivery progress.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>KosherEats Courier uses your location to show nearby deliveries and navigate to pickups.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>

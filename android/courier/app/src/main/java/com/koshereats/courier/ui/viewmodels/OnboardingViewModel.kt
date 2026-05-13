@@ -32,6 +32,13 @@ class OnboardingViewModel @Inject constructor(
 ) : ViewModel() {
 
     data class State(
+        // Phone OTP
+        val phoneCountryCode: String = "+1",
+        val phoneNumber: String = "",
+        val phoneE164: String = "",
+        val otpSent: Boolean = false,
+        val phoneIsSending: Boolean = false,
+        val phoneIsVerifying: Boolean = false,
         // Vehicle
         val vehicleType: VehicleType = VehicleType.CAR,
         val vehicleMake: String = "",
@@ -107,10 +114,55 @@ class OnboardingViewModel @Inject constructor(
             return s.driversLicenseNumber.isNotBlank() && s.driversLicenseUrl.isNotBlank()
         }
 
-    fun verifyPhone(onDone: () -> Unit) = viewModelScope.launch {
-        courierRepository.verifyPhone()
-            .onSuccess { onDone() }
-            .onFailure { e -> _state.update { it.copy(errorMessage = e.message) } }
+    fun setPhoneCountryCode(v: String) = _state.update { it.copy(phoneCountryCode = v) }
+    fun setPhoneNumber(v: String) = _state.update { it.copy(phoneNumber = v.filter { it.isDigit() }) }
+
+    fun resetPhoneFlow() = _state.update {
+        it.copy(otpSent = false, phoneE164 = "", phoneIsSending = false, phoneIsVerifying = false, errorMessage = null)
+    }
+
+    fun sendPhoneOtp() = viewModelScope.launch {
+        val s = _state.value
+        val e164 = "${s.phoneCountryCode}${s.phoneNumber}"
+        if (s.phoneNumber.length < 7) {
+            _state.update { it.copy(errorMessage = "Enter a valid phone number") }
+            return@launch
+        }
+        _state.update { it.copy(phoneIsSending = true, errorMessage = null) }
+        courierRepository.startPhoneOtp(e164)
+            .onSuccess {
+                _state.update {
+                    it.copy(phoneE164 = e164, otpSent = true, phoneIsSending = false)
+                }
+            }
+            .onFailure { e ->
+                _state.update {
+                    it.copy(phoneIsSending = false, errorMessage = e.message ?: "Couldn't send code")
+                }
+            }
+    }
+
+    fun verifyPhone(code: String, onDone: () -> Unit) = viewModelScope.launch {
+        val s = _state.value
+        if (s.phoneE164.isBlank()) {
+            _state.update { it.copy(errorMessage = "No phone number on file — try again") }
+            return@launch
+        }
+        if (code.length != 4) {
+            _state.update { it.copy(errorMessage = "Enter the 4-digit code") }
+            return@launch
+        }
+        _state.update { it.copy(phoneIsVerifying = true, errorMessage = null) }
+        courierRepository.verifyPhone(s.phoneE164, code)
+            .onSuccess {
+                _state.update { it.copy(phoneIsVerifying = false, otpSent = false) }
+                onDone()
+            }
+            .onFailure { e ->
+                _state.update {
+                    it.copy(phoneIsVerifying = false, errorMessage = e.message ?: "Verification failed")
+                }
+            }
     }
 
     fun submitVehicle(onSuccess: (CourierProfile) -> Unit) = viewModelScope.launch {

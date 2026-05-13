@@ -544,7 +544,7 @@ fun RestaurantDetailScreen(
 
 @Composable
 private fun DealBanner(
-    deal: com.koshereats.consumer.data.models.Deal,
+    deal: Deal,
     currentSubtotal: Int,
     onRemove: () -> Unit,
 ) {

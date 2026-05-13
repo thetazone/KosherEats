@@ -2,52 +2,35 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>KosherEats</string>
 	<key>CFBundleDisplayName</key>
 	<string>KosherEats</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>KosherEats uses your location to show nearby kosher restaurants and estimate delivery times.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>KosherEats uses the camera to scan your payment card for faster checkout.</string>
-	<key>GIDClientID</key>
-	<string>98949098353-2pq3fn45qj472ovqng76k6ohfj1sscnh.apps.googleusercontent.com</string>
+	<key>CFBundleName</key>
+	<string>KosherEats</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>com.googleusercontent.apps.98949098353-2pq3fn45qj472ovqng76k6ohfj1sscnh</string>
-			</array>
 			<key>CFBundleURLName</key>
 			<string>Google Sign-In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.189270494419-qfrr6u0e3mou1vpfat0r9kk5k5e3288c</string>
+			</array>
 		</dict>
 		<dict>
+			<key>CFBundleURLName</key>
+			<string>Stripe Redirect</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>koshereats</string>
 			</array>
-			<key>CFBundleURLName</key>
-			<string>Stripe Redirect</string>
 		</dict>
 	</array>
+	<key>GIDClientID</key>
+	<string>189270494419-qfrr6u0e3mou1vpfat0r9kk5k5e3288c.apps.googleusercontent.com</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationQueriesSchemes</key>
 	<array/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -63,5 +46,22 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>KosherEats uses the camera to scan your payment card for faster checkout.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>KosherEats uses your location to show nearby kosher restaurants and estimate delivery times.</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 </dict>
 </plist>

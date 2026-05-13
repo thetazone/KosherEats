@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -31,6 +31,7 @@
 		5E4EE45FA1DBCDA59C065ACB /* SkeletonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915C21DC5033205D046A0A9C /* SkeletonViews.swift */; };
 		62A2DB05E01BCE517933E686 /* NotificationPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02A6FE9ADAC5E7FD4B950F72 /* NotificationPreferencesView.swift */; };
 		66D106AD75B35F584F41ACB9 /* CheckoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AE8CD2C50633EF55B9274E3 /* CheckoutViewModel.swift */; };
+		67F925C2E7323359F323690D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E8FFFB4581ABB2A2E30737C6 /* GoogleService-Info.plist */; };
 		6801DEF5B50EC387269E4A5C /* ProfileCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B59C4891D0A09370E706DBA2 /* ProfileCompletionSheet.swift */; };
 		6F9E0FBE81C995BCB59F5B61 /* EmailAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884079FBF929F6618524724C /* EmailAuthView.swift */; };
 		71A1AE995EC27A0E0CCF0209 /* PaymentMethodsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D438C700F30D552DCA0A050 /* PaymentMethodsView.swift */; };
@@ -169,11 +170,12 @@
 		D0C3889D3852F82910204CE4 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		D281D6A3AE606A35DE4EE8C8 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		D4EA3F0BB7FA0256BA619A66 /* RestaurantViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantViewModel.swift; sourceTree = "<group>"; };
-		D7D4F3B004C53FB8CDB28F5C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		D7D4F3B004C53FB8CDB28F5C /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D835EE73613CA707FD07D8B5 /* OrderTrackingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderTrackingViewModel.swift; sourceTree = "<group>"; };
 		E1A97F847B89A67ADE01ABA8 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		E3A03C6943E8EF5A65A550EC /* KosherEatsConsumer.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KosherEatsConsumer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3A03C6943E8EF5A65A550EC /* KosherEatsConsumer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KosherEatsConsumer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E3E45C5C966394713AE63B31 /* ProfileOrdersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileOrdersView.swift; sourceTree = "<group>"; };
+		E8FFFB4581ABB2A2E30737C6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		EF313829B92C92889C1567C4 /* CourierRatingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourierRatingSheet.swift; sourceTree = "<group>"; };
 		F07342725B1161EEB56AE5AE /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
 		F43399ABE7040035BB1376F7 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -343,6 +345,7 @@
 				E4330ABDDBE0C5D2495B4355 /* Theme */,
 				3E3571C2E3D2AA7F178245DB /* ViewModels */,
 				AD637FFDFF0AB02777958738 /* Views */,
+				E8FFFB4581ABB2A2E30737C6 /* GoogleService-Info.plist */,
 			);
 			path = KosherEatsConsumer;
 			sourceTree = "<group>";
@@ -475,8 +478,6 @@
 			dependencies = (
 			);
 			name = DeliveryActivity;
-			packageProductDependencies = (
-			);
 			productName = DeliveryActivity;
 			productReference = 5306981A9C15467FACCA2132 /* DeliveryActivity.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -514,7 +515,7 @@
 				709F08EE7EE55B617A14AF78 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				A1B565944BADCABB12A9163C /* XCRemoteSwiftPackageReference "stripe-ios" */,
 			);
-			preferredProjectObjectVersion = 77;
+			productRefGroup = E201F07FE0A15061E6799F23 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -532,6 +533,7 @@
 				4D2B9654DE48CAD2840B5E7C /* Assets.xcassets in Resources */,
 				1CCCB3FEDE50C77C00C369AF /* Localizable.xcstrings in Resources */,
 				AEDF82358B6B795FC1BDFBE8 /* PrivacyInfo.xcprivacy in Resources */,
+				67F925C2E7323359F323690D /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -634,7 +636,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = KosherEatsConsumer/KosherEatsConsumer.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = KosherEatsConsumer/Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "KosherEats needs your location to find nearby restaurants";
@@ -647,7 +649,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.1;
+				MARKETING_VERSION = 4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.consumer;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -725,7 +727,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = KosherEatsConsumer/KosherEatsConsumer.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = KosherEatsConsumer/Info.plist;
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "KosherEats needs your location to find nearby restaurants";
@@ -738,7 +740,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.1;
+				MARKETING_VERSION = 4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.koshereats.consumer;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -805,7 +807,7 @@
 		A508A0510E7E22BF8074C360 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				INFOPLIST_FILE = DeliveryActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -822,7 +824,7 @@
 		A68A72014165D44091D76E34 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				INFOPLIST_FILE = DeliveryActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

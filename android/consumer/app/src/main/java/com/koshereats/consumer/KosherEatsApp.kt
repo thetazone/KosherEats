@@ -22,7 +22,7 @@ class KosherEatsApp : Application() {
         // pushes don't persist after the user opens the app (mirrors iOS badge clearing).
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
-                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
+                (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
             }
         })
     }

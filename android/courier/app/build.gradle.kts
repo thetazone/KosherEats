@@ -22,6 +22,15 @@ android {
     compileSdk = 35
 
     signingConfigs {
+        // Shared debug keystore committed at repo root. Pinned SHA-1 so Firebase
+        // OAuth client and Google Sign-In keep working across machines / CI.
+        // SHA-1: 54:E0:35:60:7C:2F:A2:A1:67:FA:75:B9:50:F8:03:6B:37:2B:45:46
+        getByName("debug") {
+            storeFile = file("../../debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             storeFile = file("release-upload.jks")
             storePassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
@@ -57,12 +66,18 @@ android {
         // Expose the same key to runtime code (Directions HTTP API) so the map
         // screen doesn't have to re-read it from the manifest at runtime.
         buildConfigField("String", "MAPS_API_KEY", "\"${lp("MAPS_API_KEY")}\"")
+
+        // Google Sign-In (Credential Manager) Web Client ID.
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
     }
 
     buildTypes {
         debug {
-            // 10.0.2.2 is the Android emulator loopback for the host machine.
-            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080/api/v1/\"")
+            // Point at the Fly backend even in debug so the emulator works without
+            // a local Postgres + Stripe + FCM setup. Switch to "http://10.0.2.2:8080/api/v1/"
+            // (and allow cleartext in network_security_config.xml) only when actively
+            // running a local backend.
+            buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
         }
         release {
             signingConfig = signingConfigs.getByName("release")
@@ -157,6 +172,11 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:18.2.0")
     implementation("com.google.android.gms:play-services-location:21.0.1")
     implementation("com.google.maps.android:android-maps-utils:3.8.2")
+
+    // Credential Manager + Google Identity (Sign in with Google)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Chrome Custom Tabs (Stripe Connect hosted onboarding)
     implementation("androidx.browser:browser:1.7.0")

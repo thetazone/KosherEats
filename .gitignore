@@ -30,6 +30,9 @@ google-services*.json
 android/**/*.iml
 android/**/*.jks
 android/**/*.keystore
+# Exception: the shared debug keystore is intentionally committed so every
+# machine produces the same SHA-1 → Firebase / Google Sign-In stays working.
+!android/debug.keystore
 firebase-adminsdk*.json
 *.p8
 ios/**/firebase*.json

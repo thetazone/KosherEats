@@ -42,7 +42,7 @@ interface ApiService {
     suspend fun getProfile(): Response<CourierProfile>
 
     @POST("courier/onboarding/phone/verify")
-    suspend fun verifyPhone(): Response<Map<String, Boolean>>
+    suspend fun verifyPhone(@Body body: PhoneVerifyRequest): Response<Map<String, Boolean>>
 
     @PUT("courier/onboarding/vehicle")
     suspend fun updateVehicle(@Body body: UpdateVehicleRequest): Response<CourierProfile>

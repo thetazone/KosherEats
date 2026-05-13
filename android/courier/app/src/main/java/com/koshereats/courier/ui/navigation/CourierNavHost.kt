@@ -25,7 +25,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.koshereats.courier.data.models.OnboardingStatus
 import com.koshereats.courier.ui.screens.auth.AuthLandingScreen
+import com.koshereats.courier.ui.screens.auth.EmailLoginScreen
 import com.koshereats.courier.ui.screens.auth.LoginScreen
+import com.koshereats.courier.ui.screens.auth.PhoneOTPScreen
 import com.koshereats.courier.ui.screens.auth.SignupScreen
 import com.koshereats.courier.ui.screens.chat.ChatScreen
 import com.koshereats.courier.ui.screens.dashboard.DashboardScreen
@@ -75,7 +77,7 @@ private fun AuthFlow(authViewModel: AuthViewModel) {
     ) {
         composable(Screen.AuthLanding.route) {
             AuthLandingScreen(
-                onSignup = { navController.navigate(Screen.Signup.route) },
+                onSignup = { navController.navigate(Screen.Login.route) },
                 onLogin = { navController.navigate(Screen.Login.route) },
             )
         }
@@ -83,7 +85,23 @@ private fun AuthFlow(authViewModel: AuthViewModel) {
             SignupScreen(authViewModel = authViewModel)
         }
         composable(Screen.Login.route) {
-            LoginScreen(authViewModel = authViewModel)
+            LoginScreen(
+                authViewModel = authViewModel,
+                onPhoneCodeSent = { navController.navigate(Screen.PhoneAuth.route) },
+                onEmailLoginClick = { navController.navigate(Screen.EmailLogin.route) },
+            )
+        }
+        composable(Screen.EmailLogin.route) {
+            EmailLoginScreen(
+                authViewModel = authViewModel,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(Screen.PhoneAuth.route) {
+            PhoneOTPScreen(
+                authViewModel = authViewModel,
+                onBack = { navController.popBackStack() },
+            )
         }
     }
 }

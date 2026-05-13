@@ -59,7 +59,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
             ).apply {
                 description = "Delivery progress and order status"
             }
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         }
 
@@ -83,7 +83,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                 .setContentIntent(pi)
                 .build()
 
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(System.currentTimeMillis().toInt(), notification)
         }
     }

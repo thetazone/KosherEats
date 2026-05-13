@@ -331,7 +331,7 @@ fun KosherEatsNavHost() {
             composable(
                 route = Screen.Chat.route,
                 arguments = listOf(
-                    androidx.navigation.navArgument("orderId") { type = androidx.navigation.NavType.StringType },
+                    navArgument("orderId") { type = NavType.StringType },
                 ),
             ) {
                 com.koshereats.consumer.ui.screens.chat.ChatScreen(

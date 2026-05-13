@@ -1,4 +1,4 @@
-package com.koshereats.consumer.auth
+package com.koshereats.courier.auth
 
 import android.content.Context
 import androidx.credentials.CredentialManager
@@ -10,7 +10,7 @@ import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
-import com.koshereats.consumer.BuildConfig
+import com.koshereats.courier.BuildConfig
 
 data class GoogleSignInResult(
     val idToken: String,
@@ -27,11 +27,7 @@ object GoogleSignInHelper {
 
         val credentialManager = CredentialManager.create(context)
 
-        // Primary: GetGoogleIdOption with filterByAuthorizedAccounts=false.
-        // This avoids GetSignInWithGoogleOption's aggressive reauth path
-        // which can fail right after a new SHA-1 is registered while Firebase
-        // is still propagating the authorization grant downstream.
-        val primary = GetCredentialRequest.Builder()
+        val request = GetCredentialRequest.Builder()
             .addCredentialOption(
                 GetGoogleIdOption.Builder()
                     .setServerClientId(webClientId)
@@ -42,14 +38,12 @@ object GoogleSignInHelper {
             .build()
 
         return try {
-            parseCredential(credentialManager.getCredential(context, primary))
+            parseCredential(credentialManager.getCredential(context, request))
         } catch (e: GetCredentialCancellationException) {
             Result.failure(IllegalStateException("cancelled"))
         } catch (e: NoCredentialException) {
             Result.failure(IllegalStateException("Google Sign-In failed. Ensure a Google account is signed in on this device."))
         } catch (e: GetCredentialException) {
-            // Wrap the underlying error in the message so it surfaces in the UI
-            // rather than silently being suppressed as a generic failure.
             val detail = e.errorMessage?.toString() ?: e.javaClass.simpleName
             Result.failure(IllegalStateException("Google Sign-In failed: $detail"))
         } catch (e: GoogleIdTokenParsingException) {

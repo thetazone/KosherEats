@@ -19,6 +19,7 @@
 		2ABC79CB72BF72183C443BE2 /* CourierProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A009BFA93B66C3E720BD4339 /* CourierProfileView.swift */; };
 		2CD929405D71FFE660212A5A /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 2EB35A5D31F6CDCA6993D038 /* Localizable.xcstrings */; };
 		409FF36BD74628714622CB88 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4959B270AC339EBF1BFCB3EB /* DashboardView.swift */; };
+		40FCED5A0D13107CAAC2D772 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 24BF5D8C8211B55BE0723BD6 /* GoogleService-Info.plist */; };
 		46DA599E9C18192BE6B90B56 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = F9838A4ACDD409E2ACBF458F /* GoogleSignInSwift */; };
 		52BC84123F69B160A5548329 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 054511725887EEE7B7D99BC1 /* APIService.swift */; };
 		6E5D219F3B5A453AF02D2CBD /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3EC36A2CBEA9FAF1B7290AFD /* AuthenticationServices.framework */; };
@@ -53,6 +54,7 @@
 		054511725887EEE7B7D99BC1 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		14EBE1B9CD16CF2098CA8CF5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1555130D353E99BC01E386CD /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		24BF5D8C8211B55BE0723BD6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		24EC52372F95D94F00AB0B9D /* Brooklyn.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = Brooklyn.gpx; path = KosherEatsCourier/Resources/Brooklyn.gpx; sourceTree = "<group>"; };
 		25B89003EB069D27F9EFD0BA /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		264EBCE4343355AEDFB472A3 /* KosherEatsCourierApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherEatsCourierApp.swift; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 				6D51252497DADB3BB26485A6 /* Theme */,
 				CFC906C5C499661CA503E9A2 /* ViewModels */,
 				38CBF701B9BAF12F624937AD /* Views */,
+				24BF5D8C8211B55BE0723BD6 /* GoogleService-Info.plist */,
 			);
 			path = KosherEatsCourier;
 			sourceTree = "<group>";
@@ -333,6 +336,7 @@
 			packageReferences = (
 				DD47610C1B866E92070E09FD /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
+			productRefGroup = 554EE2B16014E17C66108D64 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -348,6 +352,7 @@
 			files = (
 				23ADDF07203DAB8E0ABBE93E /* Assets.xcassets in Resources */,
 				2CD929405D71FFE660212A5A /* Localizable.xcstrings in Resources */,
+				40FCED5A0D13107CAAC2D772 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

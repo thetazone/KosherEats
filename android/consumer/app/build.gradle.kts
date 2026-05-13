@@ -25,6 +25,15 @@ android {
     compileSdk = 35
 
     signingConfigs {
+        // Shared debug keystore committed at repo root. Pinned SHA-1 so Firebase
+        // OAuth client and Google Sign-In keep working across machines / CI.
+        // SHA-1: 54:E0:35:60:7C:2F:A2:A1:67:FA:75:B9:50:F8:03:6B:37:2B:45:46
+        getByName("debug") {
+            storeFile = file("../../debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             val ksPassword = findProperty("KEYSTORE_PASSWORD")?.toString() ?: lp("KEYSTORE_PASSWORD")
             val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }

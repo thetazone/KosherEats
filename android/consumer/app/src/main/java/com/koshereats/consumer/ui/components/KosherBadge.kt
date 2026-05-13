@@ -199,7 +199,7 @@ fun KosherBadgePreview() {
     KosherEatsTheme {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             KosherBadge(certification = KosherCertification.OU)
-            DietaryBadge(dietaryType = com.koshereats.consumer.data.models.DietaryType.MEAT)
+            DietaryBadge(dietaryType = DietaryType.MEAT)
             GlattBadge()
             CholovYisroelBadge()
             PasYisroelBadge()

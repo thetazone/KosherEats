@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -144,30 +145,82 @@ private fun step(title: String, done: Boolean, active: Boolean, modifier: Modifi
     }
 }
 
-// ── Step 1: phone verify ────────────────────────────────────
+// ── Step 1: phone verify (2-stage: send OTP, then verify code) ──
 
 @Composable
 private fun PhoneVerifyStep(vm: OnboardingViewModel, onDone: () -> Unit) {
-    var code by remember { mutableStateOf("") }
     val state by vm.state.collectAsState()
+    var code by remember { mutableStateOf("") }
 
     Text("Verify your phone", color = TextWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-    Text("We'll text you a 4-digit code. (Dev stub: any code works.)", color = TextSecondary)
 
-    OutlinedTextField(
-        value = code, onValueChange = { code = it },
-        label = { Text("1234") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-    )
-
-    Button(
-        onClick = { vm.verifyPhone(onDone) },
-        enabled = code.isNotBlank(),
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Orange),
-    ) {
-        Text("Verify", color = Color.White, fontWeight = FontWeight.SemiBold)
+    if (!state.otpSent) {
+        // Stage A: collect phone number, request SMS
+        Text(
+            "Enter the mobile number where dispatch can reach you. We'll text you a 4-digit code.",
+            color = TextSecondary,
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = state.phoneCountryCode,
+                onValueChange = { vm.setPhoneCountryCode(it.take(4)) },
+                label = { Text("Code") },
+                modifier = Modifier.width(96.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            )
+            OutlinedTextField(
+                value = state.phoneNumber,
+                onValueChange = vm::setPhoneNumber,
+                label = { Text("Mobile number") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            )
+        }
+        Button(
+            onClick = { vm.sendPhoneOtp() },
+            enabled = state.phoneNumber.length >= 7 && !state.phoneIsSending,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Orange),
+        ) {
+            if (state.phoneIsSending) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.height(24.dp))
+            } else {
+                Text("Send code", color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    } else {
+        // Stage B: enter the 4-digit code
+        Text(
+            "We sent a code to ${state.phoneE164}.",
+            color = TextSecondary,
+        )
+        OutlinedTextField(
+            value = code,
+            onValueChange = { v -> code = v.filter { it.isDigit() }.take(4) },
+            label = { Text("4-digit code") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+        Button(
+            onClick = { vm.verifyPhone(code, onDone) },
+            enabled = code.length == 4 && !state.phoneIsVerifying,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Orange),
+        ) {
+            if (state.phoneIsVerifying) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.height(24.dp))
+            } else {
+                Text("Verify", color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        TextButton(onClick = { vm.resetPhoneFlow() }) {
+            Text("Wrong number? Re-enter", color = Orange)
+        }
     }
 
     state.errorMessage?.let { Text(it, color = ErrorRed, fontSize = 12.sp) }

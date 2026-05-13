@@ -4,7 +4,7 @@ import SwiftUI
 enum AppTab: Hashable {
     case home
     case nearby
-    case search
+    case deals
     case orders
     case profile
 }

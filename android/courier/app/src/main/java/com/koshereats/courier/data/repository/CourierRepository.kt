@@ -19,8 +19,18 @@ class CourierRepository @Inject constructor(
 ) {
     // ── Onboarding ──────────────────────────────────────────
 
-    suspend fun verifyPhone(): Result<Unit> = runCatching {
-        val r = api.verifyPhone()
+    suspend fun startPhoneOtp(phoneE164: String): Result<Unit> = runCatching {
+        val r = api.phoneStart(com.koshereats.courier.data.models.PhoneStartRequest(phone = phoneE164))
+        if (!r.isSuccessful) throw IllegalStateException(errorMessage(r, "Couldn't send code"))
+    }
+
+    suspend fun verifyPhone(phoneE164: String, code: String): Result<Unit> = runCatching {
+        val r = api.verifyPhone(
+            com.koshereats.courier.data.models.PhoneVerifyRequest(
+                phone = phoneE164,
+                code = code,
+            )
+        )
         if (!r.isSuccessful) throw IllegalStateException(errorMessage(r, "Verification failed"))
     }
 
