@@ -15,23 +15,24 @@ import (
 func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	lat := r.URL.Query().Get("lat")
 	lng := r.URL.Query().Get("lng")
+	vertical := verticalFromRequest(r)
 
 	const baseQuery = `SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
-		FROM restaurants WHERE is_active = true AND approval_status = 'approved'`
+		FROM restaurants WHERE is_active = true AND approval_status = 'approved' AND vertical = $1`
 
 	var rows pgx.Rows
 	var err error
 
 	if lat != "" && lng != "" {
 		rows, err = h.db.Pool.Query(r.Context(),
-			baseQuery+` ORDER BY point($1, $2) <-> point(lng, lat) LIMIT 50`,
-			lng, lat)
+			baseQuery+` ORDER BY point($2, $3) <-> point(lng, lat) LIMIT 50`,
+			vertical, lng, lat)
 	} else {
-		rows, err = h.db.Pool.Query(r.Context(), baseQuery+` ORDER BY rating DESC LIMIT 50`)
+		rows, err = h.db.Pool.Query(r.Context(), baseQuery+` ORDER BY rating DESC LIMIT 50`, vertical)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch restaurants")
@@ -69,6 +70,7 @@ func scanRestaurants(rows pgx.Rows) ([]models.Restaurant, error) {
 
 func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	vertical := verticalFromRequest(r)
 
 	var rest models.Restaurant
 	err := h.db.Pool.QueryRow(r.Context(),
@@ -77,7 +79,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
-		FROM restaurants WHERE id = $1 AND is_active = true AND approval_status = 'approved'`, id,
+		FROM restaurants WHERE id = $1 AND vertical = $2 AND is_active = true AND approval_status = 'approved'`, id, vertical,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
@@ -252,6 +254,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	vertical := verticalFromRequest(r)
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
@@ -259,12 +262,12 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		 est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		 FROM restaurants
-		 WHERE is_active = true AND approval_status = 'approved'
+		 WHERE is_active = true AND approval_status = 'approved' AND vertical = $2
 		   AND (name ILIKE $1 OR EXISTS (
 		       SELECT 1 FROM unnest(cuisine_type) ct WHERE ct ILIKE $1
 		   ))
 		 ORDER BY rating DESC LIMIT 50`,
-		"%"+q+"%")
+		"%"+q+"%", vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
@@ -296,6 +299,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		userID = user["user_id"]
 	}
+	vertical := verticalFromRequest(r)
 
 	ctx := r.Context()
 
@@ -350,7 +354,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE id = ANY($1) AND is_active = true AND approval_status = 'approved'`, familiarIDs)
+			  WHERE id = ANY($1) AND vertical = $2 AND is_active = true AND approval_status = 'approved'`, familiarIDs, vertical)
 		if err == nil {
 			scanned, _ := scanRestaurants(famRows)
 			famRows.Close()
@@ -384,9 +388,9 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE is_active = true AND approval_status = 'approved' AND id != ALL($1)
+			  WHERE is_active = true AND approval_status = 'approved' AND vertical = $3 AND id != ALL($1)
 			  ORDER BY rating DESC
-			  LIMIT $2`, allOrderedIDs, limit)
+			  LIMIT $2`, allOrderedIDs, limit, vertical)
 		if err == nil {
 			unfamiliarRestaurants, _ = scanRestaurants(unfamRows)
 			unfamRows.Close()
@@ -400,9 +404,9 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE is_active = true AND approval_status = 'approved'
+			  WHERE is_active = true AND approval_status = 'approved' AND vertical = $2
 			  ORDER BY rating DESC
-			  LIMIT $1`, limit)
+			  LIMIT $1`, limit, vertical)
 		if err == nil {
 			unfamiliarRestaurants, _ = scanRestaurants(unfamRows)
 			unfamRows.Close()

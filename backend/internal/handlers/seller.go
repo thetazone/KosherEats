@@ -219,6 +219,14 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 	// is_active is gated on the approval decision, not the seller's input.
 	approvalToken := generateApprovalToken()
 
+	// Inherit the seller's vertical so KosherEats sellers create kosher
+	// restaurants and GreenEats sellers create vegan restaurants. Defaults
+	// to 'kosher' for legacy clients/tokens that don't carry the claim.
+	sellerVertical := user["vertical"]
+	if sellerVertical == "" {
+		sellerVertical = "kosher"
+	}
+
 	var rest models.Restaurant
 	err = h.db.Pool.QueryRow(r.Context(),
 		`INSERT INTO restaurants (
@@ -227,14 +235,14 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active,
-			approval_status, approval_token
+			approval_status, approval_token, vertical
 		)
 		VALUES ($1, $2, $3, $4, '', $5,
 			$6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, 0, 0, $21, $22,
 			$23, $24, false, false,
-			'pending', $25)
+			'pending', $25, $26)
 		RETURNING id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
@@ -244,7 +252,7 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
 		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
 		req.IsGlattKosher, req.KosherCertificateURL, cuisine, defaultDeliveryFee, defaultMinOrder,
-		defaultEstMin, defaultEstMax, approvalToken,
+		defaultEstMin, defaultEstMax, approvalToken, sellerVertical,
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,

@@ -68,6 +68,11 @@ type User struct {
 	LastName     string    `json:"last_name"`
 	Phone        string    `json:"phone"`
 	Role         UserRole  `json:"role"`
+	// Vertical scopes the account to a specific branded app. Values:
+	// 'kosher' (KosherEats) | 'vegan' (GreenEats). The (email, vertical)
+	// pair is unique, so the same email can register on both apps and
+	// gets a fully independent account in each.
+	Vertical     string    `json:"vertical"`
 	AvatarURL    string    `json:"avatar_url,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

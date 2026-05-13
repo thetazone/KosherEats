@@ -22,6 +22,7 @@ type CourierRegisterRequest struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Phone     string `json:"phone"`
+	Vertical  string `json:"vertical,omitempty"`
 }
 
 func (h *Handler) CourierRegister(w http.ResponseWriter, r *http.Request) {
@@ -53,13 +54,15 @@ func (h *Handler) CourierRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
+	vertical := normalizeVertical(req.Vertical)
+
 	var user models.User
 	err = tx.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
-		 VALUES ($1, $2, $3, $4, $5, 'courier')
-		 RETURNING id, email, first_name, last_name, phone, role, created_at, updated_at`,
-		req.Email, string(hashed), req.FirstName, req.LastName, req.Phone,
-	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical)
+		 VALUES ($1, $2, $3, $4, $5, 'courier', $6)
+		 RETURNING id, email, first_name, last_name, phone, role, vertical, created_at, updated_at`,
+		req.Email, string(hashed), req.FirstName, req.LastName, req.Phone, vertical,
+	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			writeError(w, http.StatusConflict, "email already registered")
@@ -82,7 +85,7 @@ func (h *Handler) CourierRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, refresh, err := h.generateTokens(user.ID, string(user.Role))
+	token, refresh, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return

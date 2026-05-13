@@ -135,17 +135,16 @@ func main() {
 		})
 	}
 
-	// Restaurants (public, IP rate limited)
+	// Restaurants (public, IP rate limited). OptionalAuthMiddleware lets
+	// authenticated users carry their vertical (kosher / vegan) into the
+	// query scope — anonymous browsers fall back to the `?vertical=` query
+	// param or 'kosher' by default.
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(apiLimiter.PerIP)
+		r.Use(h.OptionalAuthMiddleware)
 		r.Get("/", h.ListRestaurants)
 		r.Get("/search", h.SearchRestaurants)
-		// Suggested restaurants — uses optional auth so logged-in users get
-		// personalised results while guests get popular picks.
-		r.Group(func(r chi.Router) {
-			r.Use(h.OptionalAuthMiddleware)
-			r.Get("/suggested", h.SuggestedRestaurants)
-		})
+		r.Get("/suggested", h.SuggestedRestaurants)
 		r.Get("/{id}", h.GetRestaurant)
 		r.Get("/{id}/menu", h.GetMenu)
 		r.Get("/{id}/deals", h.ListRestaurantDeals)

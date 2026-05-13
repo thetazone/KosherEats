@@ -92,7 +92,8 @@ func (h *Handler) ReviewerSellerLogin(w http.ResponseWriter, r *http.Request) {
 			slog.String("user_id", user.ID), slog.String("error", err.Error()))
 	}
 
-	token, refresh, err := h.generateTokens(user.ID, string(user.Role))
+	// Reviewer accounts are always on the original (kosher) vertical.
+	token, refresh, err := h.generateTokens(user.ID, string(user.Role), "kosher")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to issue token")
 		return

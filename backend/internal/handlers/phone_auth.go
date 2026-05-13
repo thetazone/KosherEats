@@ -35,6 +35,7 @@ type PhoneVerifyRequest struct {
 	Phone     string          `json:"phone"`
 	Code      string          `json:"code"`
 	Role      models.UserRole `json:"role,omitempty"`       // consumer | seller | courier (set by caller app)
+	Vertical  string          `json:"vertical,omitempty"`   // 'kosher' (default) | 'vegan'
 	FirstName string          `json:"first_name,omitempty"` // used only when creating a brand-new user
 	LastName  string          `json:"last_name,omitempty"`
 	Email     string          `json:"email,omitempty"` // optional — we synthesize if missing
@@ -99,6 +100,7 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 	if req.Role == "" {
 		req.Role = models.RoleConsumer
 	}
+	vertical := normalizeVertical(req.Vertical)
 
 	// Brute-force protection + TTL enforcement, both DB-backed so they
 	// survive restarts and work across horizontally scaled instances.
@@ -148,32 +150,32 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 
 	// Check user_auth_providers first (handles linked phone numbers that
 	// may differ from the user's primary phone field), then fall back to
-	// the direct phone column on users.
+	// the direct phone column on users. Both lookups scope by vertical so
+	// the same phone can hold separate KosherEats and GreenEats accounts.
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.created_at, u.updated_at
+		`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.vertical, u.created_at, u.updated_at
 		 FROM users u
 		 JOIN user_auth_providers uap ON u.id = uap.user_id
-		 WHERE uap.provider = 'phone' AND uap.provider_id = $1 AND u.role = $2`,
-		phone, req.Role,
+		 WHERE uap.provider = 'phone' AND uap.provider_id = $1 AND u.role = $2 AND u.vertical = $3`,
+		phone, req.Role, vertical,
 	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
+		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id, email, first_name, last_name, phone, role, created_at, updated_at
-			   FROM users WHERE phone = $1 AND role = $2`, phone, req.Role,
+			`SELECT id, email, first_name, last_name, phone, role, vertical, created_at, updated_at
+			   FROM users WHERE phone = $1 AND role = $2 AND vertical = $3`, phone, req.Role, vertical,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName,
-			&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
+			&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
 	}
 
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		// No account exists for this (phone, role) pair — create one. A
-		// different role with the same phone (e.g. the user already has a
-		// consumer account on this number) is a separate row and does not
-		// conflict here.
-		user, err = h.createPhoneUser(r, phone, req)
+		// No account exists for this (phone, role, vertical) — create one.
+		// A different role or vertical with the same phone is a separate row
+		// and does not conflict here.
+		user, err = h.createPhoneUser(r, phone, vertical, req)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create user")
 			return
@@ -207,7 +209,7 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	token, refresh, err := h.generateTokens(user.ID, string(user.Role))
+	token, refresh, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to issue token")
 		return
@@ -223,7 +225,7 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 // Email is synthesized when the client didn't supply one so the NOT NULL +
 // UNIQUE index on users.email stays happy; the "@phone.koshereats.local"
 // suffix makes these accounts easy to spot in the DB and migrate later.
-func (h *Handler) createPhoneUser(r *http.Request, phone string, req PhoneVerifyRequest) (models.User, error) {
+func (h *Handler) createPhoneUser(r *http.Request, phone, vertical string, req PhoneVerifyRequest) (models.User, error) {
 	email := strings.TrimSpace(req.Email)
 	if email == "" {
 		email = fmt.Sprintf("%s@phone.koshereats.local", strings.TrimPrefix(phone, "+"))
@@ -250,15 +252,18 @@ func (h *Handler) createPhoneUser(r *http.Request, phone string, req PhoneVerify
 	if role == "" {
 		role = models.RoleConsumer
 	}
+	if vertical == "" {
+		vertical = "kosher"
+	}
 
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, auth_provider)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'phone')
-		 RETURNING id, email, first_name, last_name, phone, role, created_at, updated_at`,
-		email, string(dummyHash), firstName, lastName, phone, role,
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical, auth_provider)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'phone')
+		 RETURNING id, email, first_name, last_name, phone, role, vertical, created_at, updated_at`,
+		email, string(dummyHash), firstName, lastName, phone, role, vertical,
 	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
+		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
 

@@ -26,6 +26,9 @@ type RegisterRequest struct {
 	// Role is the role being signed up for. Empty defaults to consumer so
 	// older consumer-app builds without the role field keep working.
 	Role models.UserRole `json:"role,omitempty"`
+	// Vertical is the branded app the request originated from. Empty
+	// defaults to 'kosher' so older clients without the field keep working.
+	Vertical string `json:"vertical,omitempty"`
 }
 
 type LoginRequest struct {
@@ -34,6 +37,37 @@ type LoginRequest struct {
 	// Role scopes the lookup since (email, role) is now the unique key.
 	// Empty defaults to consumer for backward compatibility.
 	Role models.UserRole `json:"role,omitempty"`
+	// Vertical scopes the account to a branded app. Empty defaults to 'kosher'.
+	Vertical string `json:"vertical,omitempty"`
+}
+
+// normalizeVertical returns 'kosher' (the default) when input is empty or
+// unrecognized. Keeps older clients working and shields us from typos.
+func normalizeVertical(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "vegan":
+		return "vegan"
+	default:
+		return "kosher"
+	}
+}
+
+// verticalFromRequest resolves which vertical (kosher/vegan) a request belongs
+// to. Resolution order:
+//
+//  1. JWT claim (if request is authenticated)
+//  2. `?vertical=` query string (anonymous browsing)
+//  3. 'kosher' (default — keeps original KosherEats clients working)
+//
+// Public restaurant / deals endpoints call this to scope catalog queries so
+// KosherEats clients never see vegan listings and vice versa.
+func verticalFromRequest(r *http.Request) string {
+	if user, err := getUserFromContext(r); err == nil {
+		if v := user["vertical"]; v != "" {
+			return normalizeVertical(v)
+		}
+	}
+	return normalizeVertical(r.URL.Query().Get("vertical"))
 }
 
 type AuthResponse struct {
@@ -68,25 +102,26 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if role == "" {
 		role = models.RoleConsumer
 	}
+	vertical := normalizeVertical(req.Vertical)
 
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING id, email, first_name, last_name, phone, role, created_at, updated_at`,
-		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, role,
-	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, email, first_name, last_name, phone, role, vertical, created_at, updated_at`,
+		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, role, vertical,
+	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
-			writeError(w, http.StatusConflict, "an account with this email already exists for this role")
+			writeError(w, http.StatusConflict, "an account with this email already exists for this app")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
 
-	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role))
+	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -108,8 +143,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 // share the email.
 func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email string          `json:"email"`
-		Role  models.UserRole `json:"role,omitempty"`
+		Email    string          `json:"email"`
+		Role     models.UserRole `json:"role,omitempty"`
+		Vertical string          `json:"vertical,omitempty"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -126,10 +162,11 @@ func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 	if role == "" {
 		role = models.RoleConsumer
 	}
+	vertical := normalizeVertical(req.Vertical)
 
 	var found string
 	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT role FROM users WHERE email = $1 AND role = $2`, email, role,
+		`SELECT role FROM users WHERE email = $1 AND role = $2 AND vertical = $3`, email, role, vertical,
 	).Scan(&found)
 
 	if err != nil {
@@ -161,14 +198,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if role == "" {
 		role = models.RoleConsumer
 	}
+	vertical := normalizeVertical(req.Vertical)
 
 	var user models.User
 	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, email, password_hash, first_name, last_name, phone, role, created_at, updated_at
-		 FROM users WHERE email = $1 AND role = $2`,
-		req.Email, role,
+		`SELECT id, email, password_hash, first_name, last_name, phone, role, vertical, created_at, updated_at
+		 FROM users WHERE email = $1 AND role = $2 AND vertical = $3`,
+		req.Email, role, vertical,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.CreatedAt, &user.UpdatedAt)
+		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
@@ -180,7 +218,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role))
+	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -228,18 +266,18 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-fetch the current role from DB so demotions/bans take effect
-	// immediately on the next refresh, rather than living in the token
-	// claim until it expires.
-	var currentRole string
+	// Re-fetch the current role + vertical from DB so demotions/bans take
+	// effect immediately on the next refresh, rather than living in the
+	// token claim until it expires.
+	var currentRole, currentVertical string
 	if err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT role FROM users WHERE id = $1`, userID,
-	).Scan(&currentRole); err != nil {
+		`SELECT role, vertical FROM users WHERE id = $1`, userID,
+	).Scan(&currentRole, &currentVertical); err != nil {
 		writeError(w, http.StatusUnauthorized, "user not found")
 		return
 	}
 
-	newToken, newRefresh, err := h.generateTokens(userID, currentRole)
+	newToken, newRefresh, err := h.generateTokens(userID, currentRole, currentVertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -293,10 +331,17 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "invalid token: missing role claim")
 			return
 		}
+		// Vertical may be absent on legacy tokens issued before multi-tenancy.
+		// Fall back to 'kosher' so existing sessions keep working.
+		vertical, _ := (*claims)["vertical"].(string)
+		if vertical == "" {
+			vertical = "kosher"
+		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, map[string]string{
-			"user_id": userID,
-			"role":    role,
+			"user_id":  userID,
+			"role":     role,
+			"vertical": vertical,
 		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -343,10 +388,15 @@ func (h *Handler) OptionalAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		role, _ := (*claims)["role"].(string)
+		vertical, _ := (*claims)["vertical"].(string)
+		if vertical == "" {
+			vertical = "kosher"
+		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, map[string]string{
-			"user_id": userID,
-			"role":    role,
+			"user_id":  userID,
+			"role":     role,
+			"vertical": vertical,
 		})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -375,12 +425,16 @@ func getUserFromContext(r *http.Request) (map[string]string, error) {
 	return userData, nil
 }
 
-func (h *Handler) generateTokens(userID, role string) (string, string, error) {
+func (h *Handler) generateTokens(userID, role, vertical string) (string, string, error) {
+	if vertical == "" {
+		vertical = "kosher"
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  userID,
-		"role": role,
-		"exp":  time.Now().Add(15 * time.Minute).Unix(),
-		"iat":  time.Now().Unix(),
+		"sub":      userID,
+		"role":     role,
+		"vertical": vertical,
+		"exp":      time.Now().Add(15 * time.Minute).Unix(),
+		"iat":      time.Now().Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(h.cfg.JWTSecret))
@@ -389,11 +443,12 @@ func (h *Handler) generateTokens(userID, role string) (string, string, error) {
 	}
 
 	refresh := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  userID,
-		"role": role,
-		"typ":  "refresh",
-		"exp":  time.Now().Add(7 * 24 * time.Hour).Unix(),
-		"iat":  time.Now().Unix(),
+		"sub":      userID,
+		"role":     role,
+		"vertical": vertical,
+		"typ":      "refresh",
+		"exp":      time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"iat":      time.Now().Unix(),
 	})
 
 	refreshString, err := refresh.SignedString([]byte(h.cfg.JWTSecret))

@@ -28,6 +28,9 @@ type SocialLoginRequest struct {
 	FirstName string          `json:"first_name"`      // optional, from provider
 	LastName  string          `json:"last_name"`       // optional, from provider
 	Role      models.UserRole `json:"role"`            // consumer or seller
+	// Vertical scopes the account to a branded app ('kosher' | 'vegan').
+	// Empty defaults to 'kosher' for older clients.
+	Vertical string `json:"vertical,omitempty"`
 	// Nonce is the raw nonce the iOS client generated before requesting the
 	// Apple ID token. Apple bakes SHA256(nonce) into the token's `nonce`
 	// claim; we re-hash and compare here to block token replay attacks.
@@ -105,14 +108,15 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// All lookups are scoped by role (see migration 019). The same Apple ID
-	// or Google ID can map to a consumer user AND a seller user AND a
-	// courier user — three independent rows, one per role. The calling app's
-	// role disambiguates which row this sign-in is for.
+	// All lookups are scoped by (role, vertical). The same Apple ID or Google
+	// ID can map to many separate user rows — one per (role × vertical) pair
+	// — and the calling app's role + vertical disambiguates which row this
+	// sign-in is for.
 	role := req.Role
 	if role == "" {
 		role = models.RoleConsumer
 	}
+	vertical := normalizeVertical(req.Vertical)
 
 	// Match the provider identity via the user_auth_providers junction table
 	// (authoritative after migration 022), then fall back to email on the
@@ -123,20 +127,20 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	err = nil
 	if providerID != "" {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.avatar_url, u.created_at, u.updated_at
+			`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.vertical, u.avatar_url, u.created_at, u.updated_at
 			 FROM users u
 			 JOIN user_auth_providers uap ON u.id = uap.user_id
-			 WHERE uap.provider = $1 AND uap.provider_id = $2 AND u.role = $3`,
-			req.Provider, providerID, role,
+			 WHERE uap.provider = $1 AND uap.provider_id = $2 AND u.role = $3 AND u.vertical = $4`,
+			req.Provider, providerID, role, vertical,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+			&user.Role, &user.Vertical, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	}
 	if err != nil || providerID == "" {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
-			 FROM users WHERE email = $1 AND role = $2`, email, role,
+			`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at
+			 FROM users WHERE email = $1 AND role = $2 AND vertical = $3`, email, role, vertical,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+			&user.Role, &user.Vertical, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 	}
 
 	isNewUser := false
@@ -148,12 +152,12 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		dummyHash, _ := bcrypt.GenerateFromPassword([]byte("oauth-"+providerID), bcrypt.DefaultCost)
 
 		err = h.db.Pool.QueryRow(r.Context(),
-			`INSERT INTO users (email, password_hash, first_name, last_name, role, avatar_url, auth_provider, auth_provider_id)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			 RETURNING id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at`,
-			email, string(dummyHash), firstName, lastName, role, avatarURL, req.Provider, providerID,
+			`INSERT INTO users (email, password_hash, first_name, last_name, role, vertical, avatar_url, auth_provider, auth_provider_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			 RETURNING id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at`,
+			email, string(dummyHash), firstName, lastName, role, vertical, avatarURL, req.Provider, providerID,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-			&user.Role, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+			&user.Role, &user.Vertical, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
 
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create user")
@@ -208,7 +212,7 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role))
+	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
