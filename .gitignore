@@ -54,3 +54,6 @@ backend/.gocache/
 # accident (an initial commit). Now ignored; stop tracking via
 # `git rm --cached backend/api`.
 backend/api
+
+# Built AAB artifacts dropped into app/release/ by 'Build > Build Bundle' from Android Studio
+android/**/release/*.aab
