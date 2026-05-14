@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GreenEats seller flavor overrides. Only strings that differ from main.
+-->
+<resources>
+    <string name="app_name">GreenEats Seller</string>
+</resources>
