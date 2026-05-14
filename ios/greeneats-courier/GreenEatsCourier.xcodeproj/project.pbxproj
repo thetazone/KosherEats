@@ -1,0 +1,628 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03BED156901DB955B0B65913 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = B49509D516EC049E73390FBE /* GoogleService-Info.plist */; };
+		0682ECF147B9FBCE0952E60A /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790FBF36D89157CF973674AA /* ChatMessage.swift */; };
+		16E6D05DFBA4B861818BFDE6 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 847D945E9EC1A366D26D83B2 /* OnboardingViewModel.swift */; };
+		1ECA57B5040054B6038D5EC7 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE96A1EE00DC412D923A92D2 /* LoginView.swift */; };
+		24CD0DFFCE81D36E733BCC56 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BB16BF06F1A33B7236ED08 /* Models.swift */; };
+		2EF136CA68CF527A4AEE9FF1 /* AuthLandingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDBC0E7AE0225D3481097B22 /* AuthLandingView.swift */; };
+		34C4714AA408E660B20A870C /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07520E81F0662B0E6630C249 /* LocationManager.swift */; };
+		3F859E1957BA58A37B7072FD /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = DE51917595E40C6A5B294107 /* GoogleSignInSwift */; };
+		49FEAB625770E2AE0726D124 /* ProfileCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E38FC2148DF55283E6E1AAE /* ProfileCompletionSheet.swift */; };
+		4E20F5C3A9D3ACF73F892548 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6749C78F7DD5401C7976CC1A /* Theme.swift */; };
+		5532BFD596FF6EB339463E96 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0E2CBDFBA841807C6A70C4 /* Colors.swift */; };
+		59FC3D9B2A5F93F33D8C0D77 /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CFB1FF6D8E6A1958C63CF6A /* UploadService.swift */; };
+		5CB36104B0FD1FCE26F6E929 /* CourierProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C7384400296DB6D1BDBEB9B /* CourierProfileView.swift */; };
+		5E9E197B12C825021E71A81B /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A2A69CA43A3124621F39487 /* DashboardViewModel.swift */; };
+		648F2A096406D0134C6DB96D /* LegalURLs.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2ACCA2E7DC6F841FEF870C6 /* LegalURLs.swift */; };
+		6A9924E9EBB573B77C42F55D /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C78ACA4C55F8FF0F58EAA42 /* AuthViewModel.swift */; };
+		77CDD9565F2DABE49D27A414 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80A50981D8F73811403A8009 /* APIService.swift */; };
+		7CF7779C0729D968BC7ECB75 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 54DDBE2469A1D3DCF9DFC715 /* Localizable.xcstrings */; };
+		81A048CFAE2A1C7A188FC367 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8541831B4F41277C7C5F1D83 /* AuthenticationServices.framework */; };
+		83F7E29ED158640CA75C8E44 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A174C54F178AC286FDCCB7BA /* DashboardView.swift */; };
+		85D48730554A3DF9C91B0848 /* OrderChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26FFD012753169319AFD3FEA /* OrderChatView.swift */; };
+		8E1D09C6A59DF9C7B1DDA2BF /* EarningsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 012BABBE0F7CD99F801A2C34 /* EarningsView.swift */; };
+		932F82C26E059A51DEE44D4A /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = FD9048AD02A39CEDF1C12B1C /* GoogleSignIn */; };
+		9B712AB0170EAAF3CDE1F891 /* CourierPhoneOTPView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497B904A34FC16D13ADD4623 /* CourierPhoneOTPView.swift */; };
+		A1FD32F10250F85697FA72B8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DECE142E1E9081F1435B3D62 /* RootView.swift */; };
+		A751B36312FE4057315D1963 /* PayoutsSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B7296C60177FD90DDA15BF /* PayoutsSetupView.swift */; };
+		AD51E504516D987150E9DBCA /* ErrorPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F51A80503286A12850854BD /* ErrorPresentation.swift */; };
+		B86BA5F61A0B0322CF471DA5 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1F306CF3D5DB209B8DEB0D /* KeychainHelper.swift */; };
+		C02E78ECA9A5B096028E8B8D /* DeliveryMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E874202ED56F5F333984176 /* DeliveryMapView.swift */; };
+		C517DECFDBBAF26F894435BE /* CountryCodePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9365BC24E188BC89F4178F /* CountryCodePickerSheet.swift */; };
+		D5F10CC435993257CC446FDA /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0882E4957CD45B23918EAA /* PushNotifications.swift */; };
+		D9405C7054F33D4B8F10C87F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D7682DE3730AC296A0A146D2 /* Assets.xcassets */; };
+		DBD1E44761683C4C04E73069 /* SignupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9A9E6B9162C41D408DC750A /* SignupView.swift */; };
+		EDFBA5A34ED0CCAE00F686B5 /* EmailAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0755AB244BBB6450E2110513 /* EmailAuthView.swift */; };
+		EE02404C1ED59F1CAD035166 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D55135710C4F5BD12820A5 /* AppDelegate.swift */; };
+		F00DD47848D5F32710844008 /* Country.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86B6837D74A65969236725F7 /* Country.swift */; };
+		F52BDC130310BFCF4ECFD6A4 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1219E3F5595D83DF5C132747 /* Haptics.swift */; };
+		F6745C33AC2D81EC5E4D97DE /* GreenEatsCourierApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F9482BF7A390BE208C3F93B /* GreenEatsCourierApp.swift */; };
+		FF252ADFDCA6007EC93A74E1 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8203E57B864445BF863EB680 /* OnboardingFlowView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		012BABBE0F7CD99F801A2C34 /* EarningsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EarningsView.swift; sourceTree = "<group>"; };
+		07520E81F0662B0E6630C249 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		0755AB244BBB6450E2110513 /* EmailAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAuthView.swift; sourceTree = "<group>"; };
+		0A2A69CA43A3124621F39487 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		1219E3F5595D83DF5C132747 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		1B2B57371880A86994E1DFFA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1CFB1FF6D8E6A1958C63CF6A /* UploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
+		26D55135710C4F5BD12820A5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		26FFD012753169319AFD3FEA /* OrderChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderChatView.swift; sourceTree = "<group>"; };
+		3C7384400296DB6D1BDBEB9B /* CourierProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourierProfileView.swift; sourceTree = "<group>"; };
+		3F51A80503286A12850854BD /* ErrorPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorPresentation.swift; sourceTree = "<group>"; };
+		497B904A34FC16D13ADD4623 /* CourierPhoneOTPView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourierPhoneOTPView.swift; sourceTree = "<group>"; };
+		4E38FC2148DF55283E6E1AAE /* ProfileCompletionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCompletionSheet.swift; sourceTree = "<group>"; };
+		4E874202ED56F5F333984176 /* DeliveryMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryMapView.swift; sourceTree = "<group>"; };
+		54DDBE2469A1D3DCF9DFC715 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		5A0E2CBDFBA841807C6A70C4 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		5DA484438F6A8BDD9DAFC058 /* Brooklyn.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = Brooklyn.gpx; sourceTree = "<group>"; };
+		5F9482BF7A390BE208C3F93B /* GreenEatsCourierApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenEatsCourierApp.swift; sourceTree = "<group>"; };
+		6749C78F7DD5401C7976CC1A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		6E1F306CF3D5DB209B8DEB0D /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		790FBF36D89157CF973674AA /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		80A50981D8F73811403A8009 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		8203E57B864445BF863EB680 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		847D945E9EC1A366D26D83B2 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
+		8541831B4F41277C7C5F1D83 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		86B6837D74A65969236725F7 /* Country.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Country.swift; sourceTree = "<group>"; };
+		887C8B07448810E60583A23E /* GreenEatsCourier.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GreenEatsCourier.entitlements; sourceTree = "<group>"; };
+		9C78ACA4C55F8FF0F58EAA42 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		A174C54F178AC286FDCCB7BA /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		B2ACCA2E7DC6F841FEF870C6 /* LegalURLs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalURLs.swift; sourceTree = "<group>"; };
+		B2BB16BF06F1A33B7236ED08 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		B49509D516EC049E73390FBE /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		C4B7296C60177FD90DDA15BF /* PayoutsSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayoutsSetupView.swift; sourceTree = "<group>"; };
+		D7682DE3730AC296A0A146D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D9A9E6B9162C41D408DC750A /* SignupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignupView.swift; sourceTree = "<group>"; };
+		DDBC0E7AE0225D3481097B22 /* AuthLandingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthLandingView.swift; sourceTree = "<group>"; };
+		DECE142E1E9081F1435B3D62 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		ED9365BC24E188BC89F4178F /* CountryCodePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCodePickerSheet.swift; sourceTree = "<group>"; };
+		FD01D79E16F7BE231B0477A1 /* GreenEatsCourier.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GreenEatsCourier.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE0882E4957CD45B23918EAA /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
+		FE96A1EE00DC412D923A92D2 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A25CB637AF1F872E9851BC6F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				81A048CFAE2A1C7A188FC367 /* AuthenticationServices.framework in Frameworks */,
+				932F82C26E059A51DEE44D4A /* GoogleSignIn in Frameworks */,
+				3F859E1957BA58A37B7072FD /* GoogleSignInSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		036B335E4E742679DFBFDAE6 /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				26FFD012753169319AFD3FEA /* OrderChatView.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		1C49BC3E2E532F13AF2D2DB0 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				9C78ACA4C55F8FF0F58EAA42 /* AuthViewModel.swift */,
+				0A2A69CA43A3124621F39487 /* DashboardViewModel.swift */,
+				847D945E9EC1A366D26D83B2 /* OnboardingViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		261E1E50C2C54980C3F1A922 = {
+			isa = PBXGroup;
+			children = (
+				2FF56FE115F07B101E3991A4 /* GreenEatsCourier */,
+				6967D454C88D2BBAAB2E29D0 /* Frameworks */,
+				3A3C26E3BE6C3AA134E69AC9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2FF56FE115F07B101E3991A4 /* GreenEatsCourier */ = {
+			isa = PBXGroup;
+			children = (
+				26D55135710C4F5BD12820A5 /* AppDelegate.swift */,
+				D7682DE3730AC296A0A146D2 /* Assets.xcassets */,
+				B49509D516EC049E73390FBE /* GoogleService-Info.plist */,
+				887C8B07448810E60583A23E /* GreenEatsCourier.entitlements */,
+				5F9482BF7A390BE208C3F93B /* GreenEatsCourierApp.swift */,
+				1B2B57371880A86994E1DFFA /* Info.plist */,
+				7B1CA9E29BD6DF5ABE77B38D /* Models */,
+				CB884DFFFB707F815062808B /* Resources */,
+				9D9E78614F0D9978BD3CFEC4 /* Services */,
+				78639D39CF664D6C51C017AE /* Theme */,
+				1C49BC3E2E532F13AF2D2DB0 /* ViewModels */,
+				C00E68A8D71C460E5F3389D4 /* Views */,
+			);
+			path = GreenEatsCourier;
+			sourceTree = "<group>";
+		};
+		365DD9162F3298A7A935DD89 /* Payouts */ = {
+			isa = PBXGroup;
+			children = (
+				C4B7296C60177FD90DDA15BF /* PayoutsSetupView.swift */,
+			);
+			path = Payouts;
+			sourceTree = "<group>";
+		};
+		3A3C26E3BE6C3AA134E69AC9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FD01D79E16F7BE231B0477A1 /* GreenEatsCourier.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4FA367FE05EF4A37A50E3530 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				A174C54F178AC286FDCCB7BA /* DashboardView.swift */,
+				4E874202ED56F5F333984176 /* DeliveryMapView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		6967D454C88D2BBAAB2E29D0 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				8541831B4F41277C7C5F1D83 /* AuthenticationServices.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		78639D39CF664D6C51C017AE /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				5A0E2CBDFBA841807C6A70C4 /* Colors.swift */,
+				B2ACCA2E7DC6F841FEF870C6 /* LegalURLs.swift */,
+				6749C78F7DD5401C7976CC1A /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		7B1CA9E29BD6DF5ABE77B38D /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				790FBF36D89157CF973674AA /* ChatMessage.swift */,
+				86B6837D74A65969236725F7 /* Country.swift */,
+				B2BB16BF06F1A33B7236ED08 /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		8B93063E6001E0A5BCA5F654 /* Earnings */ = {
+			isa = PBXGroup;
+			children = (
+				012BABBE0F7CD99F801A2C34 /* EarningsView.swift */,
+			);
+			path = Earnings;
+			sourceTree = "<group>";
+		};
+		8BE22AF39807A3754C9958B4 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				3C7384400296DB6D1BDBEB9B /* CourierProfileView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		9D9E78614F0D9978BD3CFEC4 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				80A50981D8F73811403A8009 /* APIService.swift */,
+				3F51A80503286A12850854BD /* ErrorPresentation.swift */,
+				1219E3F5595D83DF5C132747 /* Haptics.swift */,
+				6E1F306CF3D5DB209B8DEB0D /* KeychainHelper.swift */,
+				07520E81F0662B0E6630C249 /* LocationManager.swift */,
+				FE0882E4957CD45B23918EAA /* PushNotifications.swift */,
+				1CFB1FF6D8E6A1958C63CF6A /* UploadService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		BF3B0B0C84786699BD01E63C /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				8203E57B864445BF863EB680 /* OnboardingFlowView.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		BF46C83E25802E6EE813347F /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				DDBC0E7AE0225D3481097B22 /* AuthLandingView.swift */,
+				ED9365BC24E188BC89F4178F /* CountryCodePickerSheet.swift */,
+				497B904A34FC16D13ADD4623 /* CourierPhoneOTPView.swift */,
+				0755AB244BBB6450E2110513 /* EmailAuthView.swift */,
+				FE96A1EE00DC412D923A92D2 /* LoginView.swift */,
+				4E38FC2148DF55283E6E1AAE /* ProfileCompletionSheet.swift */,
+				D9A9E6B9162C41D408DC750A /* SignupView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		C00E68A8D71C460E5F3389D4 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				DECE142E1E9081F1435B3D62 /* RootView.swift */,
+				BF46C83E25802E6EE813347F /* Auth */,
+				036B335E4E742679DFBFDAE6 /* Chat */,
+				4FA367FE05EF4A37A50E3530 /* Dashboard */,
+				8B93063E6001E0A5BCA5F654 /* Earnings */,
+				BF3B0B0C84786699BD01E63C /* Onboarding */,
+				365DD9162F3298A7A935DD89 /* Payouts */,
+				8BE22AF39807A3754C9958B4 /* Profile */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		CB884DFFFB707F815062808B /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				5DA484438F6A8BDD9DAFC058 /* Brooklyn.gpx */,
+				54DDBE2469A1D3DCF9DFC715 /* Localizable.xcstrings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CF22D7418DD4E13EB1F99994 /* GreenEatsCourier */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CB205FE6BEFD2C61DBAA57A8 /* Build configuration list for PBXNativeTarget "GreenEatsCourier" */;
+			buildPhases = (
+				012D52C63CE544584B285297 /* Sources */,
+				7C321024AB7628428AEE93E4 /* Resources */,
+				A25CB637AF1F872E9851BC6F /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GreenEatsCourier;
+			packageProductDependencies = (
+				FD9048AD02A39CEDF1C12B1C /* GoogleSignIn */,
+				DE51917595E40C6A5B294107 /* GoogleSignInSwift */,
+			);
+			productName = GreenEatsCourier;
+			productReference = FD01D79E16F7BE231B0477A1 /* GreenEatsCourier.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7F598222D605EF07A29D4CEC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					CF22D7418DD4E13EB1F99994 = {
+						DevelopmentTeam = 4RSM8W4755;
+					};
+				};
+			};
+			buildConfigurationList = DEDBFC35F5305B5B862FFF09 /* Build configuration list for PBXProject "GreenEatsCourier" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				he,
+				yi,
+			);
+			mainGroup = 261E1E50C2C54980C3F1A922;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9A6A895A76764A0B4155CBB6 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CF22D7418DD4E13EB1F99994 /* GreenEatsCourier */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		7C321024AB7628428AEE93E4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D9405C7054F33D4B8F10C87F /* Assets.xcassets in Resources */,
+				03BED156901DB955B0B65913 /* GoogleService-Info.plist in Resources */,
+				7CF7779C0729D968BC7ECB75 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		012D52C63CE544584B285297 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77CDD9565F2DABE49D27A414 /* APIService.swift in Sources */,
+				EE02404C1ED59F1CAD035166 /* AppDelegate.swift in Sources */,
+				2EF136CA68CF527A4AEE9FF1 /* AuthLandingView.swift in Sources */,
+				6A9924E9EBB573B77C42F55D /* AuthViewModel.swift in Sources */,
+				0682ECF147B9FBCE0952E60A /* ChatMessage.swift in Sources */,
+				5532BFD596FF6EB339463E96 /* Colors.swift in Sources */,
+				F00DD47848D5F32710844008 /* Country.swift in Sources */,
+				C517DECFDBBAF26F894435BE /* CountryCodePickerSheet.swift in Sources */,
+				9B712AB0170EAAF3CDE1F891 /* CourierPhoneOTPView.swift in Sources */,
+				5CB36104B0FD1FCE26F6E929 /* CourierProfileView.swift in Sources */,
+				83F7E29ED158640CA75C8E44 /* DashboardView.swift in Sources */,
+				5E9E197B12C825021E71A81B /* DashboardViewModel.swift in Sources */,
+				C02E78ECA9A5B096028E8B8D /* DeliveryMapView.swift in Sources */,
+				8E1D09C6A59DF9C7B1DDA2BF /* EarningsView.swift in Sources */,
+				EDFBA5A34ED0CCAE00F686B5 /* EmailAuthView.swift in Sources */,
+				AD51E504516D987150E9DBCA /* ErrorPresentation.swift in Sources */,
+				F6745C33AC2D81EC5E4D97DE /* GreenEatsCourierApp.swift in Sources */,
+				F52BDC130310BFCF4ECFD6A4 /* Haptics.swift in Sources */,
+				B86BA5F61A0B0322CF471DA5 /* KeychainHelper.swift in Sources */,
+				648F2A096406D0134C6DB96D /* LegalURLs.swift in Sources */,
+				34C4714AA408E660B20A870C /* LocationManager.swift in Sources */,
+				1ECA57B5040054B6038D5EC7 /* LoginView.swift in Sources */,
+				24CD0DFFCE81D36E733BCC56 /* Models.swift in Sources */,
+				FF252ADFDCA6007EC93A74E1 /* OnboardingFlowView.swift in Sources */,
+				16E6D05DFBA4B861818BFDE6 /* OnboardingViewModel.swift in Sources */,
+				85D48730554A3DF9C91B0848 /* OrderChatView.swift in Sources */,
+				A751B36312FE4057315D1963 /* PayoutsSetupView.swift in Sources */,
+				49FEAB625770E2AE0726D124 /* ProfileCompletionSheet.swift in Sources */,
+				D5F10CC435993257CC446FDA /* PushNotifications.swift in Sources */,
+				A1FD32F10250F85697FA72B8 /* RootView.swift in Sources */,
+				DBD1E44761683C4C04E73069 /* SignupView.swift in Sources */,
+				4E20F5C3A9D3ACF73F892548 /* Theme.swift in Sources */,
+				59FC3D9B2A5F93F33D8C0D77 /* UploadService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		2990080A8C7E569D29C27E49 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4RSM8W4755;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		43A5AB5C48E5F7772F1B03DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		B6E424A003336C0077F13B38 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = GreenEatsCourier/GreenEatsCourier.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GreenEatsCourier/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "GreenEats Courier needs camera access to capture your drivers license and vehicle documents.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GreenEats Courier needs background location to keep customers updated on delivery progress.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GreenEats Courier uses your location to show nearby deliveries and navigate to pickups.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "location fetch";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.courier;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		E10E49BDE792322350D03DD1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = GreenEatsCourier/GreenEatsCourier.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GreenEatsCourier/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "GreenEats Courier needs camera access to capture your drivers license and vehicle documents.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "GreenEats Courier needs background location to keep customers updated on delivery progress.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GreenEats Courier uses your location to show nearby deliveries and navigate to pickups.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "location fetch";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.courier;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CB205FE6BEFD2C61DBAA57A8 /* Build configuration list for PBXNativeTarget "GreenEatsCourier" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E10E49BDE792322350D03DD1 /* Debug */,
+				B6E424A003336C0077F13B38 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DEDBFC35F5305B5B862FFF09 /* Build configuration list for PBXProject "GreenEatsCourier" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2990080A8C7E569D29C27E49 /* Debug */,
+				43A5AB5C48E5F7772F1B03DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9A6A895A76764A0B4155CBB6 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DE51917595E40C6A5B294107 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A6A895A76764A0B4155CBB6 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+		FD9048AD02A39CEDF1C12B1C /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A6A895A76764A0B4155CBB6 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7F598222D605EF07A29D4CEC /* Project object */;
+}

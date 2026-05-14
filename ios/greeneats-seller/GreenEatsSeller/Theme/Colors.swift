@@ -1,0 +1,72 @@
+import SwiftUI
+import UIKit
+
+extension Color {
+    static let kePrimary = Color(hex: "F97316")
+    static let keBackground = dynamic(dark: "0A0A0A", light: "FAFAFA")
+    static let keSurface = dynamic(dark: "171717", light: "FFFFFF")
+    static let keCard = dynamic(dark: "262626", light: "F1F1F1")
+    static let keTextPrimary = dynamic(dark: "FFFFFF", light: "0A0A0A")
+    static let keTextSecondary = dynamic(dark: "D4D4D4", light: "262626")
+    static let keTextMuted = dynamic(dark: "737373", light: "737373")
+    static let keTextOnAccent = dynamic(dark: "FFFFFF", light: "0A0A0A")
+    static let keBorder = dynamic(dark: "404040", light: "E5E5E5")
+    static let keSuccess = Color(hex: "22C55E")
+    static let keWarning = Color(hex: "EAB308")
+    static let keError = Color(hex: "EF4444")
+
+    private static func dynamic(dark: String, light: String) -> Color {
+        Color(
+            UIColor { trait in
+                trait.userInterfaceStyle == .dark
+                    ? UIColor(hex: dark)
+                    : UIColor(hex: light)
+            }
+        )
+    }
+
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 6:
+            (a, r, g, b) = (255, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        case 8:
+            (a, r, g, b) = ((int >> 24) & 0xFF, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
+extension UIColor {
+    fileprivate convenience init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 6:
+            (a, r, g, b) = (255, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        case 8:
+            (a, r, g, b) = ((int >> 24) & 0xFF, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            red: CGFloat(r) / 255,
+            green: CGFloat(g) / 255,
+            blue: CGFloat(b) / 255,
+            alpha: CGFloat(a) / 255
+        )
+    }
+}

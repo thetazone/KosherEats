@@ -1,0 +1,662 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0632EEF0EC7E83484A05DC21 /* SelectedRestaurant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78CE127006BD715B401D33AF /* SelectedRestaurant.swift */; };
+		0BCCA1A44C68F1F41AAEB820 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 99405F1782BAD11A160BDDC6 /* GoogleService-Info.plist */; };
+		0CF78E1C59CE1CFA538A5C4C /* DealsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BA2577C1160DA5CC189D03 /* DealsViewModel.swift */; };
+		1047E84498BD162BCE6B0C5A /* CountryCodePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 547F5A8DD65D9244D7AF924A /* CountryCodePickerSheet.swift */; };
+		16AFD9D61AF5EF6F9F5CA1AB /* RemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 836A59699713B86CA3D0DA30 /* RemoteImage.swift */; };
+		20DE6AB1F6015ADA04A97CB4 /* SellerRootGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F946887E0BCED891A81D97BE /* SellerRootGate.swift */; };
+		25A49A76A75FF116E48D0C05 /* PushEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB419B83EF362847C239DD4 /* PushEvents.swift */; };
+		3B5E473019340B4200A7964A /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F40B9F1FADC1295E44D148A /* AuthenticationServices.framework */; };
+		3D57A8633EBBEBA00932535B /* MenuItemFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE351FB854DA97DA97738B4 /* MenuItemFormView.swift */; };
+		41EC9A203E9118B4577806B6 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE6796D1906A3D8C7F88A88A /* Colors.swift */; };
+		45FB63025043A59E1B251541 /* MenuViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6D0CFB8C1C14CA3B6F69C47 /* MenuViewModel.swift */; };
+		49576E0CB846BB3122C2FB95 /* ActiveOrderCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342EC75AD9F0B8E3B1AE6827 /* ActiveOrderCard.swift */; };
+		4A6229FFCDECD43112BCA639 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A3EB462BDBB6407FE20EB08 /* MainTabView.swift */; };
+		4D27E65A89C90035F925E146 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0309D16B6BA930D094169EE /* Haptics.swift */; };
+		4F48DC570FAC0F3EED85BB41 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4816071EA71A1205D3515529 /* PushNotifications.swift */; };
+		57AD9ABD694FFF93F02F0CDB /* SellerOrdersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6AFDB09B9FB4A20F73EA95A /* SellerOrdersView.swift */; };
+		589F2AB61D58356D178524BC /* MenuManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00602BAFD58E7727104C030A /* MenuManagementView.swift */; };
+		59C0F0C04F44FC2E5442864E /* RestaurantSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9370093424DA6F72A93BA071 /* RestaurantSettingsView.swift */; };
+		5B51E04974263BDB795F509C /* IntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9672B92C4280A0574F8C7805 /* IntegrationsView.swift */; };
+		6776D02200C59727BA076706 /* OnboardingCompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAED2BF11156EF4E7623C986 /* OnboardingCompleteView.swift */; };
+		68B13038E791F12B757A11A2 /* ModifierGroupsEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A92F88941B796C4E3C5BFFD /* ModifierGroupsEditorView.swift */; };
+		6A3DF892A435D626F8AE8558 /* RestaurantPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE71AAD3F8F01B95AC783814 /* RestaurantPickerSheet.swift */; };
+		6A539B20BB65BA91E8845ADD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BD1473DABB075C96B18E399 /* Assets.xcassets */; };
+		6AB3255B26B999855F4E4500 /* ConnectedAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F19943D99F1C45FDF67AADA /* ConnectedAccountsView.swift */; };
+		6B0AAB6D5BE89E2D9CFC698D /* GreenEatsSellerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A353E59B8413EB5F5545AD3 /* GreenEatsSellerApp.swift */; };
+		774F4D728A73935A30614BE8 /* SellerOnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 708F915FDB9A6E8D07E2EACE /* SellerOnboardingView.swift */; };
+		7A71B99387FC166F2A25D553 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D786016D391216916C5C065B /* APIService.swift */; };
+		7D458445ECC17AFD62604D48 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50A76FDE08E0183A1741340 /* DashboardView.swift */; };
+		821356C1DA2D84898768265E /* LegalURLs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F3B14F1E97099E850B12C86 /* LegalURLs.swift */; };
+		892F524C542225F12FDED2C1 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC810BF58C75BBD9460BE82C /* DashboardViewModel.swift */; };
+		8A7ED19B24A72D612B0FA5B4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32FDCCB437B7A30249BFDFCD /* AppDelegate.swift */; };
+		947E0F1802FC631D957930C9 /* PhoneOTPView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FB568F20AA9FCF2E54CB15E /* PhoneOTPView.swift */; };
+		9D13C4C4EC20DF8BF7329390 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F260026B0009C3B3BD1C4CB4 /* PrivacyInfo.xcprivacy */; };
+		9FBE636F912E590EB7405272 /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54DA2AC38F09AD6623A2C8C /* UploadService.swift */; };
+		A04DC272CEDEC430C7D0C35E /* SellerOrderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 956EC34D9E984C3C29C037C8 /* SellerOrderDetailView.swift */; };
+		A21CBFFED0E36C43B65B5DCF /* Country.swift in Sources */ = {isa = PBXBuildFile; fileRef = 470A2C4DDAC224482B231080 /* Country.swift */; };
+		A614E4ED6BA59F01E407FAE1 /* ErrorStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1045CFD637F0F3CF2FD381B1 /* ErrorStateView.swift */; };
+		B1BCB7E68B8786540A9C1642 /* EmailAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B6B31B6A719DB388604F6A /* EmailAuthView.swift */; };
+		B4D1EEDFDC898140E2E8C1D9 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92136C536F98112C12304915 /* Models.swift */; };
+		B52287B7B294C71278E94A4C /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A33DB6004003176A6B0EB848 /* AuthViewModel.swift */; };
+		C09FAB2CE6D6A901B5891B40 /* OrdersViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0156181DF4285AF4C841C36 /* OrdersViewModel.swift */; };
+		C32656ACA7C08712977ED4E0 /* DealsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5DFCFD7B24B593DB0F08E5 /* DealsView.swift */; };
+		C4B3BF87E7D710C9227760AB /* CreateDealView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B215942D3B68A08D5AF4A926 /* CreateDealView.swift */; };
+		CA28C57D894837E9128D30C4 /* SkeletonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C481C49C3004A8881181A137 /* SkeletonViews.swift */; };
+		CBA39EA18B70C8DC24AEF470 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 6A08966E4FD311AF777EECC8 /* Localizable.xcstrings */; };
+		CC84DD4629E5B720B46E2474 /* SellerOnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0049A9744C2013F1A8F2BBD0 /* SellerOnboardingFlow.swift */; };
+		D805E3808C8179451EAEEE13 /* ProfileCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7EC40361BC775163A560A7 /* ProfileCompletionSheet.swift */; };
+		EA2A0CB8901468AFA5CBD1CB /* SellerLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 873D714FF9F092627319A590 /* SellerLoginView.swift */; };
+		EE8413AE6B92779F3221ABDC /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 042256BDDD39938C8CB32F47 /* KeychainHelper.swift */; };
+		F992E69B4BA9A119336B2E78 /* LayoutHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EAF28225C530C01AD08BCE /* LayoutHelpers.swift */; };
+		FA7A6585CCD4E07D1ED03223 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 627F8810278098AD3325224D /* GoogleSignIn */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0049A9744C2013F1A8F2BBD0 /* SellerOnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOnboardingFlow.swift; sourceTree = "<group>"; };
+		00602BAFD58E7727104C030A /* MenuManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuManagementView.swift; sourceTree = "<group>"; };
+		042256BDDD39938C8CB32F47 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		1045CFD637F0F3CF2FD381B1 /* ErrorStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorStateView.swift; sourceTree = "<group>"; };
+		1A3EB462BDBB6407FE20EB08 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		27B6B31B6A719DB388604F6A /* EmailAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAuthView.swift; sourceTree = "<group>"; };
+		2BD1473DABB075C96B18E399 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		32FDCCB437B7A30249BFDFCD /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		342EC75AD9F0B8E3B1AE6827 /* ActiveOrderCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveOrderCard.swift; sourceTree = "<group>"; };
+		470A2C4DDAC224482B231080 /* Country.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Country.swift; sourceTree = "<group>"; };
+		4816071EA71A1205D3515529 /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
+		547F5A8DD65D9244D7AF924A /* CountryCodePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCodePickerSheet.swift; sourceTree = "<group>"; };
+		5F19943D99F1C45FDF67AADA /* ConnectedAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAccountsView.swift; sourceTree = "<group>"; };
+		5FB419B83EF362847C239DD4 /* PushEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEvents.swift; sourceTree = "<group>"; };
+		6A08966E4FD311AF777EECC8 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		6A353E59B8413EB5F5545AD3 /* GreenEatsSellerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenEatsSellerApp.swift; sourceTree = "<group>"; };
+		6F3B14F1E97099E850B12C86 /* LegalURLs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalURLs.swift; sourceTree = "<group>"; };
+		708F915FDB9A6E8D07E2EACE /* SellerOnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOnboardingView.swift; sourceTree = "<group>"; };
+		75BA2577C1160DA5CC189D03 /* DealsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsViewModel.swift; sourceTree = "<group>"; };
+		75EAF28225C530C01AD08BCE /* LayoutHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutHelpers.swift; sourceTree = "<group>"; };
+		78CE127006BD715B401D33AF /* SelectedRestaurant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedRestaurant.swift; sourceTree = "<group>"; };
+		836A59699713B86CA3D0DA30 /* RemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImage.swift; sourceTree = "<group>"; };
+		873D714FF9F092627319A590 /* SellerLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerLoginView.swift; sourceTree = "<group>"; };
+		8FB568F20AA9FCF2E54CB15E /* PhoneOTPView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneOTPView.swift; sourceTree = "<group>"; };
+		92136C536F98112C12304915 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		9370093424DA6F72A93BA071 /* RestaurantSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantSettingsView.swift; sourceTree = "<group>"; };
+		956EC34D9E984C3C29C037C8 /* SellerOrderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOrderDetailView.swift; sourceTree = "<group>"; };
+		9672B92C4280A0574F8C7805 /* IntegrationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationsView.swift; sourceTree = "<group>"; };
+		99405F1782BAD11A160BDDC6 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		9A92F88941B796C4E3C5BFFD /* ModifierGroupsEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierGroupsEditorView.swift; sourceTree = "<group>"; };
+		9F40B9F1FADC1295E44D148A /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		A33DB6004003176A6B0EB848 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		AB80BE42217EBEB460EEDB41 /* GreenEatsSeller.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GreenEatsSeller.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0309D16B6BA930D094169EE /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		B215942D3B68A08D5AF4A926 /* CreateDealView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateDealView.swift; sourceTree = "<group>"; };
+		BAED2BF11156EF4E7623C986 /* OnboardingCompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingCompleteView.swift; sourceTree = "<group>"; };
+		C481C49C3004A8881181A137 /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
+		C6AFDB09B9FB4A20F73EA95A /* SellerOrdersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerOrdersView.swift; sourceTree = "<group>"; };
+		CC810BF58C75BBD9460BE82C /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		CE5DFCFD7B24B593DB0F08E5 /* DealsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsView.swift; sourceTree = "<group>"; };
+		CE6796D1906A3D8C7F88A88A /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		D0156181DF4285AF4C841C36 /* OrdersViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrdersViewModel.swift; sourceTree = "<group>"; };
+		D50A76FDE08E0183A1741340 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		D786016D391216916C5C065B /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		DAE351FB854DA97DA97738B4 /* MenuItemFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemFormView.swift; sourceTree = "<group>"; };
+		DE71AAD3F8F01B95AC783814 /* RestaurantPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantPickerSheet.swift; sourceTree = "<group>"; };
+		E54DA2AC38F09AD6623A2C8C /* UploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
+		E6D0CFB8C1C14CA3B6F69C47 /* MenuViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuViewModel.swift; sourceTree = "<group>"; };
+		E75F5BD40C5E44C38F9158C7 /* GreenEatsSeller.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GreenEatsSeller.entitlements; sourceTree = "<group>"; };
+		ECD98BCF63A28DD35EE5D7F2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		F260026B0009C3B3BD1C4CB4 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F946887E0BCED891A81D97BE /* SellerRootGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellerRootGate.swift; sourceTree = "<group>"; };
+		FA7EC40361BC775163A560A7 /* ProfileCompletionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCompletionSheet.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B3FE3FA92E92F94B4CE85800 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FA7A6585CCD4E07D1ED03223 /* GoogleSignIn in Frameworks */,
+				3B5E473019340B4200A7964A /* AuthenticationServices.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2C7C54293CF6AD56F082DA7C /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				1045CFD637F0F3CF2FD381B1 /* ErrorStateView.swift */,
+				836A59699713B86CA3D0DA30 /* RemoteImage.swift */,
+				C481C49C3004A8881181A137 /* SkeletonViews.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		302A25DA70C151A0CC54CC50 /* Menu */ = {
+			isa = PBXGroup;
+			children = (
+				DAE351FB854DA97DA97738B4 /* MenuItemFormView.swift */,
+				00602BAFD58E7727104C030A /* MenuManagementView.swift */,
+				9A92F88941B796C4E3C5BFFD /* ModifierGroupsEditorView.swift */,
+			);
+			path = Menu;
+			sourceTree = "<group>";
+		};
+		453E1213918EEE7B6DB5E26C /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				470A2C4DDAC224482B231080 /* Country.swift */,
+				92136C536F98112C12304915 /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		5E5668EBF8EE7F82A1891CD7 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				1A3EB462BDBB6407FE20EB08 /* MainTabView.swift */,
+				F946887E0BCED891A81D97BE /* SellerRootGate.swift */,
+				6E0D2824615CE04B70A91405 /* Auth */,
+				2C7C54293CF6AD56F082DA7C /* Components */,
+				72176722C12E39F4DFFBC1B4 /* Dashboard */,
+				EB2AD6D5A3C504AB08E308B6 /* Deals */,
+				302A25DA70C151A0CC54CC50 /* Menu */,
+				A9B693F7A16FD4579993A41C /* Orders */,
+				95BF5290FB45F21DA32FCB7E /* Settings */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		65582FB376E9F32E50160CE2 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				6A08966E4FD311AF777EECC8 /* Localizable.xcstrings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		6D55928E8176EE28C6B7F27D /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				CE6796D1906A3D8C7F88A88A /* Colors.swift */,
+				75EAF28225C530C01AD08BCE /* LayoutHelpers.swift */,
+				6F3B14F1E97099E850B12C86 /* LegalURLs.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		6E0D2824615CE04B70A91405 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				547F5A8DD65D9244D7AF924A /* CountryCodePickerSheet.swift */,
+				27B6B31B6A719DB388604F6A /* EmailAuthView.swift */,
+				BAED2BF11156EF4E7623C986 /* OnboardingCompleteView.swift */,
+				8FB568F20AA9FCF2E54CB15E /* PhoneOTPView.swift */,
+				FA7EC40361BC775163A560A7 /* ProfileCompletionSheet.swift */,
+				873D714FF9F092627319A590 /* SellerLoginView.swift */,
+				0049A9744C2013F1A8F2BBD0 /* SellerOnboardingFlow.swift */,
+				708F915FDB9A6E8D07E2EACE /* SellerOnboardingView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		72176722C12E39F4DFFBC1B4 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				342EC75AD9F0B8E3B1AE6827 /* ActiveOrderCard.swift */,
+				D50A76FDE08E0183A1741340 /* DashboardView.swift */,
+				DE71AAD3F8F01B95AC783814 /* RestaurantPickerSheet.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		95BF5290FB45F21DA32FCB7E /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				5F19943D99F1C45FDF67AADA /* ConnectedAccountsView.swift */,
+				9672B92C4280A0574F8C7805 /* IntegrationsView.swift */,
+				9370093424DA6F72A93BA071 /* RestaurantSettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		A9B693F7A16FD4579993A41C /* Orders */ = {
+			isa = PBXGroup;
+			children = (
+				956EC34D9E984C3C29C037C8 /* SellerOrderDetailView.swift */,
+				C6AFDB09B9FB4A20F73EA95A /* SellerOrdersView.swift */,
+			);
+			path = Orders;
+			sourceTree = "<group>";
+		};
+		AFB44D2283F852F866045BFF /* GreenEatsSeller */ = {
+			isa = PBXGroup;
+			children = (
+				32FDCCB437B7A30249BFDFCD /* AppDelegate.swift */,
+				2BD1473DABB075C96B18E399 /* Assets.xcassets */,
+				99405F1782BAD11A160BDDC6 /* GoogleService-Info.plist */,
+				E75F5BD40C5E44C38F9158C7 /* GreenEatsSeller.entitlements */,
+				6A353E59B8413EB5F5545AD3 /* GreenEatsSellerApp.swift */,
+				ECD98BCF63A28DD35EE5D7F2 /* Info.plist */,
+				F260026B0009C3B3BD1C4CB4 /* PrivacyInfo.xcprivacy */,
+				453E1213918EEE7B6DB5E26C /* Models */,
+				65582FB376E9F32E50160CE2 /* Resources */,
+				CCF7EE23762800E67B426866 /* Services */,
+				6D55928E8176EE28C6B7F27D /* Theme */,
+				E2CDAEF616997E78294CD503 /* ViewModels */,
+				5E5668EBF8EE7F82A1891CD7 /* Views */,
+			);
+			path = GreenEatsSeller;
+			sourceTree = "<group>";
+		};
+		B014AAA74A584DE3C170D876 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9F40B9F1FADC1295E44D148A /* AuthenticationServices.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		B53E89AD7F16C3F04B011CA1 = {
+			isa = PBXGroup;
+			children = (
+				AFB44D2283F852F866045BFF /* GreenEatsSeller */,
+				B014AAA74A584DE3C170D876 /* Frameworks */,
+				DB59A3CB5023051624B39590 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CCF7EE23762800E67B426866 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				D786016D391216916C5C065B /* APIService.swift */,
+				B0309D16B6BA930D094169EE /* Haptics.swift */,
+				042256BDDD39938C8CB32F47 /* KeychainHelper.swift */,
+				5FB419B83EF362847C239DD4 /* PushEvents.swift */,
+				4816071EA71A1205D3515529 /* PushNotifications.swift */,
+				78CE127006BD715B401D33AF /* SelectedRestaurant.swift */,
+				E54DA2AC38F09AD6623A2C8C /* UploadService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		DB59A3CB5023051624B39590 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AB80BE42217EBEB460EEDB41 /* GreenEatsSeller.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E2CDAEF616997E78294CD503 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				A33DB6004003176A6B0EB848 /* AuthViewModel.swift */,
+				CC810BF58C75BBD9460BE82C /* DashboardViewModel.swift */,
+				75BA2577C1160DA5CC189D03 /* DealsViewModel.swift */,
+				E6D0CFB8C1C14CA3B6F69C47 /* MenuViewModel.swift */,
+				D0156181DF4285AF4C841C36 /* OrdersViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		EB2AD6D5A3C504AB08E308B6 /* Deals */ = {
+			isa = PBXGroup;
+			children = (
+				B215942D3B68A08D5AF4A926 /* CreateDealView.swift */,
+				CE5DFCFD7B24B593DB0F08E5 /* DealsView.swift */,
+			);
+			path = Deals;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BFDEF7F889E4636FB65B4AF4 /* GreenEatsSeller */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A0F4F9FEBE6FE39CEAD5C4E4 /* Build configuration list for PBXNativeTarget "GreenEatsSeller" */;
+			buildPhases = (
+				8CF50E65EC7CB126C07579F7 /* Sources */,
+				E783FF49F2572B728A7AD9A6 /* Resources */,
+				B3FE3FA92E92F94B4CE85800 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GreenEatsSeller;
+			packageProductDependencies = (
+				627F8810278098AD3325224D /* GoogleSignIn */,
+			);
+			productName = GreenEatsSeller;
+			productReference = AB80BE42217EBEB460EEDB41 /* GreenEatsSeller.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4AC907D19499278FC426ED90 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					BFDEF7F889E4636FB65B4AF4 = {
+						DevelopmentTeam = 4RSM8W4755;
+					};
+				};
+			};
+			buildConfigurationList = D8FBD8090458791EE90C0D1B /* Build configuration list for PBXProject "GreenEatsSeller" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				he,
+				yi,
+			);
+			mainGroup = B53E89AD7F16C3F04B011CA1;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				513E75C9BA5206AFF9549D08 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BFDEF7F889E4636FB65B4AF4 /* GreenEatsSeller */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E783FF49F2572B728A7AD9A6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A539B20BB65BA91E8845ADD /* Assets.xcassets in Resources */,
+				0BCCA1A44C68F1F41AAEB820 /* GoogleService-Info.plist in Resources */,
+				CBA39EA18B70C8DC24AEF470 /* Localizable.xcstrings in Resources */,
+				9D13C4C4EC20DF8BF7329390 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8CF50E65EC7CB126C07579F7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A71B99387FC166F2A25D553 /* APIService.swift in Sources */,
+				49576E0CB846BB3122C2FB95 /* ActiveOrderCard.swift in Sources */,
+				8A7ED19B24A72D612B0FA5B4 /* AppDelegate.swift in Sources */,
+				B52287B7B294C71278E94A4C /* AuthViewModel.swift in Sources */,
+				41EC9A203E9118B4577806B6 /* Colors.swift in Sources */,
+				6AB3255B26B999855F4E4500 /* ConnectedAccountsView.swift in Sources */,
+				A21CBFFED0E36C43B65B5DCF /* Country.swift in Sources */,
+				1047E84498BD162BCE6B0C5A /* CountryCodePickerSheet.swift in Sources */,
+				C4B3BF87E7D710C9227760AB /* CreateDealView.swift in Sources */,
+				7D458445ECC17AFD62604D48 /* DashboardView.swift in Sources */,
+				892F524C542225F12FDED2C1 /* DashboardViewModel.swift in Sources */,
+				C32656ACA7C08712977ED4E0 /* DealsView.swift in Sources */,
+				0CF78E1C59CE1CFA538A5C4C /* DealsViewModel.swift in Sources */,
+				B1BCB7E68B8786540A9C1642 /* EmailAuthView.swift in Sources */,
+				A614E4ED6BA59F01E407FAE1 /* ErrorStateView.swift in Sources */,
+				6B0AAB6D5BE89E2D9CFC698D /* GreenEatsSellerApp.swift in Sources */,
+				4D27E65A89C90035F925E146 /* Haptics.swift in Sources */,
+				5B51E04974263BDB795F509C /* IntegrationsView.swift in Sources */,
+				EE8413AE6B92779F3221ABDC /* KeychainHelper.swift in Sources */,
+				F992E69B4BA9A119336B2E78 /* LayoutHelpers.swift in Sources */,
+				821356C1DA2D84898768265E /* LegalURLs.swift in Sources */,
+				4A6229FFCDECD43112BCA639 /* MainTabView.swift in Sources */,
+				3D57A8633EBBEBA00932535B /* MenuItemFormView.swift in Sources */,
+				589F2AB61D58356D178524BC /* MenuManagementView.swift in Sources */,
+				45FB63025043A59E1B251541 /* MenuViewModel.swift in Sources */,
+				B4D1EEDFDC898140E2E8C1D9 /* Models.swift in Sources */,
+				68B13038E791F12B757A11A2 /* ModifierGroupsEditorView.swift in Sources */,
+				6776D02200C59727BA076706 /* OnboardingCompleteView.swift in Sources */,
+				C09FAB2CE6D6A901B5891B40 /* OrdersViewModel.swift in Sources */,
+				947E0F1802FC631D957930C9 /* PhoneOTPView.swift in Sources */,
+				D805E3808C8179451EAEEE13 /* ProfileCompletionSheet.swift in Sources */,
+				25A49A76A75FF116E48D0C05 /* PushEvents.swift in Sources */,
+				4F48DC570FAC0F3EED85BB41 /* PushNotifications.swift in Sources */,
+				16AFD9D61AF5EF6F9F5CA1AB /* RemoteImage.swift in Sources */,
+				6A3DF892A435D626F8AE8558 /* RestaurantPickerSheet.swift in Sources */,
+				59C0F0C04F44FC2E5442864E /* RestaurantSettingsView.swift in Sources */,
+				0632EEF0EC7E83484A05DC21 /* SelectedRestaurant.swift in Sources */,
+				EA2A0CB8901468AFA5CBD1CB /* SellerLoginView.swift in Sources */,
+				CC84DD4629E5B720B46E2474 /* SellerOnboardingFlow.swift in Sources */,
+				774F4D728A73935A30614BE8 /* SellerOnboardingView.swift in Sources */,
+				A04DC272CEDEC430C7D0C35E /* SellerOrderDetailView.swift in Sources */,
+				57AD9ABD694FFF93F02F0CDB /* SellerOrdersView.swift in Sources */,
+				20DE6AB1F6015ADA04A97CB4 /* SellerRootGate.swift in Sources */,
+				CA28C57D894837E9128D30C4 /* SkeletonViews.swift in Sources */,
+				9FBE636F912E590EB7405272 /* UploadService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		15F1AE2AA37C9A89DDE29477 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		3876208F62CA570D48F172E2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4RSM8W4755;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		DF461BD469C4D48765DBA791 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GreenEatsSeller/GreenEatsSeller.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GreenEatsSeller/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.seller;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E0726290CA7638F549790854 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GreenEatsSeller/GreenEatsSeller.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GreenEatsSeller/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.seller;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A0F4F9FEBE6FE39CEAD5C4E4 /* Build configuration list for PBXNativeTarget "GreenEatsSeller" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E0726290CA7638F549790854 /* Debug */,
+				DF461BD469C4D48765DBA791 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D8FBD8090458791EE90C0D1B /* Build configuration list for PBXProject "GreenEatsSeller" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3876208F62CA570D48F172E2 /* Debug */,
+				15F1AE2AA37C9A89DDE29477 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		513E75C9BA5206AFF9549D08 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		627F8810278098AD3325224D /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 513E75C9BA5206AFF9549D08 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4AC907D19499278FC426ED90 /* Project object */;
+}
