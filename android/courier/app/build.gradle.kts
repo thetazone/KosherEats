@@ -88,11 +88,6 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
-            // Bundle native debug symbols so Play Console can symbolicate native
-            // crashes/ANRs (Stripe/SQLite/Compose pull in .so files transitively).
-            ndk {
-                debugSymbolLevel = "SYMBOL_TABLE"
-            }
         }
     }
 
