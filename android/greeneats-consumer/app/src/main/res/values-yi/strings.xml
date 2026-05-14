@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Yiddish (yi) translations. Right-to-left; Android handles the direction
+  automatically via android:supportsRtl="true" in the manifest.
+-->
+<resources>
+    <string name="app_name">GreenEats</string>
+
+    <string name="auth_email">אימעיל</string>
+    <string name="auth_password">פּאַראָל</string>
+    <string name="auth_login_title">ברוך הבא צוריק</string>
+    <string name="auth_signup_title">עפֿן אַ חשבון</string>
+
+    <string name="home_title">כּשר איטס</string>
+    <string name="home_tagline">כּשר ברענגונג, ווי עס דאַרף זיין</string>
+    <string name="home_search_placeholder">זוך רעסטאָראַנען...</string>
+    <string name="home_featured">אויסגעקליבן</string>
+    <string name="home_all_restaurants">אַלע רעסטאָראַנען</string>
+
+    <string name="tabs_home">היים</string>
+    <string name="tabs_search">זוכן</string>
+    <string name="tabs_orders">באַשטעלונגען</string>
+    <string name="tabs_profile">פּראָפֿיל</string>
+
+    <string name="cart_title">וועגעלע</string>
+    <string name="cart_empty_title">דיין וועגעלע איז ליידיק</string>
+    <string name="cart_checkout">אָפּצאָלן</string>
+    <string name="checkout_delivery_time">ברענגונג צייט</string>
+    <string name="checkout_asap">אַזוי גיך ווי מעגלעך</string>
+    <string name="checkout_schedule">קבֿע אַ צייט</string>
+    <string name="checkout_tip_title">טרינקגעלט פֿאַרן שאָפֿער</string>
+    <string name="checkout_place_order">באַשטעל</string>
+
+    <string name="chat_title">שמועס</string>
+    <string name="chat_placeholder">שרייב אַ מעלדונג…</string>
+
+    <string name="order_status_pending">וואַרטן אויפֿן רעסטאָראַן</string>
+    <string name="order_status_preparing">דיין עסן ווערט צוגעגרייט</string>
+    <string name="order_status_on_the_way">דיין באַשטעלונג איז אין וועג</string>
+    <string name="order_status_delivered">צוגעשטעלט — אַ גוטן אַפּעטיט!</string>
+    <string name="order_tracking_title">נאָכפֿאָלגן</string>
+
+    <string name="common_cancel">אָפּזאָגן</string>
+    <string name="common_done">פֿאַרטיק</string>
+    <string name="common_retry">פּרובירן נאָך אַ מאָל</string>
+</resources>

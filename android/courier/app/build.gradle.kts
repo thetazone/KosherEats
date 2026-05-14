@@ -40,8 +40,7 @@ android {
     }
 
     defaultConfig {
-        // applicationId moved into productFlavors; namespace stays kosher-named
-        // so R + source packages don't depend on flavor.
+        applicationId = "com.koshereats.courier"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -54,35 +53,22 @@ android {
 
         buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
 
+        // Firebase config. Read from local.properties (see FIREBASE.md). Empty
+        // strings are fine for builds — PushBootstrap skips init at runtime
+        // when projectId is blank, so the app still launches without FCM.
+        buildConfigField("String", "FIREBASE_PROJECT_ID",  "\"${lp("FIREBASE_PROJECT_ID")}\"")
+        buildConfigField("String", "FIREBASE_APP_ID",      "\"${lp("FIREBASE_COURIER_APP_ID")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY",     "\"${lp("FIREBASE_API_KEY")}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID",   "\"${lp("FIREBASE_SENDER_ID")}\"")
+
         // Placeholder is empty in dev — real key goes in via Gradle -P or local.properties before launch.
         manifestPlaceholders["MAPS_API_KEY"] = lp("MAPS_API_KEY")
         // Expose the same key to runtime code (Directions HTTP API) so the map
         // screen doesn't have to re-read it from the manifest at runtime.
         buildConfigField("String", "MAPS_API_KEY", "\"${lp("MAPS_API_KEY")}\"")
-    }
 
-    flavorDimensions += "brand"
-    productFlavors {
-        create("koshereats") {
-            dimension = "brand"
-            applicationId = "com.koshereats.courier"
-            buildConfigField("String", "BRAND", "\"koshereats\"")
-            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
-            buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_COURIER_APP_ID")}\"")
-            buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
-            buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
-            buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
-        }
-        create("greeneats") {
-            dimension = "brand"
-            applicationId = "com.greeneats.courier"
-            buildConfigField("String", "BRAND", "\"greeneats\"")
-            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("GREENEATS_FIREBASE_PROJECT_ID")}\"")
-            buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("GREENEATS_FIREBASE_COURIER_APP_ID")}\"")
-            buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("GREENEATS_FIREBASE_API_KEY")}\"")
-            buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("GREENEATS_FIREBASE_SENDER_ID")}\"")
-            buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GREENEATS_GOOGLE_WEB_CLIENT_ID")}\"")
-        }
+        // Google Sign-In (Credential Manager) Web Client ID.
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
     }
 
     buildTypes {

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Base English strings for the seller app. Only keys that exist on iOS
+  with he/yi translations are mirrored here; the rest of the UI continues
+  to use inline strings until gradually migrated.
+-->
+<resources>
+    <string name="app_name">GreenEats Seller</string>
+
+    <!-- Auth -->
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_login_title">Welcome back</string>
+    <string name="auth_brand_name">GreenEats</string>
+    <string name="auth_seller_dashboard">Seller Dashboard</string>
+    <string name="auth_continue_google">Continue with Google</string>
+    <string name="auth_use_different_google">Use a different Google account</string>
+    <string name="auth_continue_apple">Continue with Apple</string>
+    <string name="auth_or_divider">or</string>
+    <string name="auth_email_placeholder">restaurant@example.com</string>
+    <string name="auth_password_show">Show password</string>
+    <string name="auth_password_hide">Hide password</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_contact_support">Contact support if you need access</string>
+    <string name="auth_continue_phone">Continue with Phone</string>
+    <string name="auth_send_code">Send code</string>
+    <string name="auth_verify">Verify</string>
+    <string name="auth_resend_code">Didn\'t get it? Resend code</string>
+
+    <!-- Chat -->
+    <string name="chat_title">Chat</string>
+    <string name="chat_placeholder">Type a message…</string>
+
+    <!-- Order statuses -->
+    <string name="order_status_pending">Waiting for the restaurant</string>
+    <string name="order_status_preparing">Your food is being prepared</string>
+    <string name="order_status_on_the_way">Your order is on the way</string>
+    <string name="order_status_delivered">Delivered — enjoy!</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_done">Done</string>
+    <string name="common_retry">Try again</string>
+</resources>

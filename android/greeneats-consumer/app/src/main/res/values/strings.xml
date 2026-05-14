@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Base English strings for the consumer app. Keys mirror the iOS
+  Localizable.xcstrings catalog (with `.` replaced by `_` per Android
+  convention). Hebrew lives under values-iw/ (Android's legacy locale
+  code for he) and Yiddish under values-yi/.
+
+  Only keyed strings that have he/yi translations in iOS are listed here —
+  the rest of the UI is English-only for now. Screens will migrate to
+  stringResource(R.string.key) incrementally.
+-->
+<resources>
+    <string name="app_name">GreenEats</string>
+
+    <!-- Auth -->
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_login_title">Welcome back</string>
+    <string name="auth_signup_title">Create account</string>
+    <string name="auth_sign_in_subtitle">Sign in to continue</string>
+    <string name="auth_continue_google">Continue with Google</string>
+    <string name="auth_or_divider">or</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_no_account">Don\'t have an account? </string>
+    <string name="auth_sign_up">Sign Up</string>
+
+    <!-- Home -->
+    <string name="home_title">GreenEats</string>
+    <string name="home_tagline">Delivering plant-based, done right</string>
+    <string name="home_search_placeholder">Search restaurants...</string>
+    <string name="home_featured">Featured</string>
+    <string name="home_all_restaurants">All Restaurants</string>
+
+    <!-- Tabs -->
+    <string name="tabs_home">Home</string>
+    <string name="tabs_search">Search</string>
+    <string name="tabs_orders">Orders</string>
+    <string name="tabs_profile">Profile</string>
+
+    <!-- Cart + checkout -->
+    <string name="cart_title">Cart</string>
+    <string name="cart_screen_title">Your Cart</string>
+    <string name="cart_empty_title">Your cart is empty</string>
+    <string name="cart_empty_subtitle">Browse restaurants and add items to get started</string>
+    <string name="cart_browse_restaurants">Browse Restaurants</string>
+    <string name="cart_checkout">Checkout</string>
+    <string name="checkout_delivery_time">Delivery time</string>
+    <string name="checkout_asap">ASAP</string>
+    <string name="checkout_schedule">Schedule</string>
+    <string name="checkout_tip_title">Tip your driver</string>
+    <string name="checkout_place_order">Place Order</string>
+
+    <!-- Chat -->
+    <string name="chat_title">Chat</string>
+    <string name="chat_placeholder">Type a message…</string>
+
+    <!-- Order statuses -->
+    <string name="order_status_pending">Waiting for the restaurant</string>
+    <string name="order_status_preparing">Your food is being prepared</string>
+    <string name="order_status_on_the_way">Your order is on the way</string>
+    <string name="order_status_delivered">Delivered — enjoy!</string>
+    <string name="order_tracking_title">Tracking</string>
+    <string name="tracking_load_error">Couldn\'t load order.</string>
+    <string name="action_retry">Retry</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_done">Done</string>
+    <string name="common_retry">Try again</string>
+</resources>

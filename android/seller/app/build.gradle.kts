@@ -39,8 +39,7 @@ android {
     }
 
     defaultConfig {
-        // applicationId moved into productFlavors; namespace stays kosher-named
-        // since R + source packages don't depend on flavor.
+        applicationId = "com.koshereats.seller"
         minSdk = 26
         targetSdk = 35
         versionCode = 9
@@ -53,31 +52,13 @@ android {
         }
 
         buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
-    }
 
-    flavorDimensions += "brand"
-    productFlavors {
-        create("koshereats") {
-            dimension = "brand"
-            applicationId = "com.koshereats.seller"
-            buildConfigField("String", "BRAND", "\"koshereats\"")
-            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
-            buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_SELLER_APP_ID")}\"")
-            buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
-            buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
-            buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
-        }
-        create("greeneats") {
-            dimension = "brand"
-            applicationId = "com.greeneats.seller"
-            buildConfigField("String", "BRAND", "\"greeneats\"")
-            // Placeholders until GreenEats Firebase + OAuth are provisioned.
-            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("GREENEATS_FIREBASE_PROJECT_ID")}\"")
-            buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("GREENEATS_FIREBASE_SELLER_APP_ID")}\"")
-            buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("GREENEATS_FIREBASE_API_KEY")}\"")
-            buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("GREENEATS_FIREBASE_SENDER_ID")}\"")
-            buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GREENEATS_GOOGLE_WEB_CLIENT_ID")}\"")
-        }
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
+        buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_SELLER_APP_ID")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
     }
 
     buildTypes {

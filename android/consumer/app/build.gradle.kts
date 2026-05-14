@@ -50,9 +50,7 @@ android {
     }
 
     defaultConfig {
-        // applicationId moved into productFlavors so each brand owns its own
-        // Play Store identity. namespace (com.koshereats.consumer) stays —
-        // it's where R is generated and matches the Kotlin source packages.
+        applicationId = "com.koshereats.consumer"
         minSdk = 26
         targetSdk = 35
         versionCode = 8
@@ -65,36 +63,15 @@ android {
 
         buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
 
+        buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
+        buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_CONSUMER_APP_ID")}\"")
+        buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
+        buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
+
         // Placeholder is empty in dev — real key goes in via Gradle -P or local.properties before launch.
         manifestPlaceholders["MAPS_API_KEY"] = lp("MAPS_API_KEY")
-    }
-
-    flavorDimensions += "brand"
-    productFlavors {
-        create("koshereats") {
-            dimension = "brand"
-            applicationId = "com.koshereats.consumer"
-            buildConfigField("String", "BRAND", "\"koshereats\"")
-            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("FIREBASE_PROJECT_ID")}\"")
-            buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("FIREBASE_CONSUMER_APP_ID")}\"")
-            buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("FIREBASE_API_KEY")}\"")
-            buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("FIREBASE_SENDER_ID")}\"")
-            buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GOOGLE_WEB_CLIENT_ID")}\"")
-        }
-        create("greeneats") {
-            dimension = "brand"
-            applicationId = "com.greeneats.consumer"
-            buildConfigField("String", "BRAND", "\"greeneats\"")
-            // Placeholders — real values land in local.properties when GreenEats
-            // Firebase project + OAuth client are provisioned. Empty values let
-            // the build succeed; PushBootstrap and GoogleSignInHelper skip
-            // gracefully at runtime when these are blank.
-            buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${lp("GREENEATS_FIREBASE_PROJECT_ID")}\"")
-            buildConfigField("String", "FIREBASE_APP_ID",     "\"${lp("GREENEATS_FIREBASE_CONSUMER_APP_ID")}\"")
-            buildConfigField("String", "FIREBASE_API_KEY",    "\"${lp("GREENEATS_FIREBASE_API_KEY")}\"")
-            buildConfigField("String", "FIREBASE_SENDER_ID",  "\"${lp("GREENEATS_FIREBASE_SENDER_ID")}\"")
-            buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${lp("GREENEATS_GOOGLE_WEB_CLIENT_ID")}\"")
-        }
     }
 
     buildTypes {
