@@ -57,3 +57,6 @@ backend/api
 
 # Built AAB artifacts dropped into app/release/ by 'Build > Build Bundle' from Android Studio
 android/**/release/*.aab
+
+# Gradle flavor-task output dirs (app/<flavor>/release/) — never source
+android/**/app/*/release/
