@@ -181,6 +181,11 @@ fun NavGraph() {
                             popUpTo(Screen.Onboarding.route) { inclusive = true }
                         }
                     },
+                    onSignOut = {
+                        // LaunchedEffect at top of NavGraph handles the redirect to Login
+                        // once authState.isLoggedIn flips false.
+                        authViewModel.logout()
+                    },
                 )
             }
 

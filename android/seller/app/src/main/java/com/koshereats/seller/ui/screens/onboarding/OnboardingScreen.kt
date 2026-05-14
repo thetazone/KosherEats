@@ -35,7 +35,9 @@ import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,6 +51,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -101,6 +104,7 @@ import java.util.Locale
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
+    onSignOut: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -112,6 +116,36 @@ fun OnboardingScreen(
 
     val stepIndex = OnboardingStep.entries.indexOf(state.step)
     val progress = (stepIndex + 1) / OnboardingStep.entries.size.toFloat()
+
+    var showSignOutConfirm by remember { mutableStateOf(false) }
+
+    if (showSignOutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSignOutConfirm = false },
+            containerColor = SurfaceDark,
+            title = { Text("Use a different account?", color = TextWhite) },
+            text = {
+                Text(
+                    "You'll be signed out and any progress in this onboarding flow will be lost. " +
+                        "You can then sign in with a different Google account, phone number, or email.",
+                    color = TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSignOutConfirm = false
+                    onSignOut()
+                }) {
+                    Text("Sign out", color = Orange)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutConfirm = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -137,6 +171,15 @@ fun OnboardingScreen(
                     IconButton(onClick = { viewModel.previousStep() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                     }
+                }
+            },
+            actions = {
+                IconButton(onClick = { showSignOutConfirm = true }) {
+                    Icon(
+                        Icons.Filled.Logout,
+                        contentDescription = "Use a different account",
+                        tint = TextMuted,
+                    )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),

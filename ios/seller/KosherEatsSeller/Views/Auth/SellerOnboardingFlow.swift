@@ -177,6 +177,7 @@ final class SellerOnboardingViewModel: ObservableObject {
 struct SellerOnboardingFlow: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var vm = SellerOnboardingViewModel()
+    @State private var showSignOutConfirm = false
     let onComplete: (Restaurant) -> Void
 
     var body: some View {
@@ -201,6 +202,16 @@ struct SellerOnboardingFlow: View {
         }
         .background(Color.keBackground.ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: vm.step)
+        .confirmationDialog(
+            "Use a different account?",
+            isPresented: $showSignOutConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive) { authVM.logout() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You'll be signed out and any progress in this onboarding flow will be lost. You can then sign in with a different Google account, phone number, Apple ID, or email.")
+        }
     }
 
     private var topBar: some View {
@@ -221,6 +232,15 @@ struct SellerOnboardingFlow: View {
                 .font(.title3.bold())
                 .foregroundColor(.keTextPrimary)
             Spacer()
+            Button {
+                showSignOutConfirm = true
+            } label: {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.keTextSecondary)
+                    .frame(width: 40, height: 40)
+            }
+            .accessibilityLabel("Use a different account")
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -411,12 +431,6 @@ private struct BasicsStepView: View {
                     }
                     vm.nextStep()
                 }
-
-                Button("Sign out") { authVM.logout() }
-                    .font(.caption)
-                    .foregroundColor(.keTextSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
 
                 Spacer().frame(height: 32)
             }
