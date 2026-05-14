@@ -1,6 +1,10 @@
 package com.koshereats.courier.ui.screens.earnings
 
+import com.koshereats.courier.util.isoLocalDate
 import com.koshereats.courier.util.shortDateTime
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.WeekFields
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -106,7 +110,15 @@ fun EarningsScreen(vm: EarningsViewModel = hiltViewModel()) {
         }
         is EarningsUiState.Success -> {
             val history = state.history
-            val total = history.sumOf { it.courierPayout }
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val weekStart = today.with(WeekFields.ISO.dayOfWeek(), 1L)
+            val todayItems = history.filter { isoLocalDate(it.deliveredAt ?: "")?.equals(today) == true }
+            val weekItems = history.filter {
+                isoLocalDate(it.deliveredAt ?: "")?.let { d -> !d.isBefore(weekStart) } == true
+            }
+            val todayTotal = todayItems.sumOf { it.courierPayout }
+            val weekTotal = weekItems.sumOf { it.courierPayout }
+            val lifetimeTotal = history.sumOf { it.courierPayout }
 
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -118,16 +130,45 @@ fun EarningsScreen(vm: EarningsViewModel = hiltViewModel()) {
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(SurfaceDark, shape = RoundedCornerShape(12.dp))
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Total earned", color = TextTertiary, fontSize = 12.sp)
-                        Text(total.formatPrice(), color = Orange, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-                        Text("${history.size} deliveries", color = TextSecondary, fontSize = 12.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(SurfaceDark, shape = RoundedCornerShape(12.dp))
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text("Today", color = TextTertiary, fontSize = 12.sp)
+                                Text(todayTotal.formatPrice(), color = Orange, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                                Text("${todayItems.size} deliveries", color = TextSecondary, fontSize = 11.sp)
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(SurfaceDark, shape = RoundedCornerShape(12.dp))
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text("This week", color = TextTertiary, fontSize = 12.sp)
+                                Text(weekTotal.formatPrice(), color = Orange, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                                Text("${weekItems.size} deliveries", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text("All time: ${lifetimeTotal.formatPrice()}", color = TextMuted, fontSize = 12.sp)
+                            Text("${history.size} deliveries total", color = TextMuted, fontSize = 12.sp)
+                        }
                     }
 
                     Column(
@@ -145,7 +186,10 @@ fun EarningsScreen(vm: EarningsViewModel = hiltViewModel()) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(h.restaurantName, color = TextWhite)
-                                        Text(shortDateTime(h.deliveredAt ?: ""), color = TextTertiary, fontSize = 11.sp)
+                                        val dateLabel = h.deliveredAt?.let { shortDateTime(it) }
+                                        if (dateLabel != null) {
+                                            Text(dateLabel, color = TextTertiary, fontSize = 11.sp)
+                                        }
                                     }
                                     Text(
                                         h.courierPayout.formatPrice(),

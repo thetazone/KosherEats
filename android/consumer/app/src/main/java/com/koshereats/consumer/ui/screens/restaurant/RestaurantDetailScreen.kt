@@ -57,7 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -102,8 +102,8 @@ fun RestaurantDetailScreen(
     cartViewModel: CartViewModel,
     viewModel: RestaurantViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val cartState by cartViewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cartState by cartViewModel.uiState.collectAsStateWithLifecycle()
     val totalItemCount = cartState.totalItemCount
     val restaurant = uiState.restaurant
     val listState = rememberLazyListState()

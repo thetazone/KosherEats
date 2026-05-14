@@ -244,7 +244,7 @@ fun DashboardScreen(
                 )
             }
 
-            if (state.isLoading) {
+            if (state.isLoading && state.activeOrders.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier

@@ -27,6 +27,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 sealed interface TipChoice {
     data object None : TipChoice
@@ -254,10 +255,10 @@ class CheckoutViewModel @Inject constructor(
         val subtotal = state.bundle?.subtotal ?: 0
         return when (val choice = state.tipChoice) {
             TipChoice.None -> 0
-            is TipChoice.Percent -> (subtotal * choice.fraction).toInt()
+            is TipChoice.Percent -> (subtotal * choice.fraction).roundToInt()
             TipChoice.Custom -> {
                 val dollars = state.customTipText.toDoubleOrNull() ?: 0.0
-                (dollars * 100).toInt()
+                (dollars * 100).roundToInt()
             }
         }
     }
@@ -296,6 +297,7 @@ class CheckoutViewModel @Inject constructor(
      *  mode (no Stripe key), skip the sheet and finalize directly. */
     fun onPayTapped() {
         val bundle = _uiState.value.bundle ?: return
+        _uiState.update { it.copy(isProcessing = true) }
         if (bundle.isStub) {
             finalizeOrder(paymentIntentId = "stub_intent")
             return
@@ -307,7 +309,7 @@ class CheckoutViewModel @Inject constructor(
      *  user completed payment; false means cancel or failure. */
     fun onPaymentResult(success: Boolean, error: String? = null) {
         if (!success) {
-            _uiState.update { it.copy(errorMessage = error) }
+            _uiState.update { it.copy(isProcessing = false, errorMessage = error) }
             return
         }
         val bundle = _uiState.value.bundle ?: return

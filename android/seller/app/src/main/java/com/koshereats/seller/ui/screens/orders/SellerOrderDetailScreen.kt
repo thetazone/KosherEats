@@ -266,6 +266,7 @@ fun SellerOrderDetailScreen(
             item {
                 OrderActionButtons(
                     status = order.status,
+                    isPickup = order.isPickup,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED)
@@ -312,6 +313,7 @@ private fun PriceRow(label: String, amount: Int) {
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
+    isPickup: Boolean,
     isUpdating: Boolean,
     onAccept: () -> Unit,
     onStartPreparing: () -> Unit,
@@ -371,18 +373,6 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                OutlinedButton(
-                    onClick = onCancel,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                    border = ButtonDefaults.outlinedButtonBorder,
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -402,19 +392,33 @@ private fun OrderActionButtons(
                 }
             }
             OrderStatus.READY -> {
-                Button(
-                    onClick = onComplete,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = StatusAccepted),
-                ) {
-                    if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                    } else {
+                if (isPickup) {
+                    Button(
+                        onClick = onComplete,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusAccepted),
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Complete Order", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusReady),
+                    ) {
                         Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Complete Order", fontWeight = FontWeight.SemiBold)
+                        Text("Awaiting Pickup…", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

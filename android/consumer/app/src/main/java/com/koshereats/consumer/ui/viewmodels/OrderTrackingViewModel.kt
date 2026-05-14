@@ -45,11 +45,14 @@ class OrderTrackingViewModel @Inject constructor(
     private var pollJob: Job? = null
     private var streamJob: Job? = null
     private var currentOrderId: String? = null
-    private var completedNormally = false
+    @Volatile private var completedNormally = false
     private val gson = Gson()
+    private val sseClient = okHttpClient.newBuilder()
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build()
 
     fun start(orderId: String) {
-        if (currentOrderId == orderId && (pollJob?.isActive == true || completedNormally)) return
+        if (currentOrderId == orderId && pollJob?.isActive == true) return
         completedNormally = false
         currentOrderId = orderId
         stopInternal()
@@ -109,9 +112,6 @@ class OrderTrackingViewModel @Inject constructor(
     // Reconnects with exponential backoff (3s..30s) on any error.
     private fun launchLocationStream(orderId: String): Job = viewModelScope.launch(Dispatchers.IO) {
         val url = BuildConfig.BASE_URL.trimEnd('/') + "/orders/$orderId/location/stream"
-        val sseClient = okHttpClient.newBuilder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .build()
         var backoffMs = 3_000L
 
         while (isActive) {

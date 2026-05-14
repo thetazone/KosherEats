@@ -18,12 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import androidx.lifecycle.ProcessLifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import javax.inject.Inject
 
 /**
@@ -87,9 +82,20 @@ class DashboardViewModel @Inject constructor(
                     )
                     startPolling()
                 } else {
-                    context.stopService(Intent(context, LocationForegroundService::class.java))
-                    stopPolling()
-                    consecutiveFailures = 0
+                    val hasActiveDelivery = _state.value.active.isNotEmpty()
+                    if (hasActiveDelivery) {
+                        // A delivery is in progress: keep the foreground service and poll loop
+                        // running so the consumer's live-tracking map and order-status updates
+                        // stay alive. Only update the notification to reflect the offline state.
+                        context.startForegroundService(
+                            Intent(context, LocationForegroundService::class.java)
+                                .putExtra(LocationForegroundService.EXTRA_DELIVERY_ACTIVE, true)
+                        )
+                    } else {
+                        context.stopService(Intent(context, LocationForegroundService::class.java))
+                        stopPolling()
+                        consecutiveFailures = 0
+                    }
                     _state.update { it.copy(available = emptyList(), connectionLost = false) }
                 }
             }
@@ -103,7 +109,8 @@ class DashboardViewModel @Inject constructor(
         if (!prefs.getBoolean("was_online", false)) return@launch
         if (!locationTracker.hasPermission()) return@launch
         val loc = locationTracker.lastKnown()
-        repo.setOnline(true, loc?.latitude ?: 0.0, loc?.longitude ?: 0.0)
+        if (loc == null) return@launch // keep was_online set; foreground service will retry with a real fix
+        repo.setOnline(true, loc.latitude, loc.longitude)
             .onSuccess {
                 _state.update { it.copy(isOnline = true) }
                 context.startForegroundService(Intent(context, LocationForegroundService::class.java))
@@ -162,8 +169,11 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    fun clearError() {
+        _state.update { it.copy(errorMessage = null) }
+    }
+
     private suspend fun fetchOnce() {
-        _state.update { it.copy(isLoading = true, errorMessage = null) }
         val availableResult = repo.listAvailable()
         val activeResult = repo.listActive()
         val upcomingResult = repo.listUpcoming()
@@ -175,12 +185,19 @@ class DashboardViewModel @Inject constructor(
         }
         _state.update { st ->
             st.copy(
-                isLoading = false,
                 available = availableResult.getOrNull() ?: st.available,
                 active = activeResult.getOrNull() ?: st.active,
                 upcoming = upcomingResult.getOrNull() ?: st.upcoming,
                 connectionLost = consecutiveFailures >= 3,
             )
+        }
+        // The courier may have gone offline mid-delivery; tear down once the
+        // active delivery is confirmed complete so we don't leak the service.
+        val current = _state.value
+        if (!current.isOnline && current.active.isEmpty() && pollJob?.isActive == true) {
+            context.stopService(Intent(context, LocationForegroundService::class.java))
+            stopPolling()
+            consecutiveFailures = 0
         }
     }
 
@@ -201,15 +218,6 @@ class DashboardViewModel @Inject constructor(
 
     override fun onCleared() {
         stopPolling()
-        context.stopService(Intent(context, LocationForegroundService::class.java))
-        if (_state.value.isOnline) {
-            prefs.edit().remove("was_online").apply()
-            ProcessLifecycleOwner.get().lifecycleScope.launch {
-                withContext(NonCancellable) {
-                    try { withTimeout(3_000) { repo.setOnline(false, 0.0, 0.0) } } catch (_: Exception) {}
-                }
-            }
-        }
         super.onCleared()
     }
 }

@@ -54,6 +54,8 @@ fun SellerOrdersScreen(
         OrderStatus.ACCEPTED to "Accepted",
         OrderStatus.PREPARING to "Preparing",
         OrderStatus.READY to "Ready",
+        OrderStatus.PICKED_UP to "Picked Up",
+        OrderStatus.DELIVERED to "Delivered",
         OrderStatus.COMPLETED to "Completed",
         OrderStatus.CANCELLED to "Cancelled",
     )

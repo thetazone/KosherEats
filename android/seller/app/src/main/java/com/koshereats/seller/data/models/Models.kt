@@ -19,7 +19,7 @@ enum class OrderStatus(val displayName: String) {
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
+            SCHEDULED, DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
             else -> true
         }
 }
@@ -118,9 +118,12 @@ data class Order(
     @Json(name = "courier_tip") val courierTip: Int = 0,
     val total: Int = 0,
     val status: OrderStatus = OrderStatus.PENDING,
+    @Json(name = "fulfillment_type") val fulfillmentType: String = "delivery",
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
-)
+) {
+    val isPickup: Boolean get() = fulfillmentType == "pickup"
+}
 
 // --- Auth ---
 

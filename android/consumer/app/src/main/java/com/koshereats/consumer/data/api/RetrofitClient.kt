@@ -50,7 +50,7 @@ object PrefsKeys {
 @Singleton
 class TokenProvider @Inject constructor(
     private val dataStore: DataStore<Preferences>,
-    @ApplicationScope appScope: CoroutineScope
+    @ApplicationScope private val appScope: CoroutineScope
 ) {
     @Volatile var token: String? = null
         private set
@@ -78,14 +78,12 @@ class TokenProvider @Inject constructor(
         return token
     }
 
-    fun persistNewTokens(newToken: String, newRefreshToken: String) {
+    suspend fun persistNewTokens(newToken: String, newRefreshToken: String) {
         token = newToken
         refreshToken = newRefreshToken
-        runBlocking {
-            dataStore.edit { prefs ->
-                prefs[PrefsKeys.AUTH_TOKEN] = newToken
-                prefs[PrefsKeys.REFRESH_TOKEN] = newRefreshToken
-            }
+        dataStore.edit { prefs ->
+            prefs[PrefsKeys.AUTH_TOKEN] = newToken
+            prefs[PrefsKeys.REFRESH_TOKEN] = newRefreshToken
         }
     }
 }
@@ -197,7 +195,7 @@ private class TokenAuthenticator(
                 return null
             }
 
-            tokenProvider.persistNewTokens(newTokens.first, newTokens.second)
+            runBlocking { tokenProvider.persistNewTokens(newTokens.first, newTokens.second) }
 
             return response.request.newBuilder()
                 .header("Authorization", "Bearer ${newTokens.first}")

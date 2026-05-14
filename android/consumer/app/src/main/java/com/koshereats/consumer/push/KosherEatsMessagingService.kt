@@ -44,7 +44,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val title = message.notification?.title ?: message.data["title"] ?: "KosherEats"
         val body = message.notification?.body ?: message.data["body"] ?: ""
-        showNotification(this, title, body)
+        showNotification(this, title, body, message.data["order_id"])
     }
 
     companion object {
@@ -63,7 +63,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
             nm.createNotificationChannel(channel)
         }
 
-        private fun showNotification(context: Context, title: String, body: String) {
+        private fun showNotification(context: Context, title: String, body: String, orderId: String? = null) {
             ensureChannel(context)
 
             val intent = Intent(context, MainActivity::class.java).apply {
@@ -84,7 +84,8 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                 .build()
 
             val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(System.currentTimeMillis().toInt(), notification)
+            val notificationId = orderId?.hashCode() ?: System.currentTimeMillis().toInt()
+            nm.notify(notificationId, notification)
         }
     }
 }

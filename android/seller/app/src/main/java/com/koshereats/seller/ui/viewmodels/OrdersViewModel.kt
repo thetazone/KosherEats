@@ -1,6 +1,9 @@
 package com.koshereats.seller.ui.viewmodels
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.Order
@@ -8,6 +11,7 @@ import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,10 +41,37 @@ class OrdersViewModel @Inject constructor(
     init {
         loadOrders()
         viewModelScope.launch {
-            orderEventBus.events.collect {
-                _state.value.selectedOrder?.let { loadOrderDetail(it.id) }
-                loadOrders(status = _state.value.selectedFilter)
+            orderEventBus.events.collect { pollSilently() }
+        }
+        // Polling fallback: FCM is unreliable on OEM devices with aggressive doze/battery savers.
+        // repeatOnLifecycle(STARTED) suspends while the app is backgrounded, so polling only
+        // runs when the user has the app in the foreground.
+        viewModelScope.launch {
+            ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    delay(30_000)
+                    pollSilently()
+                }
             }
+        }
+    }
+
+    private suspend fun pollSilently() {
+        try {
+            val statusStr = _state.value.selectedFilter?.name?.lowercase()
+            val response = apiService.getOrders(status = statusStr)
+            if (response.isSuccessful) {
+                _state.update { it.copy(orders = response.body() ?: it.orders) }
+            }
+            _state.value.selectedOrder?.id?.let { id ->
+                val detailResponse = apiService.getOrderDetail(id)
+                if (detailResponse.isSuccessful) {
+                    _state.update { it.copy(selectedOrder = detailResponse.body()) }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            // Silent — next poll or FCM delivery will recover.
         }
     }
 
@@ -103,7 +134,7 @@ class OrdersViewModel @Inject constructor(
 
     private val allowedTransitions = mapOf(
         OrderStatus.PENDING to setOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED),
-        OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING, OrderStatus.CANCELLED),
+        OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING),
         OrderStatus.PREPARING to setOf(OrderStatus.READY),
         OrderStatus.READY to setOf(OrderStatus.COMPLETED),
         OrderStatus.PICKED_UP to setOf(OrderStatus.COMPLETED),
@@ -114,9 +145,14 @@ class OrdersViewModel @Inject constructor(
 
         val currentOrder = _state.value.selectedOrder?.takeIf { it.id == orderId }
             ?: _state.value.orders.find { it.id == orderId }
-        if (currentOrder != null && newStatus !in (allowedTransitions[currentOrder.status] ?: emptySet())) {
-            _state.update { it.copy(error = "Cannot change order from ${currentOrder.status.name.lowercase()} to ${newStatus.name.lowercase()}") }
-            return
+        if (currentOrder != null) {
+            val allowed = allowedTransitions[currentOrder.status] ?: emptySet()
+            val blocked = newStatus !in allowed ||
+                (currentOrder.status == OrderStatus.READY && newStatus == OrderStatus.COMPLETED && !currentOrder.isPickup)
+            if (blocked) {
+                _state.update { it.copy(error = "Cannot change order from ${currentOrder.status.name.lowercase()} to ${newStatus.name.lowercase()}") }
+                return
+            }
         }
 
         val snapshotOrder = _state.value.selectedOrder

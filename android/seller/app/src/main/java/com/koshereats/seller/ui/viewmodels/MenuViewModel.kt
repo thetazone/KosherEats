@@ -132,10 +132,7 @@ class MenuViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
             try {
-                val categoryName = request.category
-                    ?.replace('_', ' ')
-                    ?.replaceFirstChar { it.uppercase() }
-                    ?: "Mains"
+                val categoryName = request.category ?: "mains"
 
                 val menuResponse = apiService.getSellerMenu()
                 val existingCategory = menuResponse.body()

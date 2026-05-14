@@ -39,6 +39,15 @@ class LocationForegroundService : Service() {
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.getBooleanExtra(EXTRA_DELIVERY_ACTIVE, false) == true) {
+            val notification = buildNotification(deliveryActive = true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            return START_STICKY
+        }
         // Check permission before startForeground: on Android 14+, calling startForeground()
         // with FOREGROUND_SERVICE_TYPE_LOCATION without ACCESS_FINE_LOCATION throws SecurityException.
         if (!locationTracker.hasPermission()) {
@@ -53,7 +62,7 @@ class LocationForegroundService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
-        val started = locationTracker.start(this) { lat, lng, heading, speed ->
+        val started = locationTracker.start(LISTENER_KEY) { lat, lng, heading, speed ->
             scope.launch { repo.sendLocation(lat, lng, heading, speed) }
         }
         if (!started) {
@@ -66,6 +75,7 @@ class LocationForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        locationTracker.removeListener(LISTENER_KEY)
         locationTracker.stopOsUpdates()
         job.cancel()
         super.onDestroy()
@@ -73,7 +83,7 @@ class LocationForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(deliveryActive: Boolean = false): Notification {
         val pi = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).apply {
@@ -81,10 +91,14 @@ class LocationForegroundService : Service() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val contentText = if (deliveryActive)
+            "Delivery in progress — tracking your location"
+        else
+            "You're online — tracking your location"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("KosherEats Driver")
-            .setContentText("You're online — tracking your location")
+            .setContentText(contentText)
             .setOngoing(true)
             .setContentIntent(pi)
             .build()
@@ -108,9 +122,11 @@ class LocationForegroundService : Service() {
     }
 
     companion object {
+        private const val LISTENER_KEY = "location_foreground_service"
         private const val NOTIFICATION_ID = 1001
         private const val PERMISSION_ERROR_NOTIFICATION_ID = 1002
         const val CHANNEL_ID = "koshereats_location"
+        const val EXTRA_DELIVERY_ACTIVE = "delivery_active"
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
