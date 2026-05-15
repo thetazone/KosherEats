@@ -38,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -68,6 +69,8 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 @Composable
 fun ProfileScreen(
     onLoginClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onDeleteAccountClick: () -> Unit,
     onEditProfileClick: () -> Unit = {},
     onSavedAddressesClick: () -> Unit = {},
     onPaymentMethodsClick: () -> Unit = {},
@@ -78,6 +81,7 @@ fun ProfileScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showSignOutConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -96,7 +100,7 @@ fun ProfileScreen(
         )
 
         if (!state.isLoggedIn || state.isGuest) {
-            // Not logged in or browsing as guest
+            // Not logged in or browsing as guest — show sign-in prompt
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -161,6 +165,38 @@ fun ProfileScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+        } else if (state.isRehydrating || state.user == null) {
+            // Token present but profile fetch is in-flight or failed transiently.
+            // Render a loading spinner or a retry prompt rather than accessing
+            // a null user object.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BackgroundBlack),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (state.isRehydrating) {
+                    CircularProgressIndicator(color = Orange)
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Text(
+                            text = "Couldn't load profile",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextWhite,
+                        )
+                        Button(
+                            onClick = { viewModel.retryAuth() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text("Retry", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         } else {
@@ -303,7 +339,7 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .clickable { viewModel.logout() },
+                        .clickable { showSignOutConfirm = true },
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 ) {
@@ -391,13 +427,40 @@ fun ProfileScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
-                    viewModel.deleteAccount()
+                    onDeleteAccountClick()
                 }) {
                     Text("Delete", color = ErrorRed, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+        )
+    }
+
+    if (showSignOutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSignOutConfirm = false },
+            containerColor = SurfaceDark,
+            title = { Text("Sign out?", color = TextWhite) },
+            text = {
+                Text(
+                    "You'll need to sign in again to access your orders, addresses, and payment methods.",
+                    color = TextSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSignOutConfirm = false
+                    onSignOutClick()
+                }) {
+                    Text("Sign Out", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutConfirm = false }) {
                     Text("Cancel", color = TextSecondary)
                 }
             },

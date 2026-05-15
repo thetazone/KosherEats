@@ -34,11 +34,12 @@ enum class OrderStatus(val displayName: String) {
 
     val stepIndex: Int
         get() = when (this) {
-            PENDING -> 1
-            CONFIRMED -> 2
-            PREPARING -> 3
-            READY, PICKED_UP, DELIVERED -> 4
-            COMPLETED -> 5
+            PENDING -> 0
+            CONFIRMED -> 1
+            PREPARING -> 2
+            READY -> 3
+            PICKED_UP -> 4
+            DELIVERED, COMPLETED -> 5
             CANCELLED -> -1
         }
 

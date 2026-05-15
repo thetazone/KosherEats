@@ -1,6 +1,7 @@
 package com.koshereats.seller
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -10,6 +11,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.koshereats.seller.ui.navigation.NavGraph
@@ -23,6 +27,8 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
+    private var pendingOrderId by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -32,6 +38,10 @@ class MainActivity : ComponentActivity() {
         ) {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        // Only read on a fresh start; config-change recreations restore nav state themselves.
+        if (savedInstanceState == null) {
+            pendingOrderId = intent.getStringExtra("order_id")
+        }
 
         setContent {
             KosherEatsSellerTheme {
@@ -39,9 +49,18 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = BackgroundBlack
                 ) {
-                    NavGraph()
+                    NavGraph(
+                        initialOrderId = pendingOrderId,
+                        onOrderDeepLinkConsumed = { pendingOrderId = null },
+                    )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingOrderId = intent.getStringExtra("order_id")
     }
 }

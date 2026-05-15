@@ -18,7 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Home
@@ -36,9 +36,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,7 +79,21 @@ fun OrderTrackingScreen(
     vm: OrderTrackingViewModel = hiltViewModel(),
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
-    LaunchedEffect(orderId) { vm.start(orderId) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(orderId, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> vm.start(orderId)
+                Lifecycle.Event.ON_STOP -> vm.pause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            vm.pause()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -86,7 +104,7 @@ fun OrderTrackingScreen(
             title = { Text(stringResource(R.string.order_tracking_title), color = TextWhite, fontWeight = FontWeight.Bold) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
@@ -233,7 +251,7 @@ private fun ProgressBar(status: OrderStatus) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        repeat(5) { index ->
+        repeat(6) { index ->
             Box(
                 modifier = Modifier
                     .height(4.dp)
@@ -312,7 +330,7 @@ private fun CourierCard(courier: CourierPublic, onChat: () -> Unit) {
                     )
                     Spacer(Modifier.size(4.dp))
                     Text(
-                        text = String.format("%.1f", courier.rating),
+                        text = String.format(java.util.Locale.US, "%.1f", courier.rating),
                         color = TextSecondary,
                         fontSize = 12.sp,
                     )

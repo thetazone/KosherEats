@@ -1,6 +1,7 @@
 package com.koshereats.seller.ui.screens.settings
 
 import android.net.Uri
+import com.koshereats.seller.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -91,6 +92,7 @@ fun RestaurantSettingsScreen(
 ) {
     val authState by authViewModel.state.collectAsState()
     val restaurant = authState.restaurant
+    val isApproved = restaurant?.approvalStatus?.equals("approved", ignoreCase = true) == true
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isUploadingCertificate by remember { mutableStateOf(false) }
@@ -181,13 +183,22 @@ fun RestaurantSettingsScreen(
                         }
                     }
                     Switch(
-                        checked = restaurant?.isOpen == true,
+                        checked = isApproved && restaurant?.isOpen == true,
                         onCheckedChange = { authViewModel.toggleOpen(it) },
-                        enabled = !authState.isTogglingOpen,
+                        enabled = isApproved && !authState.isTogglingOpen,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = SuccessGreen,
                             checkedTrackColor = SuccessGreen.copy(alpha = 0.3f),
                         ),
+                    )
+                }
+
+                if (!isApproved && restaurant != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Pending approval — you'll be able to go live once the platform admin reviews your application.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
                     )
                 }
 
@@ -462,7 +473,7 @@ fun RestaurantSettingsScreen(
 
         // Version
         Text(
-            text = "KosherEats Seller v1.0.0",
+            text = "KosherEats Seller v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
             modifier = Modifier.align(Alignment.CenterHorizontally),

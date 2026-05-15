@@ -107,10 +107,13 @@ object NetworkModule {
     @Singleton
     fun provideAuthInterceptor(tokenProvider: TokenProvider): Interceptor {
         return Interceptor { chain ->
+            // Block until TokenProvider has finished reading persisted tokens so we never
+            // race ahead with a null token on cold start.
+            val token = runBlocking { tokenProvider.awaitToken() }
             val request = chain.request().newBuilder().apply {
                 addHeader("Content-Type", "application/json")
                 addHeader("Accept", "application/json")
-                tokenProvider.token?.let { addHeader("Authorization", "Bearer $it") }
+                token?.let { addHeader("Authorization", "Bearer $it") }
             }.build()
             chain.proceed(request)
         }
@@ -174,6 +177,10 @@ private class TokenAuthenticator(
 
         val path = response.request.url.encodedPath
         if (path.contains("/auth/")) return null
+
+        // No Authorization header means the request was anonymous (guest or no token loaded).
+        // A 401 on an anonymous request is not a session expiry — don't signal logout.
+        if (response.request.header("Authorization") == null) return null
 
         synchronized(lock) {
             val currentToken = tokenProvider.token

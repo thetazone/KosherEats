@@ -84,40 +84,29 @@ class MenuViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                var selectedItem = _state.value.items.firstOrNull { it.id == itemId }
-                if (selectedItem == null) {
-                    val response = apiService.getSellerMenu()
-                    if (response.isSuccessful) {
-                        selectedItem = response.body().orEmpty()
-                            .flatMap { it.items }
-                            .firstOrNull { it.id == itemId }
-                        _state.update { it.copy(
-                            items = response.body().orEmpty().let { categories ->
-                                val selectedCategory = it.selectedCategory
-                                if (selectedCategory == null) {
-                                    categories.flatMap { it.items }
-                                } else {
-                                    categories.flatMap { it.items }.filter { it.category == selectedCategory }
-                                }
+                val response = apiService.getSellerMenu()
+                if (response.isSuccessful) {
+                    val categories = response.body().orEmpty()
+                    val allItems = categories.flatMap { it.items }
+                    val selectedItem = allItems.firstOrNull { it.id == itemId }
+                    _state.update { state ->
+                        state.copy(
+                            items = if (state.selectedCategory == null) {
+                                allItems
+                            } else {
+                                allItems.filter { it.category == state.selectedCategory }
                             },
                             selectedItem = selectedItem,
                             isLoading = false,
                             error = if (selectedItem == null) "Failed to load item" else null,
-                        ) }
-                        return@launch
+                        )
                     }
+                } else {
+                    _state.update { it.copy(isLoading = false, error = "Failed to load item") }
                 }
-                _state.update { it.copy(
-                    selectedItem = selectedItem,
-                    isLoading = false,
-                    error = if (selectedItem == null) "Failed to load item" else null,
-                ) }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _state.update { it.copy(
-                    isLoading = false,
-                    error = "Failed to load item",
-                ) }
+                _state.update { it.copy(isLoading = false, error = "Failed to load item") }
             }
         }
     }
@@ -131,15 +120,20 @@ class MenuViewModel @Inject constructor(
                     ?.let { runCatching { MenuCategory.valueOf(it) }.getOrNull() }
                     ?: MenuCategory.MAINS
 
+                val displayName = targetCategory.name.lowercase().replace('_', ' ')
+                    .replaceFirstChar { it.uppercase() }
+
                 val menuResponse = apiService.getSellerMenu()
+                if (!menuResponse.isSuccessful) {
+                    _state.update { it.copy(isSaving = false, error = "Failed to load menu (${menuResponse.code()})") }
+                    return@launch
+                }
                 val existingCategory = menuResponse.body()
-                    ?.firstOrNull { serverCat -> serverCat.items.any { it.category == targetCategory } }
+                    ?.firstOrNull { serverCat -> serverCat.name.equals(displayName, ignoreCase = true) }
 
                 val categoryId = if (existingCategory != null) {
                     existingCategory.id
                 } else {
-                    val displayName = targetCategory.name.lowercase().replace('_', ' ')
-                        .replaceFirstChar { it.uppercase() }
                     val catResp = apiService.createCategory(mapOf("name" to displayName))
                     catResp.body()?.id
                 }

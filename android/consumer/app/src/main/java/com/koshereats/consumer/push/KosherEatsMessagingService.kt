@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -68,9 +69,14 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
 
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                orderId?.let {
+                    putExtra("order_id", it)
+                    data = Uri.parse("koshereats://order/$it")
+                }
             }
+            val requestCode = orderId?.hashCode() ?: 0
             val pi = PendingIntent.getActivity(
-                context, 0, intent,
+                context, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 

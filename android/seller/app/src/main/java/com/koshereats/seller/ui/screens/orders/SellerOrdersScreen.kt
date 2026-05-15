@@ -19,10 +19,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -47,6 +49,11 @@ fun SellerOrdersScreen(
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+
+    DisposableEffect(Unit) {
+        viewModel.startPolling()
+        onDispose { viewModel.stopPolling() }
+    }
 
     val filters = listOf(
         null to "All",
@@ -120,40 +127,46 @@ fun SellerOrdersScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         // Orders list
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 48.dp),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                CircularProgressIndicator(color = Orange)
-            }
-        } else if (state.orders.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 48.dp),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                Text(
-                    text = "No orders found",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = TextMuted,
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(state.orders, key = { it.id }) { order ->
-                    ActiveOrderCard(
-                        order = order,
-                        onClick = { onOrderClick(order.id) },
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (state.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 48.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    CircularProgressIndicator(color = Orange)
+                }
+            } else if (state.orders.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 48.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    Text(
+                        text = "No orders found",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = TextMuted,
                     )
                 }
-                item { Spacer(modifier = Modifier.height(16.dp)) }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(state.orders, key = { it.id }) { order ->
+                        ActiveOrderCard(
+                            order = order,
+                            onClick = { onOrderClick(order.id) },
+                        )
+                    }
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
             }
         }
     }

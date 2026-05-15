@@ -1,9 +1,6 @@
 package com.koshereats.seller.ui.viewmodels
 
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.Order
@@ -11,6 +8,7 @@ import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +22,7 @@ data class OrdersState(
     val selectedOrder: Order? = null,
     val selectedFilter: OrderStatus? = null,
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val pendingOrderIds: Set<String> = emptySet(),
     val error: String? = null,
     val updateSuccess: String? = null,
@@ -38,28 +37,46 @@ class OrdersViewModel @Inject constructor(
     private val _state = MutableStateFlow(OrdersState())
     val state: StateFlow<OrdersState> = _state.asStateFlow()
 
+    private var pollingJob: Job? = null
+    private var pollerRefCount = 0
+
     init {
         loadOrders()
-        viewModelScope.launch {
-            orderEventBus.events.collect { pollSilently() }
-        }
-        // Polling fallback: FCM is unreliable on OEM devices with aggressive doze/battery savers.
-        // repeatOnLifecycle(STARTED) suspends while the app is backgrounded, so polling only
-        // runs when the user has the app in the foreground.
-        viewModelScope.launch {
-            ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    delay(30_000)
-                    pollSilently()
-                }
+    }
+
+    // Called by screen composables via DisposableEffect. Reference-counted so that
+    // SellerOrderDetailScreen and SellerOrdersScreen can each hold a ref without
+    // one's disposal cancelling the other's poll.
+    fun startPolling() {
+        pollerRefCount++
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            launch {
+                orderEventBus.events.collect { pollSilently() }
+            }
+            var consecutiveFailures = 0
+            while (true) {
+                val succeeded = pollSilently()
+                consecutiveFailures = if (succeeded) 0 else consecutiveFailures + 1
+                delay(BACKOFF_DELAYS[consecutiveFailures.coerceAtMost(BACKOFF_DELAYS.lastIndex)])
             }
         }
     }
 
-    private suspend fun pollSilently() {
-        try {
+    fun stopPolling() {
+        pollerRefCount = (pollerRefCount - 1).coerceAtLeast(0)
+        if (pollerRefCount == 0) {
+            pollingJob?.cancel()
+            pollingJob = null
+        }
+    }
+
+    // Returns true on success so the caller can reset the backoff counter.
+    private suspend fun pollSilently(): Boolean {
+        return try {
             val statusStr = _state.value.selectedFilter?.name?.lowercase()
             val response = apiService.getOrders(status = statusStr)
+            var succeeded = response.isSuccessful
             if (response.isSuccessful) {
                 _state.update { it.copy(orders = response.body() ?: it.orders) }
             }
@@ -67,11 +84,14 @@ class OrdersViewModel @Inject constructor(
                 val detailResponse = apiService.getOrderDetail(id)
                 if (detailResponse.isSuccessful) {
                     _state.update { it.copy(selectedOrder = detailResponse.body()) }
+                } else {
+                    succeeded = false
                 }
             }
+            succeeded
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            // Silent — next poll or FCM delivery will recover.
+            false
         }
     }
 
@@ -134,8 +154,8 @@ class OrdersViewModel @Inject constructor(
 
     private val allowedTransitions = mapOf(
         OrderStatus.PENDING to setOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED),
-        OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING),
-        OrderStatus.PREPARING to setOf(OrderStatus.READY),
+        OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING, OrderStatus.CANCELLED),
+        OrderStatus.PREPARING to setOf(OrderStatus.READY, OrderStatus.CANCELLED),
         OrderStatus.READY to setOf(OrderStatus.COMPLETED),
         OrderStatus.PICKED_UP to setOf(OrderStatus.COMPLETED),
     )
@@ -148,7 +168,8 @@ class OrdersViewModel @Inject constructor(
         if (currentOrder != null) {
             val allowed = allowedTransitions[currentOrder.status] ?: emptySet()
             val blocked = newStatus !in allowed ||
-                (currentOrder.status == OrderStatus.READY && newStatus == OrderStatus.COMPLETED && !currentOrder.isPickup)
+                (newStatus == OrderStatus.COMPLETED && !currentOrder.isPickup &&
+                    (currentOrder.status == OrderStatus.READY || currentOrder.status == OrderStatus.PICKED_UP))
             if (blocked) {
                 _state.update { it.copy(error = "Cannot change order from ${currentOrder.status.name.lowercase()} to ${newStatus.name.lowercase()}") }
                 return
@@ -217,7 +238,37 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    fun refresh() {
+        viewModelScope.launch {
+            _state.update { it.copy(isRefreshing = true) }
+            try {
+                val statusStr = _state.value.selectedFilter?.name?.lowercase()
+                val response = apiService.getOrders(status = statusStr)
+                if (response.isSuccessful) {
+                    _state.update { it.copy(
+                        orders = response.body() ?: it.orders,
+                        isRefreshing = false,
+                    ) }
+                } else {
+                    _state.update { it.copy(isRefreshing = false) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(isRefreshing = false) }
+            }
+        }
+    }
+
     fun clearMessages() {
         _state.update { it.copy(error = null, updateSuccess = null) }
+    }
+
+    fun clearSelectedOrder() {
+        _state.update { it.copy(selectedOrder = null) }
+    }
+
+    companion object {
+        // Backoff delays for consecutive poll failures: 30s → 1m → 2m → 4m → 5m (cap).
+        private val BACKOFF_DELAYS = longArrayOf(30_000, 60_000, 120_000, 240_000, 300_000)
     }
 }

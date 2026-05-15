@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -106,7 +106,7 @@ fun CartScreen(
                         onBackClick()
                     }
                 }) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                 }
             },
             actions = {
@@ -427,57 +427,6 @@ private fun CartDetailView(
                 )
             }
 
-            // Tip section
-            item {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    text = "Add a Tip",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextWhite,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    listOf(0, 200, 300, 500, 800).forEach { tipAmount ->
-                        val isSelected = state.tip == tipAmount
-                        val isDisabled = tipAmount > 0 && tipAmount > state.subtotal
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSelected) Orange else SurfaceDark)
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Orange else SurfaceDarkBorder,
-                                    RoundedCornerShape(12.dp),
-                                )
-                                .then(
-                                    if (!isDisabled) Modifier.clickable { cartViewModel.updateTip(tipAmount) }
-                                    else Modifier
-                                )
-                                .padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = if (tipAmount == 0) "None" else "$${tipAmount / 100}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = when {
-                                    isDisabled -> TextMuted
-                                    isSelected -> TextWhite
-                                    else -> TextSecondary
-                                },
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-            }
-
             // Price breakdown
             item {
                 Spacer(modifier = Modifier.height(24.dp))
@@ -504,10 +453,6 @@ private fun CartDetailView(
                         PriceRow("Service fee", state.serviceFee)
                         Spacer(modifier = Modifier.height(10.dp))
                         PriceRow("Tax", state.tax)
-                        if (state.tip > 0) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            PriceRow("Tip", state.tip)
-                        }
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider(color = SurfaceDarkBorder)
                         Spacer(modifier = Modifier.height(16.dp))

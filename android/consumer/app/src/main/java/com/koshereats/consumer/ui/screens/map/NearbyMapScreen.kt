@@ -218,7 +218,7 @@ private fun RestaurantMapPin(restaurant: Restaurant) {
                 modifier = Modifier.size(10.dp),
             )
             Text(
-                text = String.format("%.1f", restaurant.rating),
+                text = String.format(java.util.Locale.US, "%.1f", restaurant.rating),
                 color = if (restaurant.isOpen) TextWhite else TextMuted,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
@@ -283,7 +283,7 @@ private fun SelectedRestaurantCard(restaurant: Restaurant, onClick: () -> Unit) 
                     )
                     Spacer(Modifier.width(2.dp))
                     Text(
-                        text = String.format("%.1f", restaurant.rating),
+                        text = String.format(java.util.Locale.US, "%.1f", restaurant.rating),
                         color = TextWhite,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,

@@ -31,6 +31,7 @@ data class AuthUiState(
     val isLoggedIn: Boolean = false,
     val isGuest: Boolean = false,
     val user: User? = null,
+    val isRehydrating: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
     val loginEmail: String = "",
@@ -71,25 +72,37 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             val token = tokenProvider.awaitToken()
             if (token != null) {
+                _uiState.update { it.copy(isRehydrating = true) }
                 try {
                     val response = apiService.getProfile()
                     when {
                         response.isSuccessful -> {
-                            _uiState.update { it.copy(isLoggedIn = true, user = response.body()) }
+                            _uiState.update {
+                                it.copy(isLoggedIn = true, isRehydrating = false, user = response.body())
+                            }
                             // Resumed session — refresh the FCM token on the
                             // backend in case it rotated since last launch.
                             PushBootstrap.registerCurrentToken(apiService)
                         }
-                        response.code() == 401 -> clearAuth()
-                        // 5xx or other transient error: keep session alive.
-                        else -> _uiState.update { it.copy(isLoggedIn = true) }
+                        response.code() == 401 -> {
+                            clearAuth()
+                            _uiState.update { it.copy(isRehydrating = false) }
+                        }
+                        // 5xx or other transient error: keep session alive but
+                        // leave user=null so ProfileScreen shows a retry UI.
+                        else -> _uiState.update { it.copy(isLoggedIn = true, isRehydrating = false) }
                     }
                 } catch (e: Exception) {
-                    // Network/IO error: transient, keep session alive.
-                    _uiState.update { it.copy(isLoggedIn = true) }
+                    // Network/IO error: transient, keep session alive but
+                    // leave user=null so ProfileScreen shows a retry UI.
+                    _uiState.update { it.copy(isLoggedIn = true, isRehydrating = false) }
                 }
             }
         }
+    }
+
+    fun retryAuth() {
+        if (!_uiState.value.isRehydrating) checkAuthStatus()
     }
 
     fun updateLoginEmail(value: String) = _uiState.update { it.copy(loginEmail = value) }

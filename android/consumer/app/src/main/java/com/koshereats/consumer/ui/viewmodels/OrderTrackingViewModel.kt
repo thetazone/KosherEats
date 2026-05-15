@@ -107,6 +107,8 @@ class OrderTrackingViewModel @Inject constructor(
         streamJob = launchLocationStream(id)
     }
 
+    fun pause() = stopInternal()
+
     // SSE: hold a GET open on /orders/{id}/location/stream, parse `data:` lines,
     // splice lat/lng into the in-memory courier whenever a location event arrives.
     // Reconnects with exponential backoff (3s..30s) on any error.
@@ -160,7 +162,7 @@ class OrderTrackingViewModel @Inject constructor(
         _uiState.update { state ->
             val current = state.order ?: return@update state
             val courier = current.courier?.copy(lat = event.lat, lng = event.lng) ?: return@update state
-            state.copy(order = current.copy(courier = courier))
+            state.copy(order = current.copy(courier = courier), errorMessage = null)
         }
     }
 }

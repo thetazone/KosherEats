@@ -32,6 +32,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,11 @@ fun DashboardScreen(
     val state by viewModel.state.collectAsState()
     val authState by authViewModel.state.collectAsState()
     var showPicker by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        viewModel.startPolling()
+        onDispose { viewModel.stopPolling() }
+    }
 
     if (showPicker) {
         RestaurantPickerSheet(

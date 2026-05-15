@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -45,8 +47,8 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val title = message.notification?.title ?: message.data["title"] ?: "KosherEats"
         val body = message.notification?.body ?: message.data["body"] ?: ""
-        showNotification(this, title, body)
         val type = message.data["type"]
+        showNotification(this, title, body, message.data["order_id"], type)
         if (type == "new_order" || type == "courier_assigned" ||
             type == "order_status_changed" || type == "order_cancelled" || type == "payment_update") {
             orderEventBus.notifyOrderChanged()
@@ -55,42 +57,93 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
 
     companion object {
         const val CHANNEL_ID = "koshereats_seller_default"
+        const val NEW_ORDER_CHANNEL_ID = "koshereats_seller_new_orders"
+        private const val GROUP_KEY = "com.koshereats.seller.ORDERS"
+        private const val SUMMARY_ID = 0
+        private val NEW_ORDER_VIBRATION = longArrayOf(0, 500, 300, 500, 300, 500)
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Orders",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Incoming orders and status updates"
-            }
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Orders",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Incoming orders and status updates"
+                },
+            )
+
+            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    NEW_ORDER_CHANNEL_ID,
+                    "New Orders",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "New incoming orders — requires immediate attention"
+                    setSound(ringtoneUri, audioAttributes)
+                    vibrationPattern = NEW_ORDER_VIBRATION
+                    enableVibration(true)
+                },
+            )
         }
 
-        private fun showNotification(context: Context, title: String, body: String) {
+        private fun showNotification(
+            context: Context,
+            title: String,
+            body: String,
+            orderId: String?,
+            type: String?,
+        ) {
             ensureChannel(context)
+
+            val isNewOrder = type == "new_order"
+            val channelId = if (isNewOrder) NEW_ORDER_CHANNEL_ID else CHANNEL_ID
+            // Deterministic ID so pushes for the same order overwrite rather than stack.
+            val notifId = orderId?.hashCode() ?: type?.hashCode() ?: CHANNEL_ID.hashCode()
 
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                if (orderId != null) putExtra("order_id", orderId)
             }
             val pi = PendingIntent.getActivity(
-                context, 0, intent,
+                context, notifId, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .setContentIntent(pi)
+                .setGroup(GROUP_KEY)
+
+            // On pre-O devices the channel does not exist; set sound/vibration on the builder.
+            if (isNewOrder && Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                builder
+                    .setVibrate(NEW_ORDER_VIBRATION)
+                    .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+            }
+
+            val summary = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setGroup(GROUP_KEY)
+                .setGroupSummary(true)
+                .setAutoCancel(true)
                 .build()
 
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(System.currentTimeMillis().toInt(), notification)
+            nm.notify(notifId, builder.build())
+            nm.notify(SUMMARY_ID, summary)
         }
     }
 }

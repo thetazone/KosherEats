@@ -16,10 +16,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,15 +34,23 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import java.time.Duration
+import java.time.Instant
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -73,6 +84,7 @@ fun SellerOrderDetailScreen(
     val state by viewModel.state.collectAsState()
     val order = state.selectedOrder
     val context = LocalContext.current
+    var showRejectConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(orderId) {
         viewModel.loadOrderDetail(orderId)
@@ -82,6 +94,14 @@ fun SellerOrderDetailScreen(
         if (state.error != null) {
             Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
             viewModel.clearMessages()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        viewModel.startPolling()
+        onDispose {
+            viewModel.stopPolling()
+            viewModel.clearSelectedOrder()
         }
     }
 
@@ -116,6 +136,12 @@ fun SellerOrderDetailScreen(
             return
         }
 
+        val minutesAgo = remember(order.createdAt) {
+            runCatching {
+                Duration.between(Instant.parse(order.createdAt), Instant.now()).toMinutes()
+            }.getOrNull()
+        }
+
         LazyColumn(
             modifier = Modifier.padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -141,6 +167,15 @@ fun SellerOrderDetailScreen(
                             OrderStatusBadge(status = order.status)
                         }
 
+                        if (minutesAgo != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (minutesAgo < 1) "Placed just now" else "Placed ${minutesAgo} min ago",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+
                         if (order.deliveryAddress.isNotBlank()) {
                             Spacer(modifier = Modifier.height(16.dp))
                             HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
@@ -164,6 +199,56 @@ fun SellerOrderDetailScreen(
                                     text = order.deliveryAddress,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = TextSecondary,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Customer contact card
+            if (order.customerName.isNotBlank()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Customer",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = order.customerName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextWhite,
+                                )
+                                if (order.customerPhone.isNotBlank()) {
+                                    IconButton(onClick = {
+                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${order.customerPhone}"))
+                                        context.startActivity(intent)
+                                    }) {
+                                        Icon(
+                                            Icons.Filled.Phone,
+                                            contentDescription = "Call customer",
+                                            tint = Orange,
+                                        )
+                                    }
+                                }
+                            }
+                            if (order.customerPhone.isNotBlank()) {
+                                Text(
+                                    text = order.customerPhone,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
                                 )
                             }
                         }
@@ -280,14 +365,34 @@ fun SellerOrderDetailScreen(
                     onComplete = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.COMPLETED)
                     },
-                    onCancel = {
-                        viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
-                    },
+                    onCancel = { showRejectConfirm = true },
                 )
             }
 
             item { Spacer(modifier = Modifier.height(16.dp)) }
         }
+    }
+
+    if (showRejectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRejectConfirm = false },
+            title = { Text("Reject Order?", color = TextWhite) },
+            text = { Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRejectConfirm = false
+                    viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
+                }) {
+                    Text("Reject Order", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectConfirm = false }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
     }
 }
 
@@ -373,6 +478,20 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                OutlinedButton(
+                    onClick = onCancel,
+                    enabled = !isUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        // uses default
+                    ),
+                ) {
+                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -389,6 +508,20 @@ private fun OrderActionButtons(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
                     }
+                }
+                OutlinedButton(
+                    onClick = onCancel,
+                    enabled = !isUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(
+                        // uses default
+                    ),
+                ) {
+                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.READY -> {
@@ -423,19 +556,33 @@ private fun OrderActionButtons(
                 }
             }
             OrderStatus.PICKED_UP -> {
-                Button(
-                    onClick = onComplete,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                ) {
-                    if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                    } else {
-                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                if (isPickup) {
+                    Button(
+                        onClick = onComplete,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Mark as Completed", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusReady),
+                    ) {
+                        Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Mark as Completed", fontWeight = FontWeight.SemiBold)
+                        Text("Out for delivery…", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

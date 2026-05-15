@@ -1,9 +1,6 @@
 package com.koshereats.seller.ui.viewmodels
 
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.DashboardStats
@@ -11,6 +8,7 @@ import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,22 +33,32 @@ class DashboardViewModel @Inject constructor(
     private val _state = MutableStateFlow(DashboardState())
     val state: StateFlow<DashboardState> = _state.asStateFlow()
 
+    private var pollingJob: Job? = null
+
     init {
         loadDashboard()
-        viewModelScope.launch {
-            orderEventBus.events.collect { pollSilently() }
-        }
-        // Polling fallback: FCM is unreliable on OEM devices with aggressive doze/battery savers.
-        // repeatOnLifecycle(STARTED) suspends while the app is backgrounded, so polling only
-        // runs when the user has the app in the foreground.
-        viewModelScope.launch {
-            ProcessLifecycleOwner.get().lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    delay(30_000)
-                    pollSilently()
-                }
+    }
+
+    // Called by the screen composable via DisposableEffect so polling (and FCM-triggered
+    // refreshes) only run while that screen is in composition.
+    fun startPolling() {
+        if (pollingJob?.isActive == true) return
+        pollingJob = viewModelScope.launch {
+            launch {
+                orderEventBus.events.collect { pollSilently() }
+            }
+            var consecutiveFailures = 0
+            while (true) {
+                val succeeded = pollSilently()
+                consecutiveFailures = if (succeeded) 0 else consecutiveFailures + 1
+                delay(BACKOFF_DELAYS[consecutiveFailures.coerceAtMost(BACKOFF_DELAYS.lastIndex)])
             }
         }
+    }
+
+    fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
     }
 
     fun loadDashboard() {
@@ -58,7 +66,7 @@ class DashboardViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val statsResponse = apiService.getDashboardStats()
-                val ordersResponse = apiService.getOrders()
+                val ordersResponse = apiService.getOrders(status = "active", limit = 200)
 
                 if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
                     val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
@@ -85,10 +93,11 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private suspend fun pollSilently() {
-        try {
+    // Returns true on success so the caller can reset the backoff counter.
+    private suspend fun pollSilently(): Boolean {
+        return try {
             val statsResponse = apiService.getDashboardStats()
-            val ordersResponse = apiService.getOrders()
+            val ordersResponse = apiService.getOrders(status = "active", limit = 200)
             if (statsResponse.isSuccessful && ordersResponse.isSuccessful) {
                 val activeOrders = ordersResponse.body().orEmpty()
                     .filter { it.status.isActive }
@@ -96,10 +105,13 @@ class DashboardViewModel @Inject constructor(
                     stats = statsResponse.body() ?: _state.value.stats,
                     activeOrders = activeOrders,
                 )
+                true
+            } else {
+                false
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            // Silent — next poll or FCM delivery will recover.
+            false
         }
     }
 
@@ -108,7 +120,7 @@ class DashboardViewModel @Inject constructor(
             _state.value = _state.value.copy(isRefreshing = true)
             try {
                 val statsResponse = apiService.getDashboardStats()
-                val ordersResponse = apiService.getOrders()
+                val ordersResponse = apiService.getOrders(status = "active", limit = 200)
 
                 if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
                     val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
@@ -134,5 +146,10 @@ class DashboardViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    companion object {
+        // Backoff delays for consecutive poll failures: 30s → 1m → 2m → 4m → 5m (cap).
+        private val BACKOFF_DELAYS = longArrayOf(30_000, 60_000, 120_000, 240_000, 300_000)
     }
 }

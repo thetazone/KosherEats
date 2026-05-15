@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
@@ -63,10 +62,6 @@ object NetworkModule {
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
     ): OkHttpClient {
-        // Synchronously prime cachedRestaurantId so the interceptor never sees null
-        // on the first request after a cold start (before the async collect emits).
-        cachedRestaurantId = runBlocking { context.dataStore.data.first() }[PrefsKeys.RESTAURANT_ID]
-
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
             context.dataStore.data.collect { prefs ->

@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -74,6 +75,10 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
 import com.koshereats.consumer.ui.viewmodels.HomeViewModel
 
+internal object DeepLinkState {
+    val pendingOrderId = MutableStateFlow<String?>(null)
+}
+
 @Composable
 fun KosherEatsNavHost() {
     val navController = rememberNavController()
@@ -89,6 +94,20 @@ fun KosherEatsNavHost() {
     // When a guest tries a restricted action we stash the target here
     // so the login-success handler can send them back.
     val pendingGuestReturn = remember { mutableStateOf<String?>(null) }
+
+    val pendingOrderId by DeepLinkState.pendingOrderId.collectAsStateWithLifecycle()
+    // Re-fires when auth state changes so the ID is held until the user is authenticated.
+    // Auth gate prevents a guest/unauthenticated deep-link from reaching OrderTracking and
+    // triggering a 401 → forced-logout cycle.
+    LaunchedEffect(pendingOrderId, authState.isLoggedIn, authState.isGuest) {
+        val id = pendingOrderId ?: return@LaunchedEffect
+        if (!authState.isLoggedIn || authState.isGuest) return@LaunchedEffect
+        DeepLinkState.pendingOrderId.value = null
+        navController.navigate(Screen.OrderTracking.createRoute(id)) {
+            launchSingleTop = true
+            popUpTo(Screen.Home.route)
+        }
+    }
 
     /** Navigate to login when a guest hits a restricted feature. */
     fun requireAuth(returnRoute: String) {
@@ -454,14 +473,23 @@ fun KosherEatsNavHost() {
             composable(Screen.Profile.route) {
                 ProfileScreen(
                     onLoginClick = {
-                        if (authState.isGuest) {
-                            // Guest tapping sign-in on the profile tab
-                            requireAuth(Screen.Profile.route)
-                        } else {
-                            // Real logout flow
-                            BottomNavItem.entries.forEach { navController.clearBackStack(it.route) }
-                            navController.navigate(Screen.Login.route) {
-                                popUpTo(0) { inclusive = true }
+                        // Guest tapping sign-in on the profile tab
+                        requireAuth(Screen.Profile.route)
+                    },
+                    onSignOutClick = {
+                        authViewModel.logout()
+                        BottomNavItem.entries.forEach { navController.clearBackStack(it.route) }
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                    onDeleteAccountClick = {
+                        authViewModel.deleteAccount { success ->
+                            if (success) {
+                                BottomNavItem.entries.forEach { navController.clearBackStack(it.route) }
+                                navController.navigate(Screen.Login.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
                             }
                         }
                     },

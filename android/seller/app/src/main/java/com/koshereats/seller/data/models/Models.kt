@@ -119,6 +119,8 @@ data class Order(
     val total: Int = 0,
     val status: OrderStatus = OrderStatus.PENDING,
     @Json(name = "fulfillment_type") val fulfillmentType: String = "delivery",
+    @Json(name = "customer_name") val customerName: String = "",
+    @Json(name = "customer_phone") val customerPhone: String = "",
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
 ) {

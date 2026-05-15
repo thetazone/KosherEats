@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,6 +25,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koshereats.seller.ui.screens.auth.PhoneLoginScreen
@@ -46,7 +48,10 @@ import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.viewmodels.AuthViewModel
 
 @Composable
-fun NavGraph() {
+fun NavGraph(
+    initialOrderId: String? = null,
+    onOrderDeepLinkConsumed: () -> Unit = {},
+) {
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.state.collectAsState()
     val navController = rememberNavController()
@@ -69,6 +74,15 @@ fun NavGraph() {
         !authState.isLoggedIn -> Screen.Login.route
         authState.hasRestaurants == false -> Screen.Onboarding.route
         else -> Screen.Dashboard.route
+    }
+
+    LaunchedEffect(initialOrderId, authState.isLoggedIn, authState.hasRestaurants) {
+        val orderId = initialOrderId ?: return@LaunchedEffect
+        if (!authState.isLoggedIn || authState.hasRestaurants != true) return@LaunchedEffect
+        navController.navigate(Screen.OrderDetail.createRoute(orderId)) {
+            launchSingleTop = true
+        }
+        onOrderDeepLinkConsumed()
     }
 
     LaunchedEffect(authState.isLoggedIn) {
@@ -198,25 +212,34 @@ fun NavGraph() {
                 )
             }
 
-            // Orders
-            composable(Screen.Orders.route) {
-                SellerOrdersScreen(
-                    onOrderClick = { orderId ->
-                        navController.navigate(Screen.OrderDetail.createRoute(orderId))
-                    },
-                )
-            }
+            // Orders + Order Detail share one OrdersViewModel via nested-graph scope.
+            navigation(startDestination = Screen.Orders.route, route = "orders_graph") {
+                composable(Screen.Orders.route) { backStackEntry ->
+                    val parentEntry = remember(backStackEntry) {
+                        navController.getBackStackEntry("orders_graph")
+                    }
+                    SellerOrdersScreen(
+                        viewModel = hiltViewModel(parentEntry),
+                        onOrderClick = { orderId ->
+                            navController.navigate(Screen.OrderDetail.createRoute(orderId))
+                        },
+                    )
+                }
 
-            // Order Detail
-            composable(
-                route = Screen.OrderDetail.route,
-                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
-            ) { backStackEntry ->
-                val orderId = backStackEntry.arguments?.getString("orderId") ?: return@composable
-                SellerOrderDetailScreen(
-                    orderId = orderId,
-                    onBack = { navController.popBackStack() },
-                )
+                composable(
+                    route = Screen.OrderDetail.route,
+                    arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+                ) { backStackEntry ->
+                    val orderId = backStackEntry.arguments?.getString("orderId") ?: return@composable
+                    val parentEntry = remember(backStackEntry) {
+                        navController.getBackStackEntry("orders_graph")
+                    }
+                    SellerOrderDetailScreen(
+                        orderId = orderId,
+                        viewModel = hiltViewModel(parentEntry),
+                        onBack = { navController.popBackStack() },
+                    )
+                }
             }
 
             // Menu

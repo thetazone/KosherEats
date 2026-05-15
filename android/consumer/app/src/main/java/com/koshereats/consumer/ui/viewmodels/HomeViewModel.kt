@@ -102,7 +102,7 @@ class HomeViewModel @Inject constructor(
                                 isLoading = false,
                                 isRefreshing = false,
                                 currentPage = page,
-                                hasMore = result.data.size >= 50,
+                                hasMore = result.data.size >= 20,
                             )
                         }
                     }
@@ -116,10 +116,10 @@ class HomeViewModel @Inject constructor(
 
     fun loadMore() {
         val state = _uiState.value
-        if (!state.isLoading && state.hasMore) {
-            _uiState.update { it.copy(isLoading = true) }
-            loadRestaurants(state.currentPage + 1)
-        }
+        if (state.isLoading || !state.hasMore) return
+        val nextPage = state.currentPage + 1
+        _uiState.update { it.copy(isLoading = true) }
+        loadRestaurants(nextPage)
     }
 
     fun search(query: String) {
