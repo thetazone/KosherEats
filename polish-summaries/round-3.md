@@ -1,72 +1,53 @@
 # KosherEats Polish — Round 3
-**Max severity found:** 8
+**Max severity found:** 7
 **Issues found:** 12
-**Fixes attempted:** 10
-**Fixes succeeded:** 10
+**Fixes attempted:** 11
+**Fixes succeeded:** 11
 
 ## Issues & Fixes
-- **[8/10] [android_consumer] POST_NOTIFICATIONS runtime permission never requested** — FIXED
-  AndroidManifest.xml:9 declares the POST_NOTIFICATIONS permission, but no code anywhere in the app actually requests it at runtime (grep across all of 
-  > Done. Here's what changed in `MainActivity.kt`:
+- **[7/10] [android_seller] MenuItemFormScreen pops back AND wipes form data on every modifier-group operation** — FIXED
+  The form has two `LaunchedEffect`s that both fire when a modifier-group op succeeds. (1) `LaunchedEffect(state.saveSuccess) { ... onSaved() }` at Menu
+  > Added itemSaveSuccess flag to MenuState (set only by createMenuItem/updateMenuItem), gated LaunchedEffect(state.selected
 
-- Added `RequestNotificationPermissionIfNeeded()` — a private Composabl
+- **[6/10] [android_consumer] Money.formatPriceWhole truncates via integer division** — FIXED
+  Money.kt:11 calls `nf.format(this / 100)` — `Int / Int` integer-divides. 1099¢ ($10.99) becomes 10 and renders as "$10" instead of "$11". `nf.maximumF
+  > Changed `this / 100` to `this / 100.0` in Money.kt:11 so NumberFormat receives a Double and rounds correctly instead of 
 
-- **[8/10] [android_seller] OrderDetail polling skipped when entered from Dashboard** — FIXED
-  OrdersViewModel.startPolling() is wired only into SellerOrdersScreen's DisposableEffect. When a seller taps an order card on the dashboard, navigation
-  > Done. Here's what changed and why each piece matters:
+- **[6/10] [android_consumer] isLoggedIn=true for guests is a footgun** — FIXED
+  AuthViewModel.continueAsGuest() (line 495) sets `isLoggedIn = true, isGuest = true`. NavGraph remembers to combine `authState.isLoggedIn && !authState
+  > Added sealed class SessionState { Authenticated, Guest, LoggedOut }, replaced the two booleans in AuthUiState with a sin
 
-**`OrdersViewModel.kt`** — reference-counted `startPolling`/`stop
+- **[5/10] [android_consumer] HomeViewModel pagination breaks when filterCertifications is set** — FIXED
+  HomeViewModel.kt:88-107 applies `filterCertifications` *client-side* on each page (line 90-94) but computes `hasMore = result.data.size >= 20` from th
+  > Removed client-side certification filtering in loadRestaurants(); added a private toApiString() extension to map each Ko
 
-- **[8/10] [android_seller] Active orders silently capped at 20 by getOrders default limit** — FIXED
-  DashboardViewModel.loadDashboard / pollSilently / refresh call apiService.getOrders() with no arguments, picking up ApiService's default page=1, limit
-  > All three call sites now pass `status = "active", limit = 200`. No changes were needed in `ApiService.kt` since the `sta
+- **[5/10] [android_consumer] Login error always reads "Login failed" regardless of cause** — FIXED
+  AuthViewModel.kt:147-153 sets a single hard-coded error string for every non-2xx response. 401 (bad credentials), 403 (account locked), 422 (validatio
+  > Replaced the hard-coded 'Login failed' string in the login() error branch with a when switch on response.code() mapping 
 
-- **[7/10] [android_consumer] Delete-account navigates to Login before API call even fires** — FIXED
-  NavGraph.kt:481-487 wires onDeleteAccountClick as `authViewModel.deleteAccount(); BottomNavItem.entries.forEach { clearBackStack(...) }; navController
-  > The fix is in place. Here's what changed:
+- **[5/10] [android_consumer] FCM notification IDs collide via orderId.hashCode()** — FIXED
+  KosherEatsMessagingService.kt:93 uses `orderId.hashCode()` as both the PendingIntent requestCode and the NotificationManager id. Java `String.hashCode
+  > Replaced nm.notify(orderId.hashCode(), notification) with nm.notify(orderId, 0, notification) (tag-based) so same-order 
 
-**`NavGraph.kt:481-490`** — `onDeleteAccountClick` now passes the `onComplete
+- **[5/10] [android_seller] Editing any modifier group resets its sort_order to 0 (and its description to empty)** — FIXED
+  `ModifierGroupDialog` builds a `CreateModifierGroupRequest` (MenuItemFormScreen.kt:776-799) but never passes `sortOrder` or `description`. `CreateModi
+  > Added groupDescription state to ModifierGroupDialog with a UI text field, and passed description=groupDescription.trim()
 
-- **[7/10] [android_seller] New-order push has no distinctive salience and no deep-link to order** — FIXED
-  KosherEatsMessagingService routes every type (new_order, order_status_changed, payment_update, courier_assigned, order_cancelled) through one 'koshere
-  > All three files look correct. Here's a summary of every change made:
+- **[5/10] [android_seller] AuthViewModel is instantiated per-NavBackStackEntry, so restaurant state forks across screens** — FIXED
+  `hiltViewModel()` inside a `composable {}` block scopes the ViewModel to the current NavBackStackEntry. NavGraph.kt:55 grabs an AuthViewModel at the r
+  > Passed authViewModel = authViewModel explicitly to DashboardScreen and RestaurantSettingsScreen in NavGraph.kt so both s
 
----
+- **[5/10] [android_seller] Order detail screen early-return hides the reject confirmation dialog** — FIXED
+  SellerOrderDetailScreen.kt line 129-137 does `if (state.isLoading || order == null) { CircularProgressIndicator … return }` — the function-level `retu
+  > Moved the AlertDialog block above the early-return Column so polling can't dismiss it mid-confirmation, and added viewMo
 
-**`KosherEatsMessagingService.kt`**
-- Added `
+- **[5/10] [android_seller] OrdersViewModel.pollSilently can race with filter changes** — FIXED
+  OrdersViewModel.pollSilently reads `_state.value.selectedFilter` once, fires apiService.getOrders, then writes `state.update { it.copy(orders = respon
+  > Captured selectedFilter in a local val before the API call and wrapped the state update in a conditional that discards t
 
-- **[7/10] [android_seller] Order detail omits customer name, phone, and order placement time** — FIXED
-  Order model has only customerId (no name/phone); SellerOrderDetailScreen renders nothing for the customer beyond the delivery address. There's also no
-  > Both changes are correct. Here's what was done:
+- **[5/10] [android_seller] ActiveOrderCard hides delivery-vs-pickup, customer name, and elapsed time** — FIXED
+  ActiveOrderCard.kt shows only `#xxxxxxxx` + status badge + items summary + total. A seller triaging the dashboard can't tell pickup vs delivery (Order
+  > Added a PICKUP/DELIVERY chip, customer name text, and a minutesAgo elapsed-time stamp row between the header and items s
 
-**`Models.kt`** — added two fields to `Order`:
-- `customerName` mapped 
-
-- **[6/10] [android_consumer] Tip picked in Cart is silently discarded on the way to Checkout** — FIXED
-  CartScreen.kt:430-479 shows a flat-cents tip selector (None / $2 / $3 / $5 / $8) that writes to CartUiState.tip via cartViewModel.updateTip. CheckoutS
-  > All imports (`Box`, `background`, `border`, `clickable`, `TextMuted`) are still used elsewhere in CartScreen — no import
-
-- **[6/10] [android_seller] Polling sleeps 30s before first poll and Orders list has no pull-to-refresh** — FIXED
-  Both DashboardViewModel.startPolling and OrdersViewModel.startPolling enter a while(true) loop that does delay(BACKOFF_DELAYS[0]) = 30_000 BEFORE the 
-  > All three changes are done. Here's a summary:
-
-**DashboardViewModel** (`startPolling`): swapped `delay` and `pollSilentl
-
-- **[5/10] [android_consumer] FCM order deep-link can stack duplicate OrderTracking screens and bypass auth** — FIXED
-  NavGraph.kt:99-105: `LaunchedEffect(pendingOrderId) { navController.navigate(Screen.OrderTracking.createRoute(id)) { popUpTo(Screen.Home.route) } }`. 
-  > Three problems fixed with a minimal change to `NavGraph.kt` (no changes needed to `MainActivity.kt`):
-
-1. **`launchSingl
-
-- **[5/10] [android_seller] PICKED_UP → COMPLETED transition exposed to seller for delivery orders** — FIXED
-  OrdersViewModel.allowedTransitions includes PICKED_UP → COMPLETED unconditionally, and SellerOrderDetailScreen.OrderActionButtons renders a green 'Mar
-  > Both edits applied. Here's what changed:
-
-**`OrdersViewModel.kt` (line 170–172):** The blocked-transition guard was exte
-
-- **[4/10] [android_consumer] Non-data.models request DTOs not covered by keep rule** — skipped
-  proguard-rules.pro:4 only keeps `com.koshereats.consumer.data.models.**`, but several @Body / @Response DTOs live elsewhere — most notably `com.kosher
-
-- **[3/10] [android_consumer] CheckoutScreen still imports the deprecated platform LocalLifecycleOwner** — skipped
-  CheckoutScreen.kt:51 imports `androidx.compose.ui.platform.LocalLifecycleOwner`, which has been deprecated since lifecycle-runtime-compose 2.7.0 in fa
+- **[4/10] [android_consumer] DealsViewModel mutates StateFlow non-atomically** — skipped
+  DealsViewModel.kt:34-53 uses `_uiState.value = _uiState.value.copy(...)` rather than `_uiState.update { it.copy(...) }`. The `refresh()` method (line 

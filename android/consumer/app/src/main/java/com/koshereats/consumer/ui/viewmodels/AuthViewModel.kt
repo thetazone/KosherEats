@@ -20,6 +20,7 @@ import com.koshereats.consumer.push.PushBootstrap
 import android.content.Context
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -27,9 +28,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+sealed class SessionState {
+    object Authenticated : SessionState()
+    object Guest : SessionState()
+    object LoggedOut : SessionState()
+}
+
 data class AuthUiState(
-    val isLoggedIn: Boolean = false,
-    val isGuest: Boolean = false,
+    val sessionState: SessionState = SessionState.LoggedOut,
     val user: User? = null,
     val isRehydrating: Boolean = false,
     val isLoading: Boolean = false,
@@ -64,8 +70,16 @@ class AuthViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
+    val logoutEvent: SharedFlow<Unit> = sessionManager.logoutEvent
+
     init {
         checkAuthStatus()
+        viewModelScope.launch {
+            sessionManager.logoutEvent.collect {
+                clearAuth()
+                _uiState.update { AuthUiState() }
+            }
+        }
     }
 
     private fun checkAuthStatus() {
@@ -78,7 +92,7 @@ class AuthViewModel @Inject constructor(
                     when {
                         response.isSuccessful -> {
                             _uiState.update {
-                                it.copy(isLoggedIn = true, isRehydrating = false, user = response.body())
+                                it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, user = response.body())
                             }
                             // Resumed session — refresh the FCM token on the
                             // backend in case it rotated since last launch.
@@ -90,12 +104,12 @@ class AuthViewModel @Inject constructor(
                         }
                         // 5xx or other transient error: keep session alive but
                         // leave user=null so ProfileScreen shows a retry UI.
-                        else -> _uiState.update { it.copy(isLoggedIn = true, isRehydrating = false) }
+                        else -> _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false) }
                     }
                 } catch (e: Exception) {
                     // Network/IO error: transient, keep session alive but
                     // leave user=null so ProfileScreen shows a retry UI.
-                    _uiState.update { it.copy(isLoggedIn = true, isRehydrating = false) }
+                    _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false) }
                 }
             }
         }
@@ -135,8 +149,7 @@ class AuthViewModel @Inject constructor(
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
-                            isLoggedIn = true,
-                            isGuest = false,
+                            sessionState = SessionState.Authenticated,
                             user = authData.user,
                             isLoading = false,
                             loginEmail = "",
@@ -145,10 +158,19 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
+                    android.util.Log.w("AuthViewModel", "login ${response.code()}: ${response.errorBody()?.string()}")
+                    val msg = when (response.code()) {
+                        401 -> "Incorrect email or password"
+                        403 -> "Your account has been locked — please contact support"
+                        422 -> "Please check your details and try again"
+                        429 -> "Too many attempts — please try again later"
+                        in 500..599 -> "Server error — please try again later"
+                        else -> "Login failed"
+                    }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Login failed",
+                            error = msg,
                         )
                     }
                 }
@@ -193,8 +215,7 @@ class AuthViewModel @Inject constructor(
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
-                            isLoggedIn = true,
-                            isGuest = false,
+                            sessionState = SessionState.Authenticated,
                             user = authData.user,
                             isLoading = false,
                         )
@@ -236,8 +257,7 @@ class AuthViewModel @Inject constructor(
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         it.copy(
-                            isLoggedIn = true,
-                            isGuest = false,
+                            sessionState = SessionState.Authenticated,
                             user = authData.user,
                             isLoading = false,
                             needsPhone = authData.user.phone.isBlank(),
@@ -245,11 +265,16 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
-                    val errorBody = response.errorBody()?.string() ?: "unknown error"
+                    android.util.Log.w("AuthViewModel", "socialLogin ${response.code()}: ${response.errorBody()?.string()}")
+                    val msg = when (response.code()) {
+                        401 -> "Authentication failed — please try again"
+                        409 -> "An account with this email already exists"
+                        else -> "Sign-in failed — please try again"
+                    }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Social login failed: $errorBody",
+                            error = msg,
                         )
                     }
                 }
@@ -355,8 +380,7 @@ class AuthViewModel @Inject constructor(
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
                         AuthUiState(
-                            isLoggedIn = true,
-                            isGuest = false,
+                            sessionState = SessionState.Authenticated,
                             user = authData.user,
                         )
                     }
@@ -417,7 +441,7 @@ class AuthViewModel @Inject constructor(
                     } catch (_: Exception) { null }
                     val msg = when {
                         response.code() == 409 -> serverMsg ?: "That phone number is already linked to another account"
-                        else -> serverMsg ?: "Failed to save phone number"
+                        else -> "Failed to save phone number"
                     }
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                 }
@@ -467,6 +491,10 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun saveAuth(token: String, refreshToken: String, userId: String) {
+        // Synchronously update in-memory token so the very next request (e.g. FCM
+        // registration) carries the Authorization header without waiting for the
+        // DataStore collect callback to fire on Dispatchers.IO.
+        tokenProvider.persistNewTokens(token, refreshToken)
         dataStore.edit { prefs ->
             prefs[PrefsKeys.AUTH_TOKEN] = token
             prefs[PrefsKeys.REFRESH_TOKEN] = refreshToken
@@ -475,6 +503,9 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun clearAuth() {
+        // Synchronously clear in-memory token so in-flight requests after logout
+        // cannot use the revoked session.
+        tokenProvider.clearTokens()
         dataStore.edit { prefs ->
             prefs.remove(PrefsKeys.AUTH_TOKEN)
             prefs.remove(PrefsKeys.REFRESH_TOKEN)
@@ -495,8 +526,7 @@ class AuthViewModel @Inject constructor(
     fun continueAsGuest() {
         _uiState.update {
             it.copy(
-                isLoggedIn = true,
-                isGuest = true,
+                sessionState = SessionState.Guest,
                 user = null,
                 isLoading = false,
                 error = null,

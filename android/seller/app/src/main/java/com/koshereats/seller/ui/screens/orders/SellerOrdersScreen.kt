@@ -57,6 +57,7 @@ fun SellerOrdersScreen(
 
     val filters = listOf(
         null to "All",
+        OrderStatus.SCHEDULED to "Scheduled",
         OrderStatus.PENDING to "Pending",
         OrderStatus.ACCEPTED to "Accepted",
         OrderStatus.PREPARING to "Preparing",

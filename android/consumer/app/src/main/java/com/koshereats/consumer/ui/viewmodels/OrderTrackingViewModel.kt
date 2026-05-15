@@ -125,6 +125,8 @@ class OrderTrackingViewModel @Inject constructor(
                 sseClient.newCall(request).execute().use { response ->
                     if (response.code == 401) {
                         sessionManager.signalLogout()
+                        pollJob?.cancel()
+                        _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
                         return@launch
                     }
                     if (!response.isSuccessful) throw RuntimeException("SSE status ${response.code}")

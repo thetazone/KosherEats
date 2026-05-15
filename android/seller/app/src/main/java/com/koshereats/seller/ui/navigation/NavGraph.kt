@@ -209,6 +209,7 @@ fun NavGraph(
                     onOrderClick = { orderId ->
                         navController.navigate(Screen.OrderDetail.createRoute(orderId))
                     },
+                    authViewModel = authViewModel,
                 )
             }
 
@@ -302,6 +303,7 @@ fun NavGraph(
                     onIntegrations = {
                         navController.navigate(Screen.Integrations.route)
                     },
+                    authViewModel = authViewModel,
                 )
             }
 

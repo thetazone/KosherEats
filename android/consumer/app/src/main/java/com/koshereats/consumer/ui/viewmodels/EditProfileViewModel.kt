@@ -3,7 +3,6 @@ package com.koshereats.consumer.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
-import com.koshereats.consumer.data.models.User
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,11 +71,11 @@ class EditProfileViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, error = null) }
             try {
-                val response = apiService.updateProfile(
-                    User(
-                        firstName = state.firstName.trim(),
-                        lastName = state.lastName.trim(),
-                        phone = state.phone.trim(),
+                val response = apiService.updateProfileFields(
+                    mapOf(
+                        "first_name" to state.firstName.trim(),
+                        "last_name" to state.lastName.trim(),
+                        "phone" to state.phone.trim(),
                     )
                 )
                 if (response.isSuccessful) {

@@ -88,7 +88,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.source
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -115,6 +117,7 @@ fun MenuItemFormScreen(
     var categoryExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isUploadingImage by remember { mutableStateOf(false) }
+    var formInitialized by remember { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -141,6 +144,7 @@ fun MenuItemFormScreen(
     }
 
     LaunchedEffect(state.selectedItem) {
+        if (formInitialized) return@LaunchedEffect
         state.selectedItem?.let { item ->
             name = item.name
             description = item.description
@@ -151,6 +155,7 @@ fun MenuItemFormScreen(
             isDairy = item.isDairy
             isMeat = item.isMeat
             spiceLevel = if (item.spiceLevel > 0) item.spiceLevel.toString() else ""
+            formInitialized = true
         } ?: run {
             name = ""
             description = ""
@@ -164,8 +169,8 @@ fun MenuItemFormScreen(
         }
     }
 
-    LaunchedEffect(state.saveSuccess) {
-        if (state.saveSuccess != null) {
+    LaunchedEffect(state.itemSaveSuccess) {
+        if (state.itemSaveSuccess) {
             viewModel.clearMessages()
             onSaved()
         }
@@ -522,6 +527,8 @@ fun MenuItemFormScreen(
     }
 }
 
+private val uploadClient = OkHttpClient()
+
 private suspend fun uploadImage(
     context: android.content.Context,
     uri: Uri,
@@ -532,16 +539,23 @@ private suspend fun uploadImage(
         val presignResponse = viewModel.presignUpload("menu_item", contentType)
             ?: return@withContext null
 
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        val fileSize = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+        val inputStream = context.contentResolver.openInputStream(uri)
             ?: return@withContext null
 
-        val client = OkHttpClient()
+        val requestBody = object : RequestBody() {
+            override fun contentType() = contentType.toMediaType()
+            override fun contentLength() = fileSize
+            override fun writeTo(sink: BufferedSink) {
+                inputStream.use { sink.writeAll(it.source()) }
+            }
+        }
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
-            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .put(requestBody)
             .build()
 
-        val response = client.newCall(request).execute()
+        val response = uploadClient.newCall(request).execute()
         response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
     } catch (_: Exception) {
         null
@@ -641,6 +655,7 @@ private fun ModifierGroupDialog(
     onSave: (CreateModifierGroupRequest) -> Unit,
 ) {
     var groupName by remember { mutableStateOf(existing?.name ?: "") }
+    var groupDescription by remember { mutableStateOf(existing?.description ?: "") }
     var isRequired by remember { mutableStateOf(existing?.isRequired ?: false) }
     var minSel by remember { mutableStateOf((existing?.minSelections ?: 0).toString()) }
     var maxSel by remember { mutableStateOf((existing?.maxSelections ?: 1).toString()) }
@@ -679,6 +694,15 @@ private fun ModifierGroupDialog(
                     onValueChange = { groupName = it },
                     label = { Text("Group Name") },
                     placeholder = { Text("e.g., Size, Toppings", color = TextMuted) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = textFieldColors,
+                    singleLine = true,
+                )
+
+                OutlinedTextField(
+                    value = groupDescription,
+                    onValueChange = { groupDescription = it },
+                    label = { Text("Description (optional)") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors,
                     singleLine = true,
@@ -767,14 +791,16 @@ private fun ModifierGroupDialog(
                 onClick = {
                     val request = CreateModifierGroupRequest(
                         name = groupName.trim(),
+                        description = groupDescription.trim(),
                         isRequired = isRequired,
                         minSelections = minSel.toIntOrNull() ?: 0,
                         maxSelections = maxSel.toIntOrNull() ?: 1,
+                        sortOrder = existing?.sortOrder ?: 0,
                         modifiers = options.filter { it.name.isNotBlank() }.mapIndexed { i, opt ->
                             ModifierOptionRequest(
                                 id = opt.id,
                                 name = opt.name.trim(),
-                                priceDelta = ((opt.priceDelta.toDoubleOrNull() ?: 0.0) * 100).toInt(),
+                                priceDelta = ((opt.priceDelta.toDoubleOrNull() ?: 0.0) * 100).roundToInt(),
                                 isAvailable = opt.isAvailable,
                                 sortOrder = i,
                             )

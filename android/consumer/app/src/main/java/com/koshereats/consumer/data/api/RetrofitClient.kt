@@ -19,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Qualifier
 import okhttp3.Authenticator
 import okhttp3.Interceptor
@@ -62,13 +61,22 @@ class TokenProvider @Inject constructor(
 
     init {
         appScope.launch {
-            val prefs = dataStore.data.first()
-            token = prefs[PrefsKeys.AUTH_TOKEN]
-            refreshToken = prefs[PrefsKeys.REFRESH_TOKEN]
-            _initialized.complete(Unit)
-            dataStore.data.collect { p ->
-                token = p[PrefsKeys.AUTH_TOKEN]
-                refreshToken = p[PrefsKeys.REFRESH_TOKEN]
+            try {
+                val prefs = dataStore.data.first()
+                token = prefs[PrefsKeys.AUTH_TOKEN]
+                refreshToken = prefs[PrefsKeys.REFRESH_TOKEN]
+                _initialized.complete(Unit)
+                dataStore.data.collect { p ->
+                    token = p[PrefsKeys.AUTH_TOKEN]
+                    refreshToken = p[PrefsKeys.REFRESH_TOKEN]
+                }
+            } finally {
+                // Ensures awaitToken() never hangs if DataStore throws on startup.
+                // token/refreshToken remain null so requests proceed unauthenticated.
+                if (!_initialized.isCompleted) {
+                    android.util.Log.e("TokenProvider", "DataStore init failed; tokens unavailable")
+                    _initialized.complete(Unit)
+                }
             }
         }
     }
@@ -78,13 +86,20 @@ class TokenProvider @Inject constructor(
         return token
     }
 
-    suspend fun persistNewTokens(newToken: String, newRefreshToken: String) {
+    fun persistNewTokens(newToken: String, newRefreshToken: String) {
         token = newToken
         refreshToken = newRefreshToken
-        dataStore.edit { prefs ->
-            prefs[PrefsKeys.AUTH_TOKEN] = newToken
-            prefs[PrefsKeys.REFRESH_TOKEN] = newRefreshToken
+        appScope.launch {
+            dataStore.edit { prefs ->
+                prefs[PrefsKeys.AUTH_TOKEN] = newToken
+                prefs[PrefsKeys.REFRESH_TOKEN] = newRefreshToken
+            }
         }
+    }
+
+    fun clearTokens() {
+        token = null
+        refreshToken = null
     }
 }
 
@@ -107,9 +122,7 @@ object NetworkModule {
     @Singleton
     fun provideAuthInterceptor(tokenProvider: TokenProvider): Interceptor {
         return Interceptor { chain ->
-            // Block until TokenProvider has finished reading persisted tokens so we never
-            // race ahead with a null token on cold start.
-            val token = runBlocking { tokenProvider.awaitToken() }
+            val token = tokenProvider.token
             val request = chain.request().newBuilder().apply {
                 addHeader("Content-Type", "application/json")
                 addHeader("Accept", "application/json")
@@ -202,7 +215,7 @@ private class TokenAuthenticator(
                 return null
             }
 
-            runBlocking { tokenProvider.persistNewTokens(newTokens.first, newTokens.second) }
+            tokenProvider.persistNewTokens(newTokens.first, newTokens.second)
 
             return response.request.newBuilder()
                 .header("Authorization", "Bearer ${newTokens.first}")

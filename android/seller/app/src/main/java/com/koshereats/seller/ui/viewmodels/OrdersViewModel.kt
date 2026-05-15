@@ -74,11 +74,18 @@ class OrdersViewModel @Inject constructor(
     // Returns true on success so the caller can reset the backoff counter.
     private suspend fun pollSilently(): Boolean {
         return try {
-            val statusStr = _state.value.selectedFilter?.name?.lowercase()
+            val filterAtStart = _state.value.selectedFilter
+            val statusStr = filterAtStart?.name?.lowercase()
             val response = apiService.getOrders(status = statusStr)
             var succeeded = response.isSuccessful
             if (response.isSuccessful) {
-                _state.update { it.copy(orders = response.body() ?: it.orders) }
+                _state.update { current ->
+                    if (current.selectedFilter == filterAtStart) {
+                        current.copy(orders = response.body() ?: current.orders)
+                    } else {
+                        current
+                    }
+                }
             }
             _state.value.selectedOrder?.id?.let { id ->
                 val detailResponse = apiService.getOrderDetail(id)
@@ -154,8 +161,8 @@ class OrdersViewModel @Inject constructor(
 
     private val allowedTransitions = mapOf(
         OrderStatus.PENDING to setOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED),
-        OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING, OrderStatus.CANCELLED),
-        OrderStatus.PREPARING to setOf(OrderStatus.READY, OrderStatus.CANCELLED),
+        OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING),
+        OrderStatus.PREPARING to setOf(OrderStatus.READY),
         OrderStatus.READY to setOf(OrderStatus.COMPLETED),
         OrderStatus.PICKED_UP to setOf(OrderStatus.COMPLETED),
     )

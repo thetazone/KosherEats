@@ -8,5 +8,5 @@ fun Int.formatPriceWhole(): String {
     val nf = NumberFormat.getCurrencyInstance()
     nf.maximumFractionDigits = 0
     nf.minimumFractionDigits = 0
-    return nf.format(this / 100)
+    return nf.format(this / 100.0)
 }

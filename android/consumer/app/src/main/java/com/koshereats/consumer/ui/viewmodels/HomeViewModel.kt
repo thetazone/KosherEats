@@ -74,30 +74,23 @@ class HomeViewModel @Inject constructor(
     fun loadRestaurants(page: Int = 1) {
         currentJob?.cancel()
         currentJob = viewModelScope.launch {
+            val state = _uiState.value
             repository.getRestaurants(
                 page = page,
-                cuisine = _uiState.value.selectedCuisine?.name?.lowercase(),
-                isGlattKosher = if (_uiState.value.filterGlattOnly) true else null,
-                isCholovYisroel = if (_uiState.value.filterCholovYisroelOnly) true else null,
-                isPasYisroel = if (_uiState.value.filterPasYisroelOnly) true else null,
+                cuisine = state.selectedCuisine?.name?.lowercase(),
+                isGlattKosher = if (state.filterGlattOnly) true else null,
+                isCholovYisroel = if (state.filterCholovYisroelOnly) true else null,
+                isPasYisroel = if (state.filterPasYisroelOnly) true else null,
+                kosherCertification = state.filterCertifications.firstOrNull()?.toApiString(),
             ).collect { result ->
                 when (result) {
                     is Resource.Loading -> {
                         _uiState.update { it.copy(isLoading = true, error = null) }
                     }
                     is Resource.Success -> {
-                        _uiState.update { state ->
-                            val filtered = if (state.filterCertifications.isEmpty()) {
-                                result.data
-                            } else {
-                                result.data.filter { it.kosherCertification in state.filterCertifications }
-                            }
-                            val newItems = if (page == 1) {
-                                filtered
-                            } else {
-                                state.allRestaurants + filtered
-                            }
-                            state.copy(
+                        _uiState.update { it ->
+                            val newItems = if (page == 1) result.data else it.allRestaurants + result.data
+                            it.copy(
                                 allRestaurants = newItems,
                                 isLoading = false,
                                 isRefreshing = false,
@@ -112,6 +105,14 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun KosherCertification.toApiString(): String = when (this) {
+        KosherCertification.STAR_K -> "Star-K"
+        KosherCertification.KOF_K -> "Kof-K"
+        KosherCertification.BADATZ -> "Badatz"
+        KosherCertification.CRC -> "CRC"
+        else -> this.name
     }
 
     fun loadMore() {

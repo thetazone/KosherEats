@@ -88,10 +88,13 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.source
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -427,7 +430,8 @@ fun CreateDealScreen(
                         discountValue = if (discountType == DiscountType.FIXED) {
                             filterDollarCents(newVal)
                         } else {
-                            newVal.filter { c -> c.isDigit() }
+                            val digits = newVal.filter { c -> c.isDigit() }
+                            if ((digits.toIntOrNull() ?: 0) > 100) "100" else digits
                         }
                     },
                     label = {
@@ -701,8 +705,10 @@ private fun filterDollarCents(input: String): String {
 private fun dollarsToCents(dollars: String): Int {
     if (dollars.isBlank()) return 0
     val amount = dollars.toDoubleOrNull() ?: return 0
-    return (amount * 100).toInt()
+    return (amount * 100).roundToInt()
 }
+
+private val uploadClient = OkHttpClient()
 
 private suspend fun uploadDealImage(
     context: android.content.Context,
@@ -714,16 +720,23 @@ private suspend fun uploadDealImage(
         val presignResponse = viewModel.presignUpload("deal", contentType)
             ?: return@withContext null
 
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        val fileSize = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+        val inputStream = context.contentResolver.openInputStream(uri)
             ?: return@withContext null
 
-        val client = OkHttpClient()
+        val requestBody = object : RequestBody() {
+            override fun contentType() = contentType.toMediaType()
+            override fun contentLength() = fileSize
+            override fun writeTo(sink: BufferedSink) {
+                inputStream.use { sink.writeAll(it.source()) }
+            }
+        }
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
-            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .put(requestBody)
             .build()
 
-        val response = client.newCall(request).execute()
+        val response = uploadClient.newCall(request).execute()
         response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
     } catch (_: Exception) {
         null

@@ -27,6 +27,7 @@ data class MenuState(
     val isSaving: Boolean = false,
     val error: String? = null,
     val saveSuccess: String? = null,
+    val itemSaveSuccess: Boolean = false,
     val deleteSuccess: Boolean = false,
     val pendingItemIds: Set<String> = emptySet(),
 )
@@ -120,8 +121,7 @@ class MenuViewModel @Inject constructor(
                     ?.let { runCatching { MenuCategory.valueOf(it) }.getOrNull() }
                     ?: MenuCategory.MAINS
 
-                val displayName = targetCategory.name.lowercase().replace('_', ' ')
-                    .replaceFirstChar { it.uppercase() }
+                val categorySlug = targetCategory.name.lowercase()
 
                 val menuResponse = apiService.getSellerMenu()
                 if (!menuResponse.isSuccessful) {
@@ -129,12 +129,15 @@ class MenuViewModel @Inject constructor(
                     return@launch
                 }
                 val existingCategory = menuResponse.body()
-                    ?.firstOrNull { serverCat -> serverCat.name.equals(displayName, ignoreCase = true) }
+                    ?.firstOrNull { serverCat ->
+                        serverCat.name.lowercase().replace(' ', '_') == categorySlug ||
+                        serverCat.name.equals(categorySlug, ignoreCase = true)
+                    }
 
                 val categoryId = if (existingCategory != null) {
                     existingCategory.id
                 } else {
-                    val catResp = apiService.createCategory(mapOf("name" to displayName))
+                    val catResp = apiService.createCategory(mapOf("name" to categorySlug))
                     catResp.body()?.id
                 }
 
@@ -152,12 +155,18 @@ class MenuViewModel @Inject constructor(
                     isMeat = request.isMeat ?: false,
                     isDairy = request.isDairy ?: false,
                     isPareve = request.isKosherPareve ?: false,
+                    isAvailable = request.isAvailable ?: true,
+                    spiceLevel = request.spiceLevel,
+                    preparationTime = request.preparationTime,
+                    allergens = request.allergens,
+                    calories = request.calories,
                 )
                 val response = apiService.createMenuItemWithCategory(body)
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         isSaving = false,
                         saveSuccess = "Menu item created successfully",
+                        itemSaveSuccess = true,
                     ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
@@ -185,6 +194,7 @@ class MenuViewModel @Inject constructor(
                     _state.update { it.copy(
                         isSaving = false,
                         saveSuccess = "Menu item updated successfully",
+                        itemSaveSuccess = true,
                     ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
@@ -347,6 +357,6 @@ class MenuViewModel @Inject constructor(
     }
 
     fun clearMessages() {
-        _state.update { it.copy(error = null, saveSuccess = null, deleteSuccess = false) }
+        _state.update { it.copy(error = null, saveSuccess = null, itemSaveSuccess = false, deleteSuccess = false) }
     }
 }

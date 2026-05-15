@@ -166,7 +166,7 @@ class CreateRestaurantViewModel @Inject constructor(
             city = s.city.trim(),
             state = s.state.trim(),
             zipCode = s.zipCode.trim(),
-            kosherCertification = s.kosherCertification.name.lowercase(),
+            kosherCertification = s.kosherCertification,
             certifyingAgency = s.certifyingAgency.trim(),
             cuisineType = cuisineList,
             isCholovYisroel = s.isCholovYisroel,

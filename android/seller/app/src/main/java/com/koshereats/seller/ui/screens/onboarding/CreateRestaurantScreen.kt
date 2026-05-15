@@ -80,7 +80,9 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.source
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -604,13 +606,21 @@ private suspend fun uploadCertificate(
         val presignResponse = viewModel.presignUpload("restaurant/certificate", contentType)
             ?: return@withContext null
 
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        val fileSize = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+        val inputStream = context.contentResolver.openInputStream(uri)
             ?: return@withContext null
 
         val client = OkHttpClient()
+        val requestBody = object : RequestBody() {
+            override fun contentType() = contentType.toMediaType()
+            override fun contentLength() = fileSize
+            override fun writeTo(sink: BufferedSink) {
+                inputStream.use { sink.writeAll(it.source()) }
+            }
+        }
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
-            .put(bytes.toRequestBody(contentType.toMediaType()))
+            .put(requestBody)
             .build()
 
         val response = client.newCall(request).execute()

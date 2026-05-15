@@ -32,9 +32,12 @@ android {
         }
         create("release") {
             storeFile = file("release-upload.jks")
-            storePassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+            val ksPassword = lp("KEYSTORE_PASSWORD").also {
+                check(it.isNotEmpty()) { "KEYSTORE_PASSWORD not set in local.properties — refusing to sign release build" }
+            }
+            storePassword = ksPassword
             keyAlias = "upload"
-            keyPassword = lp("KEYSTORE_PASSWORD").ifEmpty { "koshereats2026" }
+            keyPassword = ksPassword
         }
     }
 

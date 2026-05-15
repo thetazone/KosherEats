@@ -87,6 +87,7 @@ fun SellerOrderDetailScreen(
     var showRejectConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(orderId) {
+        viewModel.clearMessages()
         viewModel.loadOrderDetail(orderId)
     }
 
@@ -103,6 +104,28 @@ fun SellerOrderDetailScreen(
             viewModel.stopPolling()
             viewModel.clearSelectedOrder()
         }
+    }
+
+    if (showRejectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRejectConfirm = false },
+            title = { Text("Reject Order?", color = TextWhite) },
+            text = { Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRejectConfirm = false
+                    viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
+                }) {
+                    Text("Reject Order", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectConfirm = false }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
     }
 
     Column(
@@ -372,28 +395,6 @@ fun SellerOrderDetailScreen(
             item { Spacer(modifier = Modifier.height(16.dp)) }
         }
     }
-
-    if (showRejectConfirm) {
-        AlertDialog(
-            onDismissRequest = { showRejectConfirm = false },
-            title = { Text("Reject Order?", color = TextWhite) },
-            text = { Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showRejectConfirm = false
-                    viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
-                }) {
-                    Text("Reject Order", color = ErrorRed)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRejectConfirm = false }) {
-                    Text("Cancel", color = TextWhite)
-                }
-            },
-            containerColor = SurfaceDark,
-        )
-    }
 }
 
 @Composable
@@ -478,20 +479,6 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                OutlinedButton(
-                    onClick = onCancel,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(
-                        // uses default
-                    ),
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -508,20 +495,6 @@ private fun OrderActionButtons(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
                     }
-                }
-                OutlinedButton(
-                    onClick = onCancel,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                    border = ButtonDefaults.outlinedButtonBorder.copy(
-                        // uses default
-                    ),
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.READY -> {

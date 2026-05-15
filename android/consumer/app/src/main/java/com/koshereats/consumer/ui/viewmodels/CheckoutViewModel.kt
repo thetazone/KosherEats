@@ -1,7 +1,10 @@
 package com.koshereats.consumer.ui.viewmodels
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.Address
 import com.koshereats.consumer.data.models.DeliveryQuoteRequest
@@ -84,7 +87,17 @@ sealed interface CheckoutEvent {
 @HiltViewModel
 class CheckoutViewModel @Inject constructor(
     private val api: ApiService,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
+
+    private companion object {
+        const val KEY_CART_JSON = "checkout_cart_json"
+        const val KEY_RESTAURANT_ID = "checkout_restaurant_id"
+        const val KEY_DEAL_ID = "checkout_deal_id"
+    }
+
+    private val gson = Gson()
+    private val cartItemListType = object : TypeToken<List<CartItem>>() {}.type
 
     private val _uiState = MutableStateFlow(CheckoutUiState())
     val uiState: StateFlow<CheckoutUiState> = _uiState.asStateFlow()
@@ -100,11 +113,35 @@ class CheckoutViewModel @Inject constructor(
     fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
         if (_bootstrapped) return
         _bootstrapped = true
-        _restaurantId = restaurantId
-        _appliedDealId = appliedDealId
+
+        // On process death the NavGraph snapshot may be empty (CartViewModel
+        // hasn't finished restoring yet). Recover the cart from SavedStateHandle.
+        val effectiveCart: List<CartItem>
+        val effectiveRestaurantId: String
+        val effectiveDealId: String?
+
+        if (localCart.isNotEmpty()) {
+            effectiveCart = localCart
+            effectiveRestaurantId = restaurantId
+            effectiveDealId = appliedDealId
+            // Persist snapshot so a subsequent process death can recover.
+            savedStateHandle[KEY_CART_JSON] = gson.toJson(localCart)
+            savedStateHandle[KEY_RESTAURANT_ID] = restaurantId
+            savedStateHandle[KEY_DEAL_ID] = appliedDealId ?: ""
+        } else {
+            val savedJson = savedStateHandle.get<String>(KEY_CART_JSON)
+            effectiveCart = if (!savedJson.isNullOrEmpty()) {
+                try { gson.fromJson(savedJson, cartItemListType) } catch (_: Exception) { emptyList() }
+            } else emptyList()
+            effectiveRestaurantId = savedStateHandle.get<String>(KEY_RESTAURANT_ID) ?: restaurantId
+            effectiveDealId = savedStateHandle.get<String>(KEY_DEAL_ID)?.ifEmpty { null }
+        }
+
+        _restaurantId = effectiveRestaurantId
+        _appliedDealId = effectiveDealId
         viewModelScope.launch {
             loadAddresses()
-            syncLocalCartToServer(localCart, restaurantId)
+            syncLocalCartToServer(effectiveCart, effectiveRestaurantId)
             refreshBundle()
         }
     }

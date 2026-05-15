@@ -74,9 +74,8 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                     data = Uri.parse("koshereats://order/$it")
                 }
             }
-            val requestCode = orderId?.hashCode() ?: 0
             val pi = PendingIntent.getActivity(
-                context, requestCode, intent,
+                context, 0, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
@@ -90,8 +89,11 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                 .build()
 
             val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            val notificationId = orderId?.hashCode() ?: System.currentTimeMillis().toInt()
-            nm.notify(notificationId, notification)
+            if (orderId != null) {
+                nm.notify(orderId, 0, notification)
+            } else {
+                nm.notify(System.currentTimeMillis().toInt(), notification)
+            }
         }
     }
 }

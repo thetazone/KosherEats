@@ -22,7 +22,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import java.time.Duration
+import java.time.Instant
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +41,7 @@ import com.koshereats.seller.ui.theme.StatusPending
 import com.koshereats.seller.ui.theme.StatusPreparing
 import com.koshereats.seller.ui.theme.StatusReady
 import com.koshereats.seller.ui.theme.SurfaceDark
+import com.koshereats.seller.ui.theme.SurfaceDarkElevated
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
@@ -83,7 +87,51 @@ fun ActiveOrderCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Fulfillment type chip + customer name + elapsed time
+            val minutesAgo = remember(order.createdAt) {
+                runCatching {
+                    Duration.between(Instant.parse(order.createdAt), Instant.now()).toMinutes()
+                }.getOrNull()
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = if (order.isPickup) "PICKUP" else "DELIVERY",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (order.isPickup) Orange else TextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (order.isPickup) Orange.copy(alpha = 0.15f) else SurfaceDarkElevated)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                    if (order.customerName.isNotBlank()) {
+                        Text(
+                            text = order.customerName,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
+                }
+                if (minutesAgo != null) {
+                    Text(
+                        text = if (minutesAgo < 1) "just now" else "${minutesAgo}m ago",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Items summary
             Text(

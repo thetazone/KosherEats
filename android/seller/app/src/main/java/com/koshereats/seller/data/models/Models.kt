@@ -19,7 +19,7 @@ enum class OrderStatus(val displayName: String) {
 
     val isActive: Boolean
         get() = when (this) {
-            SCHEDULED, DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
+            DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
             else -> true
         }
 }
@@ -268,7 +268,7 @@ data class CreateRestaurantRequest(
     val city: String,
     val state: String,
     @Json(name = "zip_code") val zipCode: String,
-    @Json(name = "kosher_certification") val kosherCertification: String,
+    @Json(name = "kosher_certification") val kosherCertification: KosherCertification,
     @Json(name = "certifying_agency") val certifyingAgency: String = "",
     @Json(name = "cuisine_type") val cuisineType: List<String> = emptyList(),
     @Json(name = "is_cholov_yisroel") val isCholovYisroel: Boolean = false,
@@ -301,6 +301,10 @@ data class CreateMenuItemBody(
     @Json(name = "is_dairy") val isDairy: Boolean = false,
     @Json(name = "is_pareve") val isPareve: Boolean = false,
     @Json(name = "is_available") val isAvailable: Boolean = true,
+    @Json(name = "spice_level") val spiceLevel: Int? = null,
+    @Json(name = "preparation_time") val preparationTime: Int? = null,
+    val allergens: List<String>? = null,
+    val calories: Int? = null,
 )
 
 // --- Modifiers ---

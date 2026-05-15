@@ -1,89 +1,54 @@
 # KosherEats Polish — Round 1
-**Max severity found:** 9
+**Max severity found:** 8
 **Issues found:** 12
-**Fixes attempted:** 11
-**Fixes succeeded:** 11
+**Fixes attempted:** 12
+**Fixes succeeded:** 12
 
 ## Issues & Fixes
-- **[9/10] [android_consumer] Race + guest 401s trigger spurious global logout (clears cart, deletes FCM token)** — FIXED
-  TokenProvider loads the persisted auth/refresh tokens asynchronously in its `init` coroutine, but the OkHttp `authInterceptor` reads `tokenProvider.to
-  > Both changes look correct. Here's a summary of what was done and why:
+- **[8/10] [android_consumer] No global observer for SessionManager.logoutEvent** — FIXED
+  SessionManager.signalLogout() is fired by TokenAuthenticator (refresh failure) and OrderTrackingViewModel (SSE 401), but only CartViewModel and ChatVi
+  > Added logoutEvent collector in AuthViewModel.init (calls clearAuth + resets state), exposed logoutEvent as a public prop
 
----
+- **[8/10] [android_consumer] TokenProvider init can deadlock every HTTP call forever** — FIXED
+  RetrofitClient.kt:63-74 launches a single coroutine that calls `dataStore.data.first()` and only then `_initialized.complete(Unit)`. The AuthIntercept
+  > Wrapped the init coroutine body in try/finally that checks _initialized.isCompleted and calls complete(Unit) + logs an e
 
-**Two changes in `RetrofitClient.kt`:**
+- **[8/10] [android_seller] Release keystore password committed in build.gradle.kts** — FIXED
+  android/seller/app/build.gradle.kts:35-37 falls back to a hard-coded `koshereats2026` keystore password (and key password) when local.properties is mi
+  > Removed the 'koshereats2026' hardcoded fallback; release signing now calls check() and fails the build immediately if KE
 
-**1
+- **[8/10] [android_seller] KosherCertification serialized to wrong wire format on restaurant create** — FIXED
+  CreateRestaurantViewModel.submit (line 169) sends `s.kosherCertification.name.lowercase()` — produces "ou", "ok", "kof_k", "star_k", "crc", "badatz", 
+  > Changed CreateRestaurantRequest.kosherCertification from String to KosherCertification so Moshi serializes via @Json nam
 
-- **[7/10] [android_consumer] Home feed pagination is dead code — hasMore compares against wrong page size** — FIXED
-  HomeViewModel.loadRestaurants() sets `hasMore = result.data.size >= 50` (HomeViewModel.kt:105), but the API endpoint defaults to `perPage = 20` (ApiSe
-  > Two changes made to `HomeViewModel.kt`:
+- **[7/10] [android_consumer] AddressViewModel silently swallows every CRUD error** — FIXED
+  addAddress, deleteAddress, setDefault, and clearDefault each end in `catch (_: Exception) {}` with no state mutation (AddressViewModel.kt:74-139). A 4
+  > Replaced all empty catch(_: Exception){} blocks in addAddress, deleteAddress, setDefault, and clearDefault with _uiState
 
-- **Line 105**: `>= 50` → `>= 20` — threshold now matches the actual API page s
+- **[7/10] [android_consumer] socialLogin error path leaks raw server error body to the UI** — FIXED
+  AuthViewModel.kt:247-254 builds the user-facing error as `"Social login failed: $errorBody"`, where errorBody is the verbatim JSON/HTML from the backe
+  > Replaced the raw errorBody string in socialLogin with a response.code()-mapped friendly message (401/409/else) and moved
 
-- **[7/10] [android_consumer] Sign Out doesn't clear the nav back stack — stale authed screens remain reachable** — FIXED
-  ProfileScreen renders a Sign Out card that does `clickable { viewModel.logout() }` directly (ProfileScreen.kt:301-330). There's no callback into the N
-  > Everything looks correct. Here's a summary of all changes made:
+- **[7/10] [android_consumer] AuthInterceptor + TokenAuthenticator block OkHttp dispatcher threads** — FIXED
+  RetrofitClient.kt:112 runs `runBlocking { tokenProvider.awaitToken() }` on every request and TokenAuthenticator.kt:205 runs `runBlocking { tokenProvid
+  > Changed AuthInterceptor to read tokenProvider.token (@Volatile field) directly with no runBlocking; made persistNewToken
 
-**ProfileScreen.kt:**
-- Added `onSignOutClick: () -> Un
+- **[7/10] [android_consumer] Order-tracking SSE 401 has no UI follow-through** — FIXED
+  OrderTrackingViewModel.kt:126-129 calls `sessionManager.signalLogout()` and returns when SSE returns 401, but with no global logout observer (see issu
+  > After signalLogout() on SSE 401, added pollJob?.cancel() and _uiState.update { it.copy(order = null, errorMessage = "Ses
 
-- **[7/10] [android_seller] Reject Order has no confirmation dialog** — FIXED
-  SellerOrderDetailScreen wires the "Reject Order" button (status=PENDING) straight to viewModel.updateOrderStatus(orderId, CANCELLED) with no AlertDial
-  > The fix is complete. Here's what changed in `SellerOrderDetailScreen.kt`:
+- **[7/10] [android_seller] createMenuItem silently drops spice level, prep time, allergens, calories, isAvailable** — FIXED
+  MenuViewModel.createMenuItem (lines 146-155) builds CreateMenuItemBody but only forwards name, description, price, imageUrl, isMeat/isDairy/isPareve. 
+  > Added spiceLevel, preparationTime, allergens, and calories fields to CreateMenuItemBody, then forwarded all of them (plu
 
-**Changes:**
-- Added imports: `AlertDialog`, 
+- **[7/10] [android_seller] Modifier option price uses .toInt() — FP truncation loses cents** — FIXED
+  MenuItemFormScreen.kt:777 computes `((opt.priceDelta.toDoubleOrNull() ?: 0.0) * 100).toInt()`. Because of double imprecision, $0.95 → 94.99999999... →
+  > Changed the priceDelta conversion in MenuItemFormScreen's ModifierGroupDialog from .toInt() to .roundToInt(), using the 
 
-- **[7/10] [android_seller] Settings screen lets unapproved sellers toggle Open** — FIXED
-  RestaurantSettingsScreen's Open/Closed Switch is enabled = !authState.isTogglingOpen and lacks the isApproved gate that DashboardScreen correctly appl
-  > The fix is clean and correct. Here's what changed in `RestaurantSettingsScreen.kt`:
+- **[7/10] [android_seller] Deal fixed-amount discount + min-order use truncating .toInt()** — FIXED
+  CreateDealScreen.kt `dollarsToCents` at line 701-705 is `(amount * 100).toInt()`. A seller creating a $9.95 fixed-amount discount or $14.95 min-order 
+  > Replaced .toInt() with .roundToInt() in dollarsToCents (imported kotlin.math.roundToInt), and clamped percentage discoun
 
-- **Line 94**: Computed `isApproved
-
-- **[7/10] [android_seller] createMenuItem creates duplicate server-side categories** — FIXED
-  When adding a new menu item, MenuViewModel resolves the target category via `categories.firstOrNull { serverCat -> serverCat.items.any { it.category =
-  > The fix moves `displayName` computation before the server lookup, then matches `serverCat.name` (case-insensitively) ins
-
-- **[6/10] [android_consumer] OrderTracking polling/SSE never pauses when the screen is off-screen** — FIXED
-  OrderTrackingViewModel.start() launches a `while (isActive) { delay(8_000); loadOnce(orderId) }` poll loop (OrderTrackingViewModel.kt:95-102) plus a l
-  > Both files look correct. Here's a summary of what changed and why:
-
----
-
-**`OrderTrackingViewModel.kt`**
-
-- **`fun pause
-
-- **[6/10] [android_seller] Process-wide 30s polling runs on every screen, in multiple VMs** — FIXED
-  DashboardViewModel and OrdersViewModel both attach ProcessLifecycleOwner.repeatOnLifecycle(STARTED) loops that fire getDashboardStats+getOrders every 
-  > All four files are updated. Here's what changed and why:
-
----
-
-**`DashboardViewModel.kt` / `OrdersViewModel.kt`**
-
-- **R
-
-- **[6/10] [android_seller] FCM notifications stack instead of replacing in place** — FIXED
-  KosherEatsMessagingService.showNotification calls nm.notify(System.currentTimeMillis().toInt(), notification), so every push gets a unique ID. One ord
-  > Done. Three changes made to `KosherEatsMessagingService.kt`:
-
-1. **Deterministic notification ID** (line 92): `notifId =
-
-- **[6/10] [android_seller] provideOkHttpClient does runBlocking DataStore read on the main thread** — FIXED
-  RetrofitClient.provideOkHttpClient runs `cachedRestaurantId = runBlocking { context.dataStore.data.first() }[...]` synchronously during Hilt resolutio
-  > Done. The two changes:
-
-1. **Removed the `runBlocking` prime** (lines 66–68 in the original) — the `DataStore.data.colle
-
-- **[5/10] [android_consumer] Push notification taps drop the order_id — no deep link to the relevant order** — FIXED
-  KosherEatsMessagingService.onMessageReceived parses `order_id` from the FCM payload (line 47) but `showNotification` never threads it into the Pending
-  > All four files look correct. Here's a summary of every change made:
-
----
-
-**KosherEatsMessagingService.kt** — Added `put
-
-- **[4/10] [android_consumer] Deprecated `Icons.Filled.ArrowBack` — wrong direction in RTL locales (Hebrew/Arabic)** — skipped
-  The manifest declares `android:supportsRtl="true"` and the audience (kosher food) skews toward Hebrew/Arabic speakers, but five screens still import `
+- **[7/10] [android_seller] Auto-backup default leaks auth tokens via adb backup** — FIXED
+  AndroidManifest.xml line 22 leaves `android:allowBackup="true"` and there's no `android:dataExtractionRules` or `android:fullBackupContent` rule exclu
+  > Set android:allowBackup="false" in AndroidManifest.xml, preventing adb backup from extracting the seller_prefs DataStore

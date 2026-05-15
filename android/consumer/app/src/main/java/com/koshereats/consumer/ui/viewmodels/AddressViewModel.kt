@@ -84,8 +84,12 @@ class AddressViewModel @Inject constructor(
                         )
                     }
                     dataStore.edit { it[SELECTED_ADDRESS_ID] = saved.id }
+                } else {
+                    _uiState.update { it.copy(error = "Couldn't add address (${response.code()})") }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+            }
         }
     }
 
@@ -103,8 +107,12 @@ class AddressViewModel @Inject constructor(
                         }
                         state.copy(addresses = remaining, selectedAddress = newSelected)
                     }
+                } else {
+                    _uiState.update { it.copy(error = "Couldn't delete address (${response.code()})") }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+            }
         }
     }
 
@@ -117,8 +125,12 @@ class AddressViewModel @Inject constructor(
                         val updated = state.addresses.map { it.copy(isDefault = it.id == addressId) }
                         state.copy(addresses = updated)
                     }
+                } else {
+                    _uiState.update { it.copy(error = "Couldn't set default address (${response.code()})") }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+            }
         }
     }
 
@@ -133,8 +145,12 @@ class AddressViewModel @Inject constructor(
                         }
                         state.copy(addresses = updated)
                     }
+                } else {
+                    _uiState.update { it.copy(error = "Couldn't update address (${response.code()})") }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+            }
         }
     }
 

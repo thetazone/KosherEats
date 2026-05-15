@@ -74,6 +74,7 @@ import com.koshereats.consumer.ui.viewmodels.AddressViewModel
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
 import com.koshereats.consumer.ui.viewmodels.HomeViewModel
+import com.koshereats.consumer.ui.viewmodels.SessionState
 
 internal object DeepLinkState {
     val pendingOrderId = MutableStateFlow<String?>(null)
@@ -99,13 +100,21 @@ fun KosherEatsNavHost() {
     // Re-fires when auth state changes so the ID is held until the user is authenticated.
     // Auth gate prevents a guest/unauthenticated deep-link from reaching OrderTracking and
     // triggering a 401 → forced-logout cycle.
-    LaunchedEffect(pendingOrderId, authState.isLoggedIn, authState.isGuest) {
+    LaunchedEffect(pendingOrderId, authState.sessionState) {
         val id = pendingOrderId ?: return@LaunchedEffect
-        if (!authState.isLoggedIn || authState.isGuest) return@LaunchedEffect
+        if (authState.sessionState != SessionState.Authenticated) return@LaunchedEffect
         DeepLinkState.pendingOrderId.value = null
         navController.navigate(Screen.OrderTracking.createRoute(id)) {
             launchSingleTop = true
             popUpTo(Screen.Home.route)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        authViewModel.logoutEvent.collect {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(0) { inclusive = true }
+            }
         }
     }
 
@@ -207,7 +216,7 @@ fun KosherEatsNavHost() {
                         navController.navigate(Screen.Cart.route)
                     },
                     onRequireAuth = { requireAuth(Screen.Home.route) },
-                    isLoggedIn = authState.isLoggedIn && !authState.isGuest,
+                    isLoggedIn = authState.sessionState == SessionState.Authenticated,
                     cartViewModel = cartViewModel,
                     addressViewModel = addressViewModel,
                     viewModel = homeViewModel,
@@ -252,8 +261,8 @@ fun KosherEatsNavHost() {
                 CartScreen(
                     onBackClick = { navController.popBackStack() },
                     onCheckoutClick = {
-                        if (authState.isGuest) {
-                            // Guest must sign in before checkout; return to cart after auth.
+                        if (authState.sessionState != SessionState.Authenticated) {
+                            // Unauthenticated and guest users must sign in before checkout.
                             requireAuth(Screen.Cart.route)
                         } else {
                             navController.navigate(Screen.Checkout.route)
@@ -270,17 +279,19 @@ fun KosherEatsNavHost() {
 
             composable(Screen.Checkout.route) {
                 val cartState by cartViewModel.uiState.collectAsStateWithLifecycle()
-                // Snapshot at entry so live CartViewModel updates can't re-trigger bootstrap mid-payment.
-                val snapshotItems = remember { cartState.cart.items }
-                val snapshotRestaurantId = remember { cartState.cart.restaurantId }
-                val snapshotDealId = remember { cartState.cart.appliedDeal?.id }
+                // Pass live values — CheckoutViewModel's _bootstrapped guard prevents
+                // re-triggering mid-payment, and its SavedStateHandle recovers the cart
+                // across process death (e.g. Stripe 3DS activity recreation).
+                val cartItems = cartState.cart.items
+                val restaurantId = cartState.cart.restaurantId
+                val dealId = cartState.cart.appliedDeal?.id
                 CheckoutScreen(
-                    localCart = snapshotItems,
-                    restaurantId = snapshotRestaurantId,
-                    appliedDealId = snapshotDealId,
+                    localCart = cartItems,
+                    restaurantId = restaurantId,
+                    appliedDealId = dealId,
                     onBack = { navController.popBackStack() },
                     onOrderPlaced = { order ->
-                        cartViewModel.clearCartForRestaurant(snapshotRestaurantId)
+                        cartViewModel.clearCartForRestaurant(restaurantId)
                         navController.navigate(Screen.OrderConfirmation.createRoute(order.id)) {
                             popUpTo(Screen.Home.route)
                         }
@@ -292,6 +303,10 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderConfirmation.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
+                if (authState.sessionState != SessionState.Authenticated) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
                 val orderId = backStackEntry.arguments?.getString("orderId")
                 if (orderId.isNullOrEmpty()) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
@@ -316,6 +331,10 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderTracking.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
+                if (authState.sessionState != SessionState.Authenticated) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
                 val orderId = backStackEntry.arguments?.getString("orderId")
                 if (orderId.isNullOrEmpty()) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
@@ -329,7 +348,7 @@ fun KosherEatsNavHost() {
             }
 
             composable(Screen.Orders.route) {
-                if (authState.isGuest) {
+                if (authState.sessionState != SessionState.Authenticated) {
                     GuestBlockedScreen(
                         title = "Sign in to view orders",
                         subtitle = "Your order history will be available after you sign in.",
@@ -353,6 +372,10 @@ fun KosherEatsNavHost() {
                     navArgument("orderId") { type = NavType.StringType },
                 ),
             ) {
+                if (authState.sessionState != SessionState.Authenticated) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
                 com.koshereats.consumer.ui.screens.chat.ChatScreen(
                     onBack = { navController.popBackStack() },
                 )
