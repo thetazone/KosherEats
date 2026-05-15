@@ -69,6 +69,9 @@ class AuthViewModel @Inject constructor(
             val prefs = context.dataStore.data.first()
             val token = prefs[PrefsKeys.AUTH_TOKEN]
             val refresh = prefs[PrefsKeys.REFRESH_TOKEN]
+            // Re-prime restaurant ID here in case provideOkHttpClient's runBlocking
+            // read raced with a restaurant switch that completed just before this read.
+            NetworkModule.cachedRestaurantId = prefs[PrefsKeys.RESTAURANT_ID]
             if (token != null) {
                 NetworkModule.cachedToken = token
                 NetworkModule.cachedRefreshToken = refresh

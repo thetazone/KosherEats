@@ -57,10 +57,7 @@ class MenuViewModel @Inject constructor(
                         if (category == null) {
                             categories.flatMap { it.items }
                         } else {
-                            val categoryName = category.name.lowercase()
-                            categories
-                                .filter { it.name.equals(categoryName, ignoreCase = true) }
-                                .flatMap { it.items }
+                            categories.flatMap { it.items }.filter { it.category == category }
                         }
                     }
                     _state.update { it.copy(
@@ -100,10 +97,7 @@ class MenuViewModel @Inject constructor(
                                 if (selectedCategory == null) {
                                     categories.flatMap { it.items }
                                 } else {
-                                    val categoryName = selectedCategory.name.lowercase()
-                                    categories
-                                        .filter { it.name.equals(categoryName, ignoreCase = true) }
-                                        .flatMap { it.items }
+                                    categories.flatMap { it.items }.filter { it.category == selectedCategory }
                                 }
                             },
                             selectedItem = selectedItem,
@@ -132,16 +126,21 @@ class MenuViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
             try {
-                val categoryName = request.category ?: "mains"
+                val targetCategory = request.category
+                    ?.uppercase()
+                    ?.let { runCatching { MenuCategory.valueOf(it) }.getOrNull() }
+                    ?: MenuCategory.MAINS
 
                 val menuResponse = apiService.getSellerMenu()
                 val existingCategory = menuResponse.body()
-                    ?.firstOrNull { it.name.equals(categoryName, ignoreCase = true) }
+                    ?.firstOrNull { serverCat -> serverCat.items.any { it.category == targetCategory } }
 
                 val categoryId = if (existingCategory != null) {
                     existingCategory.id
                 } else {
-                    val catResp = apiService.createCategory(mapOf("name" to categoryName))
+                    val displayName = targetCategory.name.lowercase().replace('_', ' ')
+                        .replaceFirstChar { it.uppercase() }
+                    val catResp = apiService.createCategory(mapOf("name" to displayName))
                     catResp.body()?.id
                 }
 

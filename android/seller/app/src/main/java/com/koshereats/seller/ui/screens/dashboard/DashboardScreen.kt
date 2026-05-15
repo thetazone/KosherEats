@@ -75,7 +75,10 @@ fun DashboardScreen(
             // After a restaurant is picked, every /seller/ call will now carry
             // the new ?restaurant_id= param. Reload the dashboard so the stats
             // + active orders reflect the new selection.
-            onChange = { viewModel.loadDashboard() },
+            onChange = {
+                authViewModel.refreshRestaurants()
+                viewModel.loadDashboard()
+            },
         )
     }
 

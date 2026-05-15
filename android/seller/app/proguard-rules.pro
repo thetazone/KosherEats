@@ -8,6 +8,11 @@
     @com.squareup.moshi.Json <fields>;
 }
 -keep @com.squareup.moshi.JsonClass class * { *; }
+# Keep all kapt-generated JsonAdapters regardless of which sub-package they live in.
+# @JsonClass keeps the annotated DTO but NOT the generated *JsonAdapter class — Moshi
+# looks it up by name (ClassName + "JsonAdapter") so R8 renaming breaks the lookup.
+# Covers SocialLoginRequest in data.api and any future @JsonClass outside data.models.
+-keep class com.koshereats.seller.**JsonAdapter { *; }
 
 # Retrofit
 -keepattributes Signature

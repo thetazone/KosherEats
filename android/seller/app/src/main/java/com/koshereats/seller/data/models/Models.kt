@@ -101,7 +101,7 @@ data class OrderItem(
     @Json(name = "name") val menuItemName: String = "",
     val quantity: Int = 1,
     @Json(name = "price") val unitPrice: Int = 0,
-    val totalPrice: Int = 0,
+    @Json(name = "total_price") val totalPrice: Int = 0,
     @Json(name = "notes") val specialInstructions: String = "",
 )
 
