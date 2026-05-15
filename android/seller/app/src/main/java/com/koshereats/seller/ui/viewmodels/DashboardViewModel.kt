@@ -9,6 +9,8 @@ import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +36,7 @@ class DashboardViewModel @Inject constructor(
     val state: StateFlow<DashboardState> = _state.asStateFlow()
 
     private var pollingJob: Job? = null
+    private var loadJob: Job? = null
 
     init {
         loadDashboard()
@@ -62,29 +65,32 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun loadDashboard() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val statsResponse = apiService.getDashboardStats()
-                val ordersResponse = apiService.getOrders(status = "active", limit = 200)
+                coroutineScope {
+                    val statsDeferred = async { apiService.getDashboardStats() }
+                    val ordersDeferred = async { apiService.getOrders(status = "active", limit = 200) }
+                    val statsResponse = statsDeferred.await()
+                    val ordersResponse = ordersDeferred.await()
 
-                if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
-                    val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Failed to load dashboard (HTTP $code)",
-                    )
-                    return@launch
+                    if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
+                        val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = "Failed to load dashboard (HTTP $code)",
+                        )
+                    } else {
+                        _state.value = _state.value.copy(
+                            stats = statsResponse.body() ?: DashboardStats(),
+                            activeOrders = ordersResponse.body().orEmpty(),
+                            isLoading = false,
+                        )
+                    }
                 }
-
-                val activeOrders = ordersResponse.body().orEmpty()
-                    .filter { it.status.isActive }
-                _state.value = _state.value.copy(
-                    stats = statsResponse.body() ?: DashboardStats(),
-                    activeOrders = activeOrders,
-                    isLoading = false,
-                )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = "Failed to load dashboard: ${e.localizedMessage}",
@@ -96,18 +102,20 @@ class DashboardViewModel @Inject constructor(
     // Returns true on success so the caller can reset the backoff counter.
     private suspend fun pollSilently(): Boolean {
         return try {
-            val statsResponse = apiService.getDashboardStats()
-            val ordersResponse = apiService.getOrders(status = "active", limit = 200)
-            if (statsResponse.isSuccessful && ordersResponse.isSuccessful) {
-                val activeOrders = ordersResponse.body().orEmpty()
-                    .filter { it.status.isActive }
-                _state.value = _state.value.copy(
-                    stats = statsResponse.body() ?: _state.value.stats,
-                    activeOrders = activeOrders,
-                )
-                true
-            } else {
-                false
+            coroutineScope {
+                val statsDeferred = async { apiService.getDashboardStats() }
+                val ordersDeferred = async { apiService.getOrders(status = "active", limit = 200) }
+                val statsResponse = statsDeferred.await()
+                val ordersResponse = ordersDeferred.await()
+                if (statsResponse.isSuccessful && ordersResponse.isSuccessful) {
+                    _state.value = _state.value.copy(
+                        stats = statsResponse.body() ?: _state.value.stats,
+                        activeOrders = ordersResponse.body().orEmpty(),
+                    )
+                    true
+                } else {
+                    false
+                }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -119,27 +127,28 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isRefreshing = true)
             try {
-                val statsResponse = apiService.getDashboardStats()
-                val ordersResponse = apiService.getOrders(status = "active", limit = 200)
+                coroutineScope {
+                    val statsDeferred = async { apiService.getDashboardStats() }
+                    val ordersDeferred = async { apiService.getOrders(status = "active", limit = 200) }
+                    val statsResponse = statsDeferred.await()
+                    val ordersResponse = ordersDeferred.await()
 
-                if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
-                    val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
-                    _state.value = _state.value.copy(
-                        isRefreshing = false,
-                        error = "Failed to refresh dashboard (HTTP $code)",
-                    )
-                    return@launch
+                    if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
+                        val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
+                        _state.value = _state.value.copy(
+                            isRefreshing = false,
+                            error = "Failed to refresh dashboard (HTTP $code)",
+                        )
+                    } else {
+                        _state.value = _state.value.copy(
+                            stats = statsResponse.body() ?: _state.value.stats,
+                            activeOrders = ordersResponse.body() ?: _state.value.activeOrders,
+                            isRefreshing = false,
+                        )
+                    }
                 }
-
-                val activeOrders = ordersResponse.body()
-                    ?.filter { it.status.isActive }
-                    ?: _state.value.activeOrders
-                _state.value = _state.value.copy(
-                    stats = statsResponse.body() ?: _state.value.stats,
-                    activeOrders = activeOrders,
-                    isRefreshing = false,
-                )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isRefreshing = false,
                     error = "Failed to refresh dashboard: ${e.localizedMessage}",

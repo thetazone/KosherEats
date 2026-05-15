@@ -162,7 +162,7 @@ fun KosherFilterSheet(
                                 cert = cert,
                                 selected = cert in certs,
                                 onToggle = {
-                                    certs = if (cert in certs) certs - cert else certs + cert
+                                    certs = if (cert in certs) emptySet() else setOf(cert)
                                 },
                             )
                         }

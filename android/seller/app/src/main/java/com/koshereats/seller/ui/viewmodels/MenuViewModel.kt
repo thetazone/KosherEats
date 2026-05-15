@@ -9,9 +9,11 @@ import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.PresignResponse
+import com.koshereats.seller.data.models.SellerMenuCategory
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,7 @@ import javax.inject.Inject
 
 data class MenuState(
     val items: List<MenuItem> = emptyList(),
+    val categories: List<SellerMenuCategory> = emptyList(),
     val selectedItem: MenuItem? = null,
     val selectedCategory: MenuCategory? = null,
     val isLoading: Boolean = false,
@@ -40,12 +43,15 @@ class MenuViewModel @Inject constructor(
     private val _state = MutableStateFlow(MenuState())
     val state: StateFlow<MenuState> = _state.asStateFlow()
 
+    private var loadJob: Job? = null
+
     init {
         loadMenuItems()
     }
 
     fun loadMenuItems(category: MenuCategory? = null) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(
                 isLoading = true,
                 error = null,
@@ -54,14 +60,14 @@ class MenuViewModel @Inject constructor(
             try {
                 val response = apiService.getSellerMenu()
                 if (response.isSuccessful) {
-                    val items = response.body().orEmpty().let { categories ->
-                        if (category == null) {
-                            categories.flatMap { it.items }
-                        } else {
-                            categories.flatMap { it.items }.filter { it.category == category }
-                        }
+                    val serverCategories = response.body().orEmpty()
+                    val items = if (category == null) {
+                        serverCategories.flatMap { it.items }
+                    } else {
+                        serverCategories.flatMap { it.items }.filter { it.category == category }
                     }
                     _state.update { it.copy(
+                        categories = serverCategories,
                         items = items,
                         isLoading = false,
                     ) }
@@ -123,22 +129,41 @@ class MenuViewModel @Inject constructor(
 
                 val categorySlug = targetCategory.name.lowercase()
 
-                val menuResponse = apiService.getSellerMenu()
-                if (!menuResponse.isSuccessful) {
-                    _state.update { it.copy(isSaving = false, error = "Failed to load menu (${menuResponse.code()})") }
-                    return@launch
+                val cachedCategories = _state.value.categories.ifEmpty {
+                    val menuResponse = apiService.getSellerMenu()
+                    if (!menuResponse.isSuccessful) {
+                        _state.update { it.copy(isSaving = false, error = "Failed to load menu (${menuResponse.code()})") }
+                        return@launch
+                    }
+                    val cats = menuResponse.body().orEmpty()
+                    _state.update { it.copy(categories = cats) }
+                    cats
                 }
-                val existingCategory = menuResponse.body()
-                    ?.firstOrNull { serverCat ->
+                val existingCategory = cachedCategories
+                    .firstOrNull { serverCat ->
                         serverCat.name.lowercase().replace(' ', '_') == categorySlug ||
                         serverCat.name.equals(categorySlug, ignoreCase = true)
                     }
 
-                val categoryId = if (existingCategory != null) {
-                    existingCategory.id
+                val categoryId: String?
+                val createdCategoryId: String?
+                if (existingCategory != null) {
+                    categoryId = existingCategory.id
+                    createdCategoryId = null
                 } else {
-                    val catResp = apiService.createCategory(mapOf("name" to categorySlug))
-                    catResp.body()?.id
+                    val categoryDisplayName = targetCategory.name.lowercase()
+                        .split("_")
+                        .joinToString(" ") { it.replaceFirstChar(Char::uppercaseChar) }
+                    val catResp = apiService.createCategory(mapOf("name" to categoryDisplayName))
+                    if (!catResp.isSuccessful) {
+                        _state.update { it.copy(isSaving = false, error = "Failed to create category (${catResp.code()})") }
+                        return@launch
+                    }
+                    categoryId = catResp.body()?.id
+                    createdCategoryId = categoryId
+                    catResp.body()?.let { newCat ->
+                        _state.update { it.copy(categories = it.categories + newCat) }
+                    }
                 }
 
                 if (categoryId == null) {
@@ -170,6 +195,9 @@ class MenuViewModel @Inject constructor(
                     ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
+                    if (createdCategoryId != null) {
+                        runCatching { apiService.deleteCategory(createdCategoryId) }
+                    }
                     _state.update { it.copy(
                         isSaving = false,
                         error = "Failed to create menu item",
@@ -265,22 +293,18 @@ class MenuViewModel @Inject constructor(
                     ) }
                 } else {
                     _state.update { it.copy(
-                        items = it.items.map {
-                            if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
-                        },
                         pendingItemIds = it.pendingItemIds - item.id,
                         error = "Failed to update availability",
                     ) }
+                    loadMenuItems(_state.value.selectedCategory)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    items = it.items.map {
-                        if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
-                    },
                     pendingItemIds = it.pendingItemIds - item.id,
                     error = "Failed to update availability",
                 ) }
+                loadMenuItems(_state.value.selectedCategory)
             }
         }
     }

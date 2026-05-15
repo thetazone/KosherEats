@@ -448,11 +448,11 @@ private fun CartDetailView(
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Delivery fee", state.deliveryFee)
+                        PriceRow("Delivery fee (est.)", state.deliveryFee)
                         Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Service fee", state.serviceFee)
+                        PriceRow("Service fee (est.)", state.serviceFee)
                         Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Tax", state.tax)
+                        PriceRow("Tax (est.)", state.tax)
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider(color = SurfaceDarkBorder)
                         Spacer(modifier = Modifier.height(16.dp))
@@ -461,7 +461,7 @@ private fun CartDetailView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Total",
+                                text = "Est. Total",
                                 style = MaterialTheme.typography.titleLarge,
                                 color = TextWhite,
                                 fontWeight = FontWeight.Bold,
@@ -494,7 +494,7 @@ private fun CartDetailView(
                 CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
             } else {
                 Text(
-                    text = "Checkout - ${state.total.formatPrice()}",
+                    text = "Checkout - Est. ${state.total.formatPrice()}",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,

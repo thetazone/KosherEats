@@ -33,6 +33,7 @@ import com.koshereats.consumer.ui.theme.*
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * Schedule-for-later picker. Two-step flow (date → time) to keep it simple on
@@ -142,7 +143,7 @@ fun SchedulePickerSheet(
                             showTime = true
                         } else {
                             val chosenMillis = datePickerState.selectedDateMillis ?: nowMillis
-                            val date = Instant.ofEpochMilli(chosenMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            val date = Instant.ofEpochMilli(chosenMillis).atOffset(ZoneOffset.UTC).toLocalDate()
                             val combined = LocalDateTime.of(
                                 date,
                                 java.time.LocalTime.of(timePickerState.hour, timePickerState.minute),

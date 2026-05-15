@@ -7,10 +7,12 @@
 -keepattributes Signature
 -keepattributes *Annotation*
 -keepattributes InnerClasses
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
 -keep class retrofit2.** { *; }
 -keepclasseswithmembers class * {
     @retrofit2.http.* <methods>;
 }
+-keep,allowobfuscation interface com.koshereats.consumer.data.api.ApiService
 
 # Retrofit + Kotlin Coroutines — R8 full mode strips the generic
 # signatures Retrofit needs to recover Response<T> from a suspend

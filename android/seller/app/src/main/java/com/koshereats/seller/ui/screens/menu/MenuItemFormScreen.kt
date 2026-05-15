@@ -86,11 +86,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
 import okio.source
+import java.io.ByteArrayOutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -529,25 +532,39 @@ fun MenuItemFormScreen(
 
 private val uploadClient = OkHttpClient()
 
+private const val MAX_LONG_EDGE_PX = 1080
+
+private fun compressImageUri(context: android.content.Context, uri: Uri): ByteArray? {
+    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+    val longEdge = maxOf(opts.outWidth, opts.outHeight)
+    var sampleSize = 1
+    while (longEdge / (sampleSize * 2) >= MAX_LONG_EDGE_PX) sampleSize *= 2
+    val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    val bitmap = context.contentResolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, decodeOpts)
+    } ?: return null
+    return ByteArrayOutputStream().also { out ->
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+        bitmap.recycle()
+    }.toByteArray()
+}
+
 private suspend fun uploadImage(
     context: android.content.Context,
     uri: Uri,
     viewModel: MenuViewModel,
 ): String? = withContext(Dispatchers.IO) {
     try {
-        val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        val presignResponse = viewModel.presignUpload("menu_item", contentType)
-            ?: return@withContext null
-
-        val fileSize = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
-        val inputStream = context.contentResolver.openInputStream(uri)
+        val compressed = compressImageUri(context, uri) ?: return@withContext null
+        val presignResponse = viewModel.presignUpload("menu_item", "image/jpeg")
             ?: return@withContext null
 
         val requestBody = object : RequestBody() {
-            override fun contentType() = contentType.toMediaType()
-            override fun contentLength() = fileSize
+            override fun contentType() = "image/jpeg".toMediaType()
+            override fun contentLength() = compressed.size.toLong()
             override fun writeTo(sink: BufferedSink) {
-                inputStream.use { sink.writeAll(it.source()) }
+                sink.write(compressed)
             }
         }
         val request = Request.Builder()

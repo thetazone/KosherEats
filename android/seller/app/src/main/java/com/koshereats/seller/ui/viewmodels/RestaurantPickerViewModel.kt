@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.SelectedRestaurant
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.Restaurant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -75,6 +76,10 @@ class RestaurantPickerViewModel @Inject constructor(
             // runBlocking { flow.first() } on the OkHttp interceptor thread
             // sees the updated value before the dashboard reload fires.
             SelectedRestaurant.flow(context).first { it == restaurantId }
+            // Eagerly update the in-memory cache so the OkHttp interceptor
+            // sees the new id immediately when the dashboard reload fires,
+            // without depending on the DataStore collector coroutine ordering.
+            NetworkModule.cachedRestaurantId = restaurantId
             _state.value = _state.value.copy(selectedId = restaurantId)
             onDone()
         }

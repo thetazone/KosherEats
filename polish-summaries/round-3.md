@@ -1,53 +1,49 @@
 # KosherEats Polish — Round 3
-**Max severity found:** 7
+**Max severity found:** 10
 **Issues found:** 12
-**Fixes attempted:** 11
-**Fixes succeeded:** 11
+**Fixes attempted:** 7
+**Fixes succeeded:** 0
 
 ## Issues & Fixes
-- **[7/10] [android_seller] MenuItemFormScreen pops back AND wipes form data on every modifier-group operation** — FIXED
-  The form has two `LaunchedEffect`s that both fire when a modifier-group op succeeds. (1) `LaunchedEffect(state.saveSuccess) { ... onSaved() }` at Menu
-  > Added itemSaveSuccess flag to MenuState (set only by createMenuItem/updateMenuItem), gated LaunchedEffect(state.selected
+- **[10/10] [android_seller] MenuViewModel references SellerMenuCategory without importing it** — FAILED
+  MenuViewModel.kt line 25 declares `val categories: List<SellerMenuCategory> = emptyList()` and reuses the type at lines 69, 131-140, 163, but the impo
+  > not reported by batch agent
 
-- **[6/10] [android_consumer] Money.formatPriceWhole truncates via integer division** — FIXED
-  Money.kt:11 calls `nf.format(this / 100)` — `Int / Int` integer-divides. 1099¢ ($10.99) becomes 10 and renders as "$10" instead of "$11". `nf.maximumF
-  > Changed `this / 100` to `this / 100.0` in Money.kt:11 so NumberFormat receives a Double and rounds correctly instead of 
+- **[7/10] [android_seller] Restaurant switch races NetworkModule.cachedRestaurantId, dashboard reload sees stale id** — FAILED
+  RestaurantPickerViewModel.select() (RestaurantPickerViewModel.kt:71-81) writes the new id to DataStore, awaits its OWN flow collection, then fires onD
+  > not reported by batch agent
 
-- **[6/10] [android_consumer] isLoggedIn=true for guests is a footgun** — FIXED
-  AuthViewModel.continueAsGuest() (line 495) sets `isLoggedIn = true, isGuest = true`. NavGraph remembers to combine `authState.isLoggedIn && !authState
-  > Added sealed class SessionState { Authenticated, Guest, LoggedOut }, replaced the two booleans in AuthUiState with a sin
+- **[6/10] [android_seller] Dashboard fetches 'active' orders client-side from a magic backend filter** — FAILED
+  DashboardViewModel calls `apiService.getOrders(status = "active", limit = 200)` (lines 69, 100, 123) and *also* re-filters with `it.status.isActive` (
+  > not reported by batch agent
 
-- **[5/10] [android_consumer] HomeViewModel pagination breaks when filterCertifications is set** — FIXED
-  HomeViewModel.kt:88-107 applies `filterCertifications` *client-side* on each page (line 90-94) but computes `hasMore = result.data.size >= 20` from th
-  > Removed client-side certification filtering in loadRestaurants(); added a private toApiString() extension to map each Ko
+- **[6/10] [android_seller] OrderStatus.SCHEDULED has no action UI and no explanation** — FAILED
+  OrderActionButtons (lines 434-565) handles PENDING / ACCEPTED / PREPARING / READY / PICKED_UP and `else -> {}`. SCHEDULED falls through to the empty b
+  > not reported by batch agent
 
-- **[5/10] [android_consumer] Login error always reads "Login failed" regardless of cause** — FIXED
-  AuthViewModel.kt:147-153 sets a single hard-coded error string for every non-2xx response. 401 (bad credentials), 403 (account locked), 422 (validatio
-  > Replaced the hard-coded 'Login failed' string in the login() error branch with a when switch on response.code() mapping 
+- **[6/10] [android_seller] Image upload has no compression, no progress, and no size guard** — FAILED
+  Both `uploadImage` (MenuItemFormScreen.kt:530-563) and `uploadDealImage` (CreateDealScreen.kt:711-744) PUT the raw user-picked file. A modern phone ph
+  > not reported by batch agent
 
-- **[5/10] [android_consumer] FCM notification IDs collide via orderId.hashCode()** — FIXED
-  KosherEatsMessagingService.kt:93 uses `orderId.hashCode()` as both the PendingIntent requestCode and the NotificationManager id. Java `String.hashCode
-  > Replaced nm.notify(orderId.hashCode(), notification) with nm.notify(orderId, 0, notification) (tag-based) so same-order 
+- **[6/10] [android_seller] Foregrounding the app cancels every notification including unread new-order alerts** — FAILED
+  KosherEatsSellerApp.kt:24-28 wires `cancelAll()` on every ProcessLifecycleOwner.onStart. The intent (matching iOS badge clearing) is fine for stale ba
+  > not reported by batch agent
 
-- **[5/10] [android_seller] Editing any modifier group resets its sort_order to 0 (and its description to empty)** — FIXED
-  `ModifierGroupDialog` builds a `CreateModifierGroupRequest` (MenuItemFormScreen.kt:776-799) but never passes `sortOrder` or `description`. `CreateModi
-  > Added groupDescription state to ModifierGroupDialog with a UI text field, and passed description=groupDescription.trim()
+- **[5/10] [android_consumer] First request races TokenProvider DataStore load** — FAILED
+  RetrofitClient.provideAuthInterceptor reads `tokenProvider.token` synchronously. TokenProvider's init kicks off a coroutine on Dispatchers.IO to read 
+  > not reported by batch agent
 
-- **[5/10] [android_seller] AuthViewModel is instantiated per-NavBackStackEntry, so restaurant state forks across screens** — FIXED
-  `hiltViewModel()` inside a `composable {}` block scopes the ViewModel to the current NavBackStackEntry. NavGraph.kt:55 grabs an AuthViewModel at the r
-  > Passed authViewModel = authViewModel explicitly to DashboardScreen and RestaurantSettingsScreen in NavGraph.kt so both s
+- **[4/10] [android_consumer] Expired deals show negative minutes left** — skipped
+  RestaurantDetailScreen.RestaurantDealCard line 664-672 computes hours = HOURS.between(now, expiry). If expiry < now, hours is negative; the first bran
 
-- **[5/10] [android_seller] Order detail screen early-return hides the reject confirmation dialog** — FIXED
-  SellerOrderDetailScreen.kt line 129-137 does `if (state.isLoading || order == null) { CircularProgressIndicator … return }` — the function-level `retu
-  > Moved the AlertDialog block above the early-return Column so polling can't dismiss it mid-confirmation, and added viewMo
+- **[4/10] [android_consumer] SSE retry toast flashes on screen-exit** — skipped
+  OrderTrackingViewModel.launchLocationStream catches Exception including kotlin.coroutines.cancellation.CancellationException, then sets `errorMessage 
 
-- **[5/10] [android_seller] OrdersViewModel.pollSilently can race with filter changes** — FIXED
-  OrdersViewModel.pollSilently reads `_state.value.selectedFilter` once, fires apiService.getOrders, then writes `state.update { it.copy(orders = respon
-  > Captured selectedFilter in a local val before the API call and wrapped the state update in a conditional that discards t
+- **[4/10] [android_consumer] Register error path collapses every code to one string** — skipped
+  AuthViewModel.register (line 224-231) on !isSuccessful just shows 'Registration failed'. Login uses a real when-block branching on 401/403/422/429/5xx
 
-- **[5/10] [android_seller] ActiveOrderCard hides delivery-vs-pickup, customer name, and elapsed time** — FIXED
-  ActiveOrderCard.kt shows only `#xxxxxxxx` + status badge + items summary + total. A seller triaging the dashboard can't tell pickup vs delivery (Order
-  > Added a PICKUP/DELIVERY chip, customer name text, and a minutesAgo elapsed-time stamp row between the header and items s
+- **[4/10] [android_consumer] Delete-account failure is silent** — skipped
+  AuthViewModel.deleteAccount sets uiState.error on failure, but ProfileScreen never renders state.error anywhere (only the alert dialogs and the static
 
-- **[4/10] [android_consumer] DealsViewModel mutates StateFlow non-atomically** — skipped
-  DealsViewModel.kt:34-53 uses `_uiState.value = _uiState.value.copy(...)` rather than `_uiState.update { it.copy(...) }`. The `refresh()` method (line 
+- **[4/10] [android_consumer] Active cart selection is non-deterministic when no active id** — skipped
+  CartUiState.cart falls back to `activeRestaurantId?.let { carts[it] } ?: carts.values.firstOrNull() ?: Cart()` (line 52). After clearCartForRestaurant

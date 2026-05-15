@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Qualifier
 import okhttp3.Authenticator
 import okhttp3.Interceptor
@@ -122,7 +123,7 @@ object NetworkModule {
     @Singleton
     fun provideAuthInterceptor(tokenProvider: TokenProvider): Interceptor {
         return Interceptor { chain ->
-            val token = tokenProvider.token
+            val token = runBlocking { tokenProvider.awaitToken() }
             val request = chain.request().newBuilder().apply {
                 addHeader("Content-Type", "application/json")
                 addHeader("Accept", "application/json")

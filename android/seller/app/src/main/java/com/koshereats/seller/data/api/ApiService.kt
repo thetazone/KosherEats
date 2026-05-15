@@ -78,6 +78,11 @@ interface ApiService {
         @Path("orderId") orderId: String,
     ): Response<Order>
 
+    @PATCH("seller/orders/{orderId}/cancel")
+    suspend fun cancelOrder(
+        @Path("orderId") orderId: String,
+    ): Response<Order>
+
     // --- Menu ---
 
     @GET("seller/menu")

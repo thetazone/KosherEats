@@ -32,10 +32,11 @@ sealed class SessionState {
     object Authenticated : SessionState()
     object Guest : SessionState()
     object LoggedOut : SessionState()
+    object Unknown : SessionState()
 }
 
 data class AuthUiState(
-    val sessionState: SessionState = SessionState.LoggedOut,
+    val sessionState: SessionState = SessionState.Unknown,
     val user: User? = null,
     val isRehydrating: Boolean = false,
     val isLoading: Boolean = false,
@@ -57,7 +58,10 @@ data class AuthUiState(
     val phoneIsSending: Boolean = false,
     val phoneIsVerifying: Boolean = false,
     val needsPhone: Boolean = false,
-)
+) {
+    val isLoggedIn: Boolean get() = sessionState != SessionState.LoggedOut
+    val isGuest: Boolean get() = sessionState == SessionState.Guest
+}
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
@@ -77,7 +81,7 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             sessionManager.logoutEvent.collect {
                 clearAuth()
-                _uiState.update { AuthUiState() }
+                _uiState.update { AuthUiState(sessionState = SessionState.LoggedOut) }
             }
         }
     }
@@ -100,7 +104,7 @@ class AuthViewModel @Inject constructor(
                         }
                         response.code() == 401 -> {
                             clearAuth()
-                            _uiState.update { it.copy(isRehydrating = false) }
+                            _uiState.update { it.copy(sessionState = SessionState.LoggedOut, isRehydrating = false) }
                         }
                         // 5xx or other transient error: keep session alive but
                         // leave user=null so ProfileScreen shows a retry UI.
@@ -111,6 +115,8 @@ class AuthViewModel @Inject constructor(
                     // leave user=null so ProfileScreen shows a retry UI.
                     _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false) }
                 }
+            } else {
+                _uiState.update { it.copy(sessionState = SessionState.LoggedOut) }
             }
         }
     }
@@ -222,10 +228,18 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
+                    android.util.Log.w("AuthViewModel", "register ${response.code()}: ${response.errorBody()?.string()}")
+                    val msg = when (response.code()) {
+                        409 -> "Email already in use — try signing in instead"
+                        422 -> "Please check your details and try again"
+                        429 -> "Too many attempts — please try again later"
+                        in 500..599 -> "Server error — please try again later"
+                        else -> "Registration failed"
+                    }
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Registration failed",
+                            error = msg,
                         )
                     }
                 }
@@ -460,7 +474,7 @@ class AuthViewModel @Inject constructor(
             PushBootstrap.deleteToken()
             clearAuth()
             sessionManager.signalLogout()
-            _uiState.update { AuthUiState() }
+            _uiState.update { AuthUiState(sessionState = SessionState.LoggedOut) }
         }
     }
 
@@ -473,7 +487,7 @@ class AuthViewModel @Inject constructor(
                     PushBootstrap.deleteToken()
                     clearAuth()
                     sessionManager.signalLogout()
-                    _uiState.update { AuthUiState() }
+                    _uiState.update { AuthUiState(sessionState = SessionState.LoggedOut) }
                     onComplete(true)
                 } else {
                     val msg = when (response.code()) {

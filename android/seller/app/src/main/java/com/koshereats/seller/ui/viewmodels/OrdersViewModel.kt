@@ -3,6 +3,7 @@ package com.koshereats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import retrofit2.Response
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.push.OrderEventBus
@@ -39,6 +40,7 @@ class OrdersViewModel @Inject constructor(
 
     private var pollingJob: Job? = null
     private var pollerRefCount = 0
+    private var loadJob: Job? = null
 
     init {
         loadOrders()
@@ -90,7 +92,9 @@ class OrdersViewModel @Inject constructor(
             _state.value.selectedOrder?.id?.let { id ->
                 val detailResponse = apiService.getOrderDetail(id)
                 if (detailResponse.isSuccessful) {
-                    _state.update { it.copy(selectedOrder = detailResponse.body()) }
+                    _state.update { current ->
+                        if (current.selectedOrder?.id == id) current.copy(selectedOrder = detailResponse.body()) else current
+                    }
                 } else {
                     succeeded = false
                 }
@@ -103,7 +107,8 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun loadOrders(status: OrderStatus? = null) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(
                 isLoading = true,
                 error = null,
@@ -160,7 +165,7 @@ class OrdersViewModel @Inject constructor(
     }
 
     private val allowedTransitions = mapOf(
-        OrderStatus.PENDING to setOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED),
+        OrderStatus.PENDING to setOf(OrderStatus.ACCEPTED),
         OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING),
         OrderStatus.PREPARING to setOf(OrderStatus.READY),
         OrderStatus.READY to setOf(OrderStatus.COMPLETED),
@@ -196,7 +201,6 @@ class OrdersViewModel @Inject constructor(
                     OrderStatus.PREPARING -> apiService.markOrderPreparing(orderId)
                     OrderStatus.READY -> apiService.markOrderReady(orderId)
                     OrderStatus.COMPLETED -> apiService.completeOrder(orderId)
-                    OrderStatus.CANCELLED -> apiService.rejectOrder(orderId)
                     else -> null
                 }
 
@@ -225,8 +229,75 @@ class OrdersViewModel @Inject constructor(
                             if (it.id == orderId) updatedOrder else it
                         },
                         pendingOrderIds = it.pendingOrderIds - orderId,
-                        updateSuccess = "Order updated to ${newStatus.name.lowercase().replace('_', ' ')}",
+                        updateSuccess = "Order ${updatedOrder.status.displayName.lowercase()}",
                     ) }
+                } else {
+                    _state.update { it.copy(
+                        selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                        pendingOrderIds = it.pendingOrderIds - orderId,
+                        error = "Failed to update order status",
+                    ) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                    pendingOrderIds = it.pendingOrderIds - orderId,
+                    error = "Connection error: ${e.localizedMessage}",
+                ) }
+            }
+        }
+    }
+
+    fun rejectPending(orderId: String) {
+        val order = _state.value.selectedOrder?.takeIf { it.id == orderId }
+            ?: _state.value.orders.find { it.id == orderId }
+        if (order?.status != OrderStatus.PENDING) {
+            _state.update { it.copy(error = "Can only reject a pending order") }
+            return
+        }
+        doOrderApiCall(orderId) { apiService.rejectOrder(orderId) }
+    }
+
+    fun cancelInProgress(orderId: String) {
+        val order = _state.value.selectedOrder?.takeIf { it.id == orderId }
+            ?: _state.value.orders.find { it.id == orderId }
+        if (order?.status != OrderStatus.ACCEPTED && order?.status != OrderStatus.PREPARING) {
+            _state.update { it.copy(error = "Can only cancel an accepted or preparing order") }
+            return
+        }
+        doOrderApiCall(orderId) { apiService.cancelOrder(orderId) }
+    }
+
+    private fun doOrderApiCall(orderId: String, call: suspend () -> Response<Order>) {
+        if (_state.value.pendingOrderIds.contains(orderId)) return
+        val snapshotOrder = _state.value.selectedOrder
+        viewModelScope.launch {
+            _state.update { it.copy(
+                pendingOrderIds = it.pendingOrderIds + orderId,
+                error = null,
+                updateSuccess = null,
+            ) }
+            try {
+                val response = call()
+                if (response.isSuccessful) {
+                    val updatedOrder = response.body()
+                    if (updatedOrder == null) {
+                        _state.update { it.copy(
+                            selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                            pendingOrderIds = it.pendingOrderIds - orderId,
+                            error = "Failed to update order status",
+                        ) }
+                        return@launch
+                    }
+                    _state.update { st ->
+                        st.copy(
+                            selectedOrder = updatedOrder,
+                            orders = st.orders.map { if (it.id == orderId) updatedOrder else it },
+                            pendingOrderIds = st.pendingOrderIds - orderId,
+                            updateSuccess = "Order ${updatedOrder.status.displayName.lowercase()}",
+                        )
+                    }
                 } else {
                     _state.update { it.copy(
                         selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,

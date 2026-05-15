@@ -23,11 +23,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,6 +52,21 @@ fun SellerOrdersScreen(
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(state.error) {
+        if (state.error != null) {
+            Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
+    }
+
+    LaunchedEffect(state.updateSuccess) {
+        if (state.updateSuccess != null) {
+            Toast.makeText(context, state.updateSuccess, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
+    }
 
     DisposableEffect(Unit) {
         viewModel.startPolling()

@@ -19,11 +19,17 @@ class KosherEatsSellerApp : Application() {
         // Safe to call even when keys are blank — init skips gracefully.
         PushBootstrap.init(this)
         KosherEatsMessagingService.ensureChannel(this)
-        // Clear all notifications when the app comes to foreground so stale
-        // pushes don't persist after the user opens the app (mirrors iOS badge clearing).
+        // Clear notifications only on the first foreground entry per process
+        // (cold launch / task restore). Subsequent onStart events (e.g. the user
+        // briefly switches apps and returns) must not cancel notifications that
+        // arrived while the app was already running and haven't been acted on yet.
+        var clearedOnLaunch = false
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
-                (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
+                if (!clearedOnLaunch) {
+                    clearedOnLaunch = true
+                    (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancelAll()
+                }
             }
         })
     }

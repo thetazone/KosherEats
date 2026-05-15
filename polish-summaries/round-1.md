@@ -1,54 +1,54 @@
 # KosherEats Polish — Round 1
-**Max severity found:** 8
+**Max severity found:** 10
 **Issues found:** 12
 **Fixes attempted:** 12
 **Fixes succeeded:** 12
 
 ## Issues & Fixes
-- **[8/10] [android_consumer] No global observer for SessionManager.logoutEvent** — FIXED
-  SessionManager.signalLogout() is fired by TokenAuthenticator (refresh failure) and OrderTrackingViewModel (SSE 401), but only CartViewModel and ChatVi
-  > Added logoutEvent collector in AuthViewModel.init (calls clearAuth + resets state), exposed logoutEvent as a public prop
+- **[10/10] [android_consumer] AuthUiState refactor leaves auth screens uncompilable** — FIXED
+  AuthViewModel was refactored to expose sessionState: SessionState (Authenticated/Guest/LoggedOut) and dropped the isLoggedIn/isGuest booleans. But six
+  > Added derived val isLoggedIn and val isGuest getters to AuthUiState in AuthViewModel.kt, restoring the properties all si
 
-- **[8/10] [android_consumer] TokenProvider init can deadlock every HTTP call forever** — FIXED
-  RetrofitClient.kt:63-74 launches a single coroutine that calls `dataStore.data.first()` and only then `_initialized.complete(Unit)`. The AuthIntercept
-  > Wrapped the init coroutine body in try/finally that checks _initialized.isCompleted and calls complete(Unit) + logs an e
+- **[9/10] [android_consumer] R8 keep rules miss the ApiService interface and Retrofit annotations** — FIXED
+  proguard-rules.pro keeps retrofit2 itself but doesn't keep com.koshereats.consumer.data.api.ApiService, nor does it preserve RuntimeVisibleAnnotations
+  > Added -keep,allowobfuscation interface com.koshereats.consumer.data.api.ApiService and -keepattributes RuntimeVisibleAnn
 
-- **[8/10] [android_seller] Release keystore password committed in build.gradle.kts** — FIXED
-  android/seller/app/build.gradle.kts:35-37 falls back to a hard-coded `koshereats2026` keystore password (and key password) when local.properties is mi
-  > Removed the 'koshereats2026' hardcoded fallback; release signing now calls check() and fails the build immediately if KE
+- **[9/10] [android_seller] Sellers cannot cancel an ACCEPTED or PREPARING order** — FIXED
+  OrdersViewModel.kt:162-168 `allowedTransitions` only maps PENDING → {ACCEPTED, CANCELLED}. ACCEPTED/PREPARING have no path to CANCELLED, and `OrderAct
+  > Added cancelInProgress() VM function (PATCH /cancel endpoint), Cancel Order OutlinedButton on ACCEPTED and PREPARING sta
 
-- **[8/10] [android_seller] KosherCertification serialized to wrong wire format on restaurant create** — FIXED
-  CreateRestaurantViewModel.submit (line 169) sends `s.kosherCertification.name.lowercase()` — produces "ou", "ok", "kof_k", "star_k", "crc", "badatz", 
-  > Changed CreateRestaurantRequest.kosherCertification from String to KosherCertification so Moshi serializes via @Json nam
+- **[8/10] [android_consumer] Prices format with device locale currency, not USD** — FIXED
+  Int.formatPrice() in data/models/Money.kt uses NumberFormat.getCurrencyInstance() with no locale, so it picks the device default. A user with Locale=f
+  > Changed both formatPrice() and formatPriceWhole() in Money.kt to use NumberFormat.getCurrencyInstance(Locale.US) instead
 
-- **[7/10] [android_consumer] AddressViewModel silently swallows every CRUD error** — FIXED
-  addAddress, deleteAddress, setDefault, and clearDefault each end in `catch (_: Exception) {}` with no state mutation (AddressViewModel.kt:74-139). A 4
-  > Replaced all empty catch(_: Exception){} blocks in addAddress, deleteAddress, setDefault, and clearDefault with _uiState
+- **[8/10] [android_seller] Reject collapses two distinct server states into OrderStatus.CANCELLED** — FIXED
+  OrdersViewModel.kt:199 maps `OrderStatus.CANCELLED -> apiService.rejectOrder(orderId)`, but the server returns the order with status `REJECTED` (separ
+  > Split into rejectPending() (calls rejectOrder, valid only from PENDING) and cancelInProgress() (calls cancelOrder), remo
 
-- **[7/10] [android_consumer] socialLogin error path leaks raw server error body to the UI** — FIXED
-  AuthViewModel.kt:247-254 builds the user-facing error as `"Social login failed: $errorBody"`, where errorBody is the verbatim JSON/HTML from the backe
-  > Replaced the raw errorBody string in socialLogin with a response.code()-mapped friendly message (401/409/else) and moved
+- **[8/10] [android_seller] loadOrders/loadDashboard don't cancel prior coroutines — last-writer-wins races** — FIXED
+  OrdersViewModel.loadOrders (line 105) launches a fresh coroutine on every filter chip tap. Spam-clicking through 'Pending → Accepted → Ready' fires 3 
+  > Added private var loadJob: Job? to OrdersViewModel, DashboardViewModel, and MenuViewModel; each load function now does l
 
-- **[7/10] [android_consumer] AuthInterceptor + TokenAuthenticator block OkHttp dispatcher threads** — FIXED
-  RetrofitClient.kt:112 runs `runBlocking { tokenProvider.awaitToken() }` on every request and TokenAuthenticator.kt:205 runs `runBlocking { tokenProvid
-  > Changed AuthInterceptor to read tokenProvider.token (@Volatile field) directly with no runBlocking; made persistNewToken
+- **[8/10] [android_seller] Menu item save makes an extra round-trip for category, then duplicates on fuzzy mismatch** — FIXED
+  MenuViewModel.createMenuItem (lines 115-186) calls `apiService.getSellerMenu()` *every* save just to look up the category id, nearly doubling save lat
+  > Added categories: List<SellerMenuCategory> to MenuState, populated in loadMenuItems; createMenuItem now reads from the c
 
-- **[7/10] [android_consumer] Order-tracking SSE 401 has no UI follow-through** — FIXED
-  OrderTrackingViewModel.kt:126-129 calls `sessionManager.signalLogout()` and returns when SSE returns 401, but with no global logout observer (see issu
-  > After signalLogout() on SSE 401, added pollJob?.cancel() and _uiState.update { it.copy(order = null, errorMessage = "Ses
+- **[7/10] [android_seller] formatPrice uses device-locale currency for amounts that are always USD cents** — FIXED
+  Money.kt:5 calls `NumberFormat.getCurrencyInstance()` with no Locale argument. On a phone set to en-GB / de-DE / he-IL, prices render as '£4.99', '4,9
+  > Pinned both formatPrice and formatPriceWhole in Money.kt to Locale.US.
 
-- **[7/10] [android_seller] createMenuItem silently drops spice level, prep time, allergens, calories, isAvailable** — FIXED
-  MenuViewModel.createMenuItem (lines 146-155) builds CreateMenuItemBody but only forwards name, description, price, imageUrl, isMeat/isDairy/isPareve. 
-  > Added spiceLevel, preparationTime, allergens, and calories fields to CreateMenuItemBody, then forwarded all of them (plu
+- **[7/10] [android_seller] Dashboard runs stats + orders fetches sequentially instead of in parallel** — FIXED
+  Both DashboardViewModel.loadDashboard (lines 64-94), refresh (lines 118-149), and pollSilently (lines 97-116) call `getDashboardStats()` then `getOrde
+  > Wrapped the two API calls in coroutineScope { async/await } in loadDashboard, pollSilently, and refresh so both requests
 
-- **[7/10] [android_seller] Modifier option price uses .toInt() — FP truncation loses cents** — FIXED
-  MenuItemFormScreen.kt:777 computes `((opt.priceDelta.toDoubleOrNull() ?: 0.0) * 100).toInt()`. Because of double imprecision, $0.95 → 94.99999999... →
-  > Changed the priceDelta conversion in MenuItemFormScreen's ModifierGroupDialog from .toInt() to .roundToInt(), using the 
+- **[6/10] [android_consumer] pendingGuestReturn lost on process death during sign-in** — FIXED
+  NavGraph.kt:97 uses `remember { mutableStateOf<String?>(null) }` to stash the guest's return route. Stripe 3DS recreates the activity and any deep-lin
+  > Changed the pendingGuestReturn state holder in NavGraph.kt from remember to rememberSaveable so the return route survive
 
-- **[7/10] [android_seller] Deal fixed-amount discount + min-order use truncating .toInt()** — FIXED
-  CreateDealScreen.kt `dollarsToCents` at line 701-705 is `(amount * 100).toInt()`. A seller creating a $9.95 fixed-amount discount or $14.95 min-order 
-  > Replaced .toInt() with .roundToInt() in dollarsToCents (imported kotlin.math.roundToInt), and clamped percentage discoun
+- **[6/10] [android_consumer] Address list never reloads after guest → authenticated** — FIXED
+  AddressViewModel.init { loadAddresses() } fires once when the app starts. A user who opens as guest gets a 401 (no token) and the state holds an empty
+  > Added a LaunchedEffect(authState.sessionState) in NavGraph.kt that calls addressViewModel.loadAddresses() whenever the s
 
-- **[7/10] [android_seller] Auto-backup default leaks auth tokens via adb backup** — FIXED
-  AndroidManifest.xml line 22 leaves `android:allowBackup="true"` and there's no `android:dataExtractionRules` or `android:fullBackupContent` rule exclu
-  > Set android:allowBackup="false" in AndroidManifest.xml, preventing adb backup from extracting the seller_prefs DataStore
+- **[6/10] [android_consumer] Cart totals are guesses; checkout shows a different number** — FIXED
+  CartUiState ships hardcoded deliveryFee=399, serviceFee=249, taxRate=0.08875. CartScreen prominently shows 'Checkout - $XX.XX' built from state.total.
+  > Labeled delivery fee, service fee, and tax rows as (est.) in CartScreen.kt, changed the Total row to Est. Total, and pre

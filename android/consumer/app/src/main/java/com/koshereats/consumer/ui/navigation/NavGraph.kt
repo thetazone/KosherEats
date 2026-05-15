@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -94,7 +95,8 @@ fun KosherEatsNavHost() {
     // Tracks which route the guest should return to after logging in.
     // When a guest tries a restricted action we stash the target here
     // so the login-success handler can send them back.
-    val pendingGuestReturn = remember { mutableStateOf<String?>(null) }
+    // rememberSaveable survives process death (e.g. Stripe 3DS activity recreation).
+    val pendingGuestReturn = rememberSaveable { mutableStateOf<String?>(null) }
 
     val pendingOrderId by DeepLinkState.pendingOrderId.collectAsStateWithLifecycle()
     // Re-fires when auth state changes so the ID is held until the user is authenticated.
@@ -115,6 +117,14 @@ fun KosherEatsNavHost() {
             navController.navigate(Screen.Login.route) {
                 popUpTo(0) { inclusive = true }
             }
+        }
+    }
+
+    // Reload addresses whenever the user becomes authenticated so a guest→sign-in
+    // transition surfaces their saved addresses without requiring an app restart.
+    LaunchedEffect(authState.sessionState) {
+        if (authState.sessionState == SessionState.Authenticated) {
+            addressViewModel.loadAddresses()
         }
     }
 
@@ -303,7 +313,7 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderConfirmation.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                if (authState.sessionState != SessionState.Authenticated) {
+                if (authState.sessionState == SessionState.LoggedOut) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }
@@ -331,7 +341,7 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderTracking.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                if (authState.sessionState != SessionState.Authenticated) {
+                if (authState.sessionState == SessionState.LoggedOut) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }
@@ -372,7 +382,7 @@ fun KosherEatsNavHost() {
                     navArgument("orderId") { type = NavType.StringType },
                 ),
             ) {
-                if (authState.sessionState != SessionState.Authenticated) {
+                if (authState.sessionState == SessionState.LoggedOut) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }

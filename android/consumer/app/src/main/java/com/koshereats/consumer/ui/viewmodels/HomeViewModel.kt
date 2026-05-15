@@ -100,7 +100,7 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                     is Resource.Error -> {
-                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = false) }
+                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = true) }
                     }
                 }
             }

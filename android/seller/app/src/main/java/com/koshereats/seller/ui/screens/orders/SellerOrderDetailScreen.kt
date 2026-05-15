@@ -85,6 +85,7 @@ fun SellerOrderDetailScreen(
     val order = state.selectedOrder
     val context = LocalContext.current
     var showRejectConfirm by remember { mutableStateOf(false) }
+    var showCancelConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(orderId) {
         viewModel.clearMessages()
@@ -94,6 +95,13 @@ fun SellerOrderDetailScreen(
     LaunchedEffect(state.error) {
         if (state.error != null) {
             Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
+    }
+
+    LaunchedEffect(state.updateSuccess) {
+        if (state.updateSuccess != null) {
+            Toast.makeText(context, state.updateSuccess, Toast.LENGTH_SHORT).show()
             viewModel.clearMessages()
         }
     }
@@ -114,7 +122,7 @@ fun SellerOrderDetailScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showRejectConfirm = false
-                    viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
+                    viewModel.rejectPending(orderId)
                 }) {
                     Text("Reject Order", color = ErrorRed)
                 }
@@ -122,6 +130,28 @@ fun SellerOrderDetailScreen(
             dismissButton = {
                 TextButton(onClick = { showRejectConfirm = false }) {
                     Text("Cancel", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
+    }
+
+    if (showCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirm = false },
+            title = { Text("Cancel Order?", color = TextWhite) },
+            text = { Text("The customer will be notified that their order has been cancelled.", color = TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCancelConfirm = false
+                    viewModel.cancelInProgress(orderId)
+                }) {
+                    Text("Cancel Order", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelConfirm = false }) {
+                    Text("Keep Order", color = TextWhite)
                 }
             },
             containerColor = SurfaceDark,
@@ -389,6 +419,7 @@ fun SellerOrderDetailScreen(
                         viewModel.updateOrderStatus(orderId, OrderStatus.COMPLETED)
                     },
                     onCancel = { showRejectConfirm = true },
+                    onCancelInProgress = { showCancelConfirm = true },
                 )
             }
 
@@ -426,12 +457,35 @@ private fun OrderActionButtons(
     onMarkReady: () -> Unit,
     onComplete: () -> Unit,
     onCancel: () -> Unit,
+    onCancelInProgress: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         when (status) {
+            OrderStatus.SCHEDULED -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Scheduled",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Orange,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "This order will auto-activate at its scheduled time. You can pre-prep, but no customer action is needed yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                }
+            }
             OrderStatus.PENDING -> {
                 Button(
                     onClick = onAccept,
@@ -479,6 +533,17 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                OutlinedButton(
+                    onClick = onCancelInProgress,
+                    enabled = !isUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                ) {
+                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -495,6 +560,17 @@ private fun OrderActionButtons(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
                     }
+                }
+                OutlinedButton(
+                    onClick = onCancelInProgress,
+                    enabled = !isUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+                ) {
+                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.READY -> {
