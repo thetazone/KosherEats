@@ -2,6 +2,7 @@ package com.koshereats.consumer.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.koshereats.consumer.data.api.ApiPaging
 import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.repository.Resource
 import com.koshereats.consumer.data.repository.RestaurantRepository
@@ -27,10 +28,6 @@ class OrdersViewModel @Inject constructor(
     private val repository: RestaurantRepository,
 ) : ViewModel() {
 
-    private companion object {
-        const val PAGE_SIZE = 20
-    }
-
     private val _uiState = MutableStateFlow(OrdersUiState())
     val uiState: StateFlow<OrdersUiState> = _uiState.asStateFlow()
 
@@ -53,7 +50,7 @@ class OrdersViewModel @Inject constructor(
                                 isLoading = false,
                                 isRefreshing = false,
                                 currentPage = page,
-                                hasMore = result.data.size >= PAGE_SIZE,
+                                hasMore = result.data.size >= ApiPaging.ORDERS_PAGE_SIZE,
                             )
                         }
                     }

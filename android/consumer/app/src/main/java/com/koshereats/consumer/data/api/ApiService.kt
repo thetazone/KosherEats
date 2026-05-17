@@ -8,6 +8,11 @@ data class RefreshRequest(
     @com.google.gson.annotations.SerializedName("refresh_token") val refreshToken: String,
 )
 
+object ApiPaging {
+    const val RESTAURANTS_PAGE_SIZE = 20
+    const val ORDERS_PAGE_SIZE = 20
+}
+
 interface ApiService {
 
     // ── Auth ──────────────────────────────────────────────
@@ -82,7 +87,7 @@ interface ApiService {
     @GET("restaurants")
     suspend fun getRestaurants(
         @Query("page") page: Int = 1,
-        @Query("per_page") perPage: Int = 20,
+        @Query("per_page") perPage: Int = ApiPaging.RESTAURANTS_PAGE_SIZE,
         @Query("lat") latitude: Double? = null,
         @Query("lng") longitude: Double? = null,
         @Query("cuisine") cuisine: String? = null,
@@ -170,7 +175,7 @@ interface ApiService {
     @GET("orders")
     suspend fun getOrders(
         @Query("page") page: Int = 1,
-        @Query("per_page") perPage: Int = 20,
+        @Query("per_page") perPage: Int = ApiPaging.ORDERS_PAGE_SIZE,
         @Query("status") status: String? = null,
     ): Response<List<Order>>
 
