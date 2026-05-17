@@ -256,7 +256,6 @@ fun KosherEatsNavHost() {
                     onRestaurantClick = { restaurantId ->
                         navController.navigate(Screen.Restaurant.createRoute(restaurantId))
                     },
-                    viewModel = homeViewModel,
                 )
             }
 

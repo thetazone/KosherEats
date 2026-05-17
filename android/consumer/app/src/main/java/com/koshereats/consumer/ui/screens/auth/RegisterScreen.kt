@@ -5,6 +5,7 @@ import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +35,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,7 +44,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -66,6 +71,8 @@ fun RegisterScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var passwordVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
@@ -86,10 +93,10 @@ fun RegisterScreen(
         unfocusedContainerColor = SurfaceDark,
     )
 
+    Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundBlack)
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -135,7 +142,7 @@ fun RegisterScreen(
                         }
                     )
                 } catch (_: android.content.ActivityNotFoundException) {
-                    // Account settings unavailable on this device (MDM/kiosk/OEM restriction)
+                    scope.launch { snackbarHostState.showSnackbar("Account settings not available on this device") }
                 }
             },
         ) {
@@ -305,5 +312,7 @@ fun RegisterScreen(
         )
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 }

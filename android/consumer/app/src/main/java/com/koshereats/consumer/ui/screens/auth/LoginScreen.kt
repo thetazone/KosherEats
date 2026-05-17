@@ -41,8 +41,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +73,7 @@ fun LoginScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var showCountryPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.sessionState, state.needsPhone) {
         if (state.sessionState == SessionState.Authenticated) {
@@ -152,17 +155,19 @@ fun LoginScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(SurfaceDark)
                     .border(1.dp, SurfaceDarkBorder, RoundedCornerShape(12.dp))
+                    .clickable { showCountryPicker = true }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("🇺🇸", fontSize = 20.sp)
+                Text(countryFlagFor(state.phoneCountryCode), fontSize = 20.sp)
                 Text(
                     text = state.phoneCountryCode,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
                 )
+                Text("▾", color = TextMuted, fontSize = 14.sp)
             }
             OutlinedTextField(
                 value = state.phoneNumber,
@@ -288,6 +293,15 @@ fun LoginScreen(
         Spacer(Modifier.height(48.dp))
     }
     SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+    if (showCountryPicker) {
+        CountryCodePickerSheet(
+            onPick = { country ->
+                viewModel.updatePhoneCountryCode(country.dialCode)
+                showCountryPicker = false
+            },
+            onDismiss = { showCountryPicker = false },
+        )
+    }
     } // end Box
 }
 

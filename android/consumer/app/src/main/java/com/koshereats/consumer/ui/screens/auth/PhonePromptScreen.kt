@@ -52,6 +52,7 @@ fun PhonePromptScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var phone by remember { mutableStateOf("") }
+    var showCountryPicker by remember { mutableStateOf(false) }
     val countryCode = state.phoneCountryCode
 
     LaunchedEffect(state.needsPhone) {
@@ -94,17 +95,19 @@ fun PhonePromptScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(SurfaceDark)
                     .border(1.dp, SurfaceDarkBorder, RoundedCornerShape(12.dp))
+                    .clickable { showCountryPicker = true }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("🇺🇸", fontSize = 20.sp)
+                Text(countryFlagFor(countryCode), fontSize = 20.sp)
                 Text(
                     text = countryCode,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
                 )
+                Text("▾", color = TextMuted, fontSize = 14.sp)
             }
             OutlinedTextField(
                 value = phone,
@@ -169,6 +172,16 @@ fun PhonePromptScreen(
             color = TextMuted,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.clickable { viewModel.skipPhone() },
+        )
+    }
+
+    if (showCountryPicker) {
+        CountryCodePickerSheet(
+            onPick = { country ->
+                viewModel.updatePhoneCountryCode(country.dialCode)
+                showCountryPicker = false
+            },
+            onDismiss = { showCountryPicker = false },
         )
     }
 }
