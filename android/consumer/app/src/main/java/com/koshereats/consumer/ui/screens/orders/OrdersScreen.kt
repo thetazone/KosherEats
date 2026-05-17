@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -40,8 +42,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +69,17 @@ fun OrdersScreen(
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = listState.layoutInfo.totalItemsCount
+            total > 0 && lastVisible >= total - 3 && uiState.hasMore && !uiState.isLoading
+        }.distinctUntilChanged().collect { shouldLoad ->
+            if (shouldLoad) viewModel.loadMore()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -73,7 +89,7 @@ fun OrdersScreen(
         TopAppBar(
             title = {
                 Text(
-                    "Your Orders", 
+                    "Your Orders",
                     style = MaterialTheme.typography.headlineLarge,
                     color = TextWhite
                 )
@@ -81,50 +97,60 @@ fun OrdersScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (uiState.isLoading && uiState.orders.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Orange)
-            }
-        } else if (uiState.orders.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.Receipt,
-                        contentDescription = null,
-                        tint = TextMuted,
-                        modifier = Modifier.size(80.dp),
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No orders yet",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = TextWhite,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Your order history will appear here",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextTertiary,
-                    )
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (uiState.isLoading && uiState.orders.isEmpty() && !uiState.isRefreshing) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Orange)
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                items(uiState.orders, key = { it.id }) { order ->
-                    OrderCard(
-                        order = order,
-                        onClick = { onOrderClick(order.id) },
-                        onReorder = { onReorderClick(order.restaurantId) },
-                    )
+            } else if (uiState.orders.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.Receipt,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(80.dp),
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No orders yet",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = TextWhite,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Your order history will appear here",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextTertiary,
+                        )
+                    }
                 }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    items(uiState.orders, key = { it.id }) { order ->
+                        OrderCard(
+                            order = order,
+                            onClick = { onOrderClick(order.id) },
+                            onReorder = { onReorderClick(order.restaurantId) },
+                        )
+                    }
 
-                if (uiState.isLoading) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                    if (uiState.isLoading) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                            }
                         }
                     }
                 }

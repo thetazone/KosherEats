@@ -54,7 +54,13 @@ class OrdersViewModel @Inject constructor(
         if (pollingJob?.isActive == true) return
         pollingJob = viewModelScope.launch {
             launch {
-                orderEventBus.events.collect { pollSilently() }
+                orderEventBus.events.collect { event ->
+                    if (event.type == "new_order" || event.orderId == null) {
+                        pollSilently()
+                    } else {
+                        refreshSingleOrder(event.orderId)
+                    }
+                }
             }
             var consecutiveFailures = 0
             while (true) {
@@ -73,30 +79,41 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    private suspend fun refreshSingleOrder(orderId: String) {
+        try {
+            val response = apiService.getOrderDetail(orderId)
+            if (response.isSuccessful) {
+                val updated = response.body() ?: return
+                _state.update { s ->
+                    s.copy(
+                        orders = s.orders.map { if (it.id == orderId) updated else it },
+                        selectedOrder = if (s.selectedOrder?.id == orderId) updated else s.selectedOrder,
+                    )
+                }
+            }
+        } catch (_: Exception) { }
+    }
+
     // Returns true on success so the caller can reset the backoff counter.
     private suspend fun pollSilently(): Boolean {
         return try {
             val filterAtStart = _state.value.selectedFilter
             val statusStr = filterAtStart?.name?.lowercase()
             val response = apiService.getOrders(status = statusStr)
-            var succeeded = response.isSuccessful
+            val succeeded = response.isSuccessful
             if (response.isSuccessful) {
                 _state.update { current ->
                     if (current.selectedFilter == filterAtStart) {
-                        current.copy(orders = response.body() ?: current.orders)
+                        val newOrders = response.body() ?: current.orders
+                        val updatedSelected = current.selectedOrder?.id
+                            ?.let { id -> newOrders.find { it.id == id } }
+                        current.copy(
+                            orders = newOrders,
+                            selectedOrder = updatedSelected ?: current.selectedOrder,
+                        )
                     } else {
                         current
                     }
-                }
-            }
-            _state.value.selectedOrder?.id?.let { id ->
-                val detailResponse = apiService.getOrderDetail(id)
-                if (detailResponse.isSuccessful) {
-                    _state.update { current ->
-                        if (current.selectedOrder?.id == id) current.copy(selectedOrder = detailResponse.body()) else current
-                    }
-                } else {
-                    succeeded = false
                 }
             }
             succeeded
@@ -110,7 +127,7 @@ class OrdersViewModel @Inject constructor(
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(
-                isLoading = true,
+                isLoading = it.orders.isEmpty(),
                 error = null,
                 selectedFilter = status,
             ) }
@@ -140,7 +157,7 @@ class OrdersViewModel @Inject constructor(
 
     fun loadOrderDetail(orderId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _state.update { it.copy(error = null) }
             try {
                 val response = apiService.getOrderDetail(orderId)
                 if (response.isSuccessful) {
@@ -168,8 +185,10 @@ class OrdersViewModel @Inject constructor(
         OrderStatus.PENDING to setOf(OrderStatus.ACCEPTED),
         OrderStatus.ACCEPTED to setOf(OrderStatus.PREPARING),
         OrderStatus.PREPARING to setOf(OrderStatus.READY),
+        // Pickup orders: seller marks READY→COMPLETED when customer collects.
+        // Delivery orders: READY is awaiting courier pickup; seller cannot skip to COMPLETED here.
         OrderStatus.READY to setOf(OrderStatus.COMPLETED),
-        OrderStatus.PICKED_UP to setOf(OrderStatus.COMPLETED),
+        // SCHEDULED is intentionally omitted: the backend cron auto-transitions to PENDING at the scheduled time.
     )
 
     fun updateOrderStatus(orderId: String, newStatus: OrderStatus) {
@@ -179,9 +198,10 @@ class OrdersViewModel @Inject constructor(
             ?: _state.value.orders.find { it.id == orderId }
         if (currentOrder != null) {
             val allowed = allowedTransitions[currentOrder.status] ?: emptySet()
+            // Block delivery sellers from completing at READY — the courier must pick up first.
             val blocked = newStatus !in allowed ||
                 (newStatus == OrderStatus.COMPLETED && !currentOrder.isPickup &&
-                    (currentOrder.status == OrderStatus.READY || currentOrder.status == OrderStatus.PICKED_UP))
+                    currentOrder.status == OrderStatus.READY)
             if (blocked) {
                 _state.update { it.copy(error = "Cannot change order from ${currentOrder.status.name.lowercase()} to ${newStatus.name.lowercase()}") }
                 return
@@ -189,9 +209,12 @@ class OrdersViewModel @Inject constructor(
         }
 
         val snapshotOrder = _state.value.selectedOrder
+        val snapshotOrderInList = _state.value.orders.find { it.id == orderId }
         viewModelScope.launch {
             _state.update { it.copy(
                 pendingOrderIds = it.pendingOrderIds + orderId,
+                orders = it.orders.map { o -> if (o.id == orderId) o.copy(status = newStatus) else o },
+                selectedOrder = if (it.selectedOrder?.id == orderId) it.selectedOrder?.copy(status = newStatus) else it.selectedOrder,
                 error = null,
                 updateSuccess = null,
             ) }
@@ -206,7 +229,8 @@ class OrdersViewModel @Inject constructor(
 
                 if (response == null) {
                     _state.update { it.copy(
-                        selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                        orders = if (snapshotOrderInList != null) it.orders.map { o -> if (o.id == orderId) snapshotOrderInList else o } else it.orders,
+                        selectedOrder = if (it.selectedOrder?.id == orderId) snapshotOrder else it.selectedOrder,
                         pendingOrderIds = it.pendingOrderIds - orderId,
                         error = "This order transition is not available",
                     ) }
@@ -217,7 +241,8 @@ class OrdersViewModel @Inject constructor(
                     val updatedOrder = response.body()
                     if (updatedOrder == null) {
                         _state.update { it.copy(
-                            selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                            orders = if (snapshotOrderInList != null) it.orders.map { o -> if (o.id == orderId) snapshotOrderInList else o } else it.orders,
+                            selectedOrder = if (it.selectedOrder?.id == orderId) snapshotOrder else it.selectedOrder,
                             pendingOrderIds = it.pendingOrderIds - orderId,
                             error = "Failed to update order status",
                         ) }
@@ -225,15 +250,16 @@ class OrdersViewModel @Inject constructor(
                     }
                     _state.update { it.copy(
                         selectedOrder = updatedOrder,
-                        orders = it.orders.map {
-                            if (it.id == orderId) updatedOrder else it
+                        orders = it.orders.map { o ->
+                            if (o.id == orderId) updatedOrder else o
                         },
                         pendingOrderIds = it.pendingOrderIds - orderId,
                         updateSuccess = "Order ${updatedOrder.status.displayName.lowercase()}",
                     ) }
                 } else {
                     _state.update { it.copy(
-                        selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                        orders = if (snapshotOrderInList != null) it.orders.map { o -> if (o.id == orderId) snapshotOrderInList else o } else it.orders,
+                        selectedOrder = if (it.selectedOrder?.id == orderId) snapshotOrder else it.selectedOrder,
                         pendingOrderIds = it.pendingOrderIds - orderId,
                         error = "Failed to update order status",
                     ) }
@@ -241,7 +267,8 @@ class OrdersViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
+                    orders = if (snapshotOrderInList != null) it.orders.map { o -> if (o.id == orderId) snapshotOrderInList else o } else it.orders,
+                    selectedOrder = if (it.selectedOrder?.id == orderId) snapshotOrder else it.selectedOrder,
                     pendingOrderIds = it.pendingOrderIds - orderId,
                     error = "Connection error: ${e.localizedMessage}",
                 ) }
@@ -317,16 +344,23 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun refresh() {
+        val filterAtStart = _state.value.selectedFilter
         viewModelScope.launch {
             _state.update { it.copy(isRefreshing = true) }
             try {
-                val statusStr = _state.value.selectedFilter?.name?.lowercase()
+                val statusStr = filterAtStart?.name?.lowercase()
                 val response = apiService.getOrders(status = statusStr)
                 if (response.isSuccessful) {
-                    _state.update { it.copy(
-                        orders = response.body() ?: it.orders,
-                        isRefreshing = false,
-                    ) }
+                    _state.update { current ->
+                        if (current.selectedFilter == filterAtStart) {
+                            current.copy(
+                                orders = response.body() ?: current.orders,
+                                isRefreshing = false,
+                            )
+                        } else {
+                            current.copy(isRefreshing = false)
+                        }
+                    }
                 } else {
                     _state.update { it.copy(isRefreshing = false) }
                 }

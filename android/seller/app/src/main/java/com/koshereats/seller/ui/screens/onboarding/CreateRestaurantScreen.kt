@@ -77,9 +77,9 @@ import com.koshereats.seller.ui.viewmodels.CreateRestaurantViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody
 import okio.BufferedSink
 import okio.source
@@ -606,16 +606,15 @@ private suspend fun uploadCertificate(
         val presignResponse = viewModel.presignUpload("restaurant/certificate", contentType)
             ?: return@withContext null
 
-        val fileSize = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
-        val inputStream = context.contentResolver.openInputStream(uri)
-            ?: return@withContext null
+        val contentLength = context.contentResolver.openFileDescriptor(uri, "r")
+            ?.use { it.statSize } ?: -1L
 
         val client = OkHttpClient()
         val requestBody = object : RequestBody() {
             override fun contentType() = contentType.toMediaType()
-            override fun contentLength() = fileSize
+            override fun contentLength() = contentLength
             override fun writeTo(sink: BufferedSink) {
-                inputStream.use { sink.writeAll(it.source()) }
+                context.contentResolver.openInputStream(uri)?.source()?.use { sink.writeAll(it) }
             }
         }
         val request = Request.Builder()

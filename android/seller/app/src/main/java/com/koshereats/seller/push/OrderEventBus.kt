@@ -7,15 +7,17 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
+data class OrderEvent(val orderId: String?, val type: String?)
+
 @Singleton
 class OrderEventBus @Inject constructor() {
-    private val _events = MutableSharedFlow<Unit>(
+    private val _events = MutableSharedFlow<OrderEvent>(
         extraBufferCapacity = 10,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
-    val events: SharedFlow<Unit> = _events.asSharedFlow()
+    val events: SharedFlow<OrderEvent> = _events.asSharedFlow()
 
-    fun notifyOrderChanged() {
-        _events.tryEmit(Unit)
+    fun notifyOrderChanged(orderId: String? = null, type: String? = null) {
+        _events.tryEmit(OrderEvent(orderId, type))
     }
 }

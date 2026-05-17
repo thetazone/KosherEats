@@ -381,12 +381,12 @@ fun RestaurantDetailScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            Column(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                items(selectedCategory.items, key = { it.id }) { menuItem ->
-                                    HorizontalMenuItemCard(
+                                selectedCategory.items.forEach { menuItem ->
+                                    VerticalMenuItemCard(
                                         menuItem = menuItem,
                                         onClick = { sheetItem = menuItem },
                                     )
@@ -403,7 +403,6 @@ fun RestaurantDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(BackgroundBlack.copy(alpha = topBarAlpha))
-                    .statusBarsPadding()
                     .height(56.dp)
             ) {
                 IconButton(
@@ -653,6 +652,80 @@ fun HorizontalMenuItemCard(
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
         )
+    }
+}
+
+@Composable
+fun VerticalMenuItemCard(
+    menuItem: MenuItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceDark)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                text = menuItem.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (menuItem.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = menuItem.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = menuItem.price.formatPrice(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Box(modifier = Modifier.size(88.dp)) {
+            AsyncImage(
+                model = menuItem.imageUrl,
+                contentDescription = menuItem.name,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop,
+            )
+            if (menuItem.isAvailable) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Orange)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = "Add to cart",
+                        tint = TextWhite,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

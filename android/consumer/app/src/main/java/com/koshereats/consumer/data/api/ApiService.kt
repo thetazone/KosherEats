@@ -170,6 +170,7 @@ interface ApiService {
     @GET("orders")
     suspend fun getOrders(
         @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 20,
         @Query("status") status: String? = null,
     ): Response<List<Order>>
 

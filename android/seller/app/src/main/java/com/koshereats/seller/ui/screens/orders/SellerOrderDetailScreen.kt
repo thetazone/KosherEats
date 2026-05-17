@@ -47,8 +47,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.Instant
 import androidx.compose.ui.Alignment
@@ -179,7 +181,17 @@ fun SellerOrderDetailScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (state.isLoading || order == null) {
+        val minutesAgo by produceState<Long?>(initialValue = null, key1 = order?.createdAt) {
+            val createdAt = order?.createdAt ?: return@produceState
+            while (true) {
+                value = runCatching {
+                    Duration.between(Instant.parse(createdAt), Instant.now()).toMinutes()
+                }.getOrNull()
+                delay(60_000L)
+            }
+        }
+
+        if (order == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -187,12 +199,6 @@ fun SellerOrderDetailScreen(
                 CircularProgressIndicator(color = Orange)
             }
             return
-        }
-
-        val minutesAgo = remember(order.createdAt) {
-            runCatching {
-                Duration.between(Instant.parse(order.createdAt), Instant.now()).toMinutes()
-            }.getOrNull()
         }
 
         LazyColumn(
@@ -605,33 +611,24 @@ private fun OrderActionButtons(
                 }
             }
             OrderStatus.PICKED_UP -> {
-                if (isPickup) {
-                    Button(
-                        onClick = onComplete,
-                        enabled = !isUpdating,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                    ) {
-                        if (isUpdating) {
-                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                        } else {
-                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Mark as Completed", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                } else {
-                    Button(
-                        onClick = {},
-                        enabled = false,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = StatusReady),
-                    ) {
-                        Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Out for delivery…", fontWeight = FontWeight.SemiBold)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Out for Delivery",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StatusAccepted,
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "The courier has picked up this order and is en route to the customer.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
                     }
                 }
             }

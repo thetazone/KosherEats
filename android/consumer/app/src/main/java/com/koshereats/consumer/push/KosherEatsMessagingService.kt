@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -13,13 +12,16 @@ import com.google.firebase.messaging.RemoteMessage
 import com.koshereats.consumer.MainActivity
 import com.koshereats.consumer.R
 import com.koshereats.consumer.data.api.ApiService
+import com.koshereats.consumer.data.api.TokenProvider
 import com.koshereats.consumer.data.models.RegisterDeviceRequest
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 /**
  * FCM receiver for the consumer app. Hilt-injects ApiService so onNewToken
@@ -29,17 +31,26 @@ import kotlinx.coroutines.launch
 class KosherEatsMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var apiService: ApiService
+    @Inject lateinit var tokenProvider: TokenProvider
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
         scope.launch {
+            tokenProvider.awaitToken() ?: return@launch
             try {
                 apiService.registerDevice(RegisterDeviceRequest(token = token))
-            } catch (_: Throwable) {
-                // Non-fatal — PushBootstrap retries on next app open.
+            } catch (t: Throwable) {
+                if (t !is HttpException || t.code() != 401) {
+                    android.util.Log.w("KosherEatsMessagingService", "registerDevice failed: ${t.message}")
+                }
             }
         }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -71,7 +82,6 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 orderId?.let {
                     putExtra("order_id", it)
-                    data = Uri.parse("koshereats://order/$it")
                 }
             }
             val pi = PendingIntent.getActivity(

@@ -27,10 +27,13 @@ import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import android.content.ActivityNotFoundException
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TextButton
@@ -39,6 +42,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -79,6 +85,8 @@ fun OrderTrackingScreen(
     vm: OrderTrackingViewModel = hiltViewModel(),
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(orderId, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -95,6 +103,7 @@ fun OrderTrackingScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -161,12 +170,15 @@ fun OrderTrackingScreen(
                     CourierCard(
                         courier = courier,
                         onChat = { onChat(orderId) },
+                        onDialError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
                     )
                 }
                 AddressCard(address = order.deliveryAddress)
             }
         }
     }
+    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+    } // end Box
 }
 
 @Composable
@@ -284,7 +296,11 @@ private fun phaseSubtext(status: OrderStatus): String = when (status) {
 }
 
 @Composable
-private fun CourierCard(courier: CourierPublic, onChat: () -> Unit) {
+private fun CourierCard(
+    courier: CourierPublic,
+    onChat: () -> Unit,
+    onDialError: (String) -> Unit = {},
+) {
     val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -357,8 +373,12 @@ private fun CourierCard(courier: CourierPublic, onChat: () -> Unit) {
                 if (!courier.phone.isNullOrEmpty()) {
                     IconButton(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${courier.phone}"))
-                            context.startActivity(intent)
+                            try {
+                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${courier.phone}"))
+                                context.startActivity(intent)
+                            } catch (_: ActivityNotFoundException) {
+                                onDialError("Phone dialer not available on this device")
+                            }
                         },
                         modifier = Modifier
                             .size(40.dp)

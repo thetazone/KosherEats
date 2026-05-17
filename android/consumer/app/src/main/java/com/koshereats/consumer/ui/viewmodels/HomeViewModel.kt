@@ -41,6 +41,10 @@ class HomeViewModel @Inject constructor(
     private val repository: RestaurantRepository,
 ) : ViewModel() {
 
+    private companion object {
+        const val PAGE_SIZE = 20
+    }
+
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -95,7 +99,7 @@ class HomeViewModel @Inject constructor(
                                 isLoading = false,
                                 isRefreshing = false,
                                 currentPage = page,
-                                hasMore = result.data.size >= 20,
+                                hasMore = result.data.size >= PAGE_SIZE,
                             )
                         }
                     }

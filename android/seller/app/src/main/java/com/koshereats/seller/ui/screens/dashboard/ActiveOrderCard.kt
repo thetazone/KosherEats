@@ -22,8 +22,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import java.time.Duration
 import java.time.Instant
 import androidx.compose.ui.Modifier
@@ -90,10 +91,13 @@ fun ActiveOrderCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Fulfillment type chip + customer name + elapsed time
-            val minutesAgo = remember(order.createdAt) {
-                runCatching {
-                    Duration.between(Instant.parse(order.createdAt), Instant.now()).toMinutes()
-                }.getOrNull()
+            val minutesAgo by produceState<Long?>(initialValue = null, key1 = order.createdAt) {
+                while (true) {
+                    value = runCatching {
+                        Duration.between(Instant.parse(order.createdAt), Instant.now()).toMinutes()
+                    }.getOrNull()
+                    delay(60_000L)
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),

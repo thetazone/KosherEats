@@ -55,6 +55,7 @@ class DealsViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = "Failed to load deals: ${e.localizedMessage}",
@@ -123,6 +124,7 @@ class DealsViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isCreating = false,
                     error = "Failed to create deal: ${e.localizedMessage}",
@@ -143,6 +145,7 @@ class DealsViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     error = "Failed to deactivate deal: ${e.localizedMessage}",
                 )

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -34,6 +35,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -215,6 +217,38 @@ private fun IntegrationCard(
     onTest: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
+    var showDisconnectConfirm by remember { mutableStateOf(false) }
+
+    if (showDisconnectConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDisconnectConfirm = false },
+            title = { Text("Disconnect POS?", color = TextWhite) },
+            text = {
+                Text(
+                    "This will stop auto-printing orders to your kitchen printer. You can reconnect at any time.",
+                    color = TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDisconnectConfirm = false
+                        onDisconnect()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = ErrorRed),
+                ) {
+                    Text("Disconnect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisconnectConfirm = false }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = SurfaceDark,
+        )
+    }
+
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         shape = RoundedCornerShape(12.dp),
@@ -265,7 +299,7 @@ private fun IntegrationCard(
                     Text("Test", style = MaterialTheme.typography.labelMedium)
                 }
                 OutlinedButton(
-                    onClick = onDisconnect,
+                    onClick = { showDisconnectConfirm = true },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),

@@ -227,7 +227,7 @@ fun DashboardScreen(
                 ) {
                     StatCard(
                         title = "Active Orders",
-                        value = "${state.stats.activeOrders}",
+                        value = "${state.activeOrders.size}",
                         icon = Icons.Filled.TrendingUp,
                         iconTint = StatusAccepted,
                         modifier = Modifier.weight(1f),

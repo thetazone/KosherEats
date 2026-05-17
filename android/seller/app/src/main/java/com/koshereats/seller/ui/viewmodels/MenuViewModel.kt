@@ -197,6 +197,7 @@ class MenuViewModel @Inject constructor(
                 } else {
                     if (createdCategoryId != null) {
                         runCatching { apiService.deleteCategory(createdCategoryId) }
+                        _state.update { it.copy(categories = it.categories.filter { cat -> cat.id != createdCategoryId }) }
                     }
                     _state.update { it.copy(
                         isSaving = false,
@@ -293,18 +294,18 @@ class MenuViewModel @Inject constructor(
                     ) }
                 } else {
                     _state.update { it.copy(
+                        items = it.items.map { existing -> if (existing.id == item.id) existing.copy(isAvailable = item.isAvailable) else existing },
                         pendingItemIds = it.pendingItemIds - item.id,
                         error = "Failed to update availability",
                     ) }
-                    loadMenuItems(_state.value.selectedCategory)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
+                    items = it.items.map { existing -> if (existing.id == item.id) existing.copy(isAvailable = item.isAvailable) else existing },
                     pendingItemIds = it.pendingItemIds - item.id,
                     error = "Failed to update availability",
                 ) }
-                loadMenuItems(_state.value.selectedCategory)
             }
         }
     }

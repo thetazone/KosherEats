@@ -30,7 +30,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -447,12 +446,6 @@ private fun CartDetailView(
                                 accent = true,
                             )
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Delivery fee (est.)", state.deliveryFee)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Service fee (est.)", state.serviceFee)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Tax (est.)", state.tax)
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider(color = SurfaceDarkBorder)
                         Spacer(modifier = Modifier.height(16.dp))
@@ -461,7 +454,7 @@ private fun CartDetailView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Est. Total",
+                                text = "Total",
                                 style = MaterialTheme.typography.titleLarge,
                                 color = TextWhite,
                                 fontWeight = FontWeight.Bold,
@@ -473,6 +466,12 @@ private fun CartDetailView(
                                 fontWeight = FontWeight.Bold,
                             )
                         }
+                        Text(
+                            text = "Delivery, service fees & tax calculated at checkout",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -488,18 +487,13 @@ private fun CartDetailView(
                 .height(60.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Orange),
-            enabled = !state.isPlacingOrder,
         ) {
-            if (state.isPlacingOrder) {
-                CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
-            } else {
-                Text(
-                    text = "Checkout - Est. ${state.total.formatPrice()}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextWhite,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+            Text(
+                text = "Checkout · ${state.total.formatPrice()}",
+                style = MaterialTheme.typography.titleMedium,
+                color = TextWhite,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }

@@ -2,6 +2,20 @@
 
 # App models (Gson uses reflection)
 -keep class com.koshereats.consumer.data.models.** { *; }
+# Belt-and-suspenders: keep any field annotated with @SerializedName even if
+# R8 full mode would otherwise obfuscate the field identifier.
+-keepclassmembers,allowobfuscation,allowshrinking class com.koshereats.consumer.data.models.** {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# Enum constant names must survive R8 so that Gson's valueOf() lookups work
+# (e.g. OrderStatus.valueOf("pending")).  Cover the full consumer package, not
+# only data.models, so enums in viewmodels / ui packages are also protected.
+-keepnames enum com.koshereats.consumer.**
+-keepclassmembers enum com.koshereats.consumer.data.models.** {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
 
 # Retrofit
 -keepattributes Signature
@@ -31,6 +45,7 @@
 -keep class com.google.gson.** { *; }
 -keepattributes EnclosingMethod
 -keep class * implements com.google.gson.TypeAdapterFactory
+-keepclassmembers class * implements com.google.gson.TypeAdapterFactory { <init>(...); }
 -keep class * implements com.google.gson.JsonSerializer
 -keep class * implements com.google.gson.JsonDeserializer
 

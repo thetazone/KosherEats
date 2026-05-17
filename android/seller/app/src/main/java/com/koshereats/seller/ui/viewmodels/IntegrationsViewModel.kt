@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.models.POSIntegration
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +37,7 @@ class IntegrationsViewModel @Inject constructor(
                     _state.value = _state.value.copy(isLoading = false, error = "Failed to load (${response.code()})")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(isLoading = false, error = e.message ?: "Connection error")
             }
         }
@@ -51,6 +53,7 @@ class IntegrationsViewModel @Inject constructor(
                 null
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             _state.value = _state.value.copy(error = "Connection error: ${e.message}")
             null
         }
@@ -63,6 +66,7 @@ class IntegrationsViewModel @Inject constructor(
             if (response.isSuccessful) null
             else "HTTP ${response.code()}"
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             e.message ?: "Connection error"
         }
     }
@@ -77,6 +81,7 @@ class IntegrationsViewModel @Inject constructor(
                     _state.value = _state.value.copy(error = "Disconnect failed (${response.code()})")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(error = "Disconnect failed: ${e.message}")
             }
         }

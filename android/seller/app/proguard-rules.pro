@@ -32,8 +32,9 @@
 # 2026-05-14 — this is the root cause of the seller Google Sign-In bug.
 # Official Retrofit R8 full-mode rule: preserves ApiService interface signatures
 # so generic return types survive shrinking without losing obfuscation elsewhere.
+-keep,allowobfuscation interface com.koshereats.seller.data.api.ApiService
 -if interface * { @retrofit2.http.* <methods>; }
--keep,allowobfuscation,allowshrinking class <1>
+-keep,allowobfuscation,allowshrinking interface <1>
 -keep,allowobfuscation,allowshrinking interface retrofit2.Call
 -keep,allowobfuscation,allowshrinking class retrofit2.Response
 -keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation

@@ -87,7 +87,12 @@ fun AddressPickerSheet(
                     onCancel = {
                         if (addresses.isEmpty()) onDismiss() else showAddForm = false
                     },
-                    onSubmit = onAdd,
+                    onSubmit = { addr ->
+                        onAdd(addr)
+                        // Return to list so the user must select the server-geocoded
+                        // copy (with lat/lng populated) rather than the local object.
+                        showAddForm = false
+                    },
                 )
             } else {
                 addresses.forEach { addr ->

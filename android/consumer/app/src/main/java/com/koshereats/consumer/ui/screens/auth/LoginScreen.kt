@@ -1,5 +1,6 @@
 package com.koshereats.consumer.ui.screens.auth
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -23,7 +24,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,12 +33,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
+import com.koshereats.consumer.ui.viewmodels.SessionState
 
 @Composable
 fun LoginScreen(
@@ -63,9 +69,11 @@ fun LoginScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
-        if (state.isLoggedIn && !state.isGuest) {
+    LaunchedEffect(state.sessionState, state.needsPhone) {
+        if (state.sessionState == SessionState.Authenticated) {
             if (state.needsPhone) onPhoneNeeded() else onLoginSuccess()
         }
     }
@@ -75,6 +83,7 @@ fun LoginScreen(
         if (state.otpSent) onPhoneCodeSent()
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -153,12 +162,6 @@ fun LoginScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
-                )
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = TextMuted,
-                    modifier = Modifier.size(18.dp),
                 )
             }
             OutlinedTextField(
@@ -243,11 +246,15 @@ fun LoginScreen(
 
         TextButton(
             onClick = {
-                context.startActivity(
-                    Intent(Settings.ACTION_ADD_ACCOUNT).apply {
-                        putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
-                    }
-                )
+                try {
+                    context.startActivity(
+                        Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                            putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                        }
+                    )
+                } catch (_: ActivityNotFoundException) {
+                    scope.launch { snackbarHostState.showSnackbar("Account settings not available on this device") }
+                }
             },
         ) {
             Text(
@@ -280,6 +287,8 @@ fun LoginScreen(
 
         Spacer(Modifier.height(48.dp))
     }
+    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+    } // end Box
 }
 
 @Composable

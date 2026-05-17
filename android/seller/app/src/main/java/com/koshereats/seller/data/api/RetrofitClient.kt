@@ -19,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -45,6 +44,8 @@ object PrefsKeys {
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     @Volatile var cachedToken: String? = null
     @Volatile var cachedRefreshToken: String? = null
     @Volatile var cachedRestaurantId: String? = null
@@ -62,14 +63,13 @@ object NetworkModule {
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
     ): OkHttpClient {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        scope.launch {
+        appScope.launch {
             context.dataStore.data.collect { prefs ->
                 cachedToken = prefs[PrefsKeys.AUTH_TOKEN]
                 cachedRefreshToken = prefs[PrefsKeys.REFRESH_TOKEN]
             }
         }
-        scope.launch {
+        appScope.launch {
             context.dataStore.data.collect { prefs ->
                 cachedRestaurantId = prefs[PrefsKeys.RESTAURANT_ID]
             }
@@ -149,6 +149,7 @@ private class TokenAuthenticator(
 ) : Authenticator {
 
     private val lock = Any()
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -183,7 +184,9 @@ private class TokenAuthenticator(
 
             NetworkModule.cachedToken = newTokens.first
             NetworkModule.cachedRefreshToken = newTokens.second
-            runBlocking {
+            // Persist asynchronously — cachedToken is the runtime source of truth,
+            // so blocking OkHttp dispatcher threads for a DataStore write is unnecessary.
+            appScope.launch {
                 context.dataStore.edit { prefs ->
                     prefs[PrefsKeys.AUTH_TOKEN] = newTokens.first
                     prefs[PrefsKeys.REFRESH_TOKEN] = newTokens.second
@@ -219,6 +222,12 @@ private class TokenAuthenticator(
     private fun signalSessionExpired() {
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
+        NetworkModule.cachedRestaurantId = null
+        // Clear DataStore immediately so a cold-start after force-quit cannot
+        // re-hydrate the stale tokens and land the seller on the dashboard.
+        appScope.launch {
+            context.dataStore.edit { it.clear() }
+        }
         NetworkModule.sessionExpired.value = true
     }
 

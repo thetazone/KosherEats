@@ -14,13 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -55,7 +52,7 @@ fun PhonePromptScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var phone by remember { mutableStateOf("") }
-    val countryCode = "+1"
+    val countryCode = state.phoneCountryCode
 
     LaunchedEffect(state.needsPhone) {
         if (!state.needsPhone && state.isLoggedIn) onComplete()
@@ -107,12 +104,6 @@ fun PhonePromptScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
-                )
-                Icon(
-                    Icons.Filled.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = TextMuted,
-                    modifier = Modifier.size(18.dp),
                 )
             }
             OutlinedTextField(

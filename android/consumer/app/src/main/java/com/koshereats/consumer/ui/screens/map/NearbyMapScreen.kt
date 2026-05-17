@@ -63,20 +63,20 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.koshereats.consumer.data.models.Restaurant
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.ui.theme.*
-import com.koshereats.consumer.ui.viewmodels.HomeViewModel
+import com.koshereats.consumer.ui.viewmodels.NearbyViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission")
 @Composable
 fun NearbyMapScreen(
     onRestaurantClick: (String) -> Unit,
-    viewModel: HomeViewModel = hiltViewModel(),
+    viewModel: NearbyViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
-    val restaurants = state.allRestaurants.filter { it.address.latitude != 0.0 && it.address.longitude != 0.0 }
+    val restaurants = state.restaurants.filter { it.address.latitude != 0.0 && it.address.longitude != 0.0 }
     val selected = restaurants.firstOrNull { it.id == selectedId }
 
     val cameraPositionState = rememberCameraPositionState {
@@ -104,6 +104,10 @@ fun NearbyMapScreen(
                     15f, // ~10 cross streets visible — matches iOS reference
                 )
                 centeredOnUser = true
+                viewModel.loadNearby(loc.latitude, loc.longitude)
+            } else {
+                // lastLocation null on emulators/fresh installs — load with default viewport center
+                viewModel.loadNearby(40.7128, -74.0060)
             }
         }
     }
@@ -114,7 +118,7 @@ fun NearbyMapScreen(
         val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         locationGranted = granted
-        if (granted) centerOnUser()
+        if (granted) centerOnUser() else viewModel.loadNearby(40.7128, -74.0060)
     }
 
     LaunchedEffect(Unit) {

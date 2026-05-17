@@ -1,54 +1,70 @@
 # KosherEats Polish — Round 2
-**Max severity found:** 7
-**Issues found:** 12
-**Fixes attempted:** 12
-**Fixes succeeded:** 6
+**Max severity found:** 9
+**Issues found:** 16
+**Fixes attempted:** 16
+**Fixes succeeded:** 16
 
 ## Issues & Fixes
-- **[7/10] [android_consumer] SchedulePickerSheet reads DatePicker millis as local-time → wrong day in Americas** — FAILED
-  SchedulePickerSheet.kt:144-149 builds the scheduled LocalDateTime via `Instant.ofEpochMilli(chosenMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-  > not reported by batch agent
+- **[9/10] [android_consumer] Blocking runBlocking in OkHttp Auth Interceptor** — FIXED
+  RetrofitClient.kt's provideAuthInterceptor uses `runBlocking { tokenProvider.awaitToken() }` to fetch the auth token synchronously. OkHttp interceptor
+  > Removed runBlocking fallback entirely — interceptor now uses tokenProvider.token (the @Volatile cache) directly, proceed
 
-- **[7/10] [android_seller] Order action success is never surfaced to the user** — FIXED
-  OrdersViewModel.updateOrderStatus (line 230) and doOrderApiCall (line 296) set state.updateSuccess with user-facing text like "Order accepted", "Order
-  > Added LaunchedEffect(state.updateSuccess) toast in SellerOrderDetailScreen, and LaunchedEffect(state.error) + LaunchedEf
+- **[8/10] [android_consumer] CheckoutViewModel loses cart on process death after payment redirect** — FIXED
+  CheckoutViewModel guards bootstrap() with `if (_bootstrapped) return` (~line 114) and persists cart JSON into SavedStateHandle via Gson (~lines 128-13
+  > Dropped KEY_CART_JSON and full-cart SavedStateHandle persistence; bootstrap() now only saves restaurantId/dealId and ski
 
-- **[7/10] [android_seller] pollSilently overwrites cleared selectedOrder after back-navigation** — FIXED
-  OrdersViewModel.pollSilently (lines 92-99) captures selectedOrder.id before the getOrderDetail call but does not re-validate before writing the respon
-  > Changed the _state.update in pollSilently to guard with 'if (current.selectedOrder?.id == id)' so an in-flight detail re
+- **[7/10] [android_consumer] Insufficient keep rules for Gson reflection / enums in release builds** — FIXED
+  proguard-rules.pro keeps `com.google.gson.**` and the ApiService interface (`-keep,allowobfuscation`), but does not preserve model field names or enum
+  > Added @SerializedName keepclassmembers rule, broadened enum keepnames to com.koshereats.consumer.**, and added TypeAdapt
 
-- **[7/10] [android_seller] pollSilently can repopulate selectedOrder after the detail screen disposes** — FIXED
-  In OrdersViewModel.pollSilently (lines 90-97), the in-flight `apiService.getOrderDetail(id)` doesn't re-check that the detail screen is still mounted.
-  > Same fix as Issue 2 — the id-equality guard in pollSilently's _state.update block prevents the in-flight response from r
+- **[7/10] [android_seller] Onboarding price-to-cents truncates instead of rounds (silent undercharges)** — FIXED
+  OnboardingViewModel.submit at line 204 computes priceCents as ((priceDollars.toDoubleOrNull() ?: 0.0) * 100).toInt(). Because IEEE-754 cannot represen
+  > Added `import kotlin.math.roundToInt` and changed `.toInt()` to `.roundToInt()` on OnboardingViewModel.kt:211.
 
-- **[7/10] [android_seller] Deal expiry mixes UTC calendar date with system-zone time-of-day → wrong-day expiries** — FIXED
-  CreateDealScreen.kt:118-124 stores `expiresAtMillis` as today's *UTC* midnight; the DatePicker's `selectableDates` lower bound is also UTC (line 511).
-  > Changed both 'today' computations (initial expiresAtMillis and todayMillis for selectableDates lower bound) to derive th
+- **[7/10] [android_seller] Session-expired path leaves stale refresh tokens persisted in DataStore** — FIXED
+  TokenAuthenticator.signalSessionExpired (RetrofitClient.kt:221-225) nulls the in-memory cachedToken/cachedRefreshToken and emits sessionExpired = true
+  > In `signalSessionExpired()` (RetrofitClient.kt), added `appScope.launch { context.dataStore.edit { it.clear() } }` so Da
 
-- **[6/10] [android_consumer] Auth-gated composables pop the user during rehydration on process death** — FAILED
-  NavGraph.kt:316-319, 344-347, and 385-388 (OrderConfirmation, OrderTracking, Chat) guard with `if (authState.sessionState != SessionState.Authenticate
-  > not reported by batch agent
+- **[6/10] [android_consumer] Chat message ordering breaks for optimistic sends** — FIXED
+  ChatViewModel merges optimistic local messages with server-fetched ones by `associateBy { it.id }` and then `sortedBy { it.createdAt }` (~lines 99-101
+  > Fixed sort to push empty-createdAt messages to the tail; added optimistic insert with Instant.now() timestamp, 30s withT
 
-- **[6/10] [android_seller] createMenuItem leaks orphan empty categories on failure and swallows createCategory errors** — FIXED
-  MenuViewModel.createMenuItem (lines 147-160) calls apiService.createCategory(...) but never checks catResp.isSuccessful — it only reads catResp.body()
-  > Added catResp.isSuccessful check that surfaces the HTTP code; added createdCategoryId tracking so a newly created catego
+- **[6/10] [android_consumer] TokenAuthenticator can dispatch multiple concurrent refreshes / logouts** — FIXED
+  RetrofitClient.kt:189-225: the `synchronized(lock)` block guards a single instance but the lock instance is a fresh `Any()` per Authenticator — and Au
+  > Added @Volatile logoutDispatched flag; concurrent threads entering after a failed refresh return null without re-calling
 
-- **[6/10] [android_seller] toggleAvailability rollback can leave UI desynced under concurrent updates** — FIXED
-  MenuViewModel.toggleAvailability rollback (lines 268-272 / 277-282) only reverts an item if `it.isAvailable == newAvailability`. If a quick second tap
-  > Replaced the conditional rollback in both the error and exception paths with a loadMenuItems() call that reloads server 
+- **[6/10] [android_consumer] Cart is not persisted across process death** — FIXED
+  CartViewModel only holds state in `MutableStateFlow` — no SavedStateHandle, no DataStore. When the app is killed (low memory, Stripe 3DS bounce, user 
+  > Injected DataStore<Preferences> into CartViewModel; restores CartSnapshot (carts + activeRestaurantId) on init and persi
 
-- **[5/10] [android_consumer] register() collapses every server error to 'Registration failed'** — FAILED
-  AuthViewModel.kt:228-233 sets a single hard-coded `error = "Registration failed"` for any non-2xx response from `/auth/register`. The login() path was
-  > not reported by batch agent
+- **[6/10] [android_seller] Certificate uploads OOM on large photos and bypass the singleton OkHttp client** — FIXED
+  uploadCertificate (CreateRestaurantScreen.kt:599-630) and uploadCertificateSettings (RestaurantSettingsScreen.kt:488-519) both call contentResolver.op
+  > Removed `readBytes()` in both upload functions; replaced with `openFileDescriptor` for content length and `openInputStre
 
-- **[5/10] [android_consumer] Multi-cert filter UI lies: only first certification is sent** — FAILED
-  HomeScreen.kt:178-179 builds the filter badge as `+ uiState.filterCertifications.size`, implying multi-select. KosherFilterSheet returns a Set<KosherC
-  > not reported by batch agent
+- **[6/10] [android_seller] MenuViewModel.createMenuItem rollback deletes server-side category but leaves it in state.categories** — FIXED
+  MenuViewModel.kt:198-200: when the item POST fails after auto-creating a category, it calls `apiService.deleteCategory(createdCategoryId)` server-side
+  > After the server-side `deleteCategory` rollback call, added `_state.update { it.copy(categories = it.categories.filter {
 
-- **[5/10] [android_consumer] Pagination dies permanently after any error** — FAILED
-  HomeViewModel.loadRestaurants sets `hasMore = false` on Resource.Error (line 103). Any transient 5xx/timeout permanently disables 'load more' until th
-  > not reported by batch agent
+- **[6/10] [android_seller] OTP length hardcoded to 4 digits — silently wrong if backend issues 6-digit codes** — FIXED
+  AuthViewModel.kt:274 caps OTP entry at 4 digits and AuthViewModel.kt:340 hard-rejects anything other than length 4, plus PhoneLoginScreen.kt:67 auto-v
+  > Added `companion object { const val OTP_CODE_LENGTH = 6 }` to AuthViewModel; replaced all magic `4` literals in `updateO
 
-- **[5/10] [android_consumer] FCM PendingIntent shared across notifications** — FAILED
-  KosherEatsMessagingService.showNotification uses requestCode=0 and FLAG_UPDATE_CURRENT on every PendingIntent.getActivity call. The system keys Pendin
-  > not reported by batch agent
+- **[6/10] [android_seller] DealsViewModel and IntegrationsViewModel swallow CancellationException — breaks structured concurrency** — FIXED
+  DealsViewModel.kt:57-62, 125-131, 145-150 and IntegrationsViewModel.kt:38-40, 53-56, 65-67, 79-81 all catch generic Exception without `if (e is Cancel
+  > Added `if (e is CancellationException) throw e` in all 3 catch blocks in DealsViewModel, all 4 catch blocks in Integrati
+
+- **[6/10] [android_seller] OnboardingViewModel.submit posts categories+items without pinning the new restaurant_id** — FIXED
+  OnboardingViewModel.kt:190-220: after createRestaurant succeeds, the code loops `createCategory(...)` and `createMenuItemWithCategory(...)` immediatel
+  > After successful `createRestaurant`, added `restResponse.body()?.id?.let { NetworkModule.cachedRestaurantId = it }` so t
+
+- **[5/10] [android_consumer] Push deep link declared in code but no manifest intent-filter** — FIXED
+  KosherEatsMessagingService.kt:74 builds `data = Uri.parse("koshereats://order/$it")` on the notification PendingIntent, but AndroidManifest.xml has ze
+  > Removed the misleading data = Uri.parse("koshereats://order/$it") line; the order_id String extra that actually drives n
+
+- **[5/10] [android_consumer] Phone-call and add-account intents are not guarded against ActivityNotFoundException** — FIXED
+  OrderTrackingScreen.kt:359-362 calls `context.startActivity(Intent(ACTION_DIAL, tel:...))` and LoginScreen.kt:246-250 launches `Intent(Settings.ACTION
+  > Wrapped both startActivity calls in try/catch(ActivityNotFoundException); added SnackbarHostState + SnackbarHost (via Bo
+
+- **[5/10] [android_seller] DashboardViewModel races between FCM and timer polls via non-atomic _state.value = _state.value.copy(...)** — FIXED
+  DashboardViewModel.startPolling (line 47-60) launches the FCM events collector and the backoff timer loop as two children of pollingJob, both calling 
+  > Added `import kotlinx.coroutines.flow.update` and replaced every `_state.value = _state.value.copy(...)` in loadDashboar

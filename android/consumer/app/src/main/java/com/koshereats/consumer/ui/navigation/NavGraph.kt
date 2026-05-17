@@ -2,6 +2,10 @@ package com.koshereats.consumer.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -191,30 +195,30 @@ fun KosherEatsNavHost() {
             enterTransition = {
                 val fromIdx = BottomNavItem.entries.indexOfFirst { it.route == initialState.destination.route }
                 val toIdx = BottomNavItem.entries.indexOfFirst { it.route == targetState.destination.route }
-                val dir = if (fromIdx >= 0 && toIdx >= 0) {
-                    if (toIdx > fromIdx) AnimatedContentTransitionScope.SlideDirection.Start
-                    else AnimatedContentTransitionScope.SlideDirection.End
+                if (fromIdx >= 0 && toIdx >= 0) {
+                    val dir = if (toIdx > fromIdx) AnimatedContentTransitionScope.SlideDirection.Start
+                              else AnimatedContentTransitionScope.SlideDirection.End
+                    slideIntoContainer(dir, tween(300))
                 } else {
-                    AnimatedContentTransitionScope.SlideDirection.Start
+                    fadeIn(tween(300)) + scaleIn(initialScale = 0.96f, animationSpec = tween(300))
                 }
-                slideIntoContainer(dir, tween(300))
             },
             exitTransition = {
                 val fromIdx = BottomNavItem.entries.indexOfFirst { it.route == initialState.destination.route }
                 val toIdx = BottomNavItem.entries.indexOfFirst { it.route == targetState.destination.route }
-                val dir = if (fromIdx >= 0 && toIdx >= 0) {
-                    if (toIdx > fromIdx) AnimatedContentTransitionScope.SlideDirection.Start
-                    else AnimatedContentTransitionScope.SlideDirection.End
+                if (fromIdx >= 0 && toIdx >= 0) {
+                    val dir = if (toIdx > fromIdx) AnimatedContentTransitionScope.SlideDirection.Start
+                              else AnimatedContentTransitionScope.SlideDirection.End
+                    slideOutOfContainer(dir, tween(300))
                 } else {
-                    AnimatedContentTransitionScope.SlideDirection.Start
+                    fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150))
                 }
-                slideOutOfContainer(dir, tween(300))
             },
             popEnterTransition = {
-                slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300))
+                fadeIn(tween(300)) + scaleIn(initialScale = 0.96f, animationSpec = tween(300))
             },
             popExitTransition = {
-                slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(300))
+                fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150))
             },
         ) {
             composable(Screen.Home.route) {
@@ -511,20 +515,9 @@ fun KosherEatsNavHost() {
                     },
                     onSignOutClick = {
                         authViewModel.logout()
-                        BottomNavItem.entries.forEach { navController.clearBackStack(it.route) }
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
                     },
                     onDeleteAccountClick = {
-                        authViewModel.deleteAccount { success ->
-                            if (success) {
-                                BottomNavItem.entries.forEach { navController.clearBackStack(it.route) }
-                                navController.navigate(Screen.Login.route) {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            }
-                        }
+                        authViewModel.deleteAccount { _ -> }
                     },
                     onEditProfileClick = {
                         navController.navigate(Screen.EditProfile.route)

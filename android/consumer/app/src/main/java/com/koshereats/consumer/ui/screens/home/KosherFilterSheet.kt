@@ -144,7 +144,7 @@ fun KosherFilterSheet(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "Select any that work for you",
+                        text = "Select one that works for you",
                         color = TextTertiary,
                         fontSize = 14.sp,
                     )

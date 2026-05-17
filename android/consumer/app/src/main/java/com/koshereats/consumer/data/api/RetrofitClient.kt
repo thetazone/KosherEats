@@ -19,7 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Qualifier
 import okhttp3.Authenticator
 import okhttp3.Interceptor
@@ -123,7 +122,11 @@ object NetworkModule {
     @Singleton
     fun provideAuthInterceptor(tokenProvider: TokenProvider): Interceptor {
         return Interceptor { chain ->
-            val token = runBlocking { tokenProvider.awaitToken() }
+            // Use the @Volatile cache only — never block an OkHttp thread waiting for
+            // DataStore. If the token is not yet loaded, the request proceeds without
+            // an Authorization header; the TokenAuthenticator's 401 retry path will
+            // attach the correct token once DataStore has initialized.
+            val token = tokenProvider.token
             val request = chain.request().newBuilder().apply {
                 addHeader("Content-Type", "application/json")
                 addHeader("Accept", "application/json")
@@ -181,6 +184,10 @@ private class TokenAuthenticator(
 
     private val lock = Any()
 
+    // Tracks whether a logout was already dispatched so concurrent threads
+    // waiting on the lock don't emit duplicate LOGOUT events.
+    @Volatile private var logoutDispatched = false
+
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
@@ -197,6 +204,13 @@ private class TokenAuthenticator(
         if (response.request.header("Authorization") == null) return null
 
         synchronized(lock) {
+            // If another thread already dispatched logout, suppress duplicate events.
+            // But if new tokens have arrived since (user re-logged in), reset and proceed.
+            if (logoutDispatched) {
+                if (tokenProvider.token == null) return null
+                logoutDispatched = false  // New credentials present — allow normal refresh.
+            }
+
             val currentToken = tokenProvider.token
             val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
 
@@ -206,16 +220,24 @@ private class TokenAuthenticator(
                     .build()
             }
 
+            // clearTokens() sets both token and refreshToken to null.  A
+            // concurrent thread that enters here after clearTokens() would see
+            // null refreshToken AND null token — skip the duplicate logout.
             val refreshToken = tokenProvider.refreshToken ?: run {
+                if (tokenProvider.token == null) return null
+                logoutDispatched = true
                 sessionManager.signalLogout()
                 return null
             }
 
             val newTokens = tryRefresh(refreshToken) ?: run {
+                tokenProvider.clearTokens()
+                logoutDispatched = true
                 sessionManager.signalLogout()
                 return null
             }
 
+            logoutDispatched = false
             tokenProvider.persistNewTokens(newTokens.first, newTokens.second)
 
             return response.request.newBuilder()

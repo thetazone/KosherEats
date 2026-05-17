@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class OrdersUiState(
     val orders: List<Order> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val currentPage: Int = 1,
     val hasMore: Boolean = true,
@@ -25,6 +26,10 @@ data class OrdersUiState(
 class OrdersViewModel @Inject constructor(
     private val repository: RestaurantRepository,
 ) : ViewModel() {
+
+    private companion object {
+        const val PAGE_SIZE = 20
+    }
 
     private val _uiState = MutableStateFlow(OrdersUiState())
     val uiState: StateFlow<OrdersUiState> = _uiState.asStateFlow()
@@ -46,13 +51,14 @@ class OrdersViewModel @Inject constructor(
                             state.copy(
                                 orders = newItems,
                                 isLoading = false,
+                                isRefreshing = false,
                                 currentPage = page,
-                                hasMore = result.data.size >= 50,
+                                hasMore = result.data.size >= PAGE_SIZE,
                             )
                         }
                     }
                     is Resource.Error -> {
-                        _uiState.update { it.copy(isLoading = false, error = result.message) }
+                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message) }
                     }
                 }
             }
@@ -60,6 +66,13 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun refresh() {
+        _uiState.update { it.copy(isRefreshing = true) }
         loadOrders(page = 1)
+    }
+
+    fun loadMore() {
+        val state = _uiState.value
+        if (state.isLoading || !state.hasMore) return
+        loadOrders(page = state.currentPage + 1)
     }
 }

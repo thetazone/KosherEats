@@ -391,10 +391,11 @@ fun AddressPickerSheet(
 
                 filteredAddresses.take(8).forEach { address ->
                     val isSelected = selectedAddress?.id == address.id
+                    val hasCoords = address.latitude != 0.0 || address.longitude != 0.0
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
+                            .clickable(enabled = hasCoords) {
                                 onAddressSelected(address)
                                 onDismiss()
                             }
@@ -422,7 +423,7 @@ fun AddressPickerSheet(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = address.label.ifBlank { address.streetAddress },
-                                color = TextWhite,
+                                color = if (hasCoords) TextWhite else TextMuted,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 1,
@@ -433,6 +434,13 @@ fun AddressPickerSheet(
                                     color = TextTertiary,
                                     fontSize = 13.sp,
                                     maxLines = 1,
+                                )
+                            }
+                            if (!hasCoords) {
+                                Text(
+                                    text = "Verifying location…",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
                                 )
                             }
                         }

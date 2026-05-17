@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TextButton
@@ -128,11 +128,15 @@ fun RegisterScreen(
 
         TextButton(
             onClick = {
-                context.startActivity(
-                    Intent(Settings.ACTION_ADD_ACCOUNT).apply {
-                        putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
-                    }
-                )
+                try {
+                    context.startActivity(
+                        Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                            putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                        }
+                    )
+                } catch (_: android.content.ActivityNotFoundException) {
+                    // Account settings unavailable on this device (MDM/kiosk/OEM restriction)
+                }
             },
         ) {
             Text(
@@ -149,14 +153,14 @@ fun RegisterScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Divider(modifier = Modifier.weight(1f), color = SurfaceDarkBorder)
+            HorizontalDivider(modifier = Modifier.weight(1f), color = SurfaceDarkBorder)
             Text(
                 text = "or",
                 color = TextMuted,
                 fontSize = 14.sp,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
-            Divider(modifier = Modifier.weight(1f), color = SurfaceDarkBorder)
+            HorizontalDivider(modifier = Modifier.weight(1f), color = SurfaceDarkBorder)
         }
 
         Spacer(modifier = Modifier.height(24.dp))

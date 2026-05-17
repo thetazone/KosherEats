@@ -27,7 +27,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        intent?.getStringExtra("order_id")?.let { DeepLinkState.pendingOrderId.value = it }
+        intent?.getStringExtra("order_id")?.let {
+            DeepLinkState.pendingOrderId.value = it
+            intent.removeExtra("order_id")
+        }
         setContent {
             KosherEatsTheme {
                 Surface(
@@ -44,7 +47,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra("order_id")?.let { DeepLinkState.pendingOrderId.value = it }
+        intent.getStringExtra("order_id")?.let {
+            DeepLinkState.pendingOrderId.value = it
+            intent.removeExtra("order_id")
+        }
     }
 }
 

@@ -39,6 +39,7 @@ data class AuthUiState(
     val sessionState: SessionState = SessionState.Unknown,
     val user: User? = null,
     val isRehydrating: Boolean = false,
+    val isSessionStale: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
     val loginEmail: String = "",
@@ -59,7 +60,7 @@ data class AuthUiState(
     val phoneIsVerifying: Boolean = false,
     val needsPhone: Boolean = false,
 ) {
-    val isLoggedIn: Boolean get() = sessionState != SessionState.LoggedOut
+    val isLoggedIn: Boolean get() = sessionState == SessionState.Authenticated || sessionState == SessionState.Guest
     val isGuest: Boolean get() = sessionState == SessionState.Guest
 }
 
@@ -96,7 +97,7 @@ class AuthViewModel @Inject constructor(
                     when {
                         response.isSuccessful -> {
                             _uiState.update {
-                                it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, user = response.body())
+                                it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = false, user = response.body())
                             }
                             // Resumed session — refresh the FCM token on the
                             // backend in case it rotated since last launch.
@@ -104,16 +105,16 @@ class AuthViewModel @Inject constructor(
                         }
                         response.code() == 401 -> {
                             clearAuth()
-                            _uiState.update { it.copy(sessionState = SessionState.LoggedOut, isRehydrating = false) }
+                            _uiState.update { it.copy(sessionState = SessionState.LoggedOut, isRehydrating = false, isSessionStale = false) }
                         }
-                        // 5xx or other transient error: keep session alive but
-                        // leave user=null so ProfileScreen shows a retry UI.
-                        else -> _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false) }
+                        // 5xx or other transient error: keep session alive but mark stale
+                        // so the UI can surface a retry banner. user=null until refresh succeeds.
+                        else -> _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = true) }
                     }
                 } catch (e: Exception) {
-                    // Network/IO error: transient, keep session alive but
-                    // leave user=null so ProfileScreen shows a retry UI.
-                    _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false) }
+                    // Network/IO error: transient, keep session alive but mark stale
+                    // so the UI can surface a retry banner via retryAuth().
+                    _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = true) }
                 }
             } else {
                 _uiState.update { it.copy(sessionState = SessionState.LoggedOut) }

@@ -1,19 +1,25 @@
 package com.koshereats.consumer.ui.viewmodels
 
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.models.*
-import com.koshereats.consumer.data.repository.Resource
-import com.koshereats.consumer.data.repository.RestaurantRepository
 import com.koshereats.consumer.data.session.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import javax.inject.Inject
 
@@ -32,9 +38,6 @@ import javax.inject.Inject
 data class CartUiState(
     val carts: Map<String, Cart> = emptyMap(),
     val activeRestaurantId: String? = null,
-    val deliveryFee: Int = 399,
-    val serviceFee: Int = 249,
-    val taxRate: Double = 0.08875,
     val tip: Int = 0,
     /**
      * Scheduled delivery time. `null` = deliver ASAP (the default). Any
@@ -44,8 +47,6 @@ data class CartUiState(
      */
     val scheduledFor: java.time.LocalDateTime? = null,
     val pendingDealItem: Deal? = null,
-    val isPlacingOrder: Boolean = false,
-    val orderPlaced: Order? = null,
     val error: String? = null,
 ) {
     /** The currently-active single restaurant cart (for checkout / detail view). */
@@ -53,8 +54,7 @@ data class CartUiState(
 
     val subtotal: Int get() = cart.subtotal
     val discount: Int get() = cart.discount
-    val tax: Int get() = (cart.discountedSubtotal * taxRate).roundToInt()
-    val total: Int get() = cart.discountedSubtotal + deliveryFee + serviceFee + tax + tip
+    val total: Int get() = cart.discountedSubtotal + tip
     val isEmpty: Boolean get() = cart.items.isEmpty()
     val itemCount: Int get() = cart.itemCount
     val appliedDeal: Deal? get() = cart.appliedDeal
@@ -69,11 +69,23 @@ data class CartUiState(
     val hasMultipleCarts: Boolean get() = allCarts.size > 1
 }
 
+private data class CartSnapshot(
+    val carts: Map<String, Cart>,
+    val activeRestaurantId: String?,
+)
+
 @HiltViewModel
 class CartViewModel @Inject constructor(
-    private val repository: RestaurantRepository,
     private val sessionManager: SessionManager,
+    private val dataStore: DataStore<Preferences>,
 ) : ViewModel() {
+
+    private companion object {
+        val KEY_CART_SNAPSHOT = stringPreferencesKey("cart_vm_snapshot")
+    }
+
+    private val gson = Gson()
+    private val snapshotType = object : TypeToken<CartSnapshot>() {}.type
 
     private val _uiState = MutableStateFlow(CartUiState())
     val uiState: StateFlow<CartUiState> = _uiState.asStateFlow()
@@ -81,6 +93,37 @@ class CartViewModel @Inject constructor(
     private val logoutJob: Job = viewModelScope.launch {
         sessionManager.logoutEvent.collect {
             _uiState.value = CartUiState()
+            try { dataStore.edit { it.remove(KEY_CART_SNAPSHOT) } } catch (_: Exception) { }
+        }
+    }
+
+    init {
+        viewModelScope.launch {
+            try {
+                val json = dataStore.data.first()[KEY_CART_SNAPSHOT]
+                if (!json.isNullOrEmpty()) {
+                    val snap: CartSnapshot? = try {
+                        gson.fromJson(json, snapshotType)
+                    } catch (_: Exception) { null }
+                    snap?.let { s ->
+                        _uiState.update { it.copy(carts = s.carts, activeRestaurantId = s.activeRestaurantId) }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    private val persistMutex = Mutex()
+
+    private fun persistSnapshot() {
+        viewModelScope.launch {
+            try {
+                persistMutex.withLock {
+                    val s = _uiState.value
+                    val json = gson.toJson(CartSnapshot(s.carts, s.activeRestaurantId))
+                    dataStore.edit { it[KEY_CART_SNAPSHOT] = json }
+                }
+            } catch (_: Exception) { }
         }
     }
 
@@ -139,6 +182,7 @@ class CartViewModel @Inject constructor(
                 carts = state.carts + (restaurantId to updatedCart),
             )
         }
+        persistSnapshot()
     }
 
     fun removeItem(cartItemId: String) {
@@ -149,6 +193,7 @@ class CartViewModel @Inject constructor(
             }.filterValues { it.items.isNotEmpty() }
             state.copy(carts = updatedCarts)
         }
+        persistSnapshot()
     }
 
     fun updateQuantity(cartItemId: String, newQuantity: Int) {
@@ -166,6 +211,7 @@ class CartViewModel @Inject constructor(
             }
             state.copy(carts = updatedCarts)
         }
+        persistSnapshot()
     }
 
     fun updateTip(amount: Int) {
@@ -180,6 +226,7 @@ class CartViewModel @Inject constructor(
     /** Clear all carts. */
     fun clearCart() {
         _uiState.value = CartUiState()
+        persistSnapshot()
     }
 
     /** Clear a specific restaurant's cart. */
@@ -187,11 +234,13 @@ class CartViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(carts = state.carts - restaurantId)
         }
+        persistSnapshot()
     }
 
     /** Set which restaurant cart is active for checkout / detail viewing. */
     fun setActiveRestaurant(restaurantId: String) {
         _uiState.update { it.copy(activeRestaurantId = restaurantId) }
+        persistSnapshot()
     }
 
     /**
@@ -212,6 +261,7 @@ class CartViewModel @Inject constructor(
                 carts = state.carts + (deal.restaurantId to existing.copy(appliedDeal = deal)),
             )
         }
+        persistSnapshot()
     }
 
     /** Remove the deal from the given restaurant's cart (keeps the items). */
@@ -220,6 +270,7 @@ class CartViewModel @Inject constructor(
             val cart = state.carts[restaurantId] ?: return@update state
             state.copy(carts = state.carts + (restaurantId to cart.copy(appliedDeal = null)))
         }
+        persistSnapshot()
     }
 
     fun setPendingDealItem(deal: Deal) {
@@ -230,66 +281,8 @@ class CartViewModel @Inject constructor(
         _uiState.update { it.copy(pendingDealItem = null) }
     }
 
-    fun placeOrder(
-        deliveryAddress: String,
-        deliveryLat: Double,
-        deliveryLng: Double,
-        paymentIntentId: String,
-    ) {
-        val state = _uiState.value
-        if (state.isEmpty) return
-
-        // Scheduled deliveries need a timezone-aware RFC-3339 string; the
-        // LocalDateTime the user picked is in their local zone, so attach the
-        // system ZoneOffset before formatting. Backend's CreateOrderRequest
-        // decodes it as `time.Time`.
-        val scheduledFor = state.scheduledFor?.let { local ->
-            val zone = java.time.ZoneId.systemDefault()
-            local.atZone(zone).toOffsetDateTime()
-                .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-        }
-
-        val request = CreateOrderRequest(
-            restaurantId = state.cart.restaurantId,
-            deliveryAddress = deliveryAddress,
-            deliveryLat = deliveryLat,
-            deliveryLng = deliveryLng,
-            paymentIntentId = paymentIntentId,
-            tip = state.tip,
-            scheduledFor = scheduledFor,
-            appliedDealId = state.cart.appliedDeal?.id,
-        )
-
-        viewModelScope.launch {
-            repository.createOrder(request).collect { result ->
-                when (result) {
-                    is Resource.Loading -> {
-                        _uiState.update { it.copy(isPlacingOrder = true, error = null) }
-                    }
-                    is Resource.Success -> {
-                        val placedRestaurantId = state.cart.restaurantId
-                        _uiState.update {
-                            it.copy(
-                                isPlacingOrder = false,
-                                orderPlaced = result.data,
-                                carts = it.carts - placedRestaurantId,
-                                activeRestaurantId = null,
-                            )
-                        }
-                    }
-                    is Resource.Error -> {
-                        _uiState.update { it.copy(isPlacingOrder = false, error = result.message) }
-                    }
-                }
-            }
-        }
-    }
-
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
 
-    fun clearOrderPlaced() {
-        _uiState.update { it.copy(orderPlaced = null) }
-    }
 }

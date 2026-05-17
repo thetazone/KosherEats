@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -67,34 +68,34 @@ class DashboardViewModel @Inject constructor(
     fun loadDashboard() {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.update { it.copy(isLoading = it.stats.todayOrders == 0 && it.activeOrders.isEmpty(), error = null) }
             try {
                 coroutineScope {
                     val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = "active", limit = 200) }
+                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 200) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
 
                     if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
                         val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
-                        _state.value = _state.value.copy(
+                        _state.update { it.copy(
                             isLoading = false,
                             error = "Failed to load dashboard (HTTP $code)",
-                        )
+                        ) }
                     } else {
-                        _state.value = _state.value.copy(
+                        _state.update { it.copy(
                             stats = statsResponse.body() ?: DashboardStats(),
-                            activeOrders = ordersResponse.body().orEmpty(),
+                            activeOrders = ordersResponse.body().orEmpty().filter { it.status.isActive },
                             isLoading = false,
-                        )
+                        ) }
                     }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     isLoading = false,
                     error = "Failed to load dashboard: ${e.localizedMessage}",
-                )
+                ) }
             }
         }
     }
@@ -104,14 +105,16 @@ class DashboardViewModel @Inject constructor(
         return try {
             coroutineScope {
                 val statsDeferred = async { apiService.getDashboardStats() }
-                val ordersDeferred = async { apiService.getOrders(status = "active", limit = 200) }
+                val ordersDeferred = async { apiService.getOrders(status = null, limit = 200) }
                 val statsResponse = statsDeferred.await()
                 val ordersResponse = ordersDeferred.await()
                 if (statsResponse.isSuccessful && ordersResponse.isSuccessful) {
-                    _state.value = _state.value.copy(
-                        stats = statsResponse.body() ?: _state.value.stats,
-                        activeOrders = ordersResponse.body().orEmpty(),
-                    )
+                    _state.update { s ->
+                        s.copy(
+                            stats = statsResponse.body() ?: s.stats,
+                            activeOrders = ordersResponse.body().orEmpty().filter { it.status.isActive },
+                        )
+                    }
                     true
                 } else {
                     false
@@ -125,34 +128,36 @@ class DashboardViewModel @Inject constructor(
 
     fun refresh() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isRefreshing = true)
+            _state.update { it.copy(isRefreshing = true) }
             try {
                 coroutineScope {
                     val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = "active", limit = 200) }
+                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 200) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
 
                     if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
                         val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
-                        _state.value = _state.value.copy(
+                        _state.update { it.copy(
                             isRefreshing = false,
                             error = "Failed to refresh dashboard (HTTP $code)",
-                        )
+                        ) }
                     } else {
-                        _state.value = _state.value.copy(
-                            stats = statsResponse.body() ?: _state.value.stats,
-                            activeOrders = ordersResponse.body() ?: _state.value.activeOrders,
-                            isRefreshing = false,
-                        )
+                        _state.update { s ->
+                            s.copy(
+                                stats = statsResponse.body() ?: s.stats,
+                                activeOrders = (ordersResponse.body() ?: s.activeOrders).filter { it.status.isActive },
+                                isRefreshing = false,
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _state.value = _state.value.copy(
+                _state.update { it.copy(
                     isRefreshing = false,
                     error = "Failed to refresh dashboard: ${e.localizedMessage}",
-                )
+                ) }
             }
         }
     }

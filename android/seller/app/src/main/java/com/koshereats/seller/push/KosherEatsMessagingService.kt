@@ -51,7 +51,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
         showNotification(this, title, body, message.data["order_id"], type)
         if (type == "new_order" || type == "courier_assigned" ||
             type == "order_status_changed" || type == "order_cancelled" || type == "payment_update") {
-            orderEventBus.notifyOrderChanged()
+            orderEventBus.notifyOrderChanged(orderId = message.data["order_id"], type = type)
         }
     }
 

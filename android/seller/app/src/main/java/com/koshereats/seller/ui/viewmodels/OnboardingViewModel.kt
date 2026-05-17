@@ -3,12 +3,14 @@ package com.koshereats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -167,7 +169,6 @@ class OnboardingViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val certString = s.certification.name.lowercase()
                 val req = CreateRestaurantRequest(
                     name = s.restaurantName.trim(),
                     description = s.description.trim(),
@@ -179,7 +180,7 @@ class OnboardingViewModel @Inject constructor(
                     city = s.city.trim(),
                     state = s.state.trim(),
                     zipCode = s.zipCode.trim(),
-                    kosherCertification = certString,
+                    kosherCertification = s.certification,
                     certifyingAgency = s.certifyingAgency.trim(),
                     isCholovYisroel = s.isCholovYisroel,
                     isPasYisroel = s.isPasYisroel,
@@ -196,15 +197,29 @@ class OnboardingViewModel @Inject constructor(
                     return@launch
                 }
 
+                // Pin the new restaurant ID so the sellerRestaurantInterceptor targets it
+                // for all category/menu-item writes below instead of falling back to
+                // the backend's undefined "first restaurant" ordering.
+                restResponse.body()?.id?.let { NetworkModule.cachedRestaurantId = it }
+
                 val grouped = s.menuItems.groupBy { it.category.name.lowercase().replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
+                var createdCount = 0
+                var failedCount = 0
                 for ((categoryName, categoryItems) in grouped) {
                     val catResponse = apiService.createCategory(mapOf("name" to categoryName))
-                    val categoryId = catResponse.body()?.id ?: continue
+                    val categoryId = if (catResponse.isSuccessful) catResponse.body()?.id else null
+                    if (categoryId == null) {
+                        failedCount += categoryItems.count {
+                            val p = ((it.priceDollars.toDoubleOrNull() ?: 0.0) * 100).roundToInt()
+                            p > 0 && it.name.isNotBlank()
+                        }
+                        continue
+                    }
 
                     for (item in categoryItems) {
-                        val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).toInt()
+                        val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).roundToInt()
                         if (priceCents <= 0 || item.name.isBlank()) continue
-                        apiService.createMenuItemWithCategory(
+                        val itemResponse = apiService.createMenuItemWithCategory(
                             CreateMenuItemBody(
                                 categoryId = categoryId,
                                 name = item.name.trim(),
@@ -216,10 +231,14 @@ class OnboardingViewModel @Inject constructor(
                                 isPareve = item.isPareve,
                             ),
                         )
+                        if (itemResponse.isSuccessful) createdCount++ else failedCount++
                     }
                 }
 
-                _state.value = _state.value.copy(isSubmitting = false, isComplete = true)
+                val partialError = if (failedCount > 0) {
+                    "Created $createdCount of ${createdCount + failedCount} items — use Update Menu to add the rest."
+                } else null
+                _state.value = _state.value.copy(isSubmitting = false, isComplete = true, error = partialError)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,

@@ -3,8 +3,6 @@ package com.koshereats.consumer.ui.viewmodels
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.Address
 import com.koshereats.consumer.data.models.DeliveryQuoteRequest
@@ -91,13 +89,9 @@ class CheckoutViewModel @Inject constructor(
 ) : ViewModel() {
 
     private companion object {
-        const val KEY_CART_JSON = "checkout_cart_json"
         const val KEY_RESTAURANT_ID = "checkout_restaurant_id"
         const val KEY_DEAL_ID = "checkout_deal_id"
     }
-
-    private val gson = Gson()
-    private val cartItemListType = object : TypeToken<List<CartItem>>() {}.type
 
     private val _uiState = MutableStateFlow(CheckoutUiState())
     val uiState: StateFlow<CheckoutUiState> = _uiState.asStateFlow()
@@ -109,39 +103,36 @@ class CheckoutViewModel @Inject constructor(
     private var _bootstrapped = false
     private var _restaurantId: String = ""
     private var _appliedDealId: String? = null
+    private var _localSubtotalCents: Int = 0
 
     fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
         if (_bootstrapped) return
         _bootstrapped = true
+        _localSubtotalCents = localCart.sumOf { it.totalPrice }
 
-        // On process death the NavGraph snapshot may be empty (CartViewModel
-        // hasn't finished restoring yet). Recover the cart from SavedStateHandle.
-        val effectiveCart: List<CartItem>
-        val effectiveRestaurantId: String
-        val effectiveDealId: String?
+        // Persist only transient UI context (restaurant/deal IDs), not the full
+        // cart graph. After process death the server cart is authoritative — we
+        // never re-sync a stale SavedStateHandle snapshot to the server.
+        val effectiveRestaurantId = restaurantId.ifEmpty {
+            savedStateHandle.get<String>(KEY_RESTAURANT_ID).orEmpty()
+        }
+        val effectiveDealId = if (restaurantId.isNotEmpty()) appliedDealId
+                              else savedStateHandle.get<String>(KEY_DEAL_ID)?.ifEmpty { null }
 
-        if (localCart.isNotEmpty()) {
-            effectiveCart = localCart
-            effectiveRestaurantId = restaurantId
-            effectiveDealId = appliedDealId
-            // Persist snapshot so a subsequent process death can recover.
-            savedStateHandle[KEY_CART_JSON] = gson.toJson(localCart)
+        if (restaurantId.isNotEmpty()) {
             savedStateHandle[KEY_RESTAURANT_ID] = restaurantId
             savedStateHandle[KEY_DEAL_ID] = appliedDealId ?: ""
-        } else {
-            val savedJson = savedStateHandle.get<String>(KEY_CART_JSON)
-            effectiveCart = if (!savedJson.isNullOrEmpty()) {
-                try { gson.fromJson(savedJson, cartItemListType) } catch (_: Exception) { emptyList() }
-            } else emptyList()
-            effectiveRestaurantId = savedStateHandle.get<String>(KEY_RESTAURANT_ID) ?: restaurantId
-            effectiveDealId = savedStateHandle.get<String>(KEY_DEAL_ID)?.ifEmpty { null }
         }
 
         _restaurantId = effectiveRestaurantId
         _appliedDealId = effectiveDealId
         viewModelScope.launch {
             loadAddresses()
-            syncLocalCartToServer(effectiveCart, effectiveRestaurantId)
+            if (localCart.isNotEmpty()) {
+                syncLocalCartToServer(localCart, effectiveRestaurantId)
+            }
+            // When localCart is empty (process-death recovery), the server cart
+            // is already in the right state — skip sync and load the bundle directly.
             refreshBundle()
         }
     }
@@ -253,8 +244,20 @@ class CheckoutViewModel @Inject constructor(
                             selectedAddress = saved,
                         )
                     }
+                    fetchDeliveryQuote(saved)
+                    refreshBundle()
                 } else {
-                    _uiState.update { it.copy(errorMessage = "Could not save address") }
+                    val serverMsg = try {
+                        val body = resp.errorBody()?.string().orEmpty()
+                        com.google.gson.JsonParser.parseString(body).asJsonObject
+                            .get("error")?.asString
+                    } catch (_: Exception) { null }
+                    val msg = when {
+                        resp.code() == 409 -> serverMsg ?: "That address already exists"
+                        resp.code() == 422 -> serverMsg ?: "Invalid address — please check the details"
+                        else -> serverMsg ?: "Could not save address"
+                    }
+                    _uiState.update { it.copy(errorMessage = msg) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = e.localizedMessage) }
@@ -289,7 +292,7 @@ class CheckoutViewModel @Inject constructor(
 
     private fun currentTipCents(): Int {
         val state = _uiState.value
-        val subtotal = state.bundle?.subtotal ?: 0
+        val subtotal = state.bundle?.subtotal ?: _localSubtotalCents
         return when (val choice = state.tipChoice) {
             TipChoice.None -> 0
             is TipChoice.Percent -> (subtotal * choice.fraction).roundToInt()
@@ -360,6 +363,10 @@ class CheckoutViewModel @Inject constructor(
         val address = state.selectedAddress
         if (!isPickup && address == null) {
             _uiState.update { it.copy(errorMessage = "Select a delivery address") }
+            return
+        }
+        if (!isPickup && address!!.latitude == 0.0 && address.longitude == 0.0) {
+            _uiState.update { it.copy(errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
             return
         }
         val bundle = state.bundle ?: return

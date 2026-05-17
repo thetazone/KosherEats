@@ -64,7 +64,7 @@ fun PhoneLoginScreen(
     }
 
     LaunchedEffect(state.otpCode) {
-        if (state.otpSent && state.otpCode.length == 4 && !state.phoneIsVerifying) {
+        if (state.otpSent && state.otpCode.length == AuthViewModel.OTP_CODE_LENGTH && !state.phoneIsVerifying) {
             viewModel.verifyPhoneCode()
         }
     }
@@ -130,7 +130,7 @@ fun PhoneLoginScreen(
 
             Text(
                 text = if (state.otpSent) {
-                    "We texted a 4-digit code to ${state.phoneE164}"
+                    "We texted a ${AuthViewModel.OTP_CODE_LENGTH}-digit code to ${state.phoneE164}"
                 } else {
                     "We'll text you a code to verify your identity."
                 },

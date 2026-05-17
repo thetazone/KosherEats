@@ -32,6 +32,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -53,6 +55,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +80,7 @@ import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.theme.Orange
+import com.koshereats.seller.ui.theme.SuccessGreen
 import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.SurfaceDarkElevated
 import com.koshereats.seller.ui.theme.TextMuted
@@ -108,19 +113,21 @@ fun MenuItemFormScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var price by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(MenuCategory.MAINS) }
-    var imageUrl by remember { mutableStateOf("") }
-    var isPareve by remember { mutableStateOf(false) }
-    var isDairy by remember { mutableStateOf(false) }
-    var isMeat by remember { mutableStateOf(false) }
-    var spiceLevel by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
+    var price by rememberSaveable { mutableStateOf("") }
+    var category by rememberSaveable(
+        stateSaver = Saver(save = { it.name }, restore = { MenuCategory.valueOf(it) }),
+    ) { mutableStateOf(MenuCategory.MAINS) }
+    var imageUrl by rememberSaveable { mutableStateOf("") }
+    var isPareve by rememberSaveable { mutableStateOf(false) }
+    var isDairy by rememberSaveable { mutableStateOf(false) }
+    var isMeat by rememberSaveable { mutableStateOf(false) }
+    var spiceLevel by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isUploadingImage by remember { mutableStateOf(false) }
-    var formInitialized by remember { mutableStateOf(false) }
+    var formInitialized by rememberSaveable { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -786,6 +793,18 @@ private fun ModifierGroupDialog(
                             colors = textFieldColors,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        )
+                        Switch(
+                            checked = option.isAvailable,
+                            onCheckedChange = { v ->
+                                options = options.toMutableList().also { it[index] = option.copy(isAvailable = v) }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = TextWhite,
+                                checkedTrackColor = SuccessGreen,
+                                uncheckedThumbColor = TextMuted,
+                                uncheckedTrackColor = SurfaceDarkElevated,
+                            ),
                         )
                         if (options.size > 1) {
                             IconButton(

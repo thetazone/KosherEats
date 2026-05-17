@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -32,7 +33,11 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -74,6 +79,24 @@ fun ChatScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Mirror OrderTrackingScreen: pause the 3-second poll when the app is
+    // backgrounded (ON_STOP) and resume on ON_START so we don't hit the chat
+    // endpoint while the user is on a different screen.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewModel.resume()
+                Lifecycle.Event.ON_STOP -> viewModel.pause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Track scroll position post-layout so reads are never stale.
     val isScrolledUp = remember { mutableStateOf(false) }
@@ -120,7 +143,11 @@ fun ChatScreen(
             ) {
                 for (message in state.messages) {
                     item(key = message.id) {
-                        ChatBubble(message)
+                        ChatBubble(
+                            message = message,
+                            isFailed = message.id in state.failedMessageIds,
+                            onRetry = { viewModel.retrySend(message.id) },
+                        )
                     }
                 }
             }
@@ -167,7 +194,11 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage) {
+private fun ChatBubble(
+    message: ChatMessage,
+    isFailed: Boolean = false,
+    onRetry: () -> Unit = {},
+) {
     // Consumer-authored messages belong to the local user.
     val isMine = message.senderRole == "consumer"
     val alignment = if (isMine) Alignment.End else Alignment.Start
@@ -205,6 +236,16 @@ private fun ChatBubble(message: ChatMessage) {
             fontSize = 10.sp,
             modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
         )
+        if (isFailed) {
+            Text(
+                text = "Tap to retry",
+                color = ErrorRed,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .padding(top = 2.dp, start = 4.dp, end = 4.dp)
+                    .clickable { onRetry() },
+            )
+        }
     }
 }
 

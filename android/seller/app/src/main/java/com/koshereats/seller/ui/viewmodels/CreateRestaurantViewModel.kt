@@ -8,6 +8,7 @@ import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -193,6 +194,7 @@ class CreateRestaurantViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isSubmitting = false,
                     error = "Connection error: ${e.localizedMessage}",

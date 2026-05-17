@@ -267,11 +267,11 @@ class AuthViewModel @Inject constructor(
     }
 
     fun updatePhoneNumber(value: String) {
-        _state.value = _state.value.copy(phoneNumber = value)
+        _state.value = _state.value.copy(phoneNumber = value.filter { it.isDigit() })
     }
 
     fun updateOtpCode(value: String) {
-        _state.value = _state.value.copy(otpCode = value.filter { it.isDigit() }.take(4))
+        _state.value = _state.value.copy(otpCode = value.filter { it.isDigit() }.take(OTP_CODE_LENGTH))
     }
 
     fun backToPhoneEntry() {
@@ -337,8 +337,8 @@ class AuthViewModel @Inject constructor(
 
     fun verifyPhoneCode() {
         val current = _state.value
-        if (current.otpCode.length != 4) {
-            _state.value = current.copy(error = "Enter the 4-digit code")
+        if (current.otpCode.length != OTP_CODE_LENGTH) {
+            _state.value = current.copy(error = "Enter the $OTP_CODE_LENGTH-digit code")
             return
         }
         viewModelScope.launch {
@@ -392,10 +392,15 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    companion object {
+        const val OTP_CODE_LENGTH = 6
+    }
+
     private suspend fun clearAuth() {
         PushBootstrap.deleteToken()
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
+        NetworkModule.cachedRestaurantId = null
         context.dataStore.edit { it.clear() }
         _state.value = AuthState(isLoggedIn = false, isLoading = false)
     }
