@@ -228,7 +228,7 @@ class OnboardingViewModel @Inject constructor(
                                 imageUrl = item.imageUrl,
                                 isMeat = item.isMeat,
                                 isDairy = item.isDairy,
-                                isPareve = item.isPareve,
+                                isKosherPareve = item.isPareve,
                             ),
                         )
                         if (itemResponse.isSuccessful) createdCount++ else failedCount++

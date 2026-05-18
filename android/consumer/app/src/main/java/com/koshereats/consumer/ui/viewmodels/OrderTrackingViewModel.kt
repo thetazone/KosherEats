@@ -63,6 +63,7 @@ class OrderTrackingViewModel @Inject constructor(
         stopInternal()
         setupJob = viewModelScope.launch {
             loadOnce(orderId)
+            if (!isActive) return@launch
             pollJob = launchPollLoop(orderId)
             streamJob = launchLocationStream(orderId)
         }
@@ -107,6 +108,7 @@ class OrderTrackingViewModel @Inject constructor(
 
     fun retryStream() {
         val id = currentOrderId ?: return
+        consecutiveSseUnauthorized = 0
         streamJob?.cancel()
         streamJob = launchLocationStream(id)
     }
@@ -130,8 +132,9 @@ class OrderTrackingViewModel @Inject constructor(
                     if (response.code == 401) {
                         consecutiveSseUnauthorized++
                         if (consecutiveSseUnauthorized >= 2) {
-                            setupJob?.cancel()
-                            pollJob?.cancel()
+                            setupJob?.cancel(); setupJob = null
+                            pollJob?.cancel(); pollJob = null
+                            streamJob = null
                             sessionManager.signalLogout()
                             _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
                             return@launch

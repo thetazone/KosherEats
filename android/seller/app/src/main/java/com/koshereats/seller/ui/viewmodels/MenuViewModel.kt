@@ -179,7 +179,7 @@ class MenuViewModel @Inject constructor(
                     imageUrl = request.imageUrl ?: "",
                     isMeat = request.isMeat ?: false,
                     isDairy = request.isDairy ?: false,
-                    isPareve = request.isKosherPareve ?: false,
+                    isKosherPareve = request.isKosherPareve ?: false,
                     isAvailable = request.isAvailable ?: true,
                     spiceLevel = request.spiceLevel,
                     preparationTime = request.preparationTime,

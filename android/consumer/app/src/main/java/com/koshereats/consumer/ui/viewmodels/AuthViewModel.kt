@@ -506,13 +506,8 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun saveAuth(token: String, refreshToken: String, userId: String) {
-        // Synchronously update in-memory token so the very next request (e.g. FCM
-        // registration) carries the Authorization header without waiting for the
-        // DataStore collect callback to fire on Dispatchers.IO.
         tokenProvider.persistNewTokens(token, refreshToken)
         dataStore.edit { prefs ->
-            prefs[PrefsKeys.AUTH_TOKEN] = token
-            prefs[PrefsKeys.REFRESH_TOKEN] = refreshToken
             prefs[PrefsKeys.USER_ID] = userId
         }
     }
@@ -536,6 +531,12 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(user = response.body()) }
                 }
             } catch (_: Exception) {}
+        }
+    }
+
+    fun patchUser(firstName: String, lastName: String, phone: String) {
+        _uiState.update { state ->
+            state.copy(user = state.user?.copy(firstName = firstName, lastName = lastName, phone = phone))
         }
     }
 

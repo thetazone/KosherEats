@@ -543,6 +543,9 @@ fun KosherEatsNavHost() {
             composable(Screen.EditProfile.route) {
                 EditProfileScreen(
                     onBack = { navController.popBackStack() },
+                    onSaved = { firstName, lastName, phone ->
+                        authViewModel.patchUser(firstName, lastName, phone)
+                    },
                 )
             }
 

@@ -135,7 +135,9 @@ class CheckoutViewModel @Inject constructor(
             }
             // When localCart is empty (process-death recovery), the server cart
             // is already in the right state — skip sync and load the bundle directly.
-            refreshBundle()
+            // Use launchRefreshBundle so any concurrent user-triggered refresh can
+            // cancel this one (same pattern as selectTip / selectAddress / etc.).
+            launchRefreshBundle()
         }
     }
 

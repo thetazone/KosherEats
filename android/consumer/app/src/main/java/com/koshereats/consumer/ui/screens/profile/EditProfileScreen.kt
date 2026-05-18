@@ -62,12 +62,16 @@ private val fieldColors
 @Composable
 fun EditProfileScreen(
     onBack: () -> Unit,
+    onSaved: (firstName: String, lastName: String, phone: String) -> Unit = { _, _, _ -> },
     viewModel: EditProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.saved) {
-        if (state.saved) onBack()
+        if (state.saved) {
+            onSaved(state.firstName, state.lastName, state.phone)
+            onBack()
+        }
     }
 
     Column(

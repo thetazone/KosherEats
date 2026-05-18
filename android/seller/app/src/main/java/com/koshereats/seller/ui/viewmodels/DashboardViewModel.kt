@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import javax.inject.Inject
 
 data class DashboardState(
@@ -44,9 +45,12 @@ class DashboardViewModel @Inject constructor(
     val state: StateFlow<DashboardState> = _state.asStateFlow()
 
     private var pollingJob: Job? = null
+    private var eventJob: Job? = null
+    private val pollMutex = Mutex()
     private var loadJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var isFirstPoll = true
+    @Volatile private var isPollingActive = false
 
     init {
         loadDashboard()
@@ -56,15 +60,19 @@ class DashboardViewModel @Inject constructor(
     // refreshes) only run while that screen is in composition.
     fun startPolling() {
         if (pollingJob?.isActive == true) return
+        isPollingActive = true
         launchPollingJob()
+        if (eventJob?.isActive != true) {
+            eventJob = viewModelScope.launch {
+                orderEventBus.events.collect { pollSilently() }
+            }
+        }
         registerNetworkCallback()
     }
 
     private fun launchPollingJob() {
         pollingJob = viewModelScope.launch {
-            launch {
-                orderEventBus.events.collect { pollSilently() }
-            }
+            if (!isPollingActive) return@launch
             // Delay the very first periodic poll so it doesn't race the init loadDashboard().
             // Network-reconnect re-launches skip this because isFirstPoll is already false.
             if (isFirstPoll) {
@@ -110,9 +118,12 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun stopPolling() {
+        isPollingActive = false
         unregisterNetworkCallback()
         pollingJob?.cancel()
         pollingJob = null
+        eventJob?.cancel()
+        eventJob = null
     }
 
     override fun onCleared() {
@@ -156,7 +167,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     // Returns true on success so the caller can reset the backoff counter.
+    // tryLock ensures at most one poll is in flight at a time (FCM vs. periodic timer).
     private suspend fun pollSilently(): Boolean {
+        if (!pollMutex.tryLock()) return true
         return try {
             coroutineScope {
                 val statsDeferred = async { apiService.getDashboardStats() }
@@ -178,6 +191,8 @@ class DashboardViewModel @Inject constructor(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             false
+        } finally {
+            pollMutex.unlock()
         }
     }
 

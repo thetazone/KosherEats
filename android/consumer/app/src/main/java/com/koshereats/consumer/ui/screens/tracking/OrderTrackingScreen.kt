@@ -207,13 +207,13 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
         val points = listOfNotNull(restaurant, delivery, courier)
         when {
             points.size >= 2 -> {
+                didInitialFit = true
                 val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
                 cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 140))
-                didInitialFit = true
             }
             points.size == 1 -> {
-                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(points.first(), 14f))
                 didInitialFit = true
+                cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(points.first(), 14f))
             }
         }
     }

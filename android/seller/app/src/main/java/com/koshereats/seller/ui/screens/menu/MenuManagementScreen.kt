@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Card
@@ -31,6 +32,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -56,6 +58,7 @@ import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.SuccessGreen
 import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.SurfaceDarkElevated
+import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
@@ -179,6 +182,7 @@ fun MenuManagementScreen(
                             isPending = item.id in state.pendingItemIds,
                             onEdit = { onEditItem(item.id) },
                             onToggleAvailability = { viewModel.toggleAvailability(item) },
+                            onDelete = { viewModel.deleteMenuItem(item.id) },
                         )
                     }
                     item { Spacer(modifier = Modifier.height(80.dp)) }
@@ -194,6 +198,7 @@ private fun MenuItemCard(
     isPending: Boolean,
     onEdit: () -> Unit,
     onToggleAvailability: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -302,7 +307,7 @@ private fun MenuItemCard(
                 }
             }
 
-            // Toggle + edit
+            // Toggle + delete
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -324,6 +329,17 @@ private fun MenuItemCard(
                             uncheckedTrackColor = SurfaceDarkElevated,
                         ),
                     )
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Delete item",
+                            tint = ErrorRed,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
         }

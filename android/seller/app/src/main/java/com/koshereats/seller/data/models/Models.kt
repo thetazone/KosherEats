@@ -340,7 +340,7 @@ data class CreateMenuItemBody(
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "is_meat") val isMeat: Boolean = false,
     @Json(name = "is_dairy") val isDairy: Boolean = false,
-    @Json(name = "is_kosher_pareve") val isPareve: Boolean = false,
+    @Json(name = "is_kosher_pareve") val isKosherPareve: Boolean = false,
     @Json(name = "is_available") val isAvailable: Boolean = true,
     @Json(name = "spice_level") val spiceLevel: Int? = null,
     @Json(name = "preparation_time") val preparationTime: Int? = null,

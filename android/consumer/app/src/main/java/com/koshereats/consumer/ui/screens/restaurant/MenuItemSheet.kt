@@ -142,8 +142,10 @@ fun MenuItemSheet(
         val current = selections[group.id] ?: emptySet()
         selections[group.id] = if (current.contains(optionId)) {
             current - optionId
-        } else {
-            if (group.maxSelections == 1) setOf(optionId) else current + optionId
+        } else when {
+            group.maxSelections == 1 -> setOf(optionId)
+            current.size < group.maxSelections -> current + optionId
+            else -> return
         }
     }
 

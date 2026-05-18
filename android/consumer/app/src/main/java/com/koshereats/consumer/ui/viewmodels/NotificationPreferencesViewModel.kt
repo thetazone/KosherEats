@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.NotificationPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,6 +70,7 @@ class NotificationPreferencesViewModel @Inject constructor(
                     _uiState.update { it.copy(prefs = previous, error = "Couldn't save (${resp.code()})") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(prefs = previous, error = e.localizedMessage ?: "Network error") }
             }
         }

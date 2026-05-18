@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import javax.inject.Inject
 
 data class OrdersState(
@@ -49,11 +50,14 @@ class OrdersViewModel @Inject constructor(
     val state: StateFlow<OrdersState> = _state.asStateFlow()
 
     private var pollingJob: Job? = null
+    private var eventJob: Job? = null
+    private val pollMutex = Mutex()
     private var pollerRefCount = 0
     private var loadJob: Job? = null
     private var loadMoreJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var isFirstPoll = true
+    @Volatile private var isPollingActive = false
 
     init {
         loadOrders()
@@ -65,13 +69,10 @@ class OrdersViewModel @Inject constructor(
     fun startPolling() {
         pollerRefCount++
         if (pollingJob?.isActive == true) return
+        isPollingActive = true
         launchPollingJob()
-        registerNetworkCallback()
-    }
-
-    private fun launchPollingJob() {
-        pollingJob = viewModelScope.launch {
-            launch {
+        if (eventJob?.isActive != true) {
+            eventJob = viewModelScope.launch {
                 orderEventBus.events.collect { event ->
                     if (event.type == "new_order" || event.orderId == null) {
                         pollSilently()
@@ -80,6 +81,13 @@ class OrdersViewModel @Inject constructor(
                     }
                 }
             }
+        }
+        registerNetworkCallback()
+    }
+
+    private fun launchPollingJob() {
+        pollingJob = viewModelScope.launch {
+            if (!isPollingActive) return@launch
             // Delay the very first periodic poll so it doesn't race the init loadOrders().
             // Network-reconnect re-launches skip this because isFirstPoll is already false.
             if (isFirstPoll) {
@@ -127,9 +135,12 @@ class OrdersViewModel @Inject constructor(
     fun stopPolling() {
         pollerRefCount = (pollerRefCount - 1).coerceAtLeast(0)
         if (pollerRefCount == 0) {
+            isPollingActive = false
             unregisterNetworkCallback()
             pollingJob?.cancel()
             pollingJob = null
+            eventJob?.cancel()
+            eventJob = null
         }
     }
 
@@ -139,6 +150,7 @@ class OrdersViewModel @Inject constructor(
     }
 
     private suspend fun refreshSingleOrder(orderId: String) {
+        if (!pollMutex.tryLock()) return
         try {
             val response = apiService.getOrderDetail(orderId)
             if (response.isSuccessful) {
@@ -150,22 +162,28 @@ class OrdersViewModel @Inject constructor(
                     )
                 }
             }
-        } catch (_: Exception) { }
+        } catch (_: Exception) {
+        } finally {
+            pollMutex.unlock()
+        }
     }
 
     // Returns true on success so the caller can reset the backoff counter.
+    // tryLock ensures at most one poll is in flight at a time (FCM vs. periodic timer).
     private suspend fun pollSilently(): Boolean {
+        if (!pollMutex.tryLock()) return true
         return try {
             val currentState = _state.value
             val filterAtStart = currentState.selectedFilter
+            val pageAtStart = currentState.currentPage
             val statusStr = filterAtStart?.name?.lowercase()
             // Re-fetch enough rows to cover pages already loaded by the user.
-            val limit = PAGE_SIZE * currentState.currentPage.coerceAtLeast(1)
+            val limit = PAGE_SIZE * pageAtStart.coerceAtLeast(1)
             val response = apiService.getOrders(status = statusStr, limit = limit)
             val succeeded = response.isSuccessful
             if (response.isSuccessful) {
                 _state.update { current ->
-                    if (current.selectedFilter == filterAtStart) {
+                    if (current.selectedFilter == filterAtStart && current.currentPage >= pageAtStart) {
                         val newOrders = response.body() ?: current.orders
                         // Merge by ID: update existing rows in-place and keep any rows from
                         // pages loaded by loadMoreOrders after this request started.
@@ -189,6 +207,8 @@ class OrdersViewModel @Inject constructor(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             false
+        } finally {
+            pollMutex.unlock()
         }
     }
 
@@ -198,6 +218,7 @@ class OrdersViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             _state.update { it.copy(
                 isLoading = it.orders.isEmpty(),
+                isRefreshing = false,
                 error = null,
                 selectedFilter = status,
                 currentPage = 1,
@@ -464,7 +485,7 @@ class OrdersViewModel @Inject constructor(
                 val response = apiService.getOrders(status = statusStr, limit = limit)
                 if (response.isSuccessful) {
                     _state.update { current ->
-                        if (current.selectedFilter == filterAtStart) {
+                        if (current.selectedFilter == filterAtStart && current.currentPage >= pageAtStart) {
                             val newOrders = response.body() ?: current.orders
                             val newById = newOrders.associateBy { it.id }
                             val merged = current.orders.map { existing -> newById[existing.id] ?: existing }
@@ -484,6 +505,8 @@ class OrdersViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(isRefreshing = false) }
+            } finally {
+                _state.update { if (it.isRefreshing) it.copy(isRefreshing = false) else it }
             }
         }
     }
