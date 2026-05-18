@@ -1,7 +1,13 @@
 package com.koshereats.seller.data.models
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import java.lang.reflect.Type
 
 // --- Enums ---
 
@@ -15,11 +21,12 @@ enum class OrderStatus(val displayName: String) {
     @Json(name = "delivered") DELIVERED("Delivered"),
     @Json(name = "completed") COMPLETED("Completed"),
     @Json(name = "cancelled") CANCELLED("Cancelled"),
-    @Json(name = "rejected") REJECTED("Rejected");
+    @Json(name = "rejected") REJECTED("Rejected"),
+    UNKNOWN("Unknown");
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
+            SCHEDULED, DELIVERED, COMPLETED, CANCELLED, REJECTED, UNKNOWN -> false
             else -> true
         }
 }
@@ -45,6 +52,39 @@ enum class MenuCategory {
     @Json(name = "drinks") DRINKS,
     @Json(name = "shabbat_specials") SHABBAT_SPECIALS,
     @Json(name = "holiday_specials") HOLIDAY_SPECIALS,
+    UNKNOWN,
+}
+
+/**
+ * Moshi adapter factory that returns UNKNOWN (if it exists) instead of throwing
+ * JsonDataException when the JSON contains an unrecognised enum value. Only activates
+ * for enums that declare an UNKNOWN constant; all other enums are delegated normally.
+ */
+class UnknownFallbackEnumAdapterFactory : JsonAdapter.Factory {
+    override fun create(type: Type, annotations: Set<Annotation>, moshi: Moshi): JsonAdapter<*>? {
+        val rawType = Types.getRawType(type)
+        if (!rawType.isEnum || annotations.isNotEmpty()) return null
+        @Suppress("UNCHECKED_CAST")
+        val constants = (rawType as Class<Enum<*>>).enumConstants ?: return null
+        val fallback = constants.firstOrNull { it.name == "UNKNOWN" } ?: return null
+        val nameToConstant: Map<String, Enum<*>> = constants.associate { constant ->
+            val jsonName = runCatching {
+                rawType.getField(constant.name).getAnnotation(Json::class.java)?.name
+            }.getOrNull()?.takeIf { it.isNotEmpty() } ?: constant.name
+            jsonName to constant
+        }
+        val constantToName: Map<Enum<*>, String> = nameToConstant.entries.associate { (k, v) -> v to k }
+        return object : JsonAdapter<Enum<*>>() {
+            override fun fromJson(reader: JsonReader): Enum<*> {
+                if (reader.peek() == JsonReader.Token.NULL) { reader.nextNull<Unit>(); return fallback }
+                return nameToConstant[reader.nextString()] ?: fallback
+            }
+            override fun toJson(writer: JsonWriter, value: Enum<*>?) {
+                if (value == null) { writer.nullValue(); return }
+                writer.value(constantToName[value] ?: value.name)
+            }
+        }
+    }
 }
 
 // --- Data Classes ---
@@ -80,7 +120,7 @@ data class MenuItem(
     val name: String = "",
     val description: String = "",
     val price: Int = 0,
-    val category: MenuCategory = MenuCategory.MAINS,
+    val category: MenuCategory = MenuCategory.UNKNOWN,
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "is_available") val isAvailable: Boolean = true,
     @Json(name = "is_kosher_pareve") val isKosherPareve: Boolean = false,
@@ -123,6 +163,7 @@ data class Order(
     @Json(name = "customer_phone") val customerPhone: String = "",
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
+    @Json(name = "scheduled_for") val scheduledFor: String? = null,
 ) {
     val isPickup: Boolean get() = fulfillmentType == "pickup"
 }
@@ -299,7 +340,7 @@ data class CreateMenuItemBody(
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "is_meat") val isMeat: Boolean = false,
     @Json(name = "is_dairy") val isDairy: Boolean = false,
-    @Json(name = "is_pareve") val isPareve: Boolean = false,
+    @Json(name = "is_kosher_pareve") val isPareve: Boolean = false,
     @Json(name = "is_available") val isAvailable: Boolean = true,
     @Json(name = "spice_level") val spiceLevel: Int? = null,
     @Json(name = "preparation_time") val preparationTime: Int? = null,

@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.ui.theme.BackgroundBlack
@@ -218,6 +219,8 @@ private fun DealCard(
                     .size(64.dp)
                     .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(SurfaceDark),
+                error = ColorPainter(SurfaceDark),
             )
 
             Spacer(modifier = Modifier.width(14.dp))

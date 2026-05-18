@@ -1,5 +1,10 @@
 package com.koshereats.seller.ui.viewmodels
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
@@ -7,6 +12,7 @@ import com.koshereats.seller.data.models.DashboardStats
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -31,6 +37,7 @@ data class DashboardState(
 class DashboardViewModel @Inject constructor(
     private val apiService: ApiService,
     private val orderEventBus: OrderEventBus,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardState())
@@ -38,6 +45,8 @@ class DashboardViewModel @Inject constructor(
 
     private var pollingJob: Job? = null
     private var loadJob: Job? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var isFirstPoll = true
 
     init {
         loadDashboard()
@@ -47,9 +56,20 @@ class DashboardViewModel @Inject constructor(
     // refreshes) only run while that screen is in composition.
     fun startPolling() {
         if (pollingJob?.isActive == true) return
+        launchPollingJob()
+        registerNetworkCallback()
+    }
+
+    private fun launchPollingJob() {
         pollingJob = viewModelScope.launch {
             launch {
                 orderEventBus.events.collect { pollSilently() }
+            }
+            // Delay the very first periodic poll so it doesn't race the init loadDashboard().
+            // Network-reconnect re-launches skip this because isFirstPoll is already false.
+            if (isFirstPoll) {
+                isFirstPoll = false
+                delay(BACKOFF_DELAYS[0])
             }
             var consecutiveFailures = 0
             while (true) {
@@ -60,9 +80,44 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                // Cancel the sleeping backoff and restart immediately on reconnect.
+                pollingJob?.cancel()
+                launchPollingJob()
+            }
+        }
+        networkCallback = cb
+        cm.registerNetworkCallback(
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build(),
+            cb,
+        )
+    }
+
+    private fun unregisterNetworkCallback() {
+        networkCallback?.let { cb ->
+            runCatching {
+                (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .unregisterNetworkCallback(cb)
+            }
+        }
+        networkCallback = null
+    }
+
     fun stopPolling() {
+        unregisterNetworkCallback()
         pollingJob?.cancel()
         pollingJob = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        unregisterNetworkCallback()
     }
 
     fun loadDashboard() {
@@ -72,7 +127,7 @@ class DashboardViewModel @Inject constructor(
             try {
                 coroutineScope {
                     val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 200) }
+                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 50) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
 
@@ -105,7 +160,7 @@ class DashboardViewModel @Inject constructor(
         return try {
             coroutineScope {
                 val statsDeferred = async { apiService.getDashboardStats() }
-                val ordersDeferred = async { apiService.getOrders(status = null, limit = 200) }
+                val ordersDeferred = async { apiService.getOrders(status = null, limit = 50) }
                 val statsResponse = statsDeferred.await()
                 val ordersResponse = ordersDeferred.await()
                 if (statsResponse.isSuccessful && ordersResponse.isSuccessful) {
@@ -132,7 +187,7 @@ class DashboardViewModel @Inject constructor(
             try {
                 coroutineScope {
                     val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 200) }
+                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 50) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
 

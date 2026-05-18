@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.koshereats.consumer.R
 import com.koshereats.consumer.data.models.Cart
@@ -268,6 +269,8 @@ private fun RestaurantCartCard(
                             .size(56.dp)
                             .clip(RoundedCornerShape(12.dp)),
                         contentScale = ContentScale.Crop,
+                        placeholder = ColorPainter(SurfaceDark),
+                        error = ColorPainter(SurfaceDark),
                     )
                     Spacer(modifier = Modifier.width(14.dp))
                 } else {

@@ -10,6 +10,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -31,12 +32,15 @@ class OrdersViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(OrdersUiState())
     val uiState: StateFlow<OrdersUiState> = _uiState.asStateFlow()
 
+    private var loadJob: Job? = null
+
     init {
         loadOrders()
     }
 
     fun loadOrders(page: Int = 1) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             repository.getOrders(page = page).collect { result ->
                 when (result) {
                     is Resource.Loading -> {
@@ -55,7 +59,7 @@ class OrdersViewModel @Inject constructor(
                         }
                     }
                     is Resource.Error -> {
-                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message) }
+                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = false) }
                     }
                 }
             }

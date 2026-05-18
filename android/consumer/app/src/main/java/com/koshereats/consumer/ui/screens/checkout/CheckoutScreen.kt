@@ -86,8 +86,9 @@ fun CheckoutScreen(
     val ui by vm.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Bootstrap exactly once per screen entry
-    LaunchedEffect(Unit) {
+    // Re-fire when restaurantId or first cart-item ID changes so a late-arriving
+    // rehydrated cart (after process death) is not silently dropped.
+    LaunchedEffect(restaurantId, localCart.firstOrNull()?.id) {
         vm.bootstrap(localCart, restaurantId, appliedDealId)
     }
 
@@ -212,7 +213,8 @@ fun CheckoutScreen(
         // Sticky pay button
         val canPay = ui.bundle != null &&
             (ui.fulfillmentType == "pickup" || ui.selectedAddress != null) &&
-            !ui.isProcessing
+            !ui.isProcessing &&
+            !ui.isLoadingBundle
         val totalLabel = ui.bundle?.let { it.total.formatPrice() } ?: "--"
         Button(
             onClick = { vm.onPayTapped() },

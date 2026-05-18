@@ -18,7 +18,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -26,6 +28,8 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Route
 import okhttp3.logging.HttpLoggingInterceptor
+import com.koshereats.seller.data.models.LoginResponse
+import com.koshereats.seller.data.models.UnknownFallbackEnumAdapterFactory
 import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -55,6 +59,7 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder()
+        .add(UnknownFallbackEnumAdapterFactory())
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
@@ -62,7 +67,15 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
+        moshi: Moshi,
     ): OkHttpClient {
+        // Synchronously prime caches so the first authenticated requests on cold start
+        // carry the Authorization header rather than racing the async collector below.
+        val initialPrefs = runBlocking { context.dataStore.data.first() }
+        cachedToken = initialPrefs[PrefsKeys.AUTH_TOKEN]
+        cachedRefreshToken = initialPrefs[PrefsKeys.REFRESH_TOKEN]
+        cachedRestaurantId = initialPrefs[PrefsKeys.RESTAURANT_ID]
+
         appScope.launch {
             context.dataStore.data.collect { prefs ->
                 cachedToken = prefs[PrefsKeys.AUTH_TOKEN]
@@ -120,7 +133,7 @@ object NetworkModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(sellerRestaurantInterceptor)
             .addInterceptor(loggingInterceptor)
-            .authenticator(TokenAuthenticator(context))
+            .authenticator(TokenAuthenticator(context, moshi))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -146,6 +159,7 @@ object NetworkModule {
 
 private class TokenAuthenticator(
     private val context: Context,
+    private val moshi: Moshi,
 ) : Authenticator {
 
     private val lock = Any()
@@ -210,8 +224,11 @@ private class TokenAuthenticator(
         return try {
             refreshClient.newCall(request).execute().use { resp ->
                 if (resp.isSuccessful) {
-                    val parsed = JSONObject(resp.body?.string() ?: return null)
-                    Pair(parsed.getString("token"), parsed.getString("refresh_token"))
+                    val bodyStr = resp.body?.string() ?: return null
+                    val adapter = moshi.adapter(LoginResponse::class.java)
+                    val parsed = adapter.fromJson(bodyStr) ?: return null
+                    val token = parsed.token.ifBlank { return null }
+                    Pair(token, parsed.refreshToken)
                 } else null
             }
         } catch (_: Exception) {

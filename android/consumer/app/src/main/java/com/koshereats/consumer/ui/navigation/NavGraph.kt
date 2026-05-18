@@ -316,7 +316,7 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderConfirmation.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                if (authState.sessionState == SessionState.LoggedOut) {
+                if (authState.sessionState != SessionState.Authenticated) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }
@@ -344,7 +344,7 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderTracking.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                if (authState.sessionState == SessionState.LoggedOut) {
+                if (authState.sessionState != SessionState.Authenticated) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }
@@ -385,7 +385,7 @@ fun KosherEatsNavHost() {
                     navArgument("orderId") { type = NavType.StringType },
                 ),
             ) {
-                if (authState.sessionState == SessionState.LoggedOut) {
+                if (authState.sessionState != SessionState.Authenticated) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }

@@ -129,18 +129,22 @@ fun MenuItemSheet(
     onAddToCart: (quantity: Int, customizations: List<SelectedCustomization>, specialInstructions: String?) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var quantity by remember { mutableIntStateOf(1) }
-    var specialInstructions by remember { mutableStateOf("") }
+    var quantity by remember(menuItem.id) { mutableIntStateOf(1) }
+    var specialInstructions by remember(menuItem.id) { mutableStateOf("") }
 
-    val customizations = remember { defaultCustomizationsFor(menuItem) }
-    val selections = remember { mutableStateMapOf<String, MutableSet<String>>() }
+    val customizations = remember(menuItem.id) { defaultCustomizationsFor(menuItem) }
+    val selections = remember(menuItem.id) { mutableStateMapOf<String, Set<String>>() }
 
     fun isSelected(groupId: String, optionId: String): Boolean =
         selections[groupId]?.contains(optionId) == true
 
-    fun toggle(groupId: String, optionId: String) {
-        val group = selections.getOrPut(groupId) { mutableSetOf() }
-        if (group.contains(optionId)) group.remove(optionId) else group.add(optionId)
+    fun toggle(group: MenuItemCustomization, optionId: String) {
+        val current = selections[group.id] ?: emptySet()
+        selections[group.id] = if (current.contains(optionId)) {
+            current - optionId
+        } else {
+            if (group.maxSelections == 1) setOf(optionId) else current + optionId
+        }
     }
 
     fun extrasPrice(): Int {
@@ -156,6 +160,10 @@ fun MenuItemSheet(
 
     val unitPrice = menuItem.price + extrasPrice()
     val totalPrice = unitPrice * quantity
+
+    val requiredGroupsValid = customizations.all { group ->
+        !group.required || selections[group.id]?.isNotEmpty() == true
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -215,12 +223,22 @@ fun MenuItemSheet(
             // Customization groups
             for (group in customizations) {
                 Spacer(Modifier.height(20.dp))
-                Text(
-                    text = group.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextWhite,
-                    fontWeight = FontWeight.Bold,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = group.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    if (group.required) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Required",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ErrorRed,
+                        )
+                    }
+                }
                 Spacer(Modifier.height(10.dp))
 
                 for (option in group.options) {
@@ -230,7 +248,7 @@ fun MenuItemSheet(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (selected) Orange.copy(alpha = 0.1f) else Color.Transparent)
-                            .clickable { toggle(group.id, option.id) }
+                            .clickable { toggle(group, option.id) }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -361,6 +379,7 @@ fun MenuItemSheet(
                         onAddToCart(quantity, selected, specialInstructions)
                         onDismiss()
                     },
+                    enabled = requiredGroupsValid,
                     modifier = Modifier.height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),

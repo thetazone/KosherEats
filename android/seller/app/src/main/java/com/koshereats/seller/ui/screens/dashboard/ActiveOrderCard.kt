@@ -22,7 +22,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.delay
 import java.time.Duration
@@ -94,7 +96,10 @@ fun ActiveOrderCard(
             val minutesAgo by produceState<Long?>(initialValue = null, key1 = order.createdAt) {
                 while (true) {
                     value = runCatching {
-                        Duration.between(Instant.parse(order.createdAt), Instant.now()).toMinutes()
+                        val instant = runCatching { Instant.parse(order.createdAt) }
+                            .recoverCatching { java.time.OffsetDateTime.parse(order.createdAt).toInstant() }
+                            .getOrThrow()
+                        Duration.between(instant, Instant.now()).toMinutes()
                     }.getOrNull()
                     delay(60_000L)
                 }
@@ -126,9 +131,10 @@ fun ActiveOrderCard(
                         )
                     }
                 }
-                if (minutesAgo != null) {
+                val mins = minutesAgo
+                if (mins != null) {
                     Text(
-                        text = if (minutesAgo < 1) "just now" else "${minutesAgo}m ago",
+                        text = if (mins < 1) "just now" else "${mins}m ago",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted,
                     )
@@ -146,6 +152,21 @@ fun ActiveOrderCard(
                 color = TextMuted,
                 maxLines = 1,
             )
+
+            if (order.status == OrderStatus.SCHEDULED && order.scheduledFor != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                val activatesAt = remember(order.scheduledFor) {
+                    runCatching {
+                        java.time.ZonedDateTime.parse(order.scheduledFor)
+                            .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a"))
+                    }.getOrElse { order.scheduledFor }
+                }
+                Text(
+                    text = "Activates: $activatesAt",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Orange,
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -182,6 +203,7 @@ fun OrderStatusBadge(
         OrderStatus.COMPLETED -> StatusReady to "Completed"
         OrderStatus.CANCELLED -> StatusCancelled to "Cancelled"
         OrderStatus.REJECTED -> StatusCancelled to "Rejected"
+        OrderStatus.UNKNOWN -> TextMuted to "Unknown"
     }
 
     Row(

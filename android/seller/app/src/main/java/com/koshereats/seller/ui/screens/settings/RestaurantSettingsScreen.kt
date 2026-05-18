@@ -1,6 +1,7 @@
 package com.koshereats.seller.ui.screens.settings
 
 import android.net.Uri
+import android.widget.Toast
 import com.koshereats.seller.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -81,6 +82,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
@@ -99,6 +101,13 @@ fun RestaurantSettingsScreen(
     val scope = rememberCoroutineScope()
     var isUploadingCertificate by remember { mutableStateOf(false) }
     var showCertificate by remember { mutableStateOf(false) }
+
+    LaunchedEffect(authState.updateFieldError) {
+        if (authState.updateFieldError != null) {
+            Toast.makeText(context, authState.updateFieldError, Toast.LENGTH_SHORT).show()
+            authViewModel.clearUpdateFieldError()
+        }
+    }
 
     val certificatePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -485,6 +494,12 @@ fun RestaurantSettingsScreen(
     }
 }
 
+private val certUploadClient = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .writeTimeout(60, TimeUnit.SECONDS)
+    .readTimeout(60, TimeUnit.SECONDS)
+    .build()
+
 private suspend fun uploadCertificateSettings(
     context: android.content.Context,
     uri: Uri,
@@ -498,7 +513,7 @@ private suspend fun uploadCertificateSettings(
         val contentLength = context.contentResolver.openFileDescriptor(uri, "r")
             ?.use { it.statSize } ?: -1L
 
-        val client = OkHttpClient()
+        val client = certUploadClient
         val requestBody = object : RequestBody() {
             override fun contentType() = contentType.toMediaType()
             override fun contentLength() = contentLength

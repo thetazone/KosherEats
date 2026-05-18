@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.NotificationPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,10 +53,16 @@ class NotificationPreferencesViewModel @Inject constructor(
     fun setChatMessages(value: Boolean) = save(_uiState.value.prefs.copy(chatMessages = value))
     fun setPromotions(value: Boolean) = save(_uiState.value.prefs.copy(promotions = value))
 
+    private var saveJob: Job? = null
+
     private fun save(prefs: NotificationPreferences) {
+        // Capture rollback point before applying the optimistic update.
         val previous = _uiState.value.prefs
         _uiState.update { it.copy(prefs = prefs) }
-        viewModelScope.launch {
+        // Cancel the in-flight save so its rollback can't clobber subsequent toggles.
+        // The new request carries all pending changes (prefs already reflects them).
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch {
             try {
                 val resp = api.updateNotificationPreferences(prefs)
                 if (!resp.isSuccessful) {

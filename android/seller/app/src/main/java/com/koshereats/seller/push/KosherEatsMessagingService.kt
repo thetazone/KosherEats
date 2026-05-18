@@ -21,6 +21,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * FCM receiver for the seller app. Hilt-injects ApiService so onNewToken
@@ -61,6 +63,8 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
         private const val GROUP_KEY = "com.koshereats.seller.ORDERS"
         private const val SUMMARY_ID = 0
         private val NEW_ORDER_VIBRATION = longArrayOf(0, 500, 300, 500, 300, 500)
+        private val notifIdMap = ConcurrentHashMap<String, Int>()
+        private val notifIdCounter = AtomicInteger(1)
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -106,8 +110,9 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
 
             val isNewOrder = type == "new_order"
             val channelId = if (isNewOrder) NEW_ORDER_CHANNEL_ID else CHANNEL_ID
-            // Deterministic ID so pushes for the same order overwrite rather than stack.
-            val notifId = orderId?.hashCode() ?: type?.hashCode() ?: CHANNEL_ID.hashCode()
+            // Stable ID per order key — re-pushes for the same order overwrite; distinct orders don't collide.
+            val key = orderId ?: type ?: CHANNEL_ID
+            val notifId = notifIdMap.getOrPut(key) { notifIdCounter.getAndIncrement() }
 
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP

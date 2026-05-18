@@ -120,7 +120,10 @@ class CartViewModel @Inject constructor(
             try {
                 persistMutex.withLock {
                     val s = _uiState.value
-                    val json = gson.toJson(CartSnapshot(s.carts, s.activeRestaurantId))
+                    // Exclude empty carts (e.g. deal-only shells) so stale deals
+                    // don't survive across app sessions.
+                    val cartsToSave = s.carts.filterValues { it.items.isNotEmpty() }
+                    val json = gson.toJson(CartSnapshot(cartsToSave, s.activeRestaurantId))
                     dataStore.edit { it[KEY_CART_SNAPSHOT] = json }
                 }
             } catch (_: Exception) { }

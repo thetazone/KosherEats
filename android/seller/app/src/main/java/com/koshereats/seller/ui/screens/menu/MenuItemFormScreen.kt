@@ -94,6 +94,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import okhttp3.Request
 import okhttp3.RequestBody
 import okio.BufferedSink
@@ -126,7 +127,7 @@ fun MenuItemFormScreen(
     var spiceLevel by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var isUploadingImage by remember { mutableStateOf(false) }
+    var isUploadingImage by rememberSaveable { mutableStateOf(false) }
     var formInitialized by rememberSaveable { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -537,7 +538,11 @@ fun MenuItemFormScreen(
     }
 }
 
-private val uploadClient = OkHttpClient()
+private val uploadClient = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .writeTimeout(60, TimeUnit.SECONDS)
+    .readTimeout(60, TimeUnit.SECONDS)
+    .build()
 
 private const val MAX_LONG_EDGE_PX = 1080
 

@@ -42,8 +42,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -162,6 +164,7 @@ fun OrderTrackingScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -186,7 +189,8 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
     val restaurant = order.restaurantLat?.let { lat ->
         order.restaurantLng?.let { lng -> LatLng(lat, lng) }
     }
-    val delivery = LatLng(order.deliveryLat, order.deliveryLng)
+    val delivery = if (order.deliveryLat != 0.0 && order.deliveryLng != 0.0)
+        LatLng(order.deliveryLat, order.deliveryLng) else null
     val courier = order.courier?.let { c ->
         val lat = c.lat
         val lng = c.lng
@@ -194,18 +198,22 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
     }
 
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(delivery, 14f)
+        position = CameraPosition.fromLatLngZoom(delivery ?: restaurant ?: LatLng(0.0, 0.0), 14f)
     }
+    var didInitialFit by remember { mutableStateOf(false) }
 
     LaunchedEffect(restaurant, courier, delivery) {
+        if (didInitialFit) return@LaunchedEffect
         val points = listOfNotNull(restaurant, delivery, courier)
         when {
             points.size >= 2 -> {
                 val bounds = LatLngBounds.builder().apply { points.forEach { include(it) } }.build()
                 cameraPositionState.animate(CameraUpdateFactory.newLatLngBounds(bounds, 140))
+                didInitialFit = true
             }
             points.size == 1 -> {
                 cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(points.first(), 14f))
+                didInitialFit = true
             }
         }
     }
@@ -224,7 +232,9 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
             restaurant?.let {
                 Marker(state = MarkerState(position = it), title = "Restaurant")
             }
-            Marker(state = MarkerState(position = delivery), title = "Delivery")
+            delivery?.let {
+                Marker(state = MarkerState(position = it), title = "Delivery")
+            }
             courier?.let {
                 Marker(state = MarkerState(position = it), title = "Courier")
             }

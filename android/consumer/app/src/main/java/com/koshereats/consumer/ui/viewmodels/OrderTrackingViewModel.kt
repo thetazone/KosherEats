@@ -44,20 +44,24 @@ class OrderTrackingViewModel @Inject constructor(
 
     private var pollJob: Job? = null
     private var streamJob: Job? = null
+    private var setupJob: Job? = null
     private var currentOrderId: String? = null
     @Volatile private var completedNormally = false
+    @Volatile private var consecutiveSseUnauthorized = 0
     private val gson = Gson()
     private val sseClient = okHttpClient.newBuilder()
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
     fun start(orderId: String) {
-        if (currentOrderId == orderId && pollJob?.isActive == true) return
+        // Cancel any in-flight setup first to prevent races on rapid STOP→START.
+        setupJob?.cancel()
+        if (currentOrderId == orderId && pollJob?.isActive == true && streamJob?.isActive == true) return
         completedNormally = false
+        consecutiveSseUnauthorized = 0
         currentOrderId = orderId
         stopInternal()
-
-        viewModelScope.launch {
+        setupJob = viewModelScope.launch {
             loadOnce(orderId)
             pollJob = launchPollLoop(orderId)
             streamJob = launchLocationStream(orderId)
@@ -124,11 +128,17 @@ class OrderTrackingViewModel @Inject constructor(
                     .build()
                 sseClient.newCall(request).execute().use { response ->
                     if (response.code == 401) {
-                        sessionManager.signalLogout()
-                        pollJob?.cancel()
-                        _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
-                        return@launch
+                        consecutiveSseUnauthorized++
+                        if (consecutiveSseUnauthorized >= 2) {
+                            setupJob?.cancel()
+                            pollJob?.cancel()
+                            sessionManager.signalLogout()
+                            _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
+                            return@launch
+                        }
+                        throw RuntimeException("SSE 401 — will retry after backoff")
                     }
+                    consecutiveSseUnauthorized = 0
                     if (!response.isSuccessful) throw RuntimeException("SSE status ${response.code}")
                     val source = response.body?.source() ?: throw RuntimeException("no SSE body")
                     _uiState.update { it.copy(errorMessage = null) }

@@ -12,6 +12,7 @@ data class OrderEvent(val orderId: String?, val type: String?)
 @Singleton
 class OrderEventBus @Inject constructor() {
     private val _events = MutableSharedFlow<OrderEvent>(
+        replay = 0,
         extraBufferCapacity = 10,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )

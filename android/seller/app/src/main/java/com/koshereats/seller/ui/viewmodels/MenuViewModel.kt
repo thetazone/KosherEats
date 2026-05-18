@@ -25,7 +25,7 @@ data class MenuState(
     val items: List<MenuItem> = emptyList(),
     val categories: List<SellerMenuCategory> = emptyList(),
     val selectedItem: MenuItem? = null,
-    val selectedCategory: MenuCategory? = null,
+    val selectedCategory: SellerMenuCategory? = null,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val error: String? = null,
@@ -49,7 +49,7 @@ class MenuViewModel @Inject constructor(
         loadMenuItems()
     }
 
-    fun loadMenuItems(category: MenuCategory? = null) {
+    fun loadMenuItems(category: SellerMenuCategory? = null) {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(
@@ -64,7 +64,7 @@ class MenuViewModel @Inject constructor(
                     val items = if (category == null) {
                         serverCategories.flatMap { it.items }
                     } else {
-                        serverCategories.flatMap { it.items }.filter { it.category == category }
+                        serverCategories.firstOrNull { it.id == category.id }?.items ?: emptyList()
                     }
                     _state.update { it.copy(
                         categories = serverCategories,
@@ -97,11 +97,12 @@ class MenuViewModel @Inject constructor(
                     val allItems = categories.flatMap { it.items }
                     val selectedItem = allItems.firstOrNull { it.id == itemId }
                     _state.update { state ->
+                        val selectedCat = state.selectedCategory
                         state.copy(
-                            items = if (state.selectedCategory == null) {
+                            items = if (selectedCat == null) {
                                 allItems
                             } else {
-                                allItems.filter { it.category == state.selectedCategory }
+                                categories.firstOrNull { it.id == selectedCat.id }?.items ?: allItems
                             },
                             selectedItem = selectedItem,
                             isLoading = false,
@@ -121,6 +122,7 @@ class MenuViewModel @Inject constructor(
     fun createMenuItem(request: UpdateMenuItemRequest) {
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
+            var createdCategoryId: String? = null
             try {
                 val targetCategory = request.category
                     ?.uppercase()
@@ -146,10 +148,8 @@ class MenuViewModel @Inject constructor(
                     }
 
                 val categoryId: String?
-                val createdCategoryId: String?
                 if (existingCategory != null) {
                     categoryId = existingCategory.id
-                    createdCategoryId = null
                 } else {
                     val categoryDisplayName = targetCategory.name.lowercase()
                         .split("_")
@@ -196,8 +196,12 @@ class MenuViewModel @Inject constructor(
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
                     if (createdCategoryId != null) {
-                        runCatching { apiService.deleteCategory(createdCategoryId) }
-                        _state.update { it.copy(categories = it.categories.filter { cat -> cat.id != createdCategoryId }) }
+                        val cleaned = runCatching { apiService.deleteCategory(createdCategoryId) }.isSuccess
+                        if (cleaned) {
+                            _state.update { it.copy(categories = it.categories.filter { cat -> cat.id != createdCategoryId }) }
+                        } else {
+                            android.util.Log.w("MenuViewModel", "Orphan category cleanup failed: id=$createdCategoryId")
+                        }
                     }
                     _state.update { it.copy(
                         isSaving = false,
@@ -206,6 +210,14 @@ class MenuViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                if (createdCategoryId != null) {
+                    val cleaned = runCatching { apiService.deleteCategory(createdCategoryId!!) }.isSuccess
+                    if (cleaned) {
+                        _state.update { it.copy(categories = it.categories.filter { cat -> cat.id != createdCategoryId }) }
+                    } else {
+                        android.util.Log.w("MenuViewModel", "Orphan category cleanup failed on exception: id=$createdCategoryId")
+                    }
+                }
                 _state.update { it.copy(
                     isSaving = false,
                     error = "Connection error: ${e.localizedMessage}",
@@ -243,26 +255,27 @@ class MenuViewModel @Inject constructor(
     }
 
     fun deleteMenuItem(itemId: String) {
+        if (_state.value.pendingItemIds.contains(itemId)) return
+        _state.update { it.copy(pendingItemIds = it.pendingItemIds + itemId, error = null) }
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = apiService.deleteMenuItem(itemId)
                 if (response.isSuccessful) {
                     _state.update { it.copy(
-                        items = it.items.filter { it.id != itemId },
-                        isLoading = false,
+                        items = it.items.filter { item -> item.id != itemId },
+                        pendingItemIds = it.pendingItemIds - itemId,
                         deleteSuccess = true,
                     ) }
                 } else {
                     _state.update { it.copy(
-                        isLoading = false,
+                        pendingItemIds = it.pendingItemIds - itemId,
                         error = "Failed to delete item",
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    isLoading = false,
+                    pendingItemIds = it.pendingItemIds - itemId,
                     error = "Failed to delete item",
                 ) }
             }

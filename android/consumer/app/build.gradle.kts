@@ -76,9 +76,11 @@ android {
 
     buildTypes {
         debug {
-            // Swap to "https://koshereats-api.fly.dev/api/v1/" when testing Stripe
-            // PaymentSheet — real test-mode keys live on Fly, not the local dev backend.
-            buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
+            // Override DEV_BASE_URL in local.properties to point at a staging server or
+            // the Fly deployment for Stripe testing. Defaults to the Android emulator
+            // loopback (10.0.2.2 == host machine localhost).
+            val devUrl = lp("DEV_BASE_URL").ifEmpty { "http://10.0.2.2:3000/api/v1/" }
+            buildConfigField("String", "BASE_URL", "\"$devUrl\"")
         }
         release {
             signingConfig = signingConfigs.getByName("release")

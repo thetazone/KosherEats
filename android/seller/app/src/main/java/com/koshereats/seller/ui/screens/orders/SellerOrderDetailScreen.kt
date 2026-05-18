@@ -185,7 +185,10 @@ fun SellerOrderDetailScreen(
             val createdAt = order?.createdAt ?: return@produceState
             while (true) {
                 value = runCatching {
-                    Duration.between(Instant.parse(createdAt), Instant.now()).toMinutes()
+                    val instant = runCatching { Instant.parse(createdAt) }
+                        .recoverCatching { java.time.OffsetDateTime.parse(createdAt).toInstant() }
+                        .getOrThrow()
+                    Duration.between(instant, Instant.now()).toMinutes()
                 }.getOrNull()
                 delay(60_000L)
             }
@@ -226,10 +229,11 @@ fun SellerOrderDetailScreen(
                             OrderStatusBadge(status = order.status)
                         }
 
-                        if (minutesAgo != null) {
+                        val mins = minutesAgo
+                        if (mins != null) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = if (minutesAgo < 1) "Placed just now" else "Placed ${minutesAgo} min ago",
+                                text = if (mins < 1) "Placed just now" else "Placed $mins min ago",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )
@@ -411,6 +415,7 @@ fun SellerOrderDetailScreen(
                 OrderActionButtons(
                     status = order.status,
                     isPickup = order.isPickup,
+                    scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED)
@@ -457,6 +462,7 @@ private fun PriceRow(label: String, amount: Int) {
 private fun OrderActionButtons(
     status: OrderStatus,
     isPickup: Boolean,
+    scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
     onStartPreparing: () -> Unit,
@@ -483,6 +489,20 @@ private fun OrderActionButtons(
                             fontWeight = FontWeight.SemiBold,
                             color = Orange,
                         )
+                        if (scheduledFor != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val activatesAt = remember(scheduledFor) {
+                                runCatching {
+                                    java.time.ZonedDateTime.parse(scheduledFor)
+                                        .format(java.time.format.DateTimeFormatter.ofPattern("MMM d 'at' h:mm a"))
+                                }.getOrElse { scheduledFor }
+                            }
+                            Text(
+                                text = "Activates: $activatesAt",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "This order will auto-activate at its scheduled time. You can pre-prep, but no customer action is needed yet.",
@@ -633,7 +653,39 @@ private fun OrderActionButtons(
                 }
             }
             else -> {
-                // No actions for completed/cancelled
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = when (status) {
+                                OrderStatus.DELIVERED -> "Order Delivered"
+                                OrderStatus.COMPLETED -> "Order Complete"
+                                OrderStatus.CANCELLED -> "Order Cancelled"
+                                else -> "Order Rejected"
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when (status) {
+                                OrderStatus.DELIVERED, OrderStatus.COMPLETED -> SuccessGreen
+                                else -> TextMuted
+                            },
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = when (status) {
+                                OrderStatus.DELIVERED -> "This order has been delivered to the customer."
+                                OrderStatus.COMPLETED -> "This order has been completed successfully."
+                                OrderStatus.CANCELLED -> "This order was cancelled."
+                                else -> "This order was rejected."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                }
             }
         }
     }

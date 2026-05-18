@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.data.models.KosherCertification
@@ -179,6 +180,8 @@ fun RestaurantDetailScreen(
                             contentDescription = restaurant.name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
+                            placeholder = ColorPainter(SurfaceDark),
+                            error = ColorPainter(SurfaceDark),
                         )
 
                         // Gradient overlay
@@ -362,10 +365,10 @@ fun RestaurantDetailScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    // Menu items for selected category — horizontal carousel
+                    // Menu items for selected category
                     val selectedCategory = uiState.menuCategories.getOrNull(uiState.selectedCategoryIndex)
                     if (selectedCategory != null) {
-                        item {
+                        item(key = "category_header") {
                             Text(
                                 text = selectedCategory.name,
                                 style = MaterialTheme.typography.headlineMedium,
@@ -381,17 +384,17 @@ fun RestaurantDetailScreen(
                                 )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            Column(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                selectedCategory.items.forEach { menuItem ->
-                                    VerticalMenuItemCard(
-                                        menuItem = menuItem,
-                                        onClick = { sheetItem = menuItem },
-                                    )
-                                }
-                            }
+                        }
+                        items(selectedCategory.items, key = { it.id }) { menuItem ->
+                            VerticalMenuItemCard(
+                                menuItem = menuItem,
+                                onClick = { sheetItem = menuItem },
+                                modifier = Modifier
+                                    .padding(horizontal = 16.dp)
+                                    .padding(bottom = 10.dp),
+                            )
+                        }
+                        item(key = "category_footer") {
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
@@ -501,6 +504,8 @@ fun RestaurantDetailScreen(
                                     .fillMaxWidth()
                                     .padding(16.dp)
                                     .clip(RoundedCornerShape(12.dp)),
+                                placeholder = ColorPainter(SurfaceDark),
+                                error = ColorPainter(SurfaceDark),
                             )
                         }
                     }
@@ -615,6 +620,8 @@ fun HorizontalMenuItemCard(
                     .fillMaxSize()
                     .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(SurfaceDark),
+                error = ColorPainter(SurfaceDark),
             )
             if (menuItem.isAvailable) {
                 Box(
@@ -705,6 +712,8 @@ fun VerticalMenuItemCard(
                     .fillMaxSize()
                     .clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(SurfaceDark),
+                error = ColorPainter(SurfaceDark),
             )
             if (menuItem.isAvailable) {
                 Box(
@@ -761,6 +770,8 @@ private fun RestaurantDealCard(
                     .height(100.dp)
                     .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
                 contentScale = ContentScale.Crop,
+                placeholder = ColorPainter(SurfaceDark),
+                error = ColorPainter(SurfaceDark),
             )
             Column(modifier = Modifier.padding(10.dp)) {
                 Text(

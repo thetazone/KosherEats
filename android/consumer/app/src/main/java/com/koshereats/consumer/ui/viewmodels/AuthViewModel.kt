@@ -38,7 +38,7 @@ sealed class SessionState {
 data class AuthUiState(
     val sessionState: SessionState = SessionState.Unknown,
     val user: User? = null,
-    val isRehydrating: Boolean = false,
+    val isRehydrating: Boolean = true,
     val isSessionStale: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -60,7 +60,7 @@ data class AuthUiState(
     val phoneIsVerifying: Boolean = false,
     val needsPhone: Boolean = false,
 ) {
-    val isLoggedIn: Boolean get() = sessionState == SessionState.Authenticated || sessionState == SessionState.Guest
+    val isLoggedIn: Boolean get() = (sessionState == SessionState.Authenticated && user != null && !isSessionStale) || sessionState == SessionState.Guest
     val isGuest: Boolean get() = sessionState == SessionState.Guest
 }
 
@@ -89,9 +89,9 @@ class AuthViewModel @Inject constructor(
 
     private fun checkAuthStatus() {
         viewModelScope.launch {
+            _uiState.update { it.copy(isRehydrating = true) }
             val token = tokenProvider.awaitToken()
             if (token != null) {
-                _uiState.update { it.copy(isRehydrating = true) }
                 try {
                     val response = apiService.getProfile()
                     when {
@@ -117,7 +117,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = true) }
                 }
             } else {
-                _uiState.update { it.copy(sessionState = SessionState.LoggedOut) }
+                _uiState.update { it.copy(sessionState = SessionState.LoggedOut, isRehydrating = false) }
             }
         }
     }
@@ -525,6 +525,17 @@ class AuthViewModel @Inject constructor(
             prefs.remove(PrefsKeys.AUTH_TOKEN)
             prefs.remove(PrefsKeys.REFRESH_TOKEN)
             prefs.remove(PrefsKeys.USER_ID)
+        }
+    }
+
+    fun refreshUser() {
+        viewModelScope.launch {
+            try {
+                val response = apiService.getProfile()
+                if (response.isSuccessful) {
+                    _uiState.update { it.copy(user = response.body()) }
+                }
+            } catch (_: Exception) {}
         }
     }
 

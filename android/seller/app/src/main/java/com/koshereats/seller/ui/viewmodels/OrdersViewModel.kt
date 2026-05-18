@@ -1,5 +1,10 @@
 package com.koshereats.seller.ui.viewmodels
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
@@ -8,6 +13,7 @@ import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,6 +30,9 @@ data class OrdersState(
     val selectedFilter: OrderStatus? = null,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
+    val isLoadingMore: Boolean = false,
+    val hasMorePages: Boolean = false,
+    val currentPage: Int = 1,
     val pendingOrderIds: Set<String> = emptySet(),
     val error: String? = null,
     val updateSuccess: String? = null,
@@ -33,6 +42,7 @@ data class OrdersState(
 class OrdersViewModel @Inject constructor(
     private val apiService: ApiService,
     private val orderEventBus: OrderEventBus,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OrdersState())
@@ -41,6 +51,9 @@ class OrdersViewModel @Inject constructor(
     private var pollingJob: Job? = null
     private var pollerRefCount = 0
     private var loadJob: Job? = null
+    private var loadMoreJob: Job? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var isFirstPoll = true
 
     init {
         loadOrders()
@@ -52,6 +65,11 @@ class OrdersViewModel @Inject constructor(
     fun startPolling() {
         pollerRefCount++
         if (pollingJob?.isActive == true) return
+        launchPollingJob()
+        registerNetworkCallback()
+    }
+
+    private fun launchPollingJob() {
         pollingJob = viewModelScope.launch {
             launch {
                 orderEventBus.events.collect { event ->
@@ -62,6 +80,12 @@ class OrdersViewModel @Inject constructor(
                     }
                 }
             }
+            // Delay the very first periodic poll so it doesn't race the init loadOrders().
+            // Network-reconnect re-launches skip this because isFirstPoll is already false.
+            if (isFirstPoll) {
+                isFirstPoll = false
+                delay(BACKOFF_DELAYS[0])
+            }
             var consecutiveFailures = 0
             while (true) {
                 val succeeded = pollSilently()
@@ -71,12 +95,47 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                // Cancel the sleeping backoff and restart immediately on reconnect.
+                pollingJob?.cancel()
+                launchPollingJob()
+            }
+        }
+        networkCallback = cb
+        cm.registerNetworkCallback(
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build(),
+            cb,
+        )
+    }
+
+    private fun unregisterNetworkCallback() {
+        networkCallback?.let { cb ->
+            runCatching {
+                (context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .unregisterNetworkCallback(cb)
+            }
+        }
+        networkCallback = null
+    }
+
     fun stopPolling() {
         pollerRefCount = (pollerRefCount - 1).coerceAtLeast(0)
         if (pollerRefCount == 0) {
+            unregisterNetworkCallback()
             pollingJob?.cancel()
             pollingJob = null
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        unregisterNetworkCallback()
     }
 
     private suspend fun refreshSingleOrder(orderId: String) {
@@ -97,18 +156,28 @@ class OrdersViewModel @Inject constructor(
     // Returns true on success so the caller can reset the backoff counter.
     private suspend fun pollSilently(): Boolean {
         return try {
-            val filterAtStart = _state.value.selectedFilter
+            val currentState = _state.value
+            val filterAtStart = currentState.selectedFilter
             val statusStr = filterAtStart?.name?.lowercase()
-            val response = apiService.getOrders(status = statusStr)
+            // Re-fetch enough rows to cover pages already loaded by the user.
+            val limit = PAGE_SIZE * currentState.currentPage.coerceAtLeast(1)
+            val response = apiService.getOrders(status = statusStr, limit = limit)
             val succeeded = response.isSuccessful
             if (response.isSuccessful) {
                 _state.update { current ->
                     if (current.selectedFilter == filterAtStart) {
                         val newOrders = response.body() ?: current.orders
+                        // Merge by ID: update existing rows in-place and keep any rows from
+                        // pages loaded by loadMoreOrders after this request started.
+                        val newById = newOrders.associateBy { it.id }
+                        val merged = current.orders.map { existing -> newById[existing.id] ?: existing }
+                        val existingIds = current.orders.map { it.id }.toSet()
+                        val trulyNew = newOrders.filter { it.id !in existingIds }
+                        val finalList = trulyNew + merged
                         val updatedSelected = current.selectedOrder?.id
-                            ?.let { id -> newOrders.find { it.id == id } }
+                            ?.let { id -> finalList.find { it.id == id } }
                         current.copy(
-                            orders = newOrders,
+                            orders = finalList,
                             selectedOrder = updatedSelected ?: current.selectedOrder,
                         )
                     } else {
@@ -125,19 +194,25 @@ class OrdersViewModel @Inject constructor(
 
     fun loadOrders(status: OrderStatus? = null) {
         loadJob?.cancel()
+        loadMoreJob?.cancel()
         loadJob = viewModelScope.launch {
             _state.update { it.copy(
                 isLoading = it.orders.isEmpty(),
                 error = null,
                 selectedFilter = status,
+                currentPage = 1,
+                hasMorePages = false,
             ) }
             try {
                 val statusStr = status?.name?.lowercase()
-                val response = apiService.getOrders(status = statusStr)
+                val response = apiService.getOrders(status = statusStr, page = 1, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
+                    val body = response.body() ?: emptyList()
                     _state.update { it.copy(
-                        orders = response.body() ?: emptyList(),
+                        orders = body,
                         isLoading = false,
+                        hasMorePages = body.size == PAGE_SIZE,
+                        currentPage = 1,
                     ) }
                 } else {
                     _state.update { it.copy(
@@ -151,6 +226,40 @@ class OrdersViewModel @Inject constructor(
                     isLoading = false,
                     error = "Connection error: ${e.localizedMessage}",
                 ) }
+            }
+        }
+    }
+
+    fun loadMoreOrders() {
+        val currentState = _state.value
+        if (!currentState.hasMorePages || currentState.isLoadingMore || currentState.isLoading) return
+        val filterAtStart = currentState.selectedFilter
+        val pageToLoad = currentState.currentPage + 1
+        loadMoreJob = viewModelScope.launch {
+            _state.update { it.copy(isLoadingMore = true) }
+            try {
+                val statusStr = filterAtStart?.name?.lowercase()
+                val response = apiService.getOrders(status = statusStr, page = pageToLoad, limit = PAGE_SIZE)
+                if (response.isSuccessful) {
+                    val body = response.body() ?: emptyList()
+                    _state.update { current ->
+                        if (current.selectedFilter != filterAtStart) {
+                            current.copy(isLoadingMore = false)
+                        } else {
+                            current.copy(
+                                orders = current.orders + body,
+                                currentPage = pageToLoad,
+                                hasMorePages = body.size == PAGE_SIZE,
+                                isLoadingMore = false,
+                            )
+                        }
+                    }
+                } else {
+                    _state.update { it.copy(isLoadingMore = false) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(isLoadingMore = false) }
             }
         }
     }
@@ -344,17 +453,25 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun refresh() {
+        loadJob?.cancel()
         val filterAtStart = _state.value.selectedFilter
-        viewModelScope.launch {
+        val pageAtStart = _state.value.currentPage
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(isRefreshing = true) }
             try {
                 val statusStr = filterAtStart?.name?.lowercase()
-                val response = apiService.getOrders(status = statusStr)
+                val limit = PAGE_SIZE * pageAtStart.coerceAtLeast(1)
+                val response = apiService.getOrders(status = statusStr, limit = limit)
                 if (response.isSuccessful) {
                     _state.update { current ->
                         if (current.selectedFilter == filterAtStart) {
+                            val newOrders = response.body() ?: current.orders
+                            val newById = newOrders.associateBy { it.id }
+                            val merged = current.orders.map { existing -> newById[existing.id] ?: existing }
+                            val existingIds = current.orders.map { it.id }.toSet()
+                            val trulyNew = newOrders.filter { it.id !in existingIds }
                             current.copy(
-                                orders = response.body() ?: current.orders,
+                                orders = trulyNew + merged,
                                 isRefreshing = false,
                             )
                         } else {
@@ -382,5 +499,6 @@ class OrdersViewModel @Inject constructor(
     companion object {
         // Backoff delays for consecutive poll failures: 30s → 1m → 2m → 4m → 5m (cap).
         private val BACKOFF_DELAYS = longArrayOf(30_000, 60_000, 120_000, 240_000, 300_000)
+        private const val PAGE_SIZE = 20
     }
 }

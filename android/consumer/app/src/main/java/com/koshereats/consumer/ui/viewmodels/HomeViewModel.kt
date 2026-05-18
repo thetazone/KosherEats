@@ -152,16 +152,19 @@ class HomeViewModel @Inject constructor(
     fun selectCuisine(cuisine: CuisineType?) {
         _uiState.update { it.copy(selectedCuisine = cuisine) }
         loadRestaurants(page = 1)
+        loadSuggested()
     }
 
     fun toggleGlattFilter() {
         _uiState.update { it.copy(filterGlattOnly = !it.filterGlattOnly) }
         loadRestaurants(page = 1)
+        loadSuggested()
     }
 
     fun toggleCholovYisroelFilter() {
         _uiState.update { it.copy(filterCholovYisroelOnly = !it.filterCholovYisroelOnly) }
         loadRestaurants(page = 1)
+        loadSuggested()
     }
 
     fun applyKosherFilters(
@@ -179,6 +182,7 @@ class HomeViewModel @Inject constructor(
             )
         }
         loadRestaurants(page = 1)
+        loadSuggested()
     }
 
     override fun onCleared() {

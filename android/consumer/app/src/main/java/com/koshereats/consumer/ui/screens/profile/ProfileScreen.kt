@@ -47,7 +47,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +87,13 @@ fun ProfileScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showSignOutConfirm by remember { mutableStateOf(false) }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.refreshUser()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -99,7 +110,16 @@ fun ProfileScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (!state.isLoggedIn || state.isGuest) {
+        if (state.isRehydrating && !state.isLoggedIn) {
+            // Auth state not yet determined — show spinner to avoid flashing the
+            // guest CTA for a returning authenticated user on cold start.
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = Orange)
+            }
+        } else if (!state.isLoggedIn || state.isGuest) {
             // Not logged in or browsing as guest — show sign-in prompt
             Column(
                 modifier = Modifier

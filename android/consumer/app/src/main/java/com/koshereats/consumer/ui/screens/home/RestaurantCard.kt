@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.Restaurant
@@ -64,6 +65,8 @@ fun RestaurantCard(
                         .height(100.dp)
                         .background(SurfaceDark),
                     contentScale = ContentScale.Crop,
+                    placeholder = ColorPainter(SurfaceDark),
+                    error = ColorPainter(SurfaceDark),
                 )
 
                 // Optional logo badge overlaid on the hero photo (bottom-left).
@@ -81,6 +84,8 @@ fun RestaurantCard(
                             .size(36.dp)
                             .clip(androidx.compose.foundation.shape.CircleShape)
                             .background(TextWhite),
+                        placeholder = ColorPainter(SurfaceDark),
+                        error = ColorPainter(SurfaceDark),
                     )
                 }
 

@@ -37,23 +37,19 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
-import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
+import com.koshereats.seller.data.models.SellerMenuCategory
 import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
@@ -73,20 +69,9 @@ fun MenuManagementScreen(
     viewModel: MenuViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.loadMenuItems(state.selectedCategory)
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
-    val categories = listOf(null to "All") + MenuCategory.entries.map { cat ->
-        cat to cat.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
-    }
+    val categories: List<Pair<SellerMenuCategory?, String>> =
+        listOf(null to "All") + state.categories.map { cat -> cat to cat.name }
 
     Scaffold(
         containerColor = BackgroundBlack,
@@ -191,6 +176,7 @@ fun MenuManagementScreen(
                     items(state.items, key = { it.id }) { item ->
                         MenuItemCard(
                             item = item,
+                            isPending = item.id in state.pendingItemIds,
                             onEdit = { onEditItem(item.id) },
                             onToggleAvailability = { viewModel.toggleAvailability(item) },
                         )
@@ -205,13 +191,14 @@ fun MenuManagementScreen(
 @Composable
 private fun MenuItemCard(
     item: MenuItem,
+    isPending: Boolean,
     onEdit: () -> Unit,
     onToggleAvailability: () -> Unit,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onEdit),
+            .clickable(enabled = !isPending, onClick = onEdit),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
     ) {
@@ -320,16 +307,24 @@ private fun MenuItemCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Switch(
-                    checked = item.isAvailable,
-                    onCheckedChange = { onToggleAvailability() },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = TextWhite,
-                        checkedTrackColor = SuccessGreen,
-                        uncheckedThumbColor = TextMuted,
-                        uncheckedTrackColor = SurfaceDarkElevated,
-                    ),
-                )
+                if (isPending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Orange,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Switch(
+                        checked = item.isAvailable,
+                        onCheckedChange = { onToggleAvailability() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TextWhite,
+                            checkedTrackColor = SuccessGreen,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = SurfaceDarkElevated,
+                        ),
+                    )
+                }
             }
         }
     }

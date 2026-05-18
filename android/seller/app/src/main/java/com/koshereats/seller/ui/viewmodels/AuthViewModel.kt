@@ -30,6 +30,7 @@ data class AuthState(
     val isLoading: Boolean = true,
     val restaurant: Restaurant? = null,
     val error: String? = null,
+    val updateFieldError: String? = null,
     val isTogglingOpen: Boolean = false,
     /** null = not yet checked, true = seller owns at least one restaurant. */
     val hasRestaurants: Boolean? = null,
@@ -95,6 +96,10 @@ class AuthViewModel @Inject constructor(
                 clearAuth()
                 return
             } else {
+                // 5xx or unexpected error — unblock navigation rather than stalling forever.
+                if (_state.value.hasRestaurants == null) {
+                    _state.value = _state.value.copy(hasRestaurants = true)
+                }
                 return
             }
 
@@ -103,6 +108,10 @@ class AuthViewModel @Inject constructor(
                 _state.value = _state.value.copy(restaurant = response.body())
             }
         } catch (_: java.io.IOException) {
+            // Network error — unblock navigation if still pending.
+            if (_state.value.hasRestaurants == null) {
+                _state.value = _state.value.copy(hasRestaurants = true)
+            }
         }
     }
 
@@ -229,10 +238,21 @@ class AuthViewModel @Inject constructor(
                 val response = apiService.updateRestaurant(mapOf(key to value))
                 if (response.isSuccessful) {
                     _state.value = _state.value.copy(restaurant = response.body())
+                } else {
+                    _state.value = _state.value.copy(
+                        updateFieldError = "Failed to save changes (HTTP ${response.code()})",
+                    )
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    updateFieldError = "Failed to save changes: ${e.localizedMessage}",
+                )
             }
         }
+    }
+
+    fun clearUpdateFieldError() {
+        _state.value = _state.value.copy(updateFieldError = null)
     }
 
     suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {

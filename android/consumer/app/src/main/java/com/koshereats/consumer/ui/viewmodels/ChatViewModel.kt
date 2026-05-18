@@ -28,6 +28,8 @@ data class ChatUiState(
     val scrollToBottom: Boolean = false,
     /** IDs of optimistically-inserted messages that failed to send. */
     val failedMessageIds: Set<String> = emptySet(),
+    /** True after a 401/403/404 — polling must not restart. */
+    val terminalError: Boolean = false,
 )
 
 /**
@@ -124,15 +126,50 @@ class ChatViewModel @Inject constructor(
 
     fun retrySend(clientId: String) {
         val msg = _state.value.messages.find { it.id == clientId } ?: return
+        val text = msg.text
+        // Keep the same clientId so the message stays in its original chronological
+        // position instead of jumping to the tail as a newly-appended message would.
         _state.update { current ->
             current.copy(
-                messages = current.messages.filter { it.id != clientId },
                 failedMessageIds = current.failedMessageIds - clientId,
-                input = msg.text,
+                isSending = true,
                 error = null,
             )
         }
-        send()
+        viewModelScope.launch {
+            try {
+                val response = withTimeoutOrNull(30_000L) {
+                    apiService.sendChatMessage(orderId, SendChatMessageRequest(text))
+                }
+                val serverMsg = response?.body()
+                if (serverMsg != null && response.isSuccessful) {
+                    _state.update { current ->
+                        current.copy(
+                            messages = current.messages.map { if (it.id == clientId) serverMsg else it },
+                            isSending = false,
+                            error = null,
+                        )
+                    }
+                } else {
+                    _state.update { current ->
+                        current.copy(
+                            isSending = false,
+                            failedMessageIds = current.failedMessageIds + clientId,
+                            error = if (response == null) "Message timed out — tap to retry"
+                                    else "Couldn't send message",
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                _state.update { current ->
+                    current.copy(
+                        isSending = false,
+                        failedMessageIds = current.failedMessageIds + clientId,
+                        error = e.localizedMessage ?: "Network error",
+                    )
+                }
+            }
+        }
     }
 
     private fun fetch() {
@@ -156,8 +193,10 @@ class ChatViewModel @Inject constructor(
                 } else {
                     if (response.code() in listOf(401, 403, 404)) {
                         pollJob?.cancel()
+                        _state.update { it.copy(terminalError = true, error = "Couldn't refresh chat") }
+                    } else {
+                        _state.update { it.copy(error = "Couldn't refresh chat") }
                     }
-                    _state.update { it.copy(error = "Couldn't refresh chat") }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.localizedMessage ?: "Network error") }
@@ -171,6 +210,7 @@ class ChatViewModel @Inject constructor(
     }
 
     fun resume() {
+        if (_state.value.terminalError) return
         if (pollJob == null || pollJob?.isActive != true) {
             fetch()
             startPolling()

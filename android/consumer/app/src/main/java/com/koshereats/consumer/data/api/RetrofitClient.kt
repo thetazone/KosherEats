@@ -100,6 +100,13 @@ class TokenProvider @Inject constructor(
     fun clearTokens() {
         token = null
         refreshToken = null
+        appScope.launch {
+            dataStore.edit { prefs ->
+                prefs.remove(PrefsKeys.AUTH_TOKEN)
+                prefs.remove(PrefsKeys.REFRESH_TOKEN)
+                prefs.remove(PrefsKeys.USER_ID)
+            }
+        }
     }
 }
 
@@ -199,9 +206,14 @@ private class TokenAuthenticator(
         val path = response.request.url.encodedPath
         if (path.contains("/auth/")) return null
 
-        // No Authorization header means the request was anonymous (guest or no token loaded).
-        // A 401 on an anonymous request is not a session expiry — don't signal logout.
-        if (response.request.header("Authorization") == null) return null
+        // No Authorization header means the request fired before the token was loaded
+        // (cold-start race). If a token is now available, retry with it instead of failing.
+        if (response.request.header("Authorization") == null) {
+            val t = tokenProvider.token ?: return null
+            return response.request.newBuilder()
+                .header("Authorization", "Bearer $t")
+                .build()
+        }
 
         synchronized(lock) {
             // If another thread already dispatched logout, suppress duplicate events.

@@ -100,7 +100,7 @@ fun NavGraph(
         if (!authState.isLoggedIn) return@LaunchedEffect
         val hasRestaurants = authState.hasRestaurants ?: return@LaunchedEffect
         val current = navController.currentDestination?.route
-        if (current == Screen.Login.route) {
+        if (current == Screen.Login.route || current == Screen.PhoneLogin.route) {
             val target = if (hasRestaurants) Screen.Dashboard.route else Screen.Onboarding.route
             navController.navigate(target) {
                 popUpTo(Screen.Login.route) { inclusive = true }

@@ -106,23 +106,25 @@ class CheckoutViewModel @Inject constructor(
     private var _localSubtotalCents: Int = 0
 
     fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
-        if (_bootstrapped) return
-        _bootstrapped = true
-        _localSubtotalCents = localCart.sumOf { it.totalPrice }
-
-        // Persist only transient UI context (restaurant/deal IDs), not the full
-        // cart graph. After process death the server cart is authoritative — we
-        // never re-sync a stale SavedStateHandle snapshot to the server.
+        // Recover IDs from SavedStateHandle when the live args are empty (process-death recovery).
         val effectiveRestaurantId = restaurantId.ifEmpty {
             savedStateHandle.get<String>(KEY_RESTAURANT_ID).orEmpty()
         }
         val effectiveDealId = if (restaurantId.isNotEmpty()) appliedDealId
                               else savedStateHandle.get<String>(KEY_DEAL_ID)?.ifEmpty { null }
 
-        if (restaurantId.isNotEmpty()) {
-            savedStateHandle[KEY_RESTAURANT_ID] = restaurantId
-            savedStateHandle[KEY_DEAL_ID] = appliedDealId ?: ""
+        // Idempotent: skip if already bootstrapped with the same valid restaurant.
+        // Allow re-bootstrap when upgrading from empty restaurantId (cart rehydrated after process death).
+        if (_bootstrapped) {
+            if (_uiState.value.isProcessing || effectiveRestaurantId == _restaurantId) return
+            if (effectiveRestaurantId.isEmpty()) return
         }
+        _bootstrapped = true
+        _localSubtotalCents = localCart.sumOf { it.totalPrice }
+
+        // Always persist so process-death recovery can restore the IDs on the next launch.
+        savedStateHandle[KEY_RESTAURANT_ID] = effectiveRestaurantId
+        savedStateHandle[KEY_DEAL_ID] = effectiveDealId ?: ""
 
         _restaurantId = effectiveRestaurantId
         _appliedDealId = effectiveDealId
@@ -190,10 +192,8 @@ class CheckoutViewModel @Inject constructor(
 
     fun selectAddress(address: Address) {
         _uiState.update { it.copy(selectedAddress = address) }
-        viewModelScope.launch {
-            fetchDeliveryQuote(address)
-            refreshBundle()
-        }
+        viewModelScope.launch { fetchDeliveryQuote(address) }
+        launchRefreshBundle()
     }
 
     private suspend fun fetchDeliveryQuote(address: Address) {
@@ -229,7 +229,7 @@ class CheckoutViewModel @Inject constructor(
         if (type != "delivery" && type != "pickup") return
         if (_uiState.value.fulfillmentType == type) return
         _uiState.update { it.copy(fulfillmentType = type) }
-        viewModelScope.launch { refreshBundle() }
+        launchRefreshBundle()
     }
 
     fun addAddress(address: Address) {
@@ -244,8 +244,8 @@ class CheckoutViewModel @Inject constructor(
                             selectedAddress = saved,
                         )
                     }
-                    fetchDeliveryQuote(saved)
-                    refreshBundle()
+                    launch { fetchDeliveryQuote(saved) }
+                    launchRefreshBundle()
                 } else {
                     val serverMsg = try {
                         val body = resp.errorBody()?.string().orEmpty()
@@ -272,7 +272,7 @@ class CheckoutViewModel @Inject constructor(
                 customTipText = if (choice is TipChoice.Custom) state.customTipText else "",
             )
         }
-        viewModelScope.launch { refreshBundle() }
+        launchRefreshBundle()
     }
 
     fun updateCustomTip(value: String) {
@@ -303,8 +303,13 @@ class CheckoutViewModel @Inject constructor(
         }
     }
 
+    private fun launchRefreshBundle() {
+        refreshBundleJob?.cancel()
+        refreshBundleJob = viewModelScope.launch { refreshBundle() }
+    }
+
     private suspend fun refreshBundle() {
-        _uiState.update { it.copy(isLoadingBundle = true, errorMessage = null) }
+        _uiState.update { it.copy(isLoadingBundle = true, bundle = null, errorMessage = null) }
         try {
             val address = _uiState.value.selectedAddress
             val state = _uiState.value
@@ -336,6 +341,7 @@ class CheckoutViewModel @Inject constructor(
      *  (via [events]) to present Stripe's PaymentSheet. If backend is in stub
      *  mode (no Stripe key), skip the sheet and finalize directly. */
     fun onPayTapped() {
+        if (_uiState.value.isProcessing) return
         val bundle = _uiState.value.bundle ?: return
         _uiState.update { it.copy(isProcessing = true) }
         if (bundle.isStub) {
@@ -354,6 +360,10 @@ class CheckoutViewModel @Inject constructor(
         }
         val bundle = _uiState.value.bundle ?: return
         val intentId = extractIntentId(bundle.paymentIntentSecret)
+        if (intentId == null) {
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Unexpected Stripe response — please try again") }
+            return
+        }
         finalizeOrder(intentId)
     }
 
@@ -362,14 +372,14 @@ class CheckoutViewModel @Inject constructor(
         val isPickup = state.fulfillmentType == "pickup"
         val address = state.selectedAddress
         if (!isPickup && address == null) {
-            _uiState.update { it.copy(errorMessage = "Select a delivery address") }
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Select a delivery address") }
             return
         }
         if (!isPickup && address!!.latitude == 0.0 && address.longitude == 0.0) {
-            _uiState.update { it.copy(errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
             return
         }
-        val bundle = state.bundle ?: return
+        val bundle = state.bundle ?: run { _uiState.update { it.copy(isProcessing = false) }; return }
 
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
         viewModelScope.launch {
@@ -423,9 +433,10 @@ class CheckoutViewModel @Inject constructor(
     }
 
     // PaymentIntent client secrets look like `pi_xxxxxx_secret_yyyy`. We only
-    // want the `pi_xxxxxx` portion for our DB.
-    private fun extractIntentId(clientSecret: String): String =
-        clientSecret.substringBefore("_secret_", clientSecret)
+    // want the `pi_xxxxxx` portion for our DB. Returns null if the delimiter is
+    // absent so callers can surface a clear error instead of posting a garbage ID.
+    private fun extractIntentId(clientSecret: String): String? =
+        if (clientSecret.contains("_secret_")) clientSecret.substringBefore("_secret_") else null
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }

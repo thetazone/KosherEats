@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.Address
+import com.koshereats.consumer.data.session.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,13 +29,24 @@ data class AddressUiState(
 class AddressViewModel @Inject constructor(
     private val apiService: ApiService,
     private val dataStore: DataStore<Preferences>,
+    private val sessionManager: SessionManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AddressUiState())
     val uiState: StateFlow<AddressUiState> = _uiState.asStateFlow()
 
     init {
-        loadAddresses()
+        // Clear persisted selection and reset state on logout so a new user on the
+        // same device doesn't inherit the previous user's selected address ID.
+        viewModelScope.launch {
+            sessionManager.logoutEvent.collect {
+                _uiState.value = AddressUiState()
+                try { dataStore.edit { it.remove(SELECTED_ADDRESS_ID) } } catch (_: Exception) { }
+            }
+        }
+        // loadAddresses() is intentionally NOT called here — it fires before auth resolves
+        // and guarantees a 401 for guests. NavGraph's LaunchedEffect(authState.sessionState)
+        // triggers loadAddresses() once the user is authenticated.
     }
 
     fun loadAddresses() {

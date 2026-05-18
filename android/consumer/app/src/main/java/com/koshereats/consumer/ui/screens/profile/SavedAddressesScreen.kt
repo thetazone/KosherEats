@@ -47,13 +47,20 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.location.Geocoder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -85,6 +92,9 @@ fun SavedAddressesScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddForm by remember { mutableStateOf(false) }
+    var geocodeError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Add form fields
     var newStreet by remember { mutableStateOf("") }
@@ -259,26 +269,56 @@ fun SavedAddressesScreen(
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
+                        geocodeError?.let { err ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = err,
+                                color = androidx.compose.ui.graphics.Color(0xFFE53935),
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(start = 2.dp),
+                            )
+                        }
+
                         Button(
                             onClick = {
                                 if (newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.isNotBlank()) {
                                     val street = if (newApt.isNotBlank()) "$newStreet, $newApt" else newStreet
-                                    viewModel.addAddress(
-                                        Address(
-                                            label = newLabel,
-                                            streetAddress = street,
-                                            city = newCity,
-                                            state = newState,
-                                            zipCode = newZip,
-                                        )
-                                    )
-                                    newStreet = ""
-                                    newApt = ""
-                                    newCity = ""
-                                    newState = ""
-                                    newZip = ""
-                                    newLabel = ""
-                                    showAddForm = false
+                                    scope.launch {
+                                        val fullAddress = "$street, $newCity, $newState $newZip"
+                                        val coords = withContext(Dispatchers.IO) {
+                                            try {
+                                                if (!Geocoder.isPresent()) return@withContext null
+                                                @Suppress("DEPRECATION")
+                                                Geocoder(context, Locale.US)
+                                                    .getFromLocationName(fullAddress, 1)
+                                                    ?.firstOrNull()
+                                                    ?.let { it.latitude to it.longitude }
+                                            } catch (_: Exception) { null }
+                                        }
+                                        if (coords == null) {
+                                            geocodeError = "We couldn't verify this address. Please check the details and try again."
+                                        } else {
+                                            geocodeError = null
+                                            viewModel.addAddress(
+                                                Address(
+                                                    label = newLabel,
+                                                    streetAddress = street,
+                                                    city = newCity,
+                                                    state = newState,
+                                                    zipCode = newZip,
+                                                    latitude = coords.first,
+                                                    longitude = coords.second,
+                                                )
+                                            )
+                                            newStreet = ""
+                                            newApt = ""
+                                            newCity = ""
+                                            newState = ""
+                                            newZip = ""
+                                            newLabel = ""
+                                            showAddForm = false
+                                        }
+                                    }
                                 }
                             },
                             modifier = Modifier
