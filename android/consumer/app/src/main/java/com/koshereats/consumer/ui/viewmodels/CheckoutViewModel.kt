@@ -1,5 +1,6 @@
 package com.koshereats.consumer.ui.viewmodels
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,11 +16,9 @@ import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.models.PaymentSheetBundle
 import com.koshereats.consumer.data.models.PaymentSheetRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -65,11 +64,9 @@ data class CheckoutUiState(
     val isProcessing: Boolean = false,
     val errorMessage: String? = null,
     val placedOrder: Order? = null,
+    /** Non-null when the composable should present Stripe's PaymentSheet. Cleared via consumePendingPaymentSheet(). */
+    val pendingPaymentSheet: PaymentSheetBundle? = null,
 )
-
-sealed interface CheckoutEvent {
-    data class PresentPaymentSheet(val bundle: PaymentSheetBundle) : CheckoutEvent
-}
 
 /**
  * Owns checkout state: address, tip, scheduled time, Stripe bundle.
@@ -95,9 +92,6 @@ class CheckoutViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(CheckoutUiState())
     val uiState: StateFlow<CheckoutUiState> = _uiState.asStateFlow()
-
-    private val _events = Channel<CheckoutEvent>(Channel.BUFFERED)
-    val events = _events.receiveAsFlow()
 
     private var refreshBundleJob: Job? = null
     private var _bootstrapped = false
@@ -154,8 +148,12 @@ class CheckoutViewModel @Inject constructor(
                             ?: list.firstOrNull(),
                     )
                 }
+            } else {
+                Log.e("CheckoutViewModel", "loadAddresses failed: HTTP ${resp.code()}")
+                _uiState.update { it.copy(errorMessage = "Could not load saved addresses (${resp.code()}) — you can still add one below") }
             }
         } catch (e: Exception) {
+            Log.e("CheckoutViewModel", "loadAddresses exception", e)
             _uiState.update { it.copy(errorMessage = e.localizedMessage) }
         }
     }
@@ -188,6 +186,8 @@ class CheckoutViewModel @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
+            try { api.clearServerCart() } catch (_: Exception) { }
             _uiState.update { it.copy(errorMessage = "Failed to prepare cart: ${e.localizedMessage}") }
         }
     }
@@ -339,9 +339,9 @@ class CheckoutViewModel @Inject constructor(
         }
     }
 
-    /** Called by the composable when the user taps Pay. Asks the composable
-     *  (via [events]) to present Stripe's PaymentSheet. If backend is in stub
-     *  mode (no Stripe key), skip the sheet and finalize directly. */
+    /** Called by the composable when the user taps Pay. Sets [CheckoutUiState.pendingPaymentSheet]
+     *  to trigger PaymentSheet presentation. If backend is in stub mode (no Stripe key),
+     *  skip the sheet and finalize directly. */
     fun onPayTapped() {
         if (_uiState.value.isProcessing) return
         val bundle = _uiState.value.bundle ?: return
@@ -350,7 +350,11 @@ class CheckoutViewModel @Inject constructor(
             finalizeOrder(paymentIntentId = "stub_intent")
             return
         }
-        viewModelScope.launch { _events.send(CheckoutEvent.PresentPaymentSheet(bundle)) }
+        _uiState.update { it.copy(pendingPaymentSheet = bundle) }
+    }
+
+    fun consumePendingPaymentSheet() {
+        _uiState.update { it.copy(pendingPaymentSheet = null) }
     }
 
     /** Called by the composable after PaymentSheet closes. `success` means the
@@ -377,7 +381,8 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Select a delivery address") }
             return
         }
-        if (!isPickup && address!!.latitude == 0.0 && address.longitude == 0.0) {
+        val nonNullAddress = address ?: return
+        if (!isPickup && !nonNullAddress.isGeocoded) {
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
             return
         }
@@ -394,9 +399,9 @@ class CheckoutViewModel @Inject constructor(
                 val resp = api.createOrder(
                     CreateOrderRequest(
                         restaurantId = _restaurantId,
-                        deliveryAddress = if (isPickup) "" else "${address!!.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
-                        deliveryLat = if (isPickup) 0.0 else address!!.latitude,
-                        deliveryLng = if (isPickup) 0.0 else address!!.longitude,
+                        deliveryAddress = if (isPickup) "" else "${nonNullAddress.streetAddress}, ${nonNullAddress.city}, ${nonNullAddress.state} ${nonNullAddress.zipCode}",
+                        deliveryLat = if (isPickup) 0.0 else nonNullAddress.latitude,
+                        deliveryLng = if (isPickup) 0.0 else nonNullAddress.longitude,
                         paymentIntentId = paymentIntentId,
                         tip = bundle.tip,
                         scheduledFor = scheduledFor,
@@ -414,7 +419,7 @@ class CheckoutViewModel @Inject constructor(
                     if (existing != null) {
                         _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
                     } else {
-                        _uiState.update { it.copy(isProcessing = false, errorMessage = "Order failed (409)") }
+                        _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
                     }
                 } else {
                     _uiState.update {
@@ -431,7 +436,13 @@ class CheckoutViewModel @Inject constructor(
         val r = api.getOrders(page = 1)
         if (r.isSuccessful) r.body()?.firstOrNull() else null
     } catch (e: Exception) {
+        Log.e("CheckoutViewModel", "fetchMostRecentOrder failed during 409 recovery", e)
         null
+    }
+
+    fun retry() {
+        viewModelScope.launch { loadAddresses() }
+        launchRefreshBundle()
     }
 
     // PaymentIntent client secrets look like `pi_xxxxxx_secret_yyyy`. We only

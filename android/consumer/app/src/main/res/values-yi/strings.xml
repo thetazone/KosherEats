@@ -10,6 +10,15 @@
     <string name="auth_password">פּאַראָל</string>
     <string name="auth_login_title">ברוך הבא צוריק</string>
     <string name="auth_signup_title">עפֿן אַ חשבון</string>
+    <string name="auth_or_divider">אָדער</string>
+    <string name="auth_welcome_title">ברוכים-הבאים צו KosherEats</string>
+    <string name="auth_welcome_subtitle">כּשר ברענגונג, ווי עס דאַרף זיין.</string>
+    <string name="auth_mobile_number">רופֿ נומער</string>
+    <string name="auth_continue">ווייטער</string>
+    <string name="auth_continue_email">ווייטער מיט אימעיל</string>
+    <string name="auth_continue_guest">ווייטער ווי אַ גאַסט</string>
+    <string name="auth_use_different_google">נוץ אַ אַנדער Google חשבון</string>
+    <string name="auth_account_settings_unavailable">חשבון איינשטעלונגען זענען נישט פֿאַראַן אויף דעם מיטל</string>
 
     <string name="home_title">כּשר איטס</string>
     <string name="home_tagline">כּשר ברענגונג, ווי עס דאַרף זיין</string>
@@ -39,6 +48,29 @@
     <string name="order_status_on_the_way">דיין באַשטעלונג איז אין וועג</string>
     <string name="order_status_delivered">צוגעשטעלט — אַ גוטן אַפּעטיט!</string>
     <string name="order_tracking_title">נאָכפֿאָלגן</string>
+    <string name="action_retry">פּרובירן נאָך אַ מאָל</string>
+
+    <string name="profile_guest_title">עפֿן דיין פולע דערפֿאַרונג</string>
+    <string name="profile_guest_subtitle">לאָג אַרייַן כדי צו נאָכפֿאָלגן באַשטעלונגען, אָפּשפּאָרן אַדרעסן, און פֿאַרדינען לוינונגען.</string>
+    <string name="profile_benefit_track_orders">נאָכפֿאָלגן דיינע באַשטעלונגען אין צייט</string>
+    <string name="profile_benefit_save_addresses">אָפּשפּאָרן מערערע ברענגונג אַדרעסן</string>
+    <string name="profile_benefit_secure_checkout">זיכער און גיך אָפּצאָלן</string>
+    <string name="profile_sign_in_register">לאָג אַרייַן אָדער רעגיסטרירן</string>
+    <string name="profile_load_error">מ\'האָט נישט געקענט לאָדן פּראָפֿיל</string>
+    <string name="profile_menu_edit">רעדאַקטירן פּראָפֿיל</string>
+    <string name="profile_menu_saved_addresses">אָפּגעשפּאָרטע אַדרעסן</string>
+    <string name="profile_menu_payment_methods">צאָל מעטאָדן</string>
+    <string name="profile_menu_favorites">ליבלינגען</string>
+    <string name="profile_menu_notifications">אָנזאָג באַשטימונגען</string>
+    <string name="profile_menu_connected_accounts">פֿאַרבונדענע חשבונות</string>
+    <string name="profile_menu_help">הילף &amp; שטיצע</string>
+    <string name="profile_sign_out">אויסלאָגן</string>
+    <string name="profile_delete_account">אויסמעקן חשבון</string>
+    <string name="profile_delete_confirm_title">אויסמעקן דעם חשבון?</string>
+    <string name="profile_delete_confirm_body">דאָס לאָשט אויס אייביק דיין חשבון, באַשטעל-געשיכטע, אָפּגעשפּאָרטע אַדרעסן, און צאָל מעטאָדן. דאָס קען נישט אָפּגעמאַכט ווערן.</string>
+    <string name="profile_delete_btn">אויסמעקן</string>
+    <string name="profile_sign_out_confirm_title">אויסלאָגן?</string>
+    <string name="profile_sign_out_confirm_body">דו וועסט דאַרפֿן ווידער אַרייַנלאָגן זיך כדי צוצוגרייטן צו דיינע באַשטעלונגען, אַדרעסן, און צאָל מעטאָדן.</string>
 
     <string name="common_cancel">אָפּזאָגן</string>
     <string name="common_done">פֿאַרטיק</string>

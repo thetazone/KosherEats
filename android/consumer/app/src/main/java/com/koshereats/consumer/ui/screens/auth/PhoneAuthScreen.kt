@@ -1,5 +1,6 @@
 package com.koshereats.consumer.ui.screens.auth
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,10 @@ fun PhoneAuthScreen(
                 viewModel.silentResend()
             }
         }
+    }
+
+    BackHandler(enabled = state.otpSent) {
+        viewModel.backToPhoneEntry()
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
@@ -146,9 +151,9 @@ fun PhoneAuthScreen(
                 )
             }
 
-            if (state.error != null) {
+            state.error?.let { msg ->
                 Spacer(Modifier.height(12.dp))
-                Text(text = state.error!!, color = ErrorRed, fontSize = 14.sp)
+                Text(text = msg, color = ErrorRed, fontSize = 14.sp)
             }
 
             Spacer(Modifier.height(24.dp))

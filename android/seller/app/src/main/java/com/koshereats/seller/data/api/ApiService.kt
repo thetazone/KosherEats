@@ -190,6 +190,9 @@ interface ApiService {
     @POST("devices/register")
     suspend fun registerDevice(@Body body: RegisterDeviceRequest): Response<Map<String, String>>
 
+    @DELETE("devices/{token}")
+    suspend fun unregisterDevice(@Path("token") token: String): Response<Unit>
+
     // --- POS Integrations ---
 
     @GET("seller/integrations")

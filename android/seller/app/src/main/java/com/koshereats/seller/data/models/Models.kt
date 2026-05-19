@@ -26,7 +26,7 @@ enum class OrderStatus(val displayName: String) {
 
     val isActive: Boolean
         get() = when (this) {
-            SCHEDULED, DELIVERED, COMPLETED, CANCELLED, REJECTED, UNKNOWN -> false
+            DELIVERED, COMPLETED, CANCELLED, REJECTED, UNKNOWN -> false
             else -> true
         }
 }
@@ -121,6 +121,7 @@ data class MenuItem(
     val description: String = "",
     val price: Int = 0,
     val category: MenuCategory = MenuCategory.UNKNOWN,
+    @Json(name = "category_id") val categoryId: String? = null,
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "is_available") val isAvailable: Boolean = true,
     @Json(name = "is_kosher_pareve") val isKosherPareve: Boolean = false,
@@ -196,6 +197,12 @@ data class LoginResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class RefreshResponse(
+    val token: String,
+    @Json(name = "refresh_token") val refreshToken: String = "",
+)
+
+@JsonClass(generateAdapter = true)
 data class PhoneStartRequest(
     val phone: String,
 )
@@ -245,7 +252,7 @@ data class UpdateMenuItemRequest(
     val name: String? = null,
     val description: String? = null,
     val price: Int? = null,
-    val category: String? = null,
+    @Json(name = "category_id") val categoryId: String? = null,
     @Json(name = "image_url") val imageUrl: String? = null,
     @Json(name = "is_available") val isAvailable: Boolean? = null,
     @Json(name = "is_kosher_pareve") val isKosherPareve: Boolean? = null,

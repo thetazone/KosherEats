@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,11 +33,16 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +72,9 @@ fun EditProfileScreen(
     viewModel: EditProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val lastNameFocus = remember { FocusRequester() }
+    val phoneFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(state.saved) {
         if (state.saved) {
@@ -130,6 +139,8 @@ fun EditProfileScreen(
                         .clip(RoundedCornerShape(12.dp)),
                     colors = fieldColors,
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { lastNameFocus.requestFocus() }),
                 )
 
                 TextField(
@@ -138,9 +149,12 @@ fun EditProfileScreen(
                     label = { Text("Last Name") },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusRequester(lastNameFocus)
                         .clip(RoundedCornerShape(12.dp)),
                     colors = fieldColors,
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { phoneFocus.requestFocus() }),
                 )
 
                 TextField(
@@ -149,10 +163,12 @@ fun EditProfileScreen(
                     label = { Text("Phone Number") },
                     modifier = Modifier
                         .fillMaxWidth()
+                        .focusRequester(phoneFocus)
                         .clip(RoundedCornerShape(12.dp)),
                     colors = fieldColors,
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                 )
 
                 state.error?.let { error ->

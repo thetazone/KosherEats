@@ -118,14 +118,19 @@ fun CreateDealScreen(
     var discountValue by remember { mutableStateOf("") }
     var minOrderAmount by remember { mutableStateOf("") }
     var showDatePicker by remember { mutableStateOf(false) }
-    var expiresAtMillis by remember {
-        mutableStateOf<Long?>(
-            Instant.now().atZone(ZoneId.systemDefault())
-                .toLocalDate().atStartOfDay(ZoneId.of("UTC"))
-                .toInstant().toEpochMilli()
-        )
+    val todayUtcMidnightMillis = remember {
+        Instant.now().atZone(ZoneId.systemDefault())
+            .toLocalDate().atStartOfDay(ZoneId.of("UTC"))
+            .toInstant().toEpochMilli()
     }
-    var selectedHalfHour by remember { mutableIntStateOf(47) }
+    // First half-hour slot that is >= now + 30 min (may exceed 47 if no slot valid today)
+    val minValidSlot = remember {
+        val nowLocal = Instant.now().atZone(ZoneId.systemDefault())
+        val nowMinutes = nowLocal.hour * 60 + nowLocal.minute
+        (nowMinutes + 59) / 30
+    }
+    var expiresAtMillis by remember { mutableStateOf<Long?>(todayUtcMidnightMillis) }
+    var selectedHalfHour by remember { mutableIntStateOf(minValidSlot.coerceIn(0, 47)) }
     var imageUrl by remember { mutableStateOf("") }
     var isUploadingImage by remember { mutableStateOf(false) }
 
@@ -175,6 +180,17 @@ fun CreateDealScreen(
         }
         "$hour12:$minute $amPm"
     }
+
+    val isToday = expiresAtMillis == todayUtcMidnightMillis
+    val effectiveMinSlot = if (isToday) minValidSlot else 0
+    val expiresInstant = expiresAtMillis?.let { millis ->
+        val utcDate = Instant.ofEpochMilli(millis).atZone(ZoneId.of("UTC")).toLocalDate()
+        val h = selectedHalfHour / 2
+        val m = if (selectedHalfHour % 2 == 0) 0 else 30
+        utcDate.atTime(h, m).atZone(ZoneId.systemDefault()).toInstant()
+    }
+    val isExpiryFuture = expiresInstant != null &&
+        expiresInstant.isAfter(Instant.now().plusSeconds(30L * 60))
 
     Column(
         modifier = Modifier
@@ -502,16 +518,11 @@ fun CreateDealScreen(
             }
 
             if (showDatePicker) {
-                val todayMillis = remember {
-                    Instant.now().atZone(ZoneId.systemDefault())
-                        .toLocalDate().atStartOfDay(ZoneId.of("UTC"))
-                        .toInstant().toEpochMilli()
-                }
                 val datePickerState = rememberDatePickerState(
-                    initialSelectedDateMillis = expiresAtMillis ?: todayMillis,
+                    initialSelectedDateMillis = expiresAtMillis ?: todayUtcMidnightMillis,
                     selectableDates = object : SelectableDates {
                         override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                            utcTimeMillis >= todayMillis
+                            utcTimeMillis >= todayUtcMidnightMillis
                     },
                 )
                 DatePickerDialog(
@@ -548,6 +559,7 @@ fun CreateDealScreen(
                     slots = timeSlots,
                     selectedIndex = selectedHalfHour,
                     onSelected = { selectedHalfHour = it },
+                    minSelectableIndex = effectiveMinSlot,
                 )
             }
 
@@ -564,7 +576,7 @@ fun CreateDealScreen(
                     || (discountValue.toIntOrNull() ?: 0) > 0
             val canCreate = title.isNotBlank()
                     && hasDiscountValue
-                    && expiresAtMillis != null
+                    && isExpiryFuture
                     && !state.isCreating
                     && !isUploadingImage
                     && (isGeneralDeal || selectedItem != null)
@@ -573,6 +585,7 @@ fun CreateDealScreen(
                 title.isBlank() -> "Enter a deal title"
                 !hasDiscountValue -> "Enter a discount value"
                 !isGeneralDeal && selectedItem == null -> "Select a menu item"
+                !isExpiryFuture -> "Expiry must be at least 30 minutes from now"
                 isUploadingImage -> "Image upload in progress…"
                 else -> null
             }
@@ -653,6 +666,7 @@ private fun TimeSlotPicker(
     slots: List<String>,
     selectedIndex: Int,
     onSelected: (Int) -> Unit,
+    minSelectableIndex: Int = 0,
 ) {
     val scrollState = rememberScrollState()
 
@@ -670,6 +684,7 @@ private fun TimeSlotPicker(
     ) {
         slots.forEachIndexed { index, label ->
             val selected = index == selectedIndex
+            val enabled = index >= minSelectableIndex
             Box(
                 modifier = Modifier
                     .height(38.dp)
@@ -680,13 +695,17 @@ private fun TimeSlotPicker(
                         color = if (selected) Orange else SurfaceDarkElevated,
                         shape = RoundedCornerShape(8.dp),
                     )
-                    .clickable { onSelected(index) }
+                    .clickable(enabled = enabled) { onSelected(index) }
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = label,
-                    color = if (selected) Orange else TextSecondary,
+                    color = when {
+                        !enabled -> TextMuted.copy(alpha = 0.4f)
+                        selected -> Orange
+                        else -> TextSecondary
+                    },
                     fontSize = 12.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 )

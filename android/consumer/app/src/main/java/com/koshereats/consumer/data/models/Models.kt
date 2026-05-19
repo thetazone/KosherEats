@@ -14,6 +14,7 @@ enum class KosherCertification(val displayName: String, val abbreviation: String
     @SerializedName("CHABAD") CHABAD("Chabad", "CH"),
     @SerializedName("LOCAL") LOCAL("Local Rabbinical", "LR"),
     @SerializedName("OTHER") OTHER("Other", "K"),
+    UNKNOWN("Unknown", "?"),
 }
 
 enum class DietaryType(val displayName: String) {
@@ -70,6 +71,7 @@ enum class CuisineType(val displayName: String) {
     @SerializedName(value = "comfort", alternate = ["Comfort"]) COMFORT("Comfort"),
     @SerializedName(value = "mediterranean", alternate = ["Mediterranean"]) MEDITERRANEAN("Mediterranean"),
     @SerializedName(value = "other", alternate = ["Other"]) OTHER("Other"),
+    UNKNOWN("Unknown"),
 }
 
 // ── User ──────────────────────────────────────────────────
@@ -97,6 +99,7 @@ data class Address(
     @SerializedName("lng") val longitude: Double = 0.0,
     @SerializedName("delivery_instructions") val deliveryInstructions: String? = null,
     @SerializedName("is_default") val isDefault: Boolean = false,
+    @SerializedName("is_geocoded") val isGeocoded: Boolean = false,
 )
 
 val Address.formatted: String get() = "$streetAddress, $city, $state $zipCode"
@@ -172,14 +175,7 @@ data class Restaurant(
     val phone: String = "",
     val rating: Double = 0.0,
     @SerializedName("review_count") val reviewCount: Int = 0,
-    // Element type is nullable: Gson deserializes any cuisine string not in
-    // the CuisineType @SerializedName set to null (e.g. "Japanese"), and
-    // those nulls land in the list at runtime regardless of Kotlin's
-    // declared type. UI sites must filter or null-safe access.
-    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<CuisineType?> = emptyList(),
-    // Nullable because Gson does NOT honor Kotlin defaults — when the API
-    // sends null or omits the field, this lands as null at runtime regardless
-    // of the declared default. Call sites coalesce to OTHER.
+    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<CuisineType> = emptyList(),
     @SerializedName("kosher_certification") val kosherCertification: KosherCertification? = null,
     @SerializedName("certifying_agency") val certifyingAgency: String = "",
     @SerializedName("mashgiach_name") val mashgiachName: String? = null,

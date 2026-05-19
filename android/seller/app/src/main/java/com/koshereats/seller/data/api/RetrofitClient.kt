@@ -17,10 +17,10 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -28,7 +28,7 @@ import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Route
 import okhttp3.logging.HttpLoggingInterceptor
-import com.koshereats.seller.data.models.LoginResponse
+import com.koshereats.seller.data.models.RefreshResponse
 import com.koshereats.seller.data.models.UnknownFallbackEnumAdapterFactory
 import org.json.JSONObject
 import retrofit2.Retrofit
@@ -56,6 +56,10 @@ object NetworkModule {
 
     val sessionExpired = MutableStateFlow(false)
 
+    // Emitted by RestaurantPickerViewModel.select() whenever the active restaurant changes.
+    // OrdersViewModel, MenuViewModel, and DealsViewModel collect this to reset + reload.
+    val restaurantChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     @Provides
     @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder()
@@ -69,12 +73,14 @@ object NetworkModule {
         @ApplicationContext context: Context,
         moshi: Moshi,
     ): OkHttpClient {
-        // Synchronously prime caches so the first authenticated requests on cold start
-        // carry the Authorization header rather than racing the async collector below.
-        val initialPrefs = runBlocking { context.dataStore.data.first() }
-        cachedToken = initialPrefs[PrefsKeys.AUTH_TOKEN]
-        cachedRefreshToken = initialPrefs[PrefsKeys.REFRESH_TOKEN]
-        cachedRestaurantId = initialPrefs[PrefsKeys.RESTAURANT_ID]
+        // Prime caches on IO before the collectors below take over; avoids
+        // blocking the injection thread (potential ANR on cold start via main thread).
+        appScope.launch {
+            val initialPrefs = context.dataStore.data.first()
+            cachedToken = initialPrefs[PrefsKeys.AUTH_TOKEN]
+            cachedRefreshToken = initialPrefs[PrefsKeys.REFRESH_TOKEN]
+            cachedRestaurantId = initialPrefs[PrefsKeys.RESTAURANT_ID]
+        }
 
         appScope.launch {
             context.dataStore.data.collect { prefs ->
@@ -200,10 +206,14 @@ private class TokenAuthenticator(
             NetworkModule.cachedRefreshToken = newTokens.second
             // Persist asynchronously — cachedToken is the runtime source of truth,
             // so blocking OkHttp dispatcher threads for a DataStore write is unnecessary.
+            // Guard: if clearAuth/signalSessionExpired nulled cachedToken before this
+            // coroutine runs, skip the write so we don't ghost-persist a stale token.
             appScope.launch {
-                context.dataStore.edit { prefs ->
-                    prefs[PrefsKeys.AUTH_TOKEN] = newTokens.first
-                    prefs[PrefsKeys.REFRESH_TOKEN] = newTokens.second
+                if (NetworkModule.cachedToken == newTokens.first) {
+                    context.dataStore.edit { prefs ->
+                        prefs[PrefsKeys.AUTH_TOKEN] = newTokens.first
+                        prefs[PrefsKeys.REFRESH_TOKEN] = newTokens.second
+                    }
                 }
             }
 
@@ -225,7 +235,7 @@ private class TokenAuthenticator(
             refreshClient.newCall(request).execute().use { resp ->
                 if (resp.isSuccessful) {
                     val bodyStr = resp.body?.string() ?: return null
-                    val adapter = moshi.adapter(LoginResponse::class.java)
+                    val adapter = moshi.adapter(RefreshResponse::class.java)
                     val parsed = adapter.fromJson(bodyStr) ?: return null
                     val token = parsed.token.ifBlank { return null }
                     Pair(token, parsed.refreshToken)

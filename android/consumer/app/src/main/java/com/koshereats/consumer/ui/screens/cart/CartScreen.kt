@@ -1,5 +1,6 @@
 package com.koshereats.consumer.ui.screens.cart
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -81,6 +82,10 @@ fun CartScreen(
 
     // If only one cart exists, go straight to detail.
     val effectiveShowDetail = showingDetail || !state.hasMultipleCarts
+
+    BackHandler(enabled = showingDetail && state.hasMultipleCarts) {
+        showingDetail = false
+    }
 
     Column(
         modifier = Modifier

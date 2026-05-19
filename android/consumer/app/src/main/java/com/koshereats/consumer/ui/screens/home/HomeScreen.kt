@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -101,7 +102,7 @@ fun HomeScreen(
         snapshotFlow {
             val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val totalItems = listState.layoutInfo.totalItemsCount
-            lastVisibleItem >= totalItems - 3 && !uiState.isLoading && uiState.hasMore
+            totalItems > 0 && lastVisibleItem >= totalItems - 3 && !uiState.isLoading && uiState.hasMore
         }.distinctUntilChanged().collect { shouldLoad ->
             if (shouldLoad) viewModel.loadMore()
         }
@@ -121,7 +122,7 @@ fun HomeScreen(
         ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().imePadding(),
             contentPadding = PaddingValues(top = 4.dp, bottom = 88.dp),
         ) {
             // Header

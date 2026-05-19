@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -51,6 +52,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -74,6 +79,12 @@ fun RegisterScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var passwordVisible by remember { mutableStateOf(false) }
+    val lastNameFocus = remember { FocusRequester() }
+    val emailFocus = remember { FocusRequester() }
+    val phoneFocus = remember { FocusRequester() }
+    val passwordFocus = remember { FocusRequester() }
+    val confirmFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
         if (state.isLoggedIn && !state.isGuest) {
@@ -126,8 +137,8 @@ fun RegisterScreen(
                 .height(52.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xFF3C4043),
-                contentColor = Color.White,
+                containerColor = SurfaceDarkElevated,
+                contentColor = TextWhite,
             ),
         ) {
             Text("Continue with Google", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
@@ -183,15 +194,19 @@ fun RegisterScreen(
                 shape = RoundedCornerShape(12.dp),
                 colors = textFieldColors,
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { lastNameFocus.requestFocus() }),
             )
             OutlinedTextField(
                 value = state.registerLastName,
                 onValueChange = { viewModel.updateRegisterLastName(it) },
                 label = { Text("Last Name") },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).focusRequester(lastNameFocus),
                 shape = RoundedCornerShape(12.dp),
                 colors = textFieldColors,
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(onNext = { emailFocus.requestFocus() }),
             )
         }
 
@@ -202,11 +217,12 @@ fun RegisterScreen(
             onValueChange = { viewModel.updateRegisterEmail(it) },
             label = { Text("Email") },
             leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(emailFocus),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { phoneFocus.requestFocus() }),
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -216,11 +232,12 @@ fun RegisterScreen(
             onValueChange = { viewModel.updateRegisterPhone(it) },
             label = { Text("Phone Number") },
             leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null, tint = TextMuted) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -240,11 +257,12 @@ fun RegisterScreen(
                 }
             },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { confirmFocus.requestFocus() }),
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -255,16 +273,17 @@ fun RegisterScreen(
             label = { Text("Confirm Password") },
             leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
             visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(confirmFocus),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.register() }),
         )
 
-        if (state.error != null) {
+        state.error?.let { msg ->
             Spacer(modifier = Modifier.height(12.dp))
-            Text(text = state.error!!, color = ErrorRed, fontSize = 14.sp)
+            Text(text = msg, color = ErrorRed, fontSize = 14.sp)
         }
 
         Spacer(modifier = Modifier.height(24.dp))

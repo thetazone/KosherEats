@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.koshereats.consumer.BuildConfig
 import com.koshereats.consumer.data.api.ApiService
+import com.koshereats.consumer.data.api.TokenProvider
 import com.koshereats.consumer.data.models.CourierLocationEvent
 import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.session.SessionManager
@@ -37,6 +38,7 @@ class OrderTrackingViewModel @Inject constructor(
     private val api: ApiService,
     private val okHttpClient: OkHttpClient,
     private val sessionManager: SessionManager,
+    private val tokenProvider: TokenProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OrderTrackingUiState())
@@ -80,6 +82,7 @@ class OrderTrackingViewModel @Inject constructor(
     }
 
     private fun stopInternal() {
+        setupJob?.cancel(); setupJob = null
         pollJob?.cancel(); pollJob = null
         streamJob?.cancel(); streamJob = null
     }
@@ -122,6 +125,11 @@ class OrderTrackingViewModel @Inject constructor(
         val url = BuildConfig.BASE_URL.trimEnd('/') + "/orders/$orderId/location/stream"
         var backoffMs = 3_000L
 
+        // Ensure the encrypted-prefs load has finished before opening the SSE
+        // connection. AuthInterceptor now does the same via runBlocking, so this
+        // suspends rather than polling with a deadline.
+        tokenProvider.awaitToken()
+
         while (isActive) {
             try {
                 val request = Request.Builder()
@@ -135,8 +143,8 @@ class OrderTrackingViewModel @Inject constructor(
                             setupJob?.cancel(); setupJob = null
                             pollJob?.cancel(); pollJob = null
                             streamJob = null
-                            sessionManager.signalLogout()
                             _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
+                            sessionManager.signalLogout()
                             return@launch
                         }
                         throw RuntimeException("SSE 401 — will retry after backoff")

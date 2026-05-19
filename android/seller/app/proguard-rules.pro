@@ -2,6 +2,9 @@
 
 # App models (Moshi uses codegen + reflection fallback)
 -keep class com.koshereats.seller.data.models.** { *; }
+# SocialLoginRequest lives in data.api rather than data.models; keep it explicitly
+# so it is protected even if the @JsonClass or JsonAdapter rules are ever removed.
+-keep class com.koshereats.seller.data.api.SocialLoginRequest { *; }
 
 # Moshi
 -keepclassmembers class * {
@@ -32,7 +35,7 @@
 # 2026-05-14 — this is the root cause of the seller Google Sign-In bug.
 # Official Retrofit R8 full-mode rule: preserves ApiService interface signatures
 # so generic return types survive shrinking without losing obfuscation elsewhere.
--keep,allowobfuscation interface com.koshereats.seller.data.api.ApiService
+-keep,allowobfuscation interface com.koshereats.seller.data.api.**
 -if interface * { @retrofit2.http.* <methods>; }
 -keep,allowobfuscation,allowshrinking interface <1>
 -keep,allowobfuscation,allowshrinking interface retrofit2.Call

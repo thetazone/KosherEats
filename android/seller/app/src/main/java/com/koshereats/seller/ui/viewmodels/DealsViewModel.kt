@@ -3,6 +3,7 @@ package com.koshereats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.CreateDealRequest
 import com.koshereats.seller.data.models.Deal
 import com.koshereats.seller.data.models.DiscountType
@@ -36,6 +37,12 @@ class DealsViewModel @Inject constructor(
 
     init {
         loadDeals()
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                _state.value = DealsState()
+                loadDeals()
+            }
+        }
     }
 
     fun loadDeals() {

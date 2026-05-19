@@ -1,5 +1,6 @@
 package com.koshereats.consumer.ui.screens.restaurant
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -110,6 +111,10 @@ fun RestaurantDetailScreen(
     val listState = rememberLazyListState()
     var sheetItem by remember { mutableStateOf<MenuItem?>(null) }
     var showCertificate by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showCertificate) {
+        showCertificate = false
+    }
 
     val headerHeight = 260.dp
     val headerHeightPx = with(LocalDensity.current) { headerHeight.toPx() }

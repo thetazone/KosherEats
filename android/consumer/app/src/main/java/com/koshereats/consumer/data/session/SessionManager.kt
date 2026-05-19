@@ -19,6 +19,6 @@ class SessionManager @Inject constructor(
 
     fun signalLogout() {
         appScope.launch { PushBootstrap.deleteToken() }
-        _logoutEvent.tryEmit(Unit)
+        appScope.launch { _logoutEvent.emit(Unit) }
     }
 }

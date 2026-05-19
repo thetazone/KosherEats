@@ -146,7 +146,9 @@ fun NavGraph(
                                         saveState = true
                                     }
                                     launchSingleTop = true
-                                    restoreState = true
+                                    // Don't restore orders_graph state: it may contain an
+                                    // OrderDetail entry, which would skip the list on re-tap.
+                                    restoreState = screen.route != Screen.Orders.route
                                 }
                             },
                             colors = NavigationBarItemDefaults.colors(
@@ -208,6 +210,15 @@ fun NavGraph(
                 DashboardScreen(
                     onOrderClick = { orderId ->
                         navController.navigate(Screen.OrderDetail.createRoute(orderId))
+                    },
+                    onViewAllOrders = {
+                        navController.navigate(Screen.Orders.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = false
+                        }
                     },
                     authViewModel = authViewModel,
                 )

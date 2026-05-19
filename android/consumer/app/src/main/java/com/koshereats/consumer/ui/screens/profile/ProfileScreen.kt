@@ -64,8 +64,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.koshereats.consumer.R
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 
@@ -102,7 +104,7 @@ fun ProfileScreen(
         TopAppBar(
             title = {
                 Text(
-                    "Profile", 
+                    stringResource(R.string.tabs_profile),
                     style = MaterialTheme.typography.headlineLarge,
                     color = TextWhite
                 )
@@ -146,7 +148,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(32.dp))
                 
                 Text(
-                    text = "Unlock your full experience",
+                    text = stringResource(R.string.profile_guest_title),
                     style = MaterialTheme.typography.headlineMedium,
                     color = TextWhite,
                     textAlign = TextAlign.Center
@@ -155,7 +157,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 Text(
-                    text = "Sign in to track orders, save addresses, and earn rewards on every kosher meal.",
+                    text = stringResource(R.string.profile_guest_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextTertiary,
                     textAlign = TextAlign.Center,
@@ -165,9 +167,9 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(40.dp))
                 
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    GuestBenefitRow(icon = Icons.Filled.LocalMall, text = "Track your orders in real-time")
-                    GuestBenefitRow(icon = Icons.Filled.LocationOn, text = "Save multiple delivery addresses")
-                    GuestBenefitRow(icon = Icons.Filled.Security, text = "Secure and fast checkout")
+                    GuestBenefitRow(icon = Icons.Filled.LocalMall, text = stringResource(R.string.profile_benefit_track_orders))
+                    GuestBenefitRow(icon = Icons.Filled.LocationOn, text = stringResource(R.string.profile_benefit_save_addresses))
+                    GuestBenefitRow(icon = Icons.Filled.Security, text = stringResource(R.string.profile_benefit_secure_checkout))
                 }
                 
                 Spacer(modifier = Modifier.height(48.dp))
@@ -181,7 +183,7 @@ fun ProfileScreen(
                         .height(56.dp),
                 ) {
                     Text(
-                        "Sign In or Register", 
+                        stringResource(R.string.profile_sign_in_register),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -205,7 +207,7 @@ fun ProfileScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         Text(
-                            text = "Couldn't load profile",
+                            text = stringResource(R.string.profile_load_error),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextWhite,
                         )
@@ -214,7 +216,7 @@ fun ProfileScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Orange),
                             shape = RoundedCornerShape(12.dp),
                         ) {
-                            Text("Retry", fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.action_retry), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -298,25 +300,25 @@ fun ProfileScreen(
                     Column {
                         ProfileMenuItem(
                             icon = Icons.Filled.Person,
-                            title = "Edit Profile",
+                            title = stringResource(R.string.profile_menu_edit),
                             onClick = onEditProfileClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.LocationOn,
-                            title = "Saved Addresses",
+                            title = stringResource(R.string.profile_menu_saved_addresses),
                             onClick = onSavedAddressesClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.CreditCard,
-                            title = "Payment Methods",
+                            title = stringResource(R.string.profile_menu_payment_methods),
                             onClick = onPaymentMethodsClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.Favorite,
-                            title = "Favorites",
+                            title = stringResource(R.string.profile_menu_favorites),
                             onClick = onFavoritesClick,
                         )
                     }
@@ -334,19 +336,19 @@ fun ProfileScreen(
                     Column {
                         ProfileMenuItem(
                             icon = Icons.Filled.Notifications,
-                            title = "Notification Preferences",
+                            title = stringResource(R.string.profile_menu_notifications),
                             onClick = onNotificationPreferencesClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.Link,
-                            title = "Connected Accounts",
+                            title = stringResource(R.string.profile_menu_connected_accounts),
                             onClick = onConnectedAccountsClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.AutoMirrored.Filled.HelpOutline,
-                            title = "Help & Support",
+                            title = stringResource(R.string.profile_menu_help),
                             onClick = {},
                         )
                     }
@@ -377,7 +379,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Sign Out",
+                            text = stringResource(R.string.profile_sign_out),
                             style = MaterialTheme.typography.titleMedium,
                             color = ErrorRed,
                             fontWeight = FontWeight.SemiBold,
@@ -410,7 +412,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Delete Account",
+                            text = stringResource(R.string.profile_delete_account),
                             style = MaterialTheme.typography.titleMedium,
                             color = ErrorRed,
                             fontWeight = FontWeight.SemiBold,
@@ -437,10 +439,10 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             containerColor = SurfaceDark,
-            title = { Text("Delete account?", color = TextWhite) },
+            title = { Text(stringResource(R.string.profile_delete_confirm_title), color = TextWhite) },
             text = {
                 Text(
-                    "This permanently deletes your account, order history, saved addresses, and payment methods. This cannot be undone.",
+                    stringResource(R.string.profile_delete_confirm_body),
                     color = TextSecondary,
                 )
             },
@@ -449,12 +451,12 @@ fun ProfileScreen(
                     showDeleteConfirm = false
                     onDeleteAccountClick()
                 }) {
-                    Text("Delete", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.profile_delete_btn), color = ErrorRed, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text(stringResource(R.string.common_cancel), color = TextSecondary)
                 }
             },
         )
@@ -464,10 +466,10 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showSignOutConfirm = false },
             containerColor = SurfaceDark,
-            title = { Text("Sign out?", color = TextWhite) },
+            title = { Text(stringResource(R.string.profile_sign_out_confirm_title), color = TextWhite) },
             text = {
                 Text(
-                    "You'll need to sign in again to access your orders, addresses, and payment methods.",
+                    stringResource(R.string.profile_sign_out_confirm_body),
                     color = TextSecondary,
                 )
             },
@@ -476,12 +478,12 @@ fun ProfileScreen(
                     showSignOutConfirm = false
                     onSignOutClick()
                 }) {
-                    Text("Sign Out", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.profile_sign_out), color = ErrorRed, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showSignOutConfirm = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text(stringResource(R.string.common_cancel), color = TextSecondary)
                 }
             },
         )

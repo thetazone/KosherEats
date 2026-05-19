@@ -3,9 +3,9 @@ package com.koshereats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateModifierGroupRequest
-import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.PresignResponse
@@ -33,6 +33,7 @@ data class MenuState(
     val itemSaveSuccess: Boolean = false,
     val deleteSuccess: Boolean = false,
     val pendingItemIds: Set<String> = emptySet(),
+    val modifierGroupsLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -47,6 +48,12 @@ class MenuViewModel @Inject constructor(
 
     init {
         loadMenuItems()
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                _state.value = MenuState()
+                loadMenuItems()
+            }
+        }
     }
 
     fun loadMenuItems(category: SellerMenuCategory? = null) {
@@ -89,7 +96,7 @@ class MenuViewModel @Inject constructor(
 
     fun loadMenuItem(itemId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _state.update { it.copy(isLoading = true, error = null, selectedItem = null) }
             try {
                 val response = apiService.getSellerMenu()
                 if (response.isSuccessful) {
@@ -99,6 +106,7 @@ class MenuViewModel @Inject constructor(
                     _state.update { state ->
                         val selectedCat = state.selectedCategory
                         state.copy(
+                            categories = categories,
                             items = if (selectedCat == null) {
                                 allItems
                             } else {
@@ -119,58 +127,43 @@ class MenuViewModel @Inject constructor(
         }
     }
 
+    private fun refreshModifierGroups(itemId: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(modifierGroupsLoading = true) }
+            try {
+                val response = apiService.getSellerMenu()
+                if (response.isSuccessful) {
+                    val categories = response.body().orEmpty()
+                    val allItems = categories.flatMap { it.items }
+                    val updatedItem = allItems.firstOrNull { it.id == itemId }
+                    _state.update { state ->
+                        val selectedCat = state.selectedCategory
+                        state.copy(
+                            categories = categories,
+                            items = if (selectedCat == null) allItems else categories.firstOrNull { it.id == selectedCat.id }?.items ?: allItems,
+                            selectedItem = updatedItem ?: state.selectedItem,
+                            modifierGroupsLoading = false,
+                        )
+                    }
+                } else {
+                    _state.update { it.copy(modifierGroupsLoading = false) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(modifierGroupsLoading = false) }
+            }
+        }
+    }
+
     fun createMenuItem(request: UpdateMenuItemRequest) {
+        val categoryId = request.categoryId
+        if (categoryId.isNullOrBlank()) {
+            _state.update { it.copy(error = "Please select a category") }
+            return
+        }
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
-            var createdCategoryId: String? = null
             try {
-                val targetCategory = request.category
-                    ?.uppercase()
-                    ?.let { runCatching { MenuCategory.valueOf(it) }.getOrNull() }
-                    ?: MenuCategory.MAINS
-
-                val categorySlug = targetCategory.name.lowercase()
-
-                val cachedCategories = _state.value.categories.ifEmpty {
-                    val menuResponse = apiService.getSellerMenu()
-                    if (!menuResponse.isSuccessful) {
-                        _state.update { it.copy(isSaving = false, error = "Failed to load menu (${menuResponse.code()})") }
-                        return@launch
-                    }
-                    val cats = menuResponse.body().orEmpty()
-                    _state.update { it.copy(categories = cats) }
-                    cats
-                }
-                val existingCategory = cachedCategories
-                    .firstOrNull { serverCat ->
-                        serverCat.name.lowercase().replace(' ', '_') == categorySlug ||
-                        serverCat.name.equals(categorySlug, ignoreCase = true)
-                    }
-
-                val categoryId: String?
-                if (existingCategory != null) {
-                    categoryId = existingCategory.id
-                } else {
-                    val categoryDisplayName = targetCategory.name.lowercase()
-                        .split("_")
-                        .joinToString(" ") { it.replaceFirstChar(Char::uppercaseChar) }
-                    val catResp = apiService.createCategory(mapOf("name" to categoryDisplayName))
-                    if (!catResp.isSuccessful) {
-                        _state.update { it.copy(isSaving = false, error = "Failed to create category (${catResp.code()})") }
-                        return@launch
-                    }
-                    categoryId = catResp.body()?.id
-                    createdCategoryId = categoryId
-                    catResp.body()?.let { newCat ->
-                        _state.update { it.copy(categories = it.categories + newCat) }
-                    }
-                }
-
-                if (categoryId == null) {
-                    _state.update { it.copy(isSaving = false, error = "Failed to resolve category") }
-                    return@launch
-                }
-
                 val body = CreateMenuItemBody(
                     categoryId = categoryId,
                     name = request.name ?: "",
@@ -195,14 +188,6 @@ class MenuViewModel @Inject constructor(
                     ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
-                    if (createdCategoryId != null) {
-                        val cleaned = runCatching { apiService.deleteCategory(createdCategoryId) }.isSuccess
-                        if (cleaned) {
-                            _state.update { it.copy(categories = it.categories.filter { cat -> cat.id != createdCategoryId }) }
-                        } else {
-                            android.util.Log.w("MenuViewModel", "Orphan category cleanup failed: id=$createdCategoryId")
-                        }
-                    }
                     _state.update { it.copy(
                         isSaving = false,
                         error = "Failed to create menu item",
@@ -210,14 +195,6 @@ class MenuViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                if (createdCategoryId != null) {
-                    val cleaned = runCatching { apiService.deleteCategory(createdCategoryId!!) }.isSuccess
-                    if (cleaned) {
-                        _state.update { it.copy(categories = it.categories.filter { cat -> cat.id != createdCategoryId }) }
-                    } else {
-                        android.util.Log.w("MenuViewModel", "Orphan category cleanup failed on exception: id=$createdCategoryId")
-                    }
-                }
                 _state.update { it.copy(
                     isSaving = false,
                     error = "Connection error: ${e.localizedMessage}",
@@ -263,6 +240,9 @@ class MenuViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         items = it.items.filter { item -> item.id != itemId },
+                        categories = it.categories.map { cat ->
+                            cat.copy(items = cat.items.filter { item -> item.id != itemId })
+                        },
                         pendingItemIds = it.pendingItemIds - itemId,
                         deleteSuccess = true,
                     ) }
@@ -289,6 +269,11 @@ class MenuViewModel @Inject constructor(
             items = it.items.map {
                 if (it.id == item.id) it.copy(isAvailable = newAvailability) else it
             },
+            categories = it.categories.map { cat ->
+                cat.copy(items = cat.items.map { catItem ->
+                    if (catItem.id == item.id) catItem.copy(isAvailable = newAvailability) else catItem
+                })
+            },
             pendingItemIds = it.pendingItemIds + item.id,
         ) }
         viewModelScope.launch {
@@ -303,11 +288,21 @@ class MenuViewModel @Inject constructor(
                         items = if (updatedItem != null) it.items.map {
                             if (it.id == item.id) updatedItem else it
                         } else it.items,
+                        categories = if (updatedItem != null) it.categories.map { cat ->
+                            cat.copy(items = cat.items.map { catItem ->
+                                if (catItem.id == item.id) updatedItem else catItem
+                            })
+                        } else it.categories,
                         pendingItemIds = it.pendingItemIds - item.id,
                     ) }
                 } else {
                     _state.update { it.copy(
                         items = it.items.map { existing -> if (existing.id == item.id) existing.copy(isAvailable = item.isAvailable) else existing },
+                        categories = it.categories.map { cat ->
+                            cat.copy(items = cat.items.map { catItem ->
+                                if (catItem.id == item.id) catItem.copy(isAvailable = item.isAvailable) else catItem
+                            })
+                        },
                         pendingItemIds = it.pendingItemIds - item.id,
                         error = "Failed to update availability",
                     ) }
@@ -316,6 +311,11 @@ class MenuViewModel @Inject constructor(
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
                     items = it.items.map { existing -> if (existing.id == item.id) existing.copy(isAvailable = item.isAvailable) else existing },
+                    categories = it.categories.map { cat ->
+                        cat.copy(items = cat.items.map { catItem ->
+                            if (catItem.id == item.id) catItem.copy(isAvailable = item.isAvailable) else catItem
+                        })
+                    },
                     pendingItemIds = it.pendingItemIds - item.id,
                     error = "Failed to update availability",
                 ) }
@@ -338,8 +338,8 @@ class MenuViewModel @Inject constructor(
             try {
                 val response = apiService.createModifierGroup(itemId, request)
                 if (response.isSuccessful) {
-                    loadMenuItem(itemId)
                     _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group added") }
+                    refreshModifierGroups(itemId)
                 } else {
                     _state.update { it.copy(isSaving = false, error = "Failed to add modifier group") }
                 }
@@ -356,8 +356,8 @@ class MenuViewModel @Inject constructor(
             try {
                 val response = apiService.updateModifierGroup(groupId, request)
                 if (response.isSuccessful) {
-                    loadMenuItem(itemId)
                     _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group updated") }
+                    refreshModifierGroups(itemId)
                 } else {
                     _state.update { it.copy(isSaving = false, error = "Failed to update modifier group") }
                 }
@@ -374,8 +374,8 @@ class MenuViewModel @Inject constructor(
             try {
                 val response = apiService.deleteModifierGroup(groupId)
                 if (response.isSuccessful) {
-                    loadMenuItem(itemId)
                     _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group deleted") }
+                    refreshModifierGroups(itemId)
                 } else {
                     _state.update { it.copy(isSaving = false, error = "Failed to delete modifier group") }
                 }

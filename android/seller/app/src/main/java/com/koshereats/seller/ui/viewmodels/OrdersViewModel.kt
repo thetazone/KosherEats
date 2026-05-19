@@ -8,6 +8,7 @@ import android.net.NetworkRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import retrofit2.Response
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
@@ -30,6 +31,7 @@ data class OrdersState(
     val selectedOrder: Order? = null,
     val selectedFilter: OrderStatus? = null,
     val isLoading: Boolean = false,
+    val isLoadingDetail: Boolean = false,
     val isRefreshing: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMorePages: Boolean = false,
@@ -61,6 +63,14 @@ class OrdersViewModel @Inject constructor(
 
     init {
         loadOrders()
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                // Reset all order state immediately so stale orders from the previous
+                // restaurant are never visible or actionable under the new one.
+                _state.value = OrdersState()
+                loadOrders()
+            }
+        }
     }
 
     // Called by screen composables via DisposableEffect. Reference-counted so that
@@ -150,14 +160,18 @@ class OrdersViewModel @Inject constructor(
     }
 
     private suspend fun refreshSingleOrder(orderId: String) {
+        if (orderId in _state.value.pendingOrderIds) return
         if (!pollMutex.tryLock()) return
         try {
             val response = apiService.getOrderDetail(orderId)
             if (response.isSuccessful) {
                 val updated = response.body() ?: return
                 _state.update { s ->
+                    val filter = s.selectedFilter
+                    val newOrders = s.orders.map { if (it.id == orderId) updated else it }
+                        .let { list -> if (filter != null) list.filter { it.status == filter } else list }
                     s.copy(
-                        orders = s.orders.map { if (it.id == orderId) updated else it },
+                        orders = newOrders,
                         selectedOrder = if (s.selectedOrder?.id == orderId) updated else s.selectedOrder,
                     )
                 }
@@ -177,9 +191,9 @@ class OrdersViewModel @Inject constructor(
             val filterAtStart = currentState.selectedFilter
             val pageAtStart = currentState.currentPage
             val statusStr = filterAtStart?.name?.lowercase()
-            // Re-fetch enough rows to cover pages already loaded by the user.
-            val limit = PAGE_SIZE * pageAtStart.coerceAtLeast(1)
-            val response = apiService.getOrders(status = statusStr, limit = limit)
+            // Always poll page 1 only — top-of-list orders are the only time-sensitive ones.
+            // Pull-to-refresh (refresh()) provides a full page-1 deep reload when needed.
+            val response = apiService.getOrders(status = statusStr, limit = PAGE_SIZE)
             val succeeded = response.isSuccessful
             if (response.isSuccessful) {
                 _state.update { current ->
@@ -188,10 +202,20 @@ class OrdersViewModel @Inject constructor(
                         // Merge by ID: update existing rows in-place and keep any rows from
                         // pages loaded by loadMoreOrders after this request started.
                         val newById = newOrders.associateBy { it.id }
-                        val merged = current.orders.map { existing -> newById[existing.id] ?: existing }
+                        // Preserve existing rows not covered by the page-1 poll: they either live
+                        // on deeper pages the user scrolled into, or the server capped the response.
+                        // Exception: when a status filter is active and the user is on page 1, a
+                        // missing order has genuinely transitioned out and must be dropped.
+                        val preserveExisting = pageAtStart > 1 || (filterAtStart == null && newOrders.size >= PAGE_SIZE)
+                        val merged = current.orders.mapNotNull { existing ->
+                            // Don't overwrite optimistic status with stale server data.
+                            if (existing.id in current.pendingOrderIds) existing
+                            else newById[existing.id] ?: if (preserveExisting) existing else null
+                        }
                         val existingIds = current.orders.map { it.id }.toSet()
                         val trulyNew = newOrders.filter { it.id !in existingIds }
-                        val finalList = trulyNew + merged
+                        val finalList = (trulyNew + merged)
+                            .let { list -> if (filterAtStart != null) list.filter { it.status == filterAtStart } else list }
                         val updatedSelected = current.selectedOrder?.id
                             ?.let { id -> finalList.find { it.id == id } }
                         current.copy(
@@ -200,6 +224,23 @@ class OrdersViewModel @Inject constructor(
                         )
                     } else {
                         current
+                    }
+                }
+                // selectedOrder may belong to an older/deep-linked order absent from the
+                // paginated window. Refresh it directly so the detail screen stays current.
+                val s = _state.value
+                val orphanId = s.selectedOrder?.id
+                    ?.takeIf { id -> s.orders.none { it.id == id } && id !in s.pendingOrderIds }
+                if (orphanId != null) {
+                    runCatching {
+                        val dr = apiService.getOrderDetail(orphanId)
+                        if (dr.isSuccessful) {
+                            dr.body()?.let { updated ->
+                                _state.update { cur ->
+                                    if (cur.selectedOrder?.id == orphanId) cur.copy(selectedOrder = updated) else cur
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -287,24 +328,24 @@ class OrdersViewModel @Inject constructor(
 
     fun loadOrderDetail(orderId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(error = null) }
+            _state.update { it.copy(isLoadingDetail = true, error = null) }
             try {
                 val response = apiService.getOrderDetail(orderId)
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         selectedOrder = response.body(),
-                        isLoading = false,
+                        isLoadingDetail = false,
                     ) }
                 } else {
                     _state.update { it.copy(
-                        isLoading = false,
+                        isLoadingDetail = false,
                         error = "Failed to load order details",
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    isLoading = false,
+                    isLoadingDetail = false,
                     error = "Connection error: ${e.localizedMessage}",
                 ) }
             }
@@ -475,25 +516,32 @@ class OrdersViewModel @Inject constructor(
 
     fun refresh() {
         loadJob?.cancel()
+        loadMoreJob?.cancel()
         val filterAtStart = _state.value.selectedFilter
-        val pageAtStart = _state.value.currentPage
         loadJob = viewModelScope.launch {
             _state.update { it.copy(isRefreshing = true) }
             try {
                 val statusStr = filterAtStart?.name?.lowercase()
-                val limit = PAGE_SIZE * pageAtStart.coerceAtLeast(1)
-                val response = apiService.getOrders(status = statusStr, limit = limit)
+                // Treat refresh as a clean page-1 reload so currentPage stays in sync
+                // with the visible list. Requesting more than PAGE_SIZE without resetting
+                // currentPage shifts pagination windows and causes duplicate rows on the
+                // next loadMoreOrders call.
+                val response = apiService.getOrders(status = statusStr, page = 1, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     _state.update { current ->
-                        if (current.selectedFilter == filterAtStart && current.currentPage >= pageAtStart) {
-                            val newOrders = response.body() ?: current.orders
-                            val newById = newOrders.associateBy { it.id }
-                            val merged = current.orders.map { existing -> newById[existing.id] ?: existing }
-                            val existingIds = current.orders.map { it.id }.toSet()
-                            val trulyNew = newOrders.filter { it.id !in existingIds }
+                        if (current.selectedFilter == filterAtStart) {
+                            val body = response.body() ?: emptyList()
+                            // Preserve optimistic status for any in-flight updates.
+                            val orders = body.map { order ->
+                                if (order.id in current.pendingOrderIds)
+                                    current.orders.find { it.id == order.id } ?: order
+                                else order
+                            }
                             current.copy(
-                                orders = trulyNew + merged,
+                                orders = orders,
                                 isRefreshing = false,
+                                currentPage = 1,
+                                hasMorePages = body.size == PAGE_SIZE,
                             )
                         } else {
                             current.copy(isRefreshing = false)

@@ -387,4 +387,5 @@ private fun certShortName(cert: KosherCertification): String = when (cert) {
     KosherCertification.CHABAD -> "Chabad"
     KosherCertification.LOCAL -> "Local"
     KosherCertification.OTHER -> "Other"
+    KosherCertification.UNKNOWN -> "Unknown"
 }

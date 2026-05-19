@@ -20,7 +20,6 @@ import com.koshereats.consumer.push.PushBootstrap
 import android.content.Context
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -74,8 +73,6 @@ class AuthViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
-
-    val logoutEvent: SharedFlow<Unit> = sessionManager.logoutEvent
 
     init {
         checkAuthStatus()
@@ -394,9 +391,11 @@ class AuthViewModel @Inject constructor(
                     }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
                     _uiState.update {
-                        AuthUiState(
+                        it.copy(
                             sessionState = SessionState.Authenticated,
                             user = authData.user,
+                            phoneIsVerifying = false,
+                            error = null,
                         )
                     }
                     PushBootstrap.registerCurrentToken(apiService)

@@ -10,6 +10,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.models.*
 import com.koshereats.consumer.data.session.SessionManager
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,9 +105,20 @@ class CartViewModel @Inject constructor(
                 if (!json.isNullOrEmpty()) {
                     val snap: CartSnapshot? = try {
                         gson.fromJson(json, snapshotType)
-                    } catch (_: Exception) { null }
+                    } catch (e: Exception) {
+                        Log.e("CartViewModel", "Failed to parse persisted cart snapshot", e)
+                        null
+                    }
                     snap?.let { s ->
-                        _uiState.update { it.copy(carts = s.carts, activeRestaurantId = s.activeRestaurantId) }
+                        // Merge: snapshot is the base; any in-memory carts (added before
+                        // restore finished) win for the same restaurant key so they are
+                        // never silently overwritten by a stale snapshot.
+                        _uiState.update { current ->
+                            current.copy(
+                                carts = s.carts + current.carts,
+                                activeRestaurantId = current.activeRestaurantId ?: s.activeRestaurantId,
+                            )
+                        }
                     }
                 }
             } catch (_: Exception) { }
@@ -194,7 +206,8 @@ class CartViewModel @Inject constructor(
                 val updatedItems = cart.items.filter { it.id != cartItemId }
                 cart.copy(items = updatedItems)
             }.filterValues { it.items.isNotEmpty() }
-            state.copy(carts = updatedCarts)
+            val newActiveId = state.activeRestaurantId?.takeIf { updatedCarts.containsKey(it) }
+            state.copy(carts = updatedCarts, activeRestaurantId = newActiveId)
         }
         persistSnapshot()
     }
@@ -235,7 +248,8 @@ class CartViewModel @Inject constructor(
     /** Clear a specific restaurant's cart. */
     fun clearCartForRestaurant(restaurantId: String) {
         _uiState.update { state ->
-            state.copy(carts = state.carts - restaurantId)
+            val newActiveId = state.activeRestaurantId?.takeIf { it != restaurantId }
+            state.copy(carts = state.carts - restaurantId, activeRestaurantId = newActiveId)
         }
         persistSnapshot()
     }

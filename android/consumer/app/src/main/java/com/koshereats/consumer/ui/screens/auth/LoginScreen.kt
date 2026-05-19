@@ -55,7 +55,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.koshereats.consumer.R
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 import com.koshereats.consumer.ui.viewmodels.SessionState
@@ -116,7 +118,7 @@ fun LoginScreen(
         Spacer(Modifier.height(32.dp))
 
         Text(
-            text = "Welcome to KosherEats",
+            text = stringResource(R.string.auth_welcome_title),
             style = MaterialTheme.typography.displaySmall,
             color = TextWhite,
             textAlign = TextAlign.Center
@@ -125,7 +127,7 @@ fun LoginScreen(
         Spacer(Modifier.height(12.dp))
 
         Text(
-            text = "Kosher food delivery, done right.",
+            text = stringResource(R.string.auth_welcome_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = TextTertiary,
             textAlign = TextAlign.Center
@@ -135,7 +137,7 @@ fun LoginScreen(
 
         // Mobile number entry
         Text(
-            text = "Mobile number",
+            text = stringResource(R.string.auth_mobile_number),
             style = MaterialTheme.typography.labelMedium,
             color = TextWhite,
             fontWeight = FontWeight.Bold,
@@ -178,7 +180,7 @@ fun LoginScreen(
                 shape = RoundedCornerShape(12.dp),
                 colors = welcomeFieldColors(),
                 textStyle = MaterialTheme.typography.titleMedium,
-                placeholder = { Text("Mobile number", color = TextMuted) },
+                placeholder = { Text(stringResource(R.string.auth_mobile_number), color = TextMuted) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             )
@@ -205,16 +207,16 @@ fun LoginScreen(
                 CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
             } else {
                 Text(
-                    "Continue", 
+                    stringResource(R.string.auth_continue),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        if (state.error != null) {
+        state.error?.let { msg ->
             Spacer(Modifier.height(12.dp))
-            Text(state.error!!, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+            Text(msg, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
         }
 
         Spacer(Modifier.height(32.dp))
@@ -226,7 +228,7 @@ fun LoginScreen(
         ) {
             HorizontalDivider(modifier = Modifier.weight(1f), color = SurfaceDarkBorder)
             Text(
-                text = "OR",
+                text = stringResource(R.string.auth_or_divider),
                 style = MaterialTheme.typography.labelSmall,
                 color = TextMuted,
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -237,7 +239,7 @@ fun LoginScreen(
         Spacer(Modifier.height(24.dp))
 
         OutlinedAuthButton(
-            text = "Continue with Google",
+            text = stringResource(R.string.auth_continue_google),
             onClick = { viewModel.signInWithGoogle(context) },
             leading = {
                 Text(
@@ -258,12 +260,12 @@ fun LoginScreen(
                         }
                     )
                 } catch (_: ActivityNotFoundException) {
-                    scope.launch { snackbarHostState.showSnackbar("Account settings not available on this device") }
+                    scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.auth_account_settings_unavailable)) }
                 }
             },
         ) {
             Text(
-                text = "Use a different Google account",
+                text = stringResource(R.string.auth_use_different_google),
                 style = MaterialTheme.typography.bodySmall,
                 color = Orange,
             )
@@ -272,7 +274,7 @@ fun LoginScreen(
         Spacer(Modifier.height(16.dp))
 
         OutlinedAuthButton(
-            text = "Continue with Email",
+            text = stringResource(R.string.auth_continue_email),
             onClick = onEmailLoginClick,
             leading = {
                 Icon(Icons.Filled.Email, contentDescription = null, tint = TextWhite, modifier = Modifier.size(20.dp))
@@ -282,7 +284,7 @@ fun LoginScreen(
         Spacer(Modifier.height(16.dp))
 
         OutlinedAuthButton(
-            text = "Continue as Guest",
+            text = stringResource(R.string.auth_continue_guest),
             onClick = {
                 viewModel.continueAsGuest()
                 onGuestContinue()

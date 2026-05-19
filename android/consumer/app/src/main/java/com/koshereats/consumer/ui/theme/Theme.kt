@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -46,7 +45,7 @@ private fun darkScheme(c: KosherEatsColors): ColorScheme = darkColorScheme(
 
 private fun lightScheme(c: KosherEatsColors): ColorScheme = lightColorScheme(
     primary = Orange,
-    onPrimary = Color.White,
+    onPrimary = c.textWhite,
     primaryContainer = OrangeLight,
     onPrimaryContainer = c.textWhite,
     secondary = OrangeDark,
@@ -84,12 +83,9 @@ fun KosherEatsTheme(
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val barColor = koshereatsColors.backgroundBlack.toArgb()
         val lightBars = !darkTheme
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = barColor
-            window.navigationBarColor = barColor
             val insets = WindowCompat.getInsetsController(window, view)
             insets.isAppearanceLightStatusBars = lightBars
             insets.isAppearanceLightNavigationBars = lightBars

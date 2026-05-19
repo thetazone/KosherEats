@@ -8,6 +8,7 @@ import android.net.NetworkRequest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
+import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.DashboardStats
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.push.OrderEventBus
@@ -51,6 +52,8 @@ class DashboardViewModel @Inject constructor(
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var isFirstPoll = true
     @Volatile private var isPollingActive = false
+    @Volatile private var lastSuccessfulFetchMs = 0L
+    private var lastFetchedRestaurantId: String? = null
 
     init {
         loadDashboard()
@@ -59,7 +62,13 @@ class DashboardViewModel @Inject constructor(
     // Called by the screen composable via DisposableEffect so polling (and FCM-triggered
     // refreshes) only run while that screen is in composition.
     fun startPolling() {
-        if (pollingJob?.isActive == true) return
+        if (pollingJob?.isActive == true) {
+            // VM survived navigation; proactively refresh if data is stale.
+            if (System.currentTimeMillis() - lastSuccessfulFetchMs > STALE_THRESHOLD_MS) {
+                viewModelScope.launch { pollSilently() }
+            }
+            return
+        }
         isPollingActive = true
         launchPollingJob()
         if (eventJob?.isActive != true) {
@@ -134,26 +143,37 @@ class DashboardViewModel @Inject constructor(
     fun loadDashboard() {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            _state.update { it.copy(isLoading = it.stats.todayOrders == 0 && it.activeOrders.isEmpty(), error = null) }
+            val currentRestaurantId = NetworkModule.cachedRestaurantId
+            // When the active restaurant differs from the last successful fetch, blank
+            // stats and activeOrders immediately so the UI does not flash the prior
+            // restaurant's data under the newly selected restaurant's name.
+            if (currentRestaurantId != lastFetchedRestaurantId) {
+                _state.update { it.copy(stats = DashboardStats(), activeOrders = emptyList(), isLoading = true, error = null) }
+            } else {
+                // On same-restaurant reloads (poll, pull-to-refresh) keep existing data
+                // visible so the UI does not flash to zero.
+                _state.update { it.copy(isLoading = true, error = null) }
+            }
             try {
                 coroutineScope {
                     val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 50) }
+                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
 
-                    if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
-                        val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
-                        _state.update { it.copy(
+                    val statsOk = statsResponse.isSuccessful
+                    val ordersOk = ordersResponse.isSuccessful
+                    if (statsOk || ordersOk) {
+                        lastSuccessfulFetchMs = System.currentTimeMillis()
+                        lastFetchedRestaurantId = currentRestaurantId
+                    }
+                    _state.update { s ->
+                        s.copy(
+                            stats = if (statsOk) statsResponse.body() ?: DashboardStats() else s.stats,
+                            activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive } else s.activeOrders,
                             isLoading = false,
-                            error = "Failed to load dashboard (HTTP $code)",
-                        ) }
-                    } else {
-                        _state.update { it.copy(
-                            stats = statsResponse.body() ?: DashboardStats(),
-                            activeOrders = ordersResponse.body().orEmpty().filter { it.status.isActive },
-                            isLoading = false,
-                        ) }
+                            error = if (!statsOk && !ordersOk) "Failed to load dashboard (HTTP ${statsResponse.code()})" else null,
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -173,20 +193,21 @@ class DashboardViewModel @Inject constructor(
         return try {
             coroutineScope {
                 val statsDeferred = async { apiService.getDashboardStats() }
-                val ordersDeferred = async { apiService.getOrders(status = null, limit = 50) }
+                val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
                 val statsResponse = statsDeferred.await()
                 val ordersResponse = ordersDeferred.await()
-                if (statsResponse.isSuccessful && ordersResponse.isSuccessful) {
+                val statsOk = statsResponse.isSuccessful
+                val ordersOk = ordersResponse.isSuccessful
+                if (statsOk || ordersOk) {
+                    lastSuccessfulFetchMs = System.currentTimeMillis()
                     _state.update { s ->
                         s.copy(
-                            stats = statsResponse.body() ?: s.stats,
-                            activeOrders = ordersResponse.body().orEmpty().filter { it.status.isActive },
+                            stats = if (statsOk) statsResponse.body() ?: s.stats else s.stats,
+                            activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive } else s.activeOrders,
                         )
                     }
-                    true
-                } else {
-                    false
                 }
+                statsOk && ordersOk
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -202,24 +223,19 @@ class DashboardViewModel @Inject constructor(
             try {
                 coroutineScope {
                     val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 50) }
+                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
 
-                    if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
-                        val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
-                        _state.update { it.copy(
+                    val statsOk = statsResponse.isSuccessful
+                    val ordersOk = ordersResponse.isSuccessful
+                    _state.update { s ->
+                        s.copy(
+                            stats = if (statsOk) statsResponse.body() ?: s.stats else s.stats,
+                            activeOrders = if (ordersOk) (ordersResponse.body() ?: s.activeOrders).filter { it.status.isActive } else s.activeOrders,
                             isRefreshing = false,
-                            error = "Failed to refresh dashboard (HTTP $code)",
-                        ) }
-                    } else {
-                        _state.update { s ->
-                            s.copy(
-                                stats = statsResponse.body() ?: s.stats,
-                                activeOrders = (ordersResponse.body() ?: s.activeOrders).filter { it.status.isActive },
-                                isRefreshing = false,
-                            )
-                        }
+                            error = if (!statsOk && !ordersOk) "Failed to refresh dashboard (HTTP ${statsResponse.code()})" else null,
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -235,5 +251,6 @@ class DashboardViewModel @Inject constructor(
     companion object {
         // Backoff delays for consecutive poll failures: 30s → 1m → 2m → 4m → 5m (cap).
         private val BACKOFF_DELAYS = longArrayOf(30_000, 60_000, 120_000, 240_000, 300_000)
+        private const val STALE_THRESHOLD_MS = 30_000L
     }
 }

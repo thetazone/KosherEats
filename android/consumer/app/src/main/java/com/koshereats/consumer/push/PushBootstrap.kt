@@ -27,6 +27,7 @@ object PushBootstrap {
 
     @Volatile
     private var initialized: Boolean = false
+    private var appContext: Context? = null
 
     fun init(context: Context) {
         if (BuildConfig.FIREBASE_PROJECT_ID.isBlank() ||
@@ -38,6 +39,7 @@ object PushBootstrap {
         }
         if (FirebaseApp.getApps(context).any { it.name == FirebaseApp.DEFAULT_APP_NAME }) {
             initialized = true
+            appContext = context.applicationContext
             return
         }
         val options = FirebaseOptions.Builder()
@@ -48,6 +50,7 @@ object PushBootstrap {
             .build()
         FirebaseApp.initializeApp(context, options)
         initialized = true
+        appContext = context.applicationContext
         Log.i(TAG, "Firebase initialized for project=${BuildConfig.FIREBASE_PROJECT_ID}")
     }
 
@@ -59,8 +62,21 @@ object PushBootstrap {
         if (!initialized) return
         scope.launch {
             try {
-                val token = FirebaseMessaging.getInstance().token.await()
+                val prefs = appContext?.getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
+                // Use the token persisted by onNewToken when it fired while signed-out;
+                // fall back to asking Firebase for the current token.
+                val token = prefs?.getString("pending_fcm_token", null)
+                    ?: FirebaseMessaging.getInstance().token.await()
+                val lastRegistered = prefs?.getString("last_registered_fcm_token", null)
+                if (token == lastRegistered) {
+                    Log.d(TAG, "FCM token unchanged — skipping registration")
+                    return@launch
+                }
                 api.registerDevice(RegisterDeviceRequest(token = token))
+                prefs?.edit()
+                    ?.remove("pending_fcm_token")
+                    ?.putString("last_registered_fcm_token", token)
+                    ?.apply()
                 Log.i(TAG, "FCM token registered")
             } catch (t: Throwable) {
                 Log.w(TAG, "FCM token registration failed: ${t.message}")
@@ -77,6 +93,8 @@ object PushBootstrap {
         if (!initialized) return
         try {
             FirebaseMessaging.getInstance().deleteToken().await()
+            appContext?.getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
+                ?.edit()?.remove("last_registered_fcm_token")?.apply()
             Log.i(TAG, "FCM token deleted")
         } catch (t: Throwable) {
             Log.w(TAG, "FCM token deletion failed: ${t.message}")

@@ -1,12 +1,15 @@
 package com.koshereats.consumer.push
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.koshereats.consumer.MainActivity
@@ -36,6 +39,12 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
+        // Persist unconditionally so the token is available to replay after the next
+        // login even when FCM rotates it while the user is signed-out.
+        applicationContext
+            .getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
+            .edit().putString("pending_fcm_token", token).apply()
+
         scope.launch {
             tokenProvider.awaitToken() ?: return@launch
             try {
@@ -79,7 +88,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
             ensureChannel(context)
 
             val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 orderId?.let {
                     putExtra("order_id", it)
                 }
@@ -97,6 +106,14 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .build()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED
+            ) {
+                android.util.Log.w("KosherEatsMessagingService", "POST_NOTIFICATIONS denied — push suppressed (title=$title)")
+                return
+            }
 
             val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             if (orderId != null) {

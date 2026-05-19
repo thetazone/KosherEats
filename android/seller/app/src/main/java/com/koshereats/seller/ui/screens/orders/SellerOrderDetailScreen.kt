@@ -194,12 +194,26 @@ fun SellerOrderDetailScreen(
             }
         }
 
-        if (order == null) {
+        if (state.isLoadingDetail) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(color = Orange)
+            }
+            return
+        }
+
+        if (order == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Failed to load order details. Please go back and try again.",
+                    color = ErrorRed,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
             }
             return
         }

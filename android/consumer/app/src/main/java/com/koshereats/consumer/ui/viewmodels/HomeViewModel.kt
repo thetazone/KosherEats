@@ -12,6 +12,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -46,10 +48,55 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
-    private var currentJob: Job? = null
+
+    // Emitting a new value here cancels any in-flight getRestaurants call via flatMapLatest.
+    private data class LoadTrigger(
+        val page: Int = 1,
+        val cuisine: CuisineType? = null,
+        val glattOnly: Boolean = false,
+        val cholovYisroelOnly: Boolean = false,
+        val pasYisroelOnly: Boolean = false,
+        val certifications: Set<KosherCertification> = emptySet(),
+    )
+
+    private val loadTrigger = MutableStateFlow(LoadTrigger())
 
     init {
-        loadRestaurants()
+        viewModelScope.launch {
+            loadTrigger
+                .flatMapLatest { trigger ->
+                    repository.getRestaurants(
+                        page = trigger.page,
+                        cuisine = trigger.cuisine?.name?.lowercase(),
+                        isGlattKosher = if (trigger.glattOnly) true else null,
+                        isCholovYisroel = if (trigger.cholovYisroelOnly) true else null,
+                        isPasYisroel = if (trigger.pasYisroelOnly) true else null,
+                        kosherCertification = trigger.certifications.firstOrNull()?.toApiString(),
+                    ).map { trigger.page to it }
+                }
+                .collect { (page, result) ->
+                    when (result) {
+                        is Resource.Loading -> {
+                            _uiState.update { it.copy(isLoading = true, error = null) }
+                        }
+                        is Resource.Success -> {
+                            _uiState.update { state ->
+                                val newItems = if (page == 1) result.data else state.allRestaurants + result.data
+                                state.copy(
+                                    allRestaurants = newItems,
+                                    isLoading = false,
+                                    isRefreshing = false,
+                                    currentPage = page,
+                                    hasMore = result.data.size >= ApiPaging.RESTAURANTS_PAGE_SIZE,
+                                )
+                            }
+                        }
+                        is Resource.Error -> {
+                            _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = true) }
+                        }
+                    }
+                }
+        }
         loadSuggested()
     }
 
@@ -72,42 +119,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun loadRestaurants(page: Int = 1) {
-        currentJob?.cancel()
-        currentJob = viewModelScope.launch {
-            val state = _uiState.value
-            repository.getRestaurants(
-                page = page,
-                cuisine = state.selectedCuisine?.name?.lowercase(),
-                isGlattKosher = if (state.filterGlattOnly) true else null,
-                isCholovYisroel = if (state.filterCholovYisroelOnly) true else null,
-                isPasYisroel = if (state.filterPasYisroelOnly) true else null,
-                kosherCertification = state.filterCertifications.firstOrNull()?.toApiString(),
-            ).collect { result ->
-                when (result) {
-                    is Resource.Loading -> {
-                        _uiState.update { it.copy(isLoading = true, error = null) }
-                    }
-                    is Resource.Success -> {
-                        _uiState.update { it ->
-                            val newItems = if (page == 1) result.data else it.allRestaurants + result.data
-                            it.copy(
-                                allRestaurants = newItems,
-                                isLoading = false,
-                                isRefreshing = false,
-                                currentPage = page,
-                                hasMore = result.data.size >= ApiPaging.RESTAURANTS_PAGE_SIZE,
-                            )
-                        }
-                    }
-                    is Resource.Error -> {
-                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = true) }
-                    }
-                }
-            }
-        }
-    }
-
     private fun KosherCertification.toApiString(): String = when (this) {
         KosherCertification.STAR_K -> "Star-K"
         KosherCertification.KOF_K -> "Kof-K"
@@ -121,7 +132,7 @@ class HomeViewModel @Inject constructor(
         if (state.isLoading || !state.hasMore) return
         val nextPage = state.currentPage + 1
         _uiState.update { it.copy(isLoading = true) }
-        loadRestaurants(nextPage)
+        loadTrigger.value = loadTrigger.value.copy(page = nextPage)
     }
 
     fun search(query: String) {
@@ -151,19 +162,21 @@ class HomeViewModel @Inject constructor(
 
     fun selectCuisine(cuisine: CuisineType?) {
         _uiState.update { it.copy(selectedCuisine = cuisine) }
-        loadRestaurants(page = 1)
+        loadTrigger.value = loadTrigger.value.copy(cuisine = cuisine, page = 1)
         loadSuggested()
     }
 
     fun toggleGlattFilter() {
-        _uiState.update { it.copy(filterGlattOnly = !it.filterGlattOnly) }
-        loadRestaurants(page = 1)
+        val newValue = !_uiState.value.filterGlattOnly
+        _uiState.update { it.copy(filterGlattOnly = newValue) }
+        loadTrigger.value = loadTrigger.value.copy(glattOnly = newValue, page = 1)
         loadSuggested()
     }
 
     fun toggleCholovYisroelFilter() {
-        _uiState.update { it.copy(filterCholovYisroelOnly = !it.filterCholovYisroelOnly) }
-        loadRestaurants(page = 1)
+        val newValue = !_uiState.value.filterCholovYisroelOnly
+        _uiState.update { it.copy(filterCholovYisroelOnly = newValue) }
+        loadTrigger.value = loadTrigger.value.copy(cholovYisroelOnly = newValue, page = 1)
         loadSuggested()
     }
 
@@ -181,13 +194,18 @@ class HomeViewModel @Inject constructor(
                 filterCertifications = certifications,
             )
         }
-        loadRestaurants(page = 1)
+        loadTrigger.value = loadTrigger.value.copy(
+            glattOnly = glattOnly,
+            cholovYisroelOnly = cholovYisroelOnly,
+            pasYisroelOnly = pasYisroelOnly,
+            certifications = certifications,
+            page = 1,
+        )
         loadSuggested()
     }
 
     override fun onCleared() {
         super.onCleared()
-        currentJob?.cancel()
         searchJob?.cancel()
     }
 
@@ -197,7 +215,7 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         _uiState.update { it.copy(currentPage = 1, hasMore = true, isRefreshing = true, error = null) }
-        loadRestaurants(page = 1)
+        loadTrigger.value = loadTrigger.value.copy(page = 1)
         loadSuggested()
     }
 }

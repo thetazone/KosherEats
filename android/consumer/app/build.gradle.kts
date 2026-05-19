@@ -56,6 +56,7 @@ android {
         versionCode = 10
         versionName = "1.0.7"
 
+        multiDexEnabled = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -161,6 +162,11 @@ dependencies {
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Encrypted token storage (Android Keystore). Bumped to 1.1.0-alpha06
+    // because polish cycle-3 R17 fix uses the MasterKey builder API which
+    // ships in 1.1.x only; 1.0.0 has only the deprecated MasterKeys helper.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Kotlinx Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")

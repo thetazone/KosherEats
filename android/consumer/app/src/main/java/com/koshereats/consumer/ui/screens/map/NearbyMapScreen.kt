@@ -3,6 +3,7 @@ package com.koshereats.consumer.ui.screens.map
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -23,10 +24,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -75,6 +78,7 @@ fun NearbyMapScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val activity = context as? ComponentActivity
 
     val restaurants = state.restaurants.filter { it.address.latitude != 0.0 && it.address.longitude != 0.0 }
     val selected = restaurants.firstOrNull { it.id == selectedId }
@@ -93,6 +97,8 @@ fun NearbyMapScreen(
     // Tracks whether we've already moved the camera to the user — prevents the
     // restaurant bounds-fit effect below from overriding their location zoom.
     var centeredOnUser by remember { mutableStateOf(false) }
+    var showLocationRationale by remember { mutableStateOf(false) }
+    var showLocationPermanentDenial by remember { mutableStateOf(false) }
 
     fun centerOnUser() {
         if (!hasLocationPermission()) return
@@ -118,19 +124,34 @@ fun NearbyMapScreen(
         val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         locationGranted = granted
-        if (granted) centerOnUser() else viewModel.loadNearby(40.7128, -74.0060)
+        if (granted) {
+            centerOnUser()
+        } else {
+            viewModel.loadNearby(40.7128, -74.0060)
+            val needsRationale =
+                activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == true ||
+                activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION) == true
+            if (needsRationale) showLocationRationale = true else showLocationPermanentDenial = true
+        }
     }
 
     LaunchedEffect(Unit) {
         if (locationGranted) {
             centerOnUser()
         } else {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                ),
-            )
+            val needsRationale =
+                activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == true ||
+                activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION) == true
+            if (needsRationale) {
+                showLocationRationale = true
+            } else {
+                permissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ),
+                )
+            }
         }
     }
 
@@ -149,6 +170,48 @@ fun NearbyMapScreen(
                 CameraUpdateFactory.newLatLngZoom(LatLng(only.address.latitude, only.address.longitude), 14f)
             )
         }
+    }
+
+    if (showLocationRationale) {
+        AlertDialog(
+            onDismissRequest = { showLocationRationale = false },
+            title = { Text("Location needed for nearby restaurants") },
+            text = { Text("KosherEats uses your location to show restaurants near you. Without it, a default area is shown.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLocationRationale = false
+                    permissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                        ),
+                    )
+                }) { Text("Allow") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLocationRationale = false }) { Text("Not now") }
+            },
+        )
+    }
+
+    if (showLocationPermanentDenial) {
+        AlertDialog(
+            onDismissRequest = { showLocationPermanentDenial = false },
+            title = { Text("Location access blocked") },
+            text = { Text("To see restaurants near you, enable location access for KosherEats in Settings.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLocationPermanentDenial = false
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.fromParts("package", context.packageName, null)
+                    }
+                    context.startActivity(intent)
+                }) { Text("Open Settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLocationPermanentDenial = false }) { Text("Dismiss") }
+            },
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
@@ -231,7 +294,7 @@ private fun RestaurantMapPin(restaurant: Restaurant) {
         Spacer(Modifier.height(2.dp))
         Text(
             text = restaurant.name,
-            color = TextWhite,
+            color = androidx.compose.ui.graphics.Color.White,
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,

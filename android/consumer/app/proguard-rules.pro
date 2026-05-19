@@ -12,7 +12,7 @@
 # (e.g. OrderStatus.valueOf("pending")).  Cover the full consumer package, not
 # only data.models, so enums in viewmodels / ui packages are also protected.
 -keepnames enum com.koshereats.consumer.**
--keepclassmembers enum com.koshereats.consumer.data.models.** {
+-keepclassmembers enum com.koshereats.consumer.** {
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
@@ -54,7 +54,13 @@
 -dontwarn com.google.firebase.**
 
 # Stripe
+# PaymentLauncher and PaymentSheet use reflection on result classes and
+# @Parcelize-generated CREATOR fields; R8 full mode strips them without
+# these explicit rules. Exceptions attribute is required for stripe-android
+# 20.45.0's internal try/catch reflection paths.
+-keepattributes Exceptions
 -keep class com.stripe.** { *; }
+-keep class com.stripe.android.paymentsheet.** { *; }
 -dontwarn com.stripe.**
 
 # Google Maps
@@ -73,7 +79,11 @@
 -dontnote kotlinx.serialization.AnnotationsKt
 -keepclassmembers @kotlinx.serialization.Serializable class ** {
     *** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
 }
+# R8 full mode strips the plugin-generated $$serializer inner class unless
+# kept explicitly — Companion alone is not sufficient.
+-keep class **$$serializer { *; }
 
 # Compose (R8 full mode)
 -dontwarn androidx.compose.**

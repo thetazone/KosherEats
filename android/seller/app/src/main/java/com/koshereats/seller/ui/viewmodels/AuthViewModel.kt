@@ -127,7 +127,14 @@ class AuthViewModel @Inject constructor(
             try {
                 val response = apiService.login(LoginRequest(email, password))
                 if (response.isSuccessful) {
-                    val body = response.body()!!
+                    val body = response.body()
+                    if (body == null) {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = "Login failed: empty server response.",
+                        )
+                        return@launch
+                    }
                     if (body.user.role != "seller" && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             isLoading = false,
@@ -170,7 +177,14 @@ class AuthViewModel @Inject constructor(
                     SocialLoginRequest(provider, token, firstName, lastName)
                 )
                 if (response.isSuccessful) {
-                    val body = response.body()!!
+                    val body = response.body()
+                    if (body == null) {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            error = "Login failed: empty server response.",
+                        )
+                        return@launch
+                    }
                     if (body.user.role != "seller" && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             isLoading = false,
@@ -372,7 +386,14 @@ class AuthViewModel @Inject constructor(
                     )
                 )
                 if (response.isSuccessful) {
-                    val body = response.body()!!
+                    val body = response.body()
+                    if (body == null) {
+                        _state.value = _state.value.copy(
+                            phoneIsVerifying = false,
+                            error = "Verification failed: empty server response.",
+                        )
+                        return@launch
+                    }
                     if (body.user.role != "seller" && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             phoneIsVerifying = false,
@@ -417,7 +438,7 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun clearAuth() {
-        PushBootstrap.deleteToken()
+        PushBootstrap.deleteToken(apiService)
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
         NetworkModule.cachedRestaurantId = null

@@ -34,7 +34,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -81,12 +80,11 @@ import com.koshereats.consumer.ui.viewmodels.CartViewModel
 import com.koshereats.consumer.ui.viewmodels.HomeViewModel
 import com.koshereats.consumer.ui.viewmodels.SessionState
 
-internal object DeepLinkState {
-    val pendingOrderId = MutableStateFlow<String?>(null)
-}
-
 @Composable
-fun KosherEatsNavHost() {
+fun KosherEatsNavHost(
+    externalPendingOrderId: String? = null,
+    onPendingOrderIdConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -102,24 +100,47 @@ fun KosherEatsNavHost() {
     // rememberSaveable survives process death (e.g. Stripe 3DS activity recreation).
     val pendingGuestReturn = rememberSaveable { mutableStateOf<String?>(null) }
 
-    val pendingOrderId by DeepLinkState.pendingOrderId.collectAsStateWithLifecycle()
+    // rememberSaveable scopes the order ID to this composition's saved state rather than a
+    // process-wide singleton. It survives configuration changes and is cleared once consumed,
+    // so a guest who hits the deep-link, defers login, and navigates elsewhere cannot
+    // accidentally re-trigger the navigation on a later login.
+    val pendingOrderId = rememberSaveable { mutableStateOf(externalPendingOrderId) }
+
+    // Sync new intents (onNewIntent) into the saveable state after initial composition.
+    LaunchedEffect(externalPendingOrderId) {
+        if (externalPendingOrderId != null) {
+            pendingOrderId.value = externalPendingOrderId
+        }
+    }
+
     // Re-fires when auth state changes so the ID is held until the user is authenticated.
     // Auth gate prevents a guest/unauthenticated deep-link from reaching OrderTracking and
     // triggering a 401 → forced-logout cycle.
-    LaunchedEffect(pendingOrderId, authState.sessionState) {
-        val id = pendingOrderId ?: return@LaunchedEffect
+    LaunchedEffect(pendingOrderId.value, authState.sessionState) {
+        val id = pendingOrderId.value ?: return@LaunchedEffect
         if (authState.sessionState != SessionState.Authenticated) return@LaunchedEffect
-        DeepLinkState.pendingOrderId.value = null
+        pendingOrderId.value = null
+        onPendingOrderIdConsumed()
         navController.navigate(Screen.OrderTracking.createRoute(id)) {
             launchSingleTop = true
             popUpTo(Screen.Home.route)
         }
     }
 
-    LaunchedEffect(Unit) {
-        authViewModel.logoutEvent.collect {
+    // Snapshot of the previous sessionState, used to distinguish a forced logout
+    // (Authenticated → LoggedOut) from the startup no-token path (Unknown → LoggedOut),
+    // so we don't push Login on first launch for guest users.
+    val prevSessionState = remember { mutableStateOf<SessionState>(authState.sessionState) }
+    LaunchedEffect(authState.sessionState) {
+        val previous = prevSessionState.value
+        prevSessionState.value = authState.sessionState
+        if (previous == SessionState.Authenticated && authState.sessionState == SessionState.LoggedOut) {
             navController.navigate(Screen.Login.route) {
-                popUpTo(0) { inclusive = true }
+                popUpTo(navController.graph.findStartDestination().id) {
+                    inclusive = false
+                    saveState = false
+                }
+                launchSingleTop = true
             }
         }
     }
@@ -316,7 +337,7 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderConfirmation.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                if (authState.sessionState != SessionState.Authenticated) {
+                if (!authState.isRehydrating && authState.sessionState != SessionState.Authenticated) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }
@@ -344,7 +365,7 @@ fun KosherEatsNavHost() {
                 route = Screen.OrderTracking.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                if (authState.sessionState != SessionState.Authenticated) {
+                if (!authState.isRehydrating && authState.sessionState != SessionState.Authenticated) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }
@@ -385,7 +406,7 @@ fun KosherEatsNavHost() {
                     navArgument("orderId") { type = NavType.StringType },
                 ),
             ) {
-                if (authState.sessionState != SessionState.Authenticated) {
+                if (!authState.isRehydrating && authState.sessionState != SessionState.Authenticated) {
                     LaunchedEffect(Unit) { navController.popBackStack() }
                     return@composable
                 }

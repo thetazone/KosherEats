@@ -69,12 +69,21 @@ object PushBootstrap {
     }
 
     /**
-     * Delete the FCM registration token on logout so a new user on this
-     * device won't receive the previous user's push notifications. Firebase
-     * will issue a fresh token on the next getToken() call (i.e. after login).
+     * Unregister the current FCM token from the backend and then delete it
+     * locally so the previous user stops receiving push on a shared device.
+     * Must be called before clearing the auth token so the backend call is
+     * still authenticated.
      */
-    suspend fun deleteToken() {
+    suspend fun deleteToken(api: ApiService) {
         if (!initialized) return
+        // Fetch the token first; we need it to tell the backend which device to remove.
+        try {
+            val token = FirebaseMessaging.getInstance().token.await()
+            api.unregisterDevice(token)
+            Log.i(TAG, "FCM token unregistered from backend")
+        } catch (t: Throwable) {
+            Log.w(TAG, "FCM backend unregister failed: ${t.message}")
+        }
         try {
             FirebaseMessaging.getInstance().deleteToken().await()
             Log.i(TAG, "FCM token deleted")

@@ -162,24 +162,15 @@ private fun DealCard(
     deal: Deal,
     onDelete: () -> Unit,
 ) {
-    val isExpired = try {
-        ZonedDateTime.parse(deal.expiresAt).isBefore(ZonedDateTime.now())
-    } catch (_: Exception) {
-        false
-    }
+    val now = ZonedDateTime.now()
+    val parsedExpiry = runCatching { ZonedDateTime.parse(deal.expiresAt) }.getOrNull()
+    val dateUnknown = parsedExpiry == null
+    val isExpired = parsedExpiry?.isBefore(now) ?: true
 
-    val expiryText = try {
-        val expiry = ZonedDateTime.parse(deal.expiresAt)
-        val now = ZonedDateTime.now()
-        if (expiry.isBefore(now)) {
-            "Expired"
-        } else {
-            val hours = ChronoUnit.HOURS.between(now, expiry)
-            if (hours < 24) "${hours}h left" else "${hours / 24}d left"
-        }
-    } catch (_: Exception) {
-        ""
-    }
+    val expiryText = if (parsedExpiry != null && !parsedExpiry.isBefore(now)) {
+        val hours = ChronoUnit.HOURS.between(now, parsedExpiry)
+        if (hours < 24) "${hours}h left" else "${hours / 24}d left"
+    } else ""
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -238,11 +229,13 @@ private fun DealCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val statusColor = when {
                         !deal.isActive -> ErrorRed
+                        dateUnknown -> Orange
                         isExpired -> TextMuted
                         else -> SuccessGreen
                     }
                     val statusText = when {
                         !deal.isActive -> "Deactivated"
+                        dateUnknown -> "Date unknown"
                         isExpired -> "Expired"
                         else -> "Active"
                     }

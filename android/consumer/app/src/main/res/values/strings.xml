@@ -19,10 +19,18 @@
     <string name="auth_signup_title">Create account</string>
     <string name="auth_sign_in_subtitle">Sign in to continue</string>
     <string name="auth_continue_google">Continue with Google</string>
-    <string name="auth_or_divider">or</string>
+    <string name="auth_or_divider">OR</string>
     <string name="auth_sign_in">Sign In</string>
     <string name="auth_no_account">Don\'t have an account? </string>
     <string name="auth_sign_up">Sign Up</string>
+    <string name="auth_welcome_title">Welcome to KosherEats</string>
+    <string name="auth_welcome_subtitle">Kosher food delivery, done right.</string>
+    <string name="auth_mobile_number">Mobile number</string>
+    <string name="auth_continue">Continue</string>
+    <string name="auth_continue_email">Continue with Email</string>
+    <string name="auth_continue_guest">Continue as Guest</string>
+    <string name="auth_use_different_google">Use a different Google account</string>
+    <string name="auth_account_settings_unavailable">Account settings not available on this device</string>
 
     <!-- Home -->
     <string name="home_title">KosherEats</string>
@@ -62,6 +70,29 @@
     <string name="order_tracking_title">Tracking</string>
     <string name="tracking_load_error">Couldn\'t load order.</string>
     <string name="action_retry">Retry</string>
+
+    <!-- Profile -->
+    <string name="profile_guest_title">Unlock your full experience</string>
+    <string name="profile_guest_subtitle">Sign in to track orders, save addresses, and earn rewards on every kosher meal.</string>
+    <string name="profile_benefit_track_orders">Track your orders in real-time</string>
+    <string name="profile_benefit_save_addresses">Save multiple delivery addresses</string>
+    <string name="profile_benefit_secure_checkout">Secure and fast checkout</string>
+    <string name="profile_sign_in_register">Sign In or Register</string>
+    <string name="profile_load_error">Couldn\'t load profile</string>
+    <string name="profile_menu_edit">Edit Profile</string>
+    <string name="profile_menu_saved_addresses">Saved Addresses</string>
+    <string name="profile_menu_payment_methods">Payment Methods</string>
+    <string name="profile_menu_favorites">Favorites</string>
+    <string name="profile_menu_notifications">Notification Preferences</string>
+    <string name="profile_menu_connected_accounts">Connected Accounts</string>
+    <string name="profile_menu_help">Help &amp; Support</string>
+    <string name="profile_sign_out">Sign Out</string>
+    <string name="profile_delete_account">Delete Account</string>
+    <string name="profile_delete_confirm_title">Delete account?</string>
+    <string name="profile_delete_confirm_body">This permanently deletes your account, order history, saved addresses, and payment methods. This cannot be undone.</string>
+    <string name="profile_delete_btn">Delete</string>
+    <string name="profile_sign_out_confirm_title">Sign out?</string>
+    <string name="profile_sign_out_confirm_body">You\'ll need to sign in again to access your orders, addresses, and payment methods.</string>
 
     <!-- Common -->
     <string name="common_cancel">Cancel</string>

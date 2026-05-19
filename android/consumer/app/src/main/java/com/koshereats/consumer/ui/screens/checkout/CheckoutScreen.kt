@@ -1,5 +1,11 @@
 package com.koshereats.consumer.ui.screens.checkout
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -35,6 +42,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -48,14 +56,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.data.models.CartItem
 import com.koshereats.consumer.data.models.Order
@@ -63,7 +69,6 @@ import com.koshereats.consumer.data.models.PaymentSheetBundle
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.data.models.formatted
 import com.koshereats.consumer.ui.theme.*
-import com.koshereats.consumer.ui.viewmodels.CheckoutEvent
 import com.koshereats.consumer.ui.viewmodels.CheckoutViewModel
 import com.koshereats.consumer.ui.viewmodels.TipChoice
 import com.stripe.android.PaymentConfiguration
@@ -101,34 +106,30 @@ fun CheckoutScreen(
         }
     }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(vm.events, lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            vm.events.collect { event ->
-                when (event) {
-                    is CheckoutEvent.PresentPaymentSheet -> {
-                        PaymentConfiguration.init(context, event.bundle.publishableKey)
-                        val config = PaymentSheet.Configuration(
-                            merchantDisplayName = "KosherEats",
-                            customer = PaymentSheet.CustomerConfiguration(
-                                id = event.bundle.customerId,
-                                ephemeralKeySecret = event.bundle.ephemeralKeySecret,
-                            ),
-                            allowsDelayedPaymentMethods = true,
-                        )
-                        paymentSheet.presentWithPaymentIntent(
-                            paymentIntentClientSecret = event.bundle.paymentIntentSecret,
-                            configuration = config,
-                        )
-                    }
-                }
-            }
-        }
+    LaunchedEffect(ui.pendingPaymentSheet) {
+        val bundle = ui.pendingPaymentSheet ?: return@LaunchedEffect
+        PaymentConfiguration.init(context, bundle.publishableKey)
+        val config = PaymentSheet.Configuration(
+            merchantDisplayName = "KosherEats",
+            customer = PaymentSheet.CustomerConfiguration(
+                id = bundle.customerId,
+                ephemeralKeySecret = bundle.ephemeralKeySecret,
+            ),
+            allowsDelayedPaymentMethods = true,
+        )
+        paymentSheet.presentWithPaymentIntent(
+            paymentIntentClientSecret = bundle.paymentIntentSecret,
+            configuration = config,
+        )
+        vm.consumePendingPaymentSheet()
     }
 
-    // Fire once when the order comes back from /orders.
+    // Gate navigation behind the notification permission request so the user opts in
+    // to order-tracking updates at the exact moment they're meaningful.
+    var notifPermissionPending by remember { mutableStateOf(false) }
+
     LaunchedEffect(ui.placedOrder) {
-        ui.placedOrder?.let(onOrderPlaced)
+        if (ui.placedOrder != null) notifPermissionPending = true
     }
 
     var showAddressSheet by remember { mutableStateOf(false) }
@@ -199,12 +200,21 @@ fun CheckoutScreen(
 
             ui.errorMessage?.let { msg ->
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = msg,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = ErrorRed,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-                )
+                Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                    Text(
+                        text = msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ErrorRed,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Retry",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Orange,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { vm.retry() },
+                    )
+                }
             }
 
             Spacer(Modifier.height(32.dp))
@@ -268,6 +278,56 @@ fun CheckoutScreen(
                 showScheduleSheet = false
             },
             onDismiss = { showScheduleSheet = false },
+        )
+    }
+
+    if (notifPermissionPending) {
+        NotificationPermissionGate(
+            onDone = {
+                notifPermissionPending = false
+                ui.placedOrder?.let(onOrderPlaced)
+            }
+        )
+    }
+}
+
+@Composable
+private fun NotificationPermissionGate(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    val skipPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || activity == null
+
+    var showRationale by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        onDone()
+    }
+
+    LaunchedEffect(Unit) {
+        when {
+            skipPermission -> onDone()
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED -> onDone()
+            activity!!.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) ->
+                showRationale = true
+            else -> launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    if (showRationale) {
+        AlertDialog(
+            onDismissRequest = onDone,
+            title = { Text("Get order updates") },
+            text = { Text("Enable notifications so KosherEats can alert you when your order is confirmed, prepared, and on its way.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRationale = false
+                    launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }) { Text("Allow") }
+            },
+            dismissButton = {
+                TextButton(onClick = onDone) { Text("No thanks") }
+            },
         )
     }
 }

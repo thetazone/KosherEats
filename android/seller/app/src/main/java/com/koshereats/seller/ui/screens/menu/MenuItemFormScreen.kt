@@ -31,6 +31,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -55,7 +57,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,7 +70,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.CreateModifierGroupRequest
-import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.ModifierOptionRequest
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
@@ -117,17 +117,18 @@ fun MenuItemFormScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var price by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable(
-        stateSaver = Saver(save = { it.name }, restore = { MenuCategory.valueOf(it) }),
-    ) { mutableStateOf(MenuCategory.MAINS) }
+    var selectedCategoryId by rememberSaveable { mutableStateOf("") }
     var imageUrl by rememberSaveable { mutableStateOf("") }
     var isPareve by rememberSaveable { mutableStateOf(false) }
     var isDairy by rememberSaveable { mutableStateOf(false) }
     var isMeat by rememberSaveable { mutableStateOf(false) }
     var spiceLevel by rememberSaveable { mutableStateOf("") }
+    var prepTime by rememberSaveable { mutableStateOf("15") }
+    var caloriesInput by rememberSaveable { mutableStateOf("") }
+    var allergensStr by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var isUploadingImage by rememberSaveable { mutableStateOf(false) }
+    var isUploadingImage by remember { mutableStateOf(false) }
     var formInitialized by rememberSaveable { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -147,6 +148,7 @@ fun MenuItemFormScreen(
     }
 
     LaunchedEffect(itemId) {
+        formInitialized = false
         if (itemId == null) {
             viewModel.setSelectedItem(null)
         } else {
@@ -160,23 +162,43 @@ fun MenuItemFormScreen(
             name = item.name
             description = item.description
             price = String.format(Locale.US, "%.2f", item.price / 100.0)
-            category = item.category
+            selectedCategoryId = item.categoryId
+                ?: state.categories.firstOrNull { cat -> cat.items.any { it.id == item.id } }?.id
+                ?: ""
             imageUrl = item.imageUrl
             isPareve = item.isKosherPareve
             isDairy = item.isDairy
             isMeat = item.isMeat
             spiceLevel = if (item.spiceLevel > 0) item.spiceLevel.toString() else ""
+            prepTime = item.preparationTime.toString()
+            caloriesInput = item.calories?.toString() ?: ""
+            allergensStr = item.allergens.joinToString(",")
             formInitialized = true
         } ?: run {
-            name = ""
-            description = ""
-            price = ""
-            category = MenuCategory.MAINS
-            imageUrl = ""
-            isPareve = false
-            isDairy = false
-            isMeat = false
-            spiceLevel = ""
+            // Only mark initialized for new items; for edit, wait until selectedItem arrives.
+            if (!isEditing) {
+                name = ""
+                description = ""
+                price = ""
+                selectedCategoryId = state.categories.firstOrNull()?.id ?: ""
+                imageUrl = ""
+                isPareve = false
+                isDairy = false
+                isMeat = false
+                spiceLevel = ""
+                prepTime = "15"
+                caloriesInput = ""
+                allergensStr = ""
+                formInitialized = true
+            }
+        }
+    }
+
+    // Ensure a default category is selected once the list arrives (e.g. for new items
+    // where categories hadn't loaded yet when formInitialized was set).
+    LaunchedEffect(state.categories) {
+        if (!isEditing && selectedCategoryId.isEmpty() && state.categories.isNotEmpty()) {
+            selectedCategoryId = state.categories.first().id
         }
     }
 
@@ -271,7 +293,7 @@ fun MenuItemFormScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .border(1.dp, DividerColor, RoundedCornerShape(12.dp))
                     .background(SurfaceDark)
-                    .clickable(enabled = !isUploadingImage) {
+                    .clickable(enabled = (formInitialized || !isEditing) && !isUploadingImage) {
                         imagePicker.launch("image/*")
                     },
                 contentAlignment = Alignment.Center,
@@ -309,6 +331,7 @@ fun MenuItemFormScreen(
                 onValueChange = { if (it.length <= 100) name = it },
                 label = { Text("Item Name") },
                 singleLine = true,
+                enabled = formInitialized || !isEditing,
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -321,6 +344,7 @@ fun MenuItemFormScreen(
                 label = { Text("Description") },
                 minLines = 2,
                 maxLines = 4,
+                enabled = formInitialized || !isEditing,
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -335,19 +359,21 @@ fun MenuItemFormScreen(
                 },
                 label = { Text("Price (\$)") },
                 singleLine = true,
+                enabled = formInitialized || !isEditing,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // Category dropdown
+            // Category dropdown — driven by the server's actual category list
             ExposedDropdownMenuBox(
                 expanded = categoryExpanded,
-                onExpandedChange = { categoryExpanded = it },
+                onExpandedChange = { if (formInitialized || !isEditing) categoryExpanded = it },
             ) {
                 OutlinedTextField(
-                    value = category.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
+                    value = state.categories.firstOrNull { it.id == selectedCategoryId }?.name
+                        ?: if (state.categories.isEmpty()) "Loading…" else "Select category",
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Category") },
@@ -363,16 +389,11 @@ fun MenuItemFormScreen(
                     onDismissRequest = { categoryExpanded = false },
                     modifier = Modifier.background(SurfaceDark),
                 ) {
-                    MenuCategory.entries.forEach { cat ->
+                    state.categories.forEach { cat ->
                         DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = cat.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
-                                    color = TextWhite,
-                                )
-                            },
+                            text = { Text(text = cat.name, color = TextWhite) },
                             onClick = {
-                                category = cat
+                                selectedCategoryId = cat.id
                                 categoryExpanded = false
                             },
                         )
@@ -389,11 +410,86 @@ fun MenuItemFormScreen(
                 },
                 label = { Text("Spice Level (0-5, optional)") },
                 singleLine = true,
+                enabled = formInitialized || !isEditing,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // Prep time
+            OutlinedTextField(
+                value = prepTime,
+                onValueChange = { v ->
+                    val n = v.filter { it.isDigit() }
+                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 120) prepTime = n
+                },
+                label = { Text("Prep Time (min, 1–120)") },
+                singleLine = true,
+                enabled = formInitialized || !isEditing,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = textFieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Calories (optional)
+            OutlinedTextField(
+                value = caloriesInput,
+                onValueChange = { v ->
+                    val n = v.filter { it.isDigit() }
+                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 9999) caloriesInput = n
+                },
+                label = { Text("Calories (optional)") },
+                singleLine = true,
+                enabled = formInitialized || !isEditing,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = textFieldColors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Allergens
+            Text(
+                text = "Allergens",
+                style = MaterialTheme.typography.titleSmall,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+            )
+            val allergenOptions = listOf("gluten", "dairy", "eggs", "nuts", "peanuts", "soy", "fish", "shellfish")
+            allergenOptions.chunked(4).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    rowItems.forEach { allergen ->
+                        val isSelected = allergen in allergensStr.split(",")
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                if (formInitialized || !isEditing) {
+                                    val current = allergensStr.split(",").filter { it.isNotBlank() }.toMutableSet()
+                                    if (allergen in current) current.remove(allergen) else current.add(allergen)
+                                    allergensStr = current.joinToString(",")
+                                }
+                            },
+                            label = {
+                                Text(
+                                    allergen.replaceFirstChar { it.uppercase() },
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = SurfaceDark,
+                                labelColor = TextMuted,
+                                selectedContainerColor = Orange.copy(alpha = 0.2f),
+                                selectedLabelColor = Orange,
+                            ),
+                        )
+                    }
+                }
+            }
 
             // Kosher type checkboxes
             Text(
@@ -407,15 +503,15 @@ fun MenuItemFormScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                KosherCheckbox(label = "Pareve", checked = isPareve) {
+                KosherCheckbox(label = "Pareve", checked = isPareve, enabled = formInitialized || !isEditing) {
                     isPareve = it
                     if (it) { isDairy = false; isMeat = false }
                 }
-                KosherCheckbox(label = "Dairy", checked = isDairy) {
+                KosherCheckbox(label = "Dairy", checked = isDairy, enabled = formInitialized || !isEditing) {
                     isDairy = it
                     if (it) { isPareve = false; isMeat = false }
                 }
-                KosherCheckbox(label = "Meat", checked = isMeat) {
+                KosherCheckbox(label = "Meat", checked = isMeat, enabled = formInitialized || !isEditing) {
                     isMeat = it
                     if (it) { isPareve = false; isDairy = false }
                 }
@@ -442,14 +538,20 @@ fun MenuItemFormScreen(
                     }
                 }
 
-                val groups = state.selectedItem?.modifierGroups ?: emptyList()
-                groups.forEach { group ->
-                    ModifierGroupCard(
-                        group = group,
-                        onEdit = { editingGroup = group; showModifierDialog = true },
-                        onDelete = { viewModel.deleteModifierGroup(group.id, itemId) },
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                if (state.modifierGroupsLoading) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Orange, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                } else {
+                    val groups = state.selectedItem?.modifierGroups ?: emptyList()
+                    groups.forEach { group ->
+                        ModifierGroupCard(
+                            group = group,
+                            onEdit = { editingGroup = group; showModifierDialog = true },
+                            onDelete = { viewModel.deleteModifierGroup(group.id, itemId) },
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
 
                 if (showModifierDialog) {
@@ -494,13 +596,15 @@ fun MenuItemFormScreen(
                         name = name.trim(),
                         description = description.trim(),
                         price = (dollars * 100.0).roundToInt(),
-                        category = category.name.lowercase(),
-                        imageUrl = imageUrl.trim().ifBlank { null },
+                        categoryId = selectedCategoryId.ifBlank { null },
+                        imageUrl = imageUrl.trim(),
                         isKosherPareve = isPareve,
                         isDairy = isDairy,
                         isMeat = isMeat,
                         spiceLevel = spiceLevel.toIntOrNull(),
-                        calories = null,
+                        preparationTime = prepTime.toIntOrNull()?.coerceIn(1, 120),
+                        calories = caloriesInput.toIntOrNull(),
+                        allergens = allergensStr.split(",").filter { it.isNotBlank() },
                     )
                     if (isEditing && itemId != null) {
                         viewModel.updateMenuItem(itemId, request)
@@ -508,7 +612,7 @@ fun MenuItemFormScreen(
                         viewModel.createMenuItem(request)
                     }
                 },
-                enabled = name.isNotBlank() && (price.toDoubleOrNull() ?: 0.0) > 0 && !state.isSaving && !isUploadingImage,
+                enabled = (formInitialized || !isEditing) && name.isNotBlank() && (price.toDoubleOrNull() ?: 0.0) > 0 && !state.isSaving && !isUploadingImage,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp),
@@ -595,12 +699,14 @@ private suspend fun uploadImage(
 private fun KosherCheckbox(
     label: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = CheckboxDefaults.colors(
                 checkedColor = Orange,
                 uncheckedColor = TextMuted,
