@@ -39,6 +39,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.greeneats.consumer.ui.theme.*
 import com.greeneats.consumer.ui.viewmodels.RatingViewModel
 
+private object RatingStrings {
+    const val TITLE = "Rate your courier"
+    const val HEADLINE = "How was your delivery?"
+    const val COMMENT_LABEL = "Comment (optional)"
+    const val COMMENT_PLACEHOLDER = "Tell the courier what they did well"
+    const val SUBMITTING = "Submitting..."
+    const val SUBMIT = "Submit"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RatingScreen(
@@ -54,7 +63,7 @@ fun RatingScreen(
 
     Column(Modifier.fillMaxSize().background(BackgroundBlack)) {
         TopAppBar(
-            title = { Text("Rate your courier", color = TextWhite) },
+            title = { Text(RatingStrings.TITLE, color = TextWhite) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextWhite)
@@ -68,7 +77,7 @@ fun RatingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "How was your delivery?",
+                RatingStrings.HEADLINE,
                 style = MaterialTheme.typography.headlineSmall,
                 color = TextWhite,
                 fontWeight = FontWeight.Bold,
@@ -90,8 +99,8 @@ fun RatingScreen(
             OutlinedTextField(
                 value = state.comment,
                 onValueChange = vm::setComment,
-                label = { Text("Comment (optional)", color = TextTertiary) },
-                placeholder = { Text("Tell the courier what they did well", color = TextMuted) },
+                label = { Text(RatingStrings.COMMENT_LABEL, color = TextTertiary) },
+                placeholder = { Text(RatingStrings.COMMENT_PLACEHOLDER, color = TextMuted) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextWhite,
@@ -118,7 +127,7 @@ fun RatingScreen(
                 shape = RoundedCornerShape(16.dp),
             ) {
                 Text(
-                    if (state.isSubmitting) "Submitting..." else "Submit",
+                    if (state.isSubmitting) RatingStrings.SUBMITTING else RatingStrings.SUBMIT,
                     fontWeight = FontWeight.Bold,
                 )
             }

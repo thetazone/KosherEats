@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct Theme {
     // MARK: - Corner Radii
@@ -16,7 +17,13 @@ struct Theme {
 
     // MARK: - Shadows
     static let shadowRadius: CGFloat = 8
-    static let shadowColor = Color.black.opacity(0.3)
+    static let shadowColor = Color(
+        UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor.white.withAlphaComponent(0.08)
+                : UIColor.black.withAlphaComponent(0.12)
+        }
+    )
 }
 
 // MARK: - View Modifiers

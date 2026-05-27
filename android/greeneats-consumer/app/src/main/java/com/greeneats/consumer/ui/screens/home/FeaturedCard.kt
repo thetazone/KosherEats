@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,11 +39,20 @@ fun FeaturedCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val kosherLabel = restaurant.kosherCertification?.name ?: "Kosher"
+    val cuisines = restaurant.cuisineTypes
+        .mapNotNull { it?.displayName }
+        .joinToString(", ")
+    val cardDescription = "Featured: ${restaurant.name}, $kosherLabel${if (restaurant.isGlattKosher) ", Glatt" else ""}${if (cuisines.isNotBlank()) ", $cuisines" else ""}"
+
     Surface(
         modifier = modifier
             .width(232.dp)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick),
+            .semantics(mergeDescendants = true) {
+                contentDescription = cardDescription
+            }
+            .clickable(onClickLabel = "Open ${restaurant.name}", onClick = onClick),
         color = SurfaceDarkElevated,
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, SurfaceDarkBorder.copy(alpha = 0.45f)),

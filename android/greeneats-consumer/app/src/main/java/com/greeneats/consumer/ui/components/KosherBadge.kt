@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.sp
 import com.greeneats.consumer.data.models.DietaryType
 import com.greeneats.consumer.data.models.KosherCertification
@@ -44,8 +46,12 @@ fun KosherBadge(
         else -> KosherGeneric
     }
 
+    val abbr = certification.abbreviation.ifBlank { certification.displayName }
+    val accessibilityLabel = "${certification.displayName} kosher certification"
+
     Row(
         modifier = modifier
+            .semantics { contentDescription = accessibilityLabel }
             .clip(RoundedCornerShape(6.dp))
             .background(badgeColor.copy(alpha = 0.15f))
             .border(1.dp, badgeColor.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
@@ -54,14 +60,14 @@ fun KosherBadge(
     ) {
         Icon(
             imageVector = Icons.Filled.Verified,
-            contentDescription = "Kosher certified",
+            contentDescription = null, // described by parent Row semantics
             tint = badgeColor,
             modifier = Modifier.size(14.dp),
         )
         if (showLabel) {
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = certification.abbreviation,
+                text = abbr,
                 color = badgeColor,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -83,6 +89,7 @@ fun DietaryBadge(
 
     Row(
         modifier = modifier
+            .semantics { contentDescription = "$label dietary type" }
             .clip(RoundedCornerShape(6.dp))
             .background(color.copy(alpha = 0.15f))
             .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
@@ -110,6 +117,7 @@ fun GlattBadge(modifier: Modifier = Modifier) {
     Text(
         text = "Glatt",
         modifier = modifier
+            .semantics { contentDescription = "Glatt kosher" }
             .clip(RoundedCornerShape(6.dp))
             .background(SuccessGreen.copy(alpha = 0.15f))
             .border(1.dp, SuccessGreen.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
@@ -125,6 +133,7 @@ fun CholovYisroelBadge(modifier: Modifier = Modifier) {
     Text(
         text = "CY",
         modifier = modifier
+            .semantics { contentDescription = "Cholov Yisroel" }
             .clip(RoundedCornerShape(6.dp))
             .background(DairyBlue.copy(alpha = 0.15f))
             .border(1.dp, DairyBlue.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
@@ -140,6 +149,7 @@ fun PasYisroelBadge(modifier: Modifier = Modifier) {
     Text(
         text = "PY",
         modifier = modifier
+            .semantics { contentDescription = "Pas Yisroel" }
             .clip(RoundedCornerShape(6.dp))
             .background(OrangeLight.copy(alpha = 0.15f))
             .border(1.dp, OrangeLight.copy(alpha = 0.4f), RoundedCornerShape(6.dp))

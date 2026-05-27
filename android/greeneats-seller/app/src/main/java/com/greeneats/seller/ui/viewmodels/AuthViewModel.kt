@@ -49,6 +49,10 @@ class AuthViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
+    companion object {
+        private const val ROLE = "seller"
+    }
+
     private val _state = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
@@ -116,7 +120,7 @@ class AuthViewModel @Inject constructor(
                 val response = apiService.login(LoginRequest(email, password))
                 if (response.isSuccessful) {
                     val body = response.body()!!
-                    if (body.user.role != "seller" && body.user.role != "admin") {
+                    if (body.user.role != ROLE && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             isLoading = false,
                             error = "This account is not a seller account.",
@@ -159,7 +163,7 @@ class AuthViewModel @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     val body = response.body()!!
-                    if (body.user.role != "seller" && body.user.role != "admin") {
+                    if (body.user.role != ROLE && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             isLoading = false,
                             error = "This account is not a seller account.",
@@ -200,17 +204,13 @@ class AuthViewModel @Inject constructor(
 
     fun signInWithGoogle(activityContext: android.content.Context) {
         viewModelScope.launch {
-            android.util.Log.d("GoogleSignIn", "signInWithGoogle called")
             _state.value = _state.value.copy(isLoading = true, error = null)
             val result = GoogleSignInHelper.signIn(activityContext)
-            android.util.Log.d("GoogleSignIn", "signIn returned: isSuccess=${result.isSuccess}")
             result.fold(
                 onSuccess = { googleResult ->
-                    android.util.Log.d("GoogleSignIn", "success, calling socialLogin")
                     socialLogin("google", googleResult.idToken, googleResult.firstName, googleResult.lastName)
                 },
                 onFailure = { e ->
-                    android.util.Log.e("GoogleSignIn", "failure: ${e.javaClass.name} — ${e.message}")
                     _state.value = _state.value.copy(
                         isLoading = false,
                         error = e.message ?: "Google Sign-In failed",
@@ -227,7 +227,8 @@ class AuthViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _state.value = _state.value.copy(restaurant = response.body())
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("SellerAuth", "updateRestaurantField($key) failed", e)
             }
         }
     }
@@ -322,6 +323,10 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun setPhoneError(message: String) {
+        _state.value = _state.value.copy(error = message)
+    }
+
     fun silentResend() {
         val current = _state.value
         if (!current.otpSent || current.phoneE164.isEmpty()) return
@@ -345,12 +350,12 @@ class AuthViewModel @Inject constructor(
                     PhoneVerifyRequest(
                         phone = current.phoneE164,
                         code = current.otpCode,
-                        role = "seller",
+                        role = ROLE,
                     )
                 )
                 if (response.isSuccessful) {
                     val body = response.body()!!
-                    if (body.user.role != "seller" && body.user.role != "admin") {
+                    if (body.user.role != ROLE && body.user.role != "admin") {
                         _state.value = _state.value.copy(
                             phoneIsVerifying = false,
                             error = "This account is not a seller account.",

@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.greeneats.consumer.data.models.CuisineType
 import com.greeneats.consumer.ui.components.RestaurantCardShimmer
@@ -75,6 +76,26 @@ import com.greeneats.consumer.data.models.Address
 import com.greeneats.consumer.ui.viewmodels.AddressViewModel
 import com.greeneats.consumer.ui.viewmodels.CartViewModel
 import com.greeneats.consumer.ui.viewmodels.HomeViewModel
+
+private const val TAG = "HomeScreen"
+private const val LOAD_MORE_THRESHOLD = 3
+
+private object HomeStrings {
+    const val APP_TITLE = "GreenEats"
+    const val SET_DELIVERY_ADDRESS = "Set delivery address"
+    const val CHANGE_ADDRESS = "Change address"
+    const val FILTER = "Filter"
+    const val SEARCH_PLACEHOLDER = "Search restaurants, cuisines..."
+    const val CLEAR = "Clear"
+    const val ALL = "All"
+    const val SUGGESTED_FOR_YOU = "Suggested for you"
+    const val NO_RESTAURANTS_FOUND = "No restaurants found"
+    const val YOU_MIGHT_LIKE = "You might like"
+    const val LOAD_MORE_RETRY = "Couldn't load more — Tap to retry"
+    const val NO_RESTAURANTS_AVAILABLE = "No restaurants available"
+    const val TRY_AGAIN = "Try again"
+    const val CART = "Cart"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,7 +122,7 @@ fun HomeScreen(
         snapshotFlow {
             val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val totalItems = listState.layoutInfo.totalItemsCount
-            lastVisibleItem >= totalItems - 3 && !uiState.isLoading && uiState.hasMore
+            lastVisibleItem >= totalItems - LOAD_MORE_THRESHOLD && !uiState.isLoading && uiState.hasMore
         }.distinctUntilChanged().collect { shouldLoad ->
             if (shouldLoad) viewModel.loadMore()
         }
@@ -109,7 +130,11 @@ fun HomeScreen(
 
     LaunchedEffect(startWithSearch) {
         if (startWithSearch) {
-            try { focusRequester.requestFocus() } catch (_: Exception) {}
+            try {
+                focusRequester.requestFocus()
+            } catch (e: Exception) {
+                Log.d(TAG, "FocusRequester not yet attached, skipping requestFocus", e)
+            }
         }
     }
 
@@ -134,7 +159,7 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "GreenEats",
+                            text = HomeStrings.APP_TITLE,
                             color = Orange,
                             style = MaterialTheme.typography.displaySmall,
                         )
@@ -159,7 +184,7 @@ fun HomeScreen(
                             Text(
                                 text = addressState.selectedAddress?.let { addr ->
                                     addr.label.ifBlank { addr.streetAddress }
-                                } ?: "Set delivery address",
+                                } ?: HomeStrings.SET_DELIVERY_ADDRESS,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextWhite,
                                 fontWeight = FontWeight.Medium,
@@ -167,7 +192,7 @@ fun HomeScreen(
                             )
                             Icon(
                                 Icons.Filled.KeyboardArrowDown,
-                                contentDescription = "Change address",
+                                contentDescription = HomeStrings.CHANGE_ADDRESS,
                                 tint = TextTertiary,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -199,7 +224,7 @@ fun HomeScreen(
                         ) {
                             Icon(
                                 Icons.Filled.FilterList,
-                                contentDescription = "Filter",
+                                contentDescription = HomeStrings.FILTER,
                                 tint = TextWhite,
                             )
                         }
@@ -213,7 +238,7 @@ fun HomeScreen(
                     value = uiState.searchQuery,
                     onValueChange = { viewModel.search(it) },
                     placeholder = {
-                        Text("Search restaurants, cuisines...", color = TextMuted)
+                        Text(HomeStrings.SEARCH_PLACEHOLDER, color = TextMuted)
                     },
                     leadingIcon = {
                         Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted)
@@ -221,7 +246,7 @@ fun HomeScreen(
                     trailingIcon = {
                         if (uiState.searchQuery.isNotEmpty()) {
                             IconButton(onClick = { viewModel.search("") }) {
-                                Icon(Icons.Filled.Close, contentDescription = "Clear", tint = TextMuted)
+                                Icon(Icons.Filled.Close, contentDescription = HomeStrings.CLEAR, tint = TextMuted)
                             }
                         }
                     },
@@ -254,7 +279,7 @@ fun HomeScreen(
                         FilterChip(
                             selected = uiState.selectedCuisine == null,
                             onClick = { viewModel.selectCuisine(null) },
-                            label = { Text("All", style = MaterialTheme.typography.labelLarge) },
+                            label = { Text(HomeStrings.ALL, style = MaterialTheme.typography.labelLarge) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Orange,
                                 selectedLabelColor = TextWhite,
@@ -299,7 +324,7 @@ fun HomeScreen(
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Suggested for you",
+                            text = HomeStrings.SUGGESTED_FOR_YOU,
                             style = MaterialTheme.typography.headlineSmall,
                             color = TextWhite,
                             modifier = Modifier.padding(horizontal = 16.dp),
@@ -333,7 +358,7 @@ fun HomeScreen(
                     if (uiState.searchResults.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                Text("No restaurants found", color = TextMuted, style = MaterialTheme.typography.bodyLarge)
+                                Text(HomeStrings.NO_RESTAURANTS_FOUND, color = TextMuted, style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     } else {
@@ -350,7 +375,7 @@ fun HomeScreen(
                 // All restaurants
                 item {
                     Text(
-                        text = "You might like",
+                        text = HomeStrings.YOU_MIGHT_LIKE,
                         style = MaterialTheme.typography.headlineSmall,
                         color = TextWhite,
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -378,6 +403,27 @@ fun HomeScreen(
                             }
                         }
                     }
+
+                    // Pagination error: show inline retry when loading more fails
+                    // but there are already restaurants displayed.
+                    if (uiState.error != null && !uiState.isLoading && uiState.allRestaurants.isNotEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.loadMore() },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Orange),
+                                ) {
+                                    Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(HomeStrings.LOAD_MORE_RETRY)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (uiState.allRestaurants.isEmpty() && !uiState.isLoading) {
@@ -394,7 +440,7 @@ fun HomeScreen(
                                         color = TextMuted,
                                     )
                                 } else {
-                                    Text("No restaurants available", style = MaterialTheme.typography.bodyLarge, color = TextMuted)
+                                    Text(HomeStrings.NO_RESTAURANTS_AVAILABLE, style = MaterialTheme.typography.bodyLarge, color = TextMuted)
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                                 OutlinedButton(
@@ -404,7 +450,7 @@ fun HomeScreen(
                                 ) {
                                     Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Try again")
+                                    Text(HomeStrings.TRY_AGAIN)
                                 }
                             }
                         }
@@ -436,7 +482,7 @@ fun HomeScreen(
                         }
                     }
                 ) {
-                    Icon(Icons.Filled.ShoppingCart, contentDescription = "Cart")
+                    Icon(Icons.Filled.ShoppingCart, contentDescription = HomeStrings.CART)
                 }
             }
         }

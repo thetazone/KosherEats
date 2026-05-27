@@ -144,7 +144,7 @@ struct RestaurantSettingsView: View {
                                         Button {
                                             kosherCert = cert
                                         } label: {
-                                    Text(cert.displayName)
+                                            Text(cert.displayName)
                                                 .font(.caption.bold())
                                                 .foregroundColor(
                                                     kosherCert == cert ? .white : .keTextSecondary
@@ -349,6 +349,8 @@ struct RestaurantSettingsView: View {
                         .background(Color.keError.opacity(0.1))
                         .cornerRadius(12)
                     }
+                    .accessibilityLabel("Delete account")
+                    .accessibilityHint("Permanently deletes your account and all data")
 
                     Spacer().frame(height: 20)
                 }
@@ -452,6 +454,7 @@ struct RestaurantSettingsView: View {
                 .padding()
                 .background(Color.keCard)
                 .cornerRadius(10)
+                .accessibilityLabel(label)
         }
     }
 
@@ -484,7 +487,7 @@ struct RestaurantSettingsView: View {
 
             Spacer()
 
-            Toggle("", isOn: isOn)
+            Toggle(label, isOn: isOn)
                 .tint(.kePrimary)
                 .labelsHidden()
         }
@@ -515,6 +518,29 @@ struct RestaurantSettingsView: View {
 
     private func save() async {
         guard var restaurant = dashVM.restaurant else { return }
+
+        // Validate required fields before sending to the server.
+        if name.trimmingCharacters(in: .whitespaces).isEmpty {
+            errorMessage = "Restaurant name is required."
+            return
+        }
+        if phone.trimmingCharacters(in: .whitespaces).isEmpty {
+            errorMessage = "Phone number is required."
+            return
+        }
+        if email.trimmingCharacters(in: .whitespaces).isEmpty || !email.contains("@") {
+            errorMessage = "A valid email address is required."
+            return
+        }
+        if zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
+            errorMessage = "ZIP code is required."
+            return
+        }
+        if let min = Int(estDeliveryMin), let max = Int(estDeliveryMax), min > max {
+            errorMessage = "Estimated minimum delivery time can't exceed maximum."
+            return
+        }
+
         isSaving = true
         errorMessage = nil
 

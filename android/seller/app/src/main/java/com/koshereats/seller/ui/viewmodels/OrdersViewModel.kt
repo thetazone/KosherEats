@@ -65,10 +65,13 @@ class OrdersViewModel @Inject constructor(
         loadOrders()
         viewModelScope.launch {
             NetworkModule.restaurantChanged.collect {
-                // Reset all order state immediately so stale orders from the previous
-                // restaurant are never visible or actionable under the new one.
+                // Cancel any in-flight poll so its response (carrying stale-restaurant orders)
+                // cannot land into the freshly-cleared state.
+                pollingJob?.cancel()
+                pollingJob = null
                 _state.value = OrdersState()
                 loadOrders()
+                if (isPollingActive) launchPollingJob()
             }
         }
     }
@@ -108,7 +111,10 @@ class OrdersViewModel @Inject constructor(
             while (true) {
                 val succeeded = pollSilently()
                 consecutiveFailures = if (succeeded) 0 else consecutiveFailures + 1
-                delay(BACKOFF_DELAYS[consecutiveFailures.coerceAtMost(BACKOFF_DELAYS.lastIndex)])
+                val baseDelay = BACKOFF_DELAYS[consecutiveFailures.coerceAtMost(BACKOFF_DELAYS.lastIndex)]
+                // ±20% jitter prevents thundering herd when many sellers reconnect at once.
+                val jitter = (baseDelay * (kotlin.random.Random.nextDouble() * 0.4 - 0.2)).toLong()
+                delay(baseDelay + jitter)
             }
         }
     }
@@ -163,7 +169,9 @@ class OrdersViewModel @Inject constructor(
         if (orderId in _state.value.pendingOrderIds) return
         if (!pollMutex.tryLock()) return
         try {
+            val restaurantAtStart = NetworkModule.cachedRestaurantId
             val response = apiService.getOrderDetail(orderId)
+            if (NetworkModule.cachedRestaurantId != restaurantAtStart) return
             if (response.isSuccessful) {
                 val updated = response.body() ?: return
                 _state.update { s ->
@@ -176,7 +184,8 @@ class OrdersViewModel @Inject constructor(
                     )
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("OrdersViewModel", "refreshSingleOrder($orderId) failed", e)
         } finally {
             pollMutex.unlock()
         }
@@ -190,12 +199,16 @@ class OrdersViewModel @Inject constructor(
             val currentState = _state.value
             val filterAtStart = currentState.selectedFilter
             val pageAtStart = currentState.currentPage
+            val restaurantAtStart = NetworkModule.cachedRestaurantId
             val statusStr = filterAtStart?.name?.lowercase()
             // Always poll page 1 only — top-of-list orders are the only time-sensitive ones.
             // Pull-to-refresh (refresh()) provides a full page-1 deep reload when needed.
             val response = apiService.getOrders(status = statusStr, limit = PAGE_SIZE)
             val succeeded = response.isSuccessful
-            if (response.isSuccessful) {
+            // Discard the response if the active restaurant changed mid-request: those
+            // orders belong to the previous restaurant and would briefly leak in.
+            val restaurantStillMatches = NetworkModule.cachedRestaurantId == restaurantAtStart
+            if (response.isSuccessful && restaurantStillMatches) {
                 _state.update { current ->
                     if (current.selectedFilter == filterAtStart && current.currentPage >= pageAtStart) {
                         val newOrders = response.body() ?: current.orders

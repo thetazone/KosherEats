@@ -249,7 +249,7 @@ fun MenuItemSheet(
                             if (selected) {
                                 Icon(
                                     Icons.Filled.Check,
-                                    contentDescription = null,
+                                    contentDescription = "${option.name} selected",
                                     tint = TextWhite,
                                     modifier = Modifier.size(14.dp),
                                 )
@@ -358,7 +358,11 @@ fun MenuItemSheet(
                                 selectedOptions = opts,
                             ) else null
                         }
-                        onAddToCart(quantity, selected, specialInstructions)
+                        onAddToCart(
+                            quantity,
+                            selected,
+                            specialInstructions.trim().ifBlank { null },
+                        )
                         onDismiss()
                     },
                     modifier = Modifier.height(52.dp),

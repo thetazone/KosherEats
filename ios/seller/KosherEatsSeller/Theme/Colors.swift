@@ -2,15 +2,31 @@ import SwiftUI
 import UIKit
 
 extension Color {
+    // MARK: - Brand
     static let kePrimary = Color(hex: "F97316")
+    static let kePrimaryLight = Color(hex: "FB923C")
+    static let kePrimaryDark = Color(hex: "EA580C")
+
+    // MARK: - Backgrounds
     static let keBackground = dynamic(dark: "0A0A0A", light: "FAFAFA")
-    static let keSurface = dynamic(dark: "171717", light: "FFFFFF")
+    static let keBackgroundElevated = dynamic(dark: "171717", light: "FFFFFF")
+    /// Alias kept for existing call-sites that reference `keSurface`.
+    static let keSurface = keBackgroundElevated
     static let keCard = dynamic(dark: "262626", light: "F1F1F1")
+    static let keCardHover = dynamic(dark: "333333", light: "E5E5E5")
+
+    // MARK: - Text
     static let keTextPrimary = dynamic(dark: "FFFFFF", light: "0A0A0A")
     static let keTextSecondary = dynamic(dark: "D4D4D4", light: "262626")
+    static let keTextTertiary = dynamic(dark: "A3A3A3", light: "525252")
     static let keTextMuted = dynamic(dark: "737373", light: "737373")
-    static let keTextOnAccent = dynamic(dark: "FFFFFF", light: "0A0A0A")
+    static let keTextOnAccent = Color.white
+
+    // MARK: - Borders / Dividers
     static let keBorder = dynamic(dark: "404040", light: "E5E5E5")
+    static let keDivider = dynamic(dark: "3F3F3F", light: "E5E5E5")
+
+    // MARK: - Status
     static let keSuccess = Color(hex: "22C55E")
     static let keWarning = Color(hex: "EAB308")
     static let keError = Color(hex: "EF4444")

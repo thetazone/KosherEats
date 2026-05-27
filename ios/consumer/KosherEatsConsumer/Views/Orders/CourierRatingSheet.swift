@@ -41,6 +41,17 @@ struct CourierRatingSheet: View {
                     TextField("Leave a comment (optional)", text: $comment, axis: .vertical)
                         .lineLimit(3...5)
                         .keTextField()
+                        .onChange(of: comment) { _, newValue in
+                            if newValue.count > 500 {
+                                comment = String(newValue.prefix(500))
+                            }
+                        }
+
+                    if comment.count > 400 {
+                        Text("\(500 - comment.count) characters remaining")
+                            .font(.caption)
+                            .foregroundColor(comment.count >= 500 ? .keError : .keTextMuted)
+                    }
 
                     if let err = errorMessage {
                         Text(err)
@@ -88,8 +99,12 @@ struct CourierRatingSheet: View {
                         .font(.system(size: 36))
                         .foregroundColor(i <= stars ? .keWarning : .keTextMuted)
                 }
+                .accessibilityLabel("\(i) star\(i == 1 ? "" : "s")")
+                .accessibilityAddTraits(i == stars ? .isSelected : [])
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Rating: \(stars) of 5 stars")
     }
 
     private func submit() async {

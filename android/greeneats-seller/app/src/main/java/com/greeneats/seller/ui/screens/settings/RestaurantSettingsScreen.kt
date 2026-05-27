@@ -31,19 +31,21 @@ import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +57,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,6 +80,35 @@ import com.greeneats.seller.ui.theme.TextSecondary
 import com.greeneats.seller.ui.theme.TextWhite
 import com.greeneats.seller.ui.viewmodels.AuthViewModel
 import kotlinx.coroutines.Dispatchers
+
+private object SettingsStrings {
+    const val TITLE = "Settings"
+    const val SUBTITLE = "Restaurant configuration"
+    const val YOUR_RESTAURANT = "Your Restaurant"
+    const val OPEN = "Open"
+    const val CLOSED = "Closed"
+    const val OPEN_A11Y = "Restaurant is closed. Double tap to open"
+    const val CLOSE_A11Y = "Restaurant is open. Double tap to close"
+    const val RESTAURANT_DETAILS = "Restaurant Details"
+    const val ADDRESS_LABEL = "Address"
+    const val PHONE_LABEL = "Phone"
+    const val EMAIL_LABEL = "Email"
+    const val KOSHER_CERTIFICATION = "Kosher Certification"
+    const val NOT_SET = "Not set"
+    const val KOSHER_CERTIFICATE = "Kosher Certificate"
+    const val UPDATE_CERTIFICATE = "Update Certificate"
+    const val UPLOAD_CERTIFICATE = "Upload certificate photo"
+    const val UPLOAD_FAILED = "Failed to upload certificate. Please try again."
+    const val PRICING = "Pricing"
+    const val DELIVERY_FEE = "Delivery Fee"
+    const val MINIMUM_ORDER = "Minimum Order"
+    const val INTEGRATIONS = "Integrations"
+    const val SIGN_OUT = "Sign Out"
+    const val SIGN_OUT_CONFIRM = "Are you sure you want to sign out?"
+    const val CANCEL = "Cancel"
+    const val APP_VERSION = "GreenEats Seller v1.0.0"
+    const val REVIEWS_FORMAT = "%s (%d reviews)"
+}
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -89,12 +122,36 @@ fun RestaurantSettingsScreen(
     onIntegrations: () -> Unit = {},
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val authState by authViewModel.state.collectAsState()
+    val authState by authViewModel.state.collectAsStateWithLifecycle()
     val restaurant = authState.restaurant
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isUploadingCertificate by remember { mutableStateOf(false) }
+    var certificateUploadError by remember { mutableStateOf<String?>(null) }
     var showCertificate by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
+
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            title = { Text(SettingsStrings.SIGN_OUT, color = TextWhite) },
+            text = { Text(SettingsStrings.SIGN_OUT_CONFIRM, color = TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLogoutConfirm = false
+                    onLogout()
+                }) {
+                    Text(SettingsStrings.SIGN_OUT, color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirm = false }) {
+                    Text(SettingsStrings.CANCEL, color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
+    }
 
     val certificatePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -102,9 +159,12 @@ fun RestaurantSettingsScreen(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             isUploadingCertificate = true
+            certificateUploadError = null
             val url = uploadCertificateSettings(context, uri, authViewModel)
             if (url != null) {
                 authViewModel.updateRestaurantField("kosher_certificate_url", url)
+            } else {
+                certificateUploadError = SettingsStrings.UPLOAD_FAILED
             }
             isUploadingCertificate = false
         }
@@ -120,13 +180,13 @@ fun RestaurantSettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Settings",
+            text = SettingsStrings.TITLE,
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             color = TextWhite,
         )
         Text(
-            text = "Restaurant configuration",
+            text = SettingsStrings.SUBTITLE,
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
         )
@@ -158,7 +218,7 @@ fun RestaurantSettingsScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = restaurant?.name ?: "Your Restaurant",
+                            text = restaurant?.name ?: SettingsStrings.YOUR_RESTAURANT,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = TextWhite,
@@ -174,16 +234,24 @@ fun RestaurantSettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (restaurant?.isOpen == true) "Open" else "Closed",
+                                text = if (restaurant?.isOpen == true) SettingsStrings.OPEN else SettingsStrings.CLOSED,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = if (restaurant?.isOpen == true) SuccessGreen else ErrorRed,
                             )
                         }
                     }
+                    val toggleDesc = if (restaurant?.isOpen == true) {
+                        SettingsStrings.CLOSE_A11Y
+                    } else {
+                        SettingsStrings.OPEN_A11Y
+                    }
                     Switch(
                         checked = restaurant?.isOpen == true,
                         onCheckedChange = { authViewModel.toggleOpen(it) },
                         enabled = !authState.isTogglingOpen,
+                        modifier = Modifier.semantics {
+                            contentDescription = toggleDesc
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = SuccessGreen,
                             checkedTrackColor = SuccessGreen.copy(alpha = 0.3f),
@@ -193,7 +261,7 @@ fun RestaurantSettingsScreen(
 
                 if (restaurant != null) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = DividerColor, thickness = 0.5.dp)
+                    HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Rating
@@ -207,7 +275,7 @@ fun RestaurantSettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "${restaurant.rating} (${restaurant.totalReviews} reviews)",
+                                text = SettingsStrings.REVIEWS_FORMAT.format(restaurant.rating.toString(), restaurant.totalReviews),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextSecondary,
                             )
@@ -229,7 +297,7 @@ fun RestaurantSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        text = "Restaurant Details",
+                        text = SettingsStrings.RESTAURANT_DETAILS,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = TextWhite,
@@ -238,25 +306,25 @@ fun RestaurantSettingsScreen(
 
                     SettingsRow(
                         icon = Icons.Filled.LocationOn,
-                        label = "Address",
-                        value = restaurant.address.ifBlank { "Not set" },
+                        label = SettingsStrings.ADDRESS_LABEL,
+                        value = restaurant.address.ifBlank { SettingsStrings.NOT_SET },
                     )
                     SettingsDivider()
                     SettingsRow(
                         icon = Icons.Filled.Phone,
-                        label = "Phone",
-                        value = restaurant.phone.ifBlank { "Not set" },
+                        label = SettingsStrings.PHONE_LABEL,
+                        value = restaurant.phone.ifBlank { SettingsStrings.NOT_SET },
                     )
                     SettingsDivider()
                     SettingsRow(
                         icon = Icons.Filled.Email,
-                        label = "Email",
-                        value = restaurant.email.ifBlank { "Not set" },
+                        label = SettingsStrings.EMAIL_LABEL,
+                        value = restaurant.email.ifBlank { SettingsStrings.NOT_SET },
                     )
                     SettingsDivider()
                     SettingsRow(
                         icon = Icons.Filled.VerifiedUser,
-                        label = "Kosher Certification",
+                        label = SettingsStrings.KOSHER_CERTIFICATION,
                         value = restaurant.kosherCertification.name,
                     )
                     if (restaurant.certificationDetails.isNotBlank()) {
@@ -280,7 +348,7 @@ fun RestaurantSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        text = "Kosher Certificate",
+                        text = SettingsStrings.KOSHER_CERTIFICATE,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = TextWhite,
@@ -290,7 +358,7 @@ fun RestaurantSettingsScreen(
                     if (restaurant.kosherCertificateUrl.isNotBlank()) {
                         AsyncImage(
                             model = restaurant.kosherCertificateUrl,
-                            contentDescription = "Kosher certificate",
+                            contentDescription = SettingsStrings.KOSHER_CERTIFICATE,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(180.dp)
@@ -314,7 +382,7 @@ fun RestaurantSettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
-                            Text("Update Certificate")
+                            Text(SettingsStrings.UPDATE_CERTIFICATE)
                         }
                     } else {
                         Box(
@@ -324,6 +392,7 @@ fun RestaurantSettingsScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(SurfaceDarkElevated)
                                 .clickable(enabled = !isUploadingCertificate) {
+                                    certificateUploadError = null
                                     certificatePicker.launch("image/*")
                                 },
                             contentAlignment = Alignment.Center,
@@ -344,13 +413,22 @@ fun RestaurantSettingsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "Upload certificate photo",
+                                        text = SettingsStrings.UPLOAD_CERTIFICATE,
                                         color = TextMuted,
                                         fontSize = 13.sp,
                                     )
                                 }
                             }
                         }
+                    }
+
+                    certificateUploadError?.let { errorMsg ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMsg,
+                            color = ErrorRed,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
@@ -370,7 +448,7 @@ fun RestaurantSettingsScreen(
                     ) {
                         AsyncImage(
                             model = restaurant.kosherCertificateUrl,
-                            contentDescription = "Kosher certificate",
+                            contentDescription = SettingsStrings.KOSHER_CERTIFICATE,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
@@ -390,7 +468,7 @@ fun RestaurantSettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        text = "Pricing",
+                        text = SettingsStrings.PRICING,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = TextWhite,
@@ -401,7 +479,7 @@ fun RestaurantSettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Column {
-                            Text("Delivery Fee", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text(SettingsStrings.DELIVERY_FEE, style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             Text(
                                 restaurant.deliveryFee.formatPrice(),
                                 style = MaterialTheme.typography.titleMedium,
@@ -410,7 +488,7 @@ fun RestaurantSettingsScreen(
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("Minimum Order", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                            Text(SettingsStrings.MINIMUM_ORDER, style = MaterialTheme.typography.bodySmall, color = TextMuted)
                             Text(
                                 restaurant.minimumOrder.formatPrice(),
                                 style = MaterialTheme.typography.titleMedium,
@@ -436,14 +514,14 @@ fun RestaurantSettingsScreen(
         ) {
             Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Integrations", fontWeight = FontWeight.SemiBold)
+            Text(SettingsStrings.INTEGRATIONS, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Logout
         Button(
-            onClick = onLogout,
+            onClick = { showLogoutConfirm = true },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -455,14 +533,14 @@ fun RestaurantSettingsScreen(
         ) {
             Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Sign Out", fontWeight = FontWeight.SemiBold)
+            Text(SettingsStrings.SIGN_OUT, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
         // Version
         Text(
-            text = "GreenEats Seller v1.0.0",
+            text = SettingsStrings.APP_VERSION,
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
             modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -533,6 +611,6 @@ private fun SettingsRow(
 @Composable
 private fun SettingsDivider() {
     Spacer(modifier = Modifier.height(12.dp))
-    Divider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp, modifier = Modifier.padding(start = 32.dp))
+    HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp, modifier = Modifier.padding(start = 32.dp))
     Spacer(modifier = Modifier.height(12.dp))
 }

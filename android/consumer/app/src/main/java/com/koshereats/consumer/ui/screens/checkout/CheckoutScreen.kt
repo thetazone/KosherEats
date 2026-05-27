@@ -108,19 +108,30 @@ fun CheckoutScreen(
 
     LaunchedEffect(ui.pendingPaymentSheet) {
         val bundle = ui.pendingPaymentSheet ?: return@LaunchedEffect
-        PaymentConfiguration.init(context, bundle.publishableKey)
-        val config = PaymentSheet.Configuration(
-            merchantDisplayName = "KosherEats",
-            customer = PaymentSheet.CustomerConfiguration(
-                id = bundle.customerId,
-                ephemeralKeySecret = bundle.ephemeralKeySecret,
-            ),
-            allowsDelayedPaymentMethods = true,
-        )
-        paymentSheet.presentWithPaymentIntent(
-            paymentIntentClientSecret = bundle.paymentIntentSecret,
-            configuration = config,
-        )
+        if (bundle.publishableKey.isBlank() || bundle.paymentIntentSecret.isBlank() ||
+            bundle.customerId.isBlank() || bundle.ephemeralKeySecret.isBlank()
+        ) {
+            vm.onPaymentResult(success = false, error = "Could not start checkout — missing payment configuration.")
+            vm.consumePendingPaymentSheet()
+            return@LaunchedEffect
+        }
+        try {
+            PaymentConfiguration.init(context, bundle.publishableKey)
+            val config = PaymentSheet.Configuration(
+                merchantDisplayName = "KosherEats",
+                customer = PaymentSheet.CustomerConfiguration(
+                    id = bundle.customerId,
+                    ephemeralKeySecret = bundle.ephemeralKeySecret,
+                ),
+                allowsDelayedPaymentMethods = true,
+            )
+            paymentSheet.presentWithPaymentIntent(
+                paymentIntentClientSecret = bundle.paymentIntentSecret,
+                configuration = config,
+            )
+        } catch (e: Exception) {
+            vm.onPaymentResult(success = false, error = "Could not open payment sheet: ${e.localizedMessage}")
+        }
         vm.consumePendingPaymentSheet()
     }
 
@@ -222,6 +233,8 @@ fun CheckoutScreen(
 
         // Sticky pay button
         val canPay = ui.bundle != null &&
+            (ui.bundle?.subtotal ?: 0) > 0 &&
+            localCart.isNotEmpty() &&
             (ui.fulfillmentType == "pickup" || ui.selectedAddress != null) &&
             !ui.isProcessing &&
             !ui.isLoadingBundle
@@ -308,7 +321,7 @@ private fun NotificationPermissionGate(onDone: () -> Unit) {
             skipPermission -> onDone()
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
                 == PackageManager.PERMISSION_GRANTED -> onDone()
-            activity!!.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) ->
+            activity?.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) == true ->
                 showRationale = true
             else -> launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }

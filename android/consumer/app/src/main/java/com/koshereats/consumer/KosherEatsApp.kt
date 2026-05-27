@@ -7,6 +7,7 @@ import com.koshereats.consumer.push.PushBootstrap
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -15,11 +16,13 @@ class KosherEatsApp : Application() {
 
     @Inject lateinit var tokenProvider: TokenProvider
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         // Eagerly kick off the EncryptedSharedPreferences keystore unlock so
         // the token is in-memory before the first network request fires.
-        CoroutineScope(Dispatchers.IO).launch { tokenProvider.awaitToken() }
+        appScope.launch { tokenProvider.awaitToken() }
         // Manual Firebase init from BuildConfig (see FIREBASE.md). Gracefully
         // skips when keys are blank so fresh clones still build and run.
         PushBootstrap.init(this)

@@ -11,6 +11,7 @@ struct RemoteImage: View {
     let url: String?
     var contentMode: ContentMode = .fill
     var fallbackSymbol: String = "fork.knife"
+    var accessibilityLabel: String = "Image"
 
     var body: some View {
         ZStack {
@@ -24,6 +25,7 @@ struct RemoteImage: View {
                             .resizable()
                             .aspectRatio(contentMode: contentMode)
                             .transition(.opacity)
+                            .accessibilityLabel(accessibilityLabel)
                     case .failure:
                         errorFallback
                     @unknown default:

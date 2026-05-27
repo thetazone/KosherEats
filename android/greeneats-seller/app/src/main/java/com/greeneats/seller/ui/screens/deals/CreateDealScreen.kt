@@ -93,6 +93,14 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/**
+ * Default half-hour time slot index for deal expiry.
+ * The picker has 48 slots (indices 0-47), each representing a 30-minute window:
+ *   index 0 = 12:00 AM, index 1 = 12:30 AM, ... index 47 = 11:30 PM.
+ * Defaulting to 47 (11:30 PM) means new deals expire at end-of-day by default.
+ */
+private const val DEFAULT_EXPIRY_TIME_SLOT = 47 // 11:30 PM
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateDealScreen(
@@ -119,7 +127,7 @@ fun CreateDealScreen(
                 .toInstant().toEpochMilli()
         )
     }
-    var selectedHalfHour by remember { mutableIntStateOf(47) }
+    var selectedHalfHour by remember { mutableIntStateOf(DEFAULT_EXPIRY_TIME_SLOT) }
     var imageUrl by remember { mutableStateOf("") }
     var isUploadingImage by remember { mutableStateOf(false) }
 
@@ -553,10 +561,17 @@ fun CreateDealScreen(
                 )
             }
 
+            val discountInt = discountValue.toIntOrNull() ?: 0
             val hasDiscountValue = discountType == DiscountType.BOGO
-                    || (discountValue.toIntOrNull() ?: 0) > 0
+                    || discountInt > 0
+            val percentageInRange = discountType != DiscountType.PERCENTAGE
+                    || discountInt in 1..100
+            val minOrderValid = minOrderAmount.isBlank()
+                    || dollarsToCents(minOrderAmount) > 0
             val canCreate = title.isNotBlank()
                     && hasDiscountValue
+                    && percentageInRange
+                    && minOrderValid
                     && expiresAtMillis != null
                     && !state.isCreating
                     && !isUploadingImage
@@ -565,6 +580,8 @@ fun CreateDealScreen(
             val validationHint = when {
                 title.isBlank() -> "Enter a deal title"
                 !hasDiscountValue -> "Enter a discount value"
+                !percentageInRange -> "Percentage must be between 1 and 100"
+                !minOrderValid -> "Min order amount must be greater than \$0"
                 !isGeneralDeal && selectedItem == null -> "Select a menu item"
                 isUploadingImage -> "Image upload in progress…"
                 else -> null

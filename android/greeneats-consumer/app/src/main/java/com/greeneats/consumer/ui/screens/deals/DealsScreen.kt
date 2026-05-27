@@ -36,6 +36,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +71,20 @@ fun DealsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Filter out expired deals client-side
+    val activeDeals = remember(state.deals) {
+        state.deals.filter { deal ->
+            if (!deal.isActive) return@filter false
+            try {
+                val expiry = ZonedDateTime.parse(deal.expiresAt)
+                expiry.isAfter(ZonedDateTime.now())
+            } catch (_: Exception) {
+                true // keep deals with unparseable dates rather than hiding them
+            }
+        }
+    }
+    val expiredCount = state.deals.size - activeDeals.size
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -101,7 +116,7 @@ fun DealsScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             when {
-                state.isLoading && state.deals.isEmpty() -> {
+                state.isLoading && activeDeals.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -110,8 +125,49 @@ fun DealsScreen(
                     }
                 }
 
-                state.deals.isEmpty() -> {
-                    // LazyColumn with a single full-height item — gives PullToRefreshBox a
+                state.error != null && activeDeals.isEmpty() -> {
+                    // Error state
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val minH = maxHeight
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = minH)
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Refresh,
+                                        contentDescription = null,
+                                        tint = TextMuted,
+                                        modifier = Modifier.size(64.dp),
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "Couldn't Load Deals",
+                                        color = TextWhite,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = state.error ?: "Something went wrong. Pull down to try again.",
+                                        color = TextTertiary,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 20.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                activeDeals.isEmpty() -> {
+                    // LazyColumn with a single full-height item -- gives PullToRefreshBox a
                     // scrollable child so pull gestures register even when there are no deals.
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val minH = maxHeight
@@ -140,7 +196,11 @@ fun DealsScreen(
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "Restaurants in your area will post limited-time deals here. Pull down or tap refresh.",
+                                        text = if (expiredCount > 0) {
+                                            "$expiredCount deal${if (expiredCount != 1) "s" else ""} recently expired. Check back soon for new offers!"
+                                        } else {
+                                            "Restaurants in your area will post limited-time deals here. Pull down to refresh."
+                                        },
                                         color = TextTertiary,
                                         fontSize = 14.sp,
                                         textAlign = TextAlign.Center,
@@ -161,7 +221,7 @@ fun DealsScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(state.deals, key = { it.id }) { deal ->
+                        items(activeDeals, key = { it.id }) { deal ->
                             DealCard(
                                 deal = deal,
                                 onClick = { onDealClick(deal) },

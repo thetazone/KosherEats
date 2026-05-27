@@ -54,5 +54,7 @@ struct KosherBadge: View {
         .padding(.vertical, size.paddingV)
         .background(Color.kePrimary.opacity(0.15))
         .cornerRadius(size == .compact ? 4 : 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(certification.displayName) kosher certification")
     }
 }

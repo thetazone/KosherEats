@@ -36,6 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,27 +75,73 @@ fun OrderConfirmationScreen(
         ) {
             Icon(
                 Icons.Filled.Check,
-                contentDescription = null,
+                contentDescription = "Order confirmed",
                 tint = SuccessGreen,
                 modifier = Modifier.size(56.dp),
             )
         }
         Spacer(Modifier.height(20.dp))
-        Text("Order placed!", color = TextWhite, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
+
+        val order = ui.order
+        val isPickup = order?.isPickup == true
+
         Text(
-            text = "We've sent the order to the restaurant. You'll get a notification once it's accepted.",
+            text = "Order placed!",
+            color = TextWhite,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
+        )
+        Spacer(Modifier.height(8.dp))
+
+        // Pickup vs delivery messaging
+        Text(
+            text = if (isPickup) {
+                "Your order has been sent to the restaurant. You'll get a notification when it's ready for pickup."
+            } else {
+                "We've sent the order to the restaurant. You'll get a notification once it's accepted."
+            },
             color = TextTertiary,
             fontSize = 14.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
 
+        // Fulfillment type badge
+        if (order != null) {
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isPickup) Orange.copy(alpha = 0.15f) else SuccessGreen.copy(alpha = 0.15f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = if (isPickup) Icons.Filled.Check else Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = if (isPickup) Orange else SuccessGreen,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = if (isPickup) "Pickup Order" else "Delivery Order",
+                    color = if (isPickup) Orange else SuccessGreen,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+
         Spacer(Modifier.height(28.dp))
 
-        val order = ui.order
         if (order == null) {
             if (ui.isLoading) {
-                CircularProgressIndicator(color = Orange, modifier = Modifier.size(28.dp))
+                CircularProgressIndicator(
+                    color = Orange,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .semantics { contentDescription = "Loading order details" },
+                )
             } else {
                 Text(
                     text = ui.errorMessage ?: "Couldn't load order details.",
@@ -109,11 +158,21 @@ fun OrderConfirmationScreen(
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 onClick = { onTrack(orderId) },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .semantics {
+                        contentDescription = if (isPickup) "Track pickup order" else "Track delivery order"
+                    },
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Orange),
             ) {
-                Text("Track Order", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    text = if (isPickup) "Track Pickup" else "Track Order",
+                    color = TextWhite,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                )
             }
             OutlinedButton(
                 onClick = onDone,
@@ -130,7 +189,9 @@ fun OrderConfirmationScreen(
 @Composable
 private fun OrderSummaryCard(order: Order) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Order summary for ${order.restaurantName}" },
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
     ) {
@@ -139,6 +200,23 @@ private fun OrderSummaryCard(order: Order) {
             if (order.id.isNotEmpty()) {
                 Text("Order #${order.id.take(8)}", color = TextTertiary, fontSize = 12.sp)
             }
+
+            // Show fulfillment details
+            if (order.isPickup) {
+                Text(
+                    text = "Pickup from restaurant",
+                    color = Orange,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            } else if (order.deliveryAddress.isNotEmpty()) {
+                Text(
+                    text = "Delivering to: ${order.deliveryAddress}",
+                    color = TextTertiary,
+                    fontSize = 12.sp,
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
             HorizontalDivider(color = SurfaceDarkBorder)
             Spacer(Modifier.height(12.dp))

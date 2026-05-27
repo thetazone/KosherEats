@@ -94,10 +94,15 @@ class CheckoutViewModel @Inject constructor(
     val uiState: StateFlow<CheckoutUiState> = _uiState.asStateFlow()
 
     private var refreshBundleJob: Job? = null
+    private var deliveryQuoteJob: Job? = null
     private var _bootstrapped = false
     private var _restaurantId: String = ""
     private var _appliedDealId: String? = null
     private var _localSubtotalCents: Int = 0
+
+    // Idempotency: track which payment intent IDs have already been finalized
+    // so a duplicate PaymentSheetResult.Completed cannot create a second order.
+    private val finalizedIntentIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
         // Recover IDs from SavedStateHandle when the live args are empty (process-death recovery).
@@ -113,6 +118,15 @@ class CheckoutViewModel @Inject constructor(
             if (_uiState.value.isProcessing || effectiveRestaurantId == _restaurantId) return
             if (effectiveRestaurantId.isEmpty()) return
         }
+        // Hard guard: a blank restaurant ID would let the user place an order against the
+        // backend's "first owned restaurant" fallback, which is not what they were viewing.
+        if (effectiveRestaurantId.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "Could not identify the restaurant. Please return to the cart and try again.") }
+            return
+        }
+        // Each new bootstrap is a fresh checkout session — reset idempotency tracking so the
+        // user can retry after an error without being blocked by stale finalized-intent IDs.
+        finalizedIntentIds.clear()
         _bootstrapped = true
         _localSubtotalCents = localCart.sumOf { it.totalPrice }
 
@@ -187,14 +201,19 @@ class CheckoutViewModel @Inject constructor(
             }
         } catch (e: Exception) {
             // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
-            try { api.clearServerCart() } catch (_: Exception) { }
+            try {
+                api.clearServerCart()
+            } catch (rollbackErr: Exception) {
+                android.util.Log.w("CheckoutViewModel", "Server cart rollback failed after partial sync", rollbackErr)
+            }
             _uiState.update { it.copy(errorMessage = "Failed to prepare cart: ${e.localizedMessage}") }
         }
     }
 
     fun selectAddress(address: Address) {
         _uiState.update { it.copy(selectedAddress = address) }
-        viewModelScope.launch { fetchDeliveryQuote(address) }
+        deliveryQuoteJob?.cancel()
+        deliveryQuoteJob = viewModelScope.launch { fetchDeliveryQuote(address) }
         launchRefreshBundle()
     }
 
@@ -235,6 +254,13 @@ class CheckoutViewModel @Inject constructor(
     }
 
     fun addAddress(address: Address) {
+        // Local guard: a blank street/city/state/zip combo would fail server-side with a
+        // generic 422; surface the issue immediately instead of doing a round-trip.
+        if (address.streetAddress.isBlank() || address.city.isBlank() ||
+            address.state.length != 2 || address.zipCode.length != 5) {
+            _uiState.update { it.copy(errorMessage = "Please complete all address fields") }
+            return
+        }
         viewModelScope.launch {
             try {
                 val resp = api.addAddress(address)
@@ -289,20 +315,25 @@ class CheckoutViewModel @Inject constructor(
     }
 
     fun updateScheduledFor(value: LocalDateTime?) {
-        _uiState.update { it.copy(scheduledFor = value) }
+        // Guard against schedule-for-past values that would silently land on the server.
+        // Require at least 5 minutes from now so the user doesn't pick "in 30 seconds"
+        // and have the backend reject it as too-near.
+        val sanitized = value?.takeIf { it.isAfter(LocalDateTime.now().plusMinutes(5)) }
+        _uiState.update { it.copy(scheduledFor = sanitized) }
     }
 
     private fun currentTipCents(): Int {
         val state = _uiState.value
         val subtotal = state.bundle?.subtotal ?: _localSubtotalCents
-        return when (val choice = state.tipChoice) {
+        val tip = when (val choice = state.tipChoice) {
             TipChoice.None -> 0
             is TipChoice.Percent -> (subtotal * choice.fraction).roundToInt()
             TipChoice.Custom -> {
                 val dollars = state.customTipText.toDoubleOrNull() ?: 0.0
-                (dollars * 100).roundToInt()
+                (dollars.coerceIn(0.0, 1000.0) * 100).roundToInt()
             }
         }
+        return tip.coerceAtLeast(0)
     }
 
     private fun launchRefreshBundle() {
@@ -311,7 +342,9 @@ class CheckoutViewModel @Inject constructor(
     }
 
     private suspend fun refreshBundle() {
-        _uiState.update { it.copy(isLoadingBundle = true, bundle = null, errorMessage = null) }
+        // Always discard the in-flight payment sheet bundle here; otherwise an old bundle
+        // could be presented to Stripe right after the user changed tip/address.
+        _uiState.update { it.copy(isLoadingBundle = true, bundle = null, errorMessage = null, pendingPaymentSheet = null) }
         try {
             val address = _uiState.value.selectedAddress
             val state = _uiState.value
@@ -334,6 +367,11 @@ class CheckoutViewModel @Inject constructor(
                     )
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Cooperative cancellation (job replaced or VM cleared) — still clear the spinner
+            // so a follow-up bootstrap doesn't see a stuck isLoadingBundle=true.
+            _uiState.update { it.copy(isLoadingBundle = false) }
+            throw e
         } catch (e: Exception) {
             _uiState.update { it.copy(isLoadingBundle = false, errorMessage = e.localizedMessage) }
         }
@@ -345,9 +383,21 @@ class CheckoutViewModel @Inject constructor(
     fun onPayTapped() {
         if (_uiState.value.isProcessing) return
         val bundle = _uiState.value.bundle ?: return
+        // Hard guard against zero-cost orders slipping through the UI gate.
+        if (bundle.subtotal <= 0 || bundle.total <= 0) {
+            _uiState.update { it.copy(errorMessage = "Cart is empty or invalid. Please add items and try again.") }
+            return
+        }
+        // Stub orders must use a unique stub intent so the idempotency guard doesn't
+        // collapse multiple stub orders placed in the same VM session into one.
         _uiState.update { it.copy(isProcessing = true) }
         if (bundle.isStub) {
-            finalizeOrder(paymentIntentId = "stub_intent")
+            finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}")
+            return
+        }
+        // Non-stub orders need a valid Stripe payment intent secret to present the sheet.
+        if (!bundle.paymentIntentSecret.contains("_secret_")) {
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment is not configured. Please refresh and try again.") }
             return
         }
         _uiState.update { it.copy(pendingPaymentSheet = bundle) }
@@ -361,10 +411,16 @@ class CheckoutViewModel @Inject constructor(
      *  user completed payment; false means cancel or failure. */
     fun onPaymentResult(success: Boolean, error: String? = null) {
         if (!success) {
-            _uiState.update { it.copy(isProcessing = false, errorMessage = error) }
+            // Force a fresh bundle (and new payment intent) on the next attempt so the user
+            // never gets stuck retrying against a stale intent the server already saw fail.
+            _uiState.update { it.copy(isProcessing = false, errorMessage = error, bundle = null) }
+            launchRefreshBundle()
             return
         }
-        val bundle = _uiState.value.bundle ?: return
+        val bundle = _uiState.value.bundle ?: run {
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment recorded but order summary was lost. Please check your orders.") }
+            return
+        }
         val intentId = extractIntentId(bundle.paymentIntentSecret)
         if (intentId == null) {
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Unexpected Stripe response — please try again") }
@@ -374,6 +430,14 @@ class CheckoutViewModel @Inject constructor(
     }
 
     private fun finalizeOrder(paymentIntentId: String) {
+        // Idempotency guard: if Stripe (or our own retry) calls onPaymentResult twice with
+        // the same intent, only the first call may proceed to /orders. Otherwise duplicate
+        // orders bypass server-side dedupe whenever it has any race window.
+        if (!finalizedIntentIds.add(paymentIntentId)) {
+            android.util.Log.w("CheckoutViewModel", "finalizeOrder ignored duplicate intent=$paymentIntentId")
+            _uiState.update { it.copy(isProcessing = false) }
+            return
+        }
         val state = _uiState.value
         val isPickup = state.fulfillmentType == "pickup"
         val address = state.selectedAddress
@@ -381,13 +445,21 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Select a delivery address") }
             return
         }
-        val nonNullAddress = address ?: return
-        if (!isPickup && !nonNullAddress.isGeocoded) {
+        if (!isPickup && address != null && !address.isGeocoded) {
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
             return
         }
-        val bundle = state.bundle ?: run { _uiState.update { it.copy(isProcessing = false) }; return }
+        val bundle = state.bundle ?: run {
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Could not load order summary. Please try again.") }
+            return
+        }
 
+        // Final guard: a scheduledFor that drifted into the past while the user lingered
+        // would be silently rejected by the server with a generic error. Catch it here.
+        if (state.scheduledFor != null && state.scheduledFor.isBefore(LocalDateTime.now())) {
+            _uiState.update { it.copy(isProcessing = false, errorMessage = "Selected time has passed. Please pick a new time.", scheduledFor = null) }
+            return
+        }
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
         viewModelScope.launch {
             val scheduledFor = state.scheduledFor?.let { local ->
@@ -399,9 +471,9 @@ class CheckoutViewModel @Inject constructor(
                 val resp = api.createOrder(
                     CreateOrderRequest(
                         restaurantId = _restaurantId,
-                        deliveryAddress = if (isPickup) "" else "${nonNullAddress.streetAddress}, ${nonNullAddress.city}, ${nonNullAddress.state} ${nonNullAddress.zipCode}",
-                        deliveryLat = if (isPickup) 0.0 else nonNullAddress.latitude,
-                        deliveryLng = if (isPickup) 0.0 else nonNullAddress.longitude,
+                        deliveryAddress = if (isPickup || address == null) "" else "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
+                        deliveryLat = if (isPickup || address == null) 0.0 else address.latitude,
+                        deliveryLng = if (isPickup || address == null) 0.0 else address.longitude,
                         paymentIntentId = paymentIntentId,
                         tip = bundle.tip,
                         scheduledFor = scheduledFor,
@@ -414,9 +486,13 @@ class CheckoutViewModel @Inject constructor(
                         it.copy(isProcessing = false, placedOrder = resp.body())
                     }
                 } else if (resp.code() == 409) {
-                    // Duplicate payment_intent_id — order already exists; fetch it
+                    // Duplicate payment_intent_id — order already exists. Fetch the latest
+                    // order and require it to belong to the same restaurant the user just
+                    // tried to check out from; otherwise an unrelated historical order
+                    // could surface to the user.
                     val existing = fetchMostRecentOrder()
-                    if (existing != null) {
+                    val matches = existing != null && existing.restaurantId == _restaurantId
+                    if (matches) {
                         _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
                     } else {
                         _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
@@ -448,8 +524,24 @@ class CheckoutViewModel @Inject constructor(
     // PaymentIntent client secrets look like `pi_xxxxxx_secret_yyyy`. We only
     // want the `pi_xxxxxx` portion for our DB. Returns null if the delimiter is
     // absent so callers can surface a clear error instead of posting a garbage ID.
-    private fun extractIntentId(clientSecret: String): String? =
-        if (clientSecret.contains("_secret_")) clientSecret.substringBefore("_secret_") else null
+    private fun extractIntentId(clientSecret: String): String? {
+        if (!clientSecret.contains("_secret_")) {
+            Log.w("CheckoutViewModel", "extractIntentId: client_secret missing '_secret_' delimiter")
+            return null
+        }
+        val candidate = clientSecret.substringBefore("_secret_")
+        // Stripe PaymentIntent IDs start with "pi_" (or "seti_" for SetupIntents)
+        // and are 20+ chars; guard against malformed/empty values.
+        if (candidate.length < 5) {
+            Log.w("CheckoutViewModel", "extractIntentId: candidate '${candidate}' too short")
+            return null
+        }
+        if (!candidate.startsWith("pi_") && !candidate.startsWith("seti_")) {
+            Log.w("CheckoutViewModel", "extractIntentId: candidate '${candidate}' has unexpected prefix")
+            return null
+        }
+        return candidate
+    }
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }

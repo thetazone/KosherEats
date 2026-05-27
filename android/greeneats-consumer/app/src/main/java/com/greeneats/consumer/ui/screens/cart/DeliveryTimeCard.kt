@@ -36,6 +36,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -119,14 +124,19 @@ private fun TimePill(
                 BorderStroke(1.dp, if (isSelected) Orange else SurfaceDarkBorder),
                 RoundedCornerShape(12.dp),
             )
-            .clickable { onClick() }
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title, $subtitle${if (isSelected) ", selected" else ""}"
+                selected = isSelected
+                role = Role.Tab
+            }
+            .clickable(onClickLabel = "Select $title") { onClick() }
             .padding(vertical = 12.dp, horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = title,
-                color = if (isSelected) TextWhite else TextWhite,
+                color = if (isSelected) TextWhite else TextSecondary,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )

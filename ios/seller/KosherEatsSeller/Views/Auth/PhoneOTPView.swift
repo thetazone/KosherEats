@@ -52,6 +52,11 @@ struct PhoneOTPView: View {
                             if code.count > maxCodeLength {
                                 code = String(code.prefix(maxCodeLength))
                             }
+                            // Auto-submit once the user has entered the maximum
+                            // number of digits (e.g. iOS autofill from the SMS).
+                            if code.count == maxCodeLength && !isSubmitting && !authVM.isLoading {
+                                Task { await submit() }
+                            }
                         }
 
                     if let error = authVM.errorMessage {

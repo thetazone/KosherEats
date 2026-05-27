@@ -13,7 +13,10 @@ data class OrderEvent(val orderId: String?, val type: String?)
 class OrderEventBus @Inject constructor() {
     private val _events = MutableSharedFlow<OrderEvent>(
         replay = 0,
-        extraBufferCapacity = 10,
+        // 64 covers bursty FCM delivery (e.g. on Friday-night reopen after WiFi outage)
+        // without holding events forever; consumers always re-poll on event so dropping
+        // an oldest event in a burst still produces the correct final list state.
+        extraBufferCapacity = 64,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val events: SharedFlow<OrderEvent> = _events.asSharedFlow()

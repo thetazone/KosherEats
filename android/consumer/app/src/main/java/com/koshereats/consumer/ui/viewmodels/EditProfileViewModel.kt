@@ -57,14 +57,19 @@ class EditProfileViewModel @Inject constructor(
         }
     }
 
-    fun updateFirstName(value: String) = _uiState.update { it.copy(firstName = value, saved = false) }
-    fun updateLastName(value: String) = _uiState.update { it.copy(lastName = value, saved = false) }
-    fun updatePhone(value: String) = _uiState.update { it.copy(phone = value, saved = false) }
+    fun updateFirstName(value: String) = _uiState.update { it.copy(firstName = value.take(100), saved = false) }
+    fun updateLastName(value: String) = _uiState.update { it.copy(lastName = value.take(100), saved = false) }
+    fun updatePhone(value: String) = _uiState.update { it.copy(phone = value.filter { c -> c.isDigit() || c == '+' }.take(20), saved = false) }
 
     fun saveProfile() {
         val state = _uiState.value
         if (state.firstName.isBlank() || state.lastName.isBlank()) {
             _uiState.update { it.copy(error = "First and last name are required") }
+            return
+        }
+        val phoneTrim = state.phone.trim()
+        if (phoneTrim.isNotBlank() && phoneTrim.filter { it.isDigit() }.length !in 7..15) {
+            _uiState.update { it.copy(error = "Please enter a valid phone number") }
             return
         }
 

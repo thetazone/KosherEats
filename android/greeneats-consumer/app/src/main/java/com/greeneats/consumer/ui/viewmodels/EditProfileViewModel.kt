@@ -50,7 +50,7 @@ class EditProfileViewModel @Inject constructor(
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load profile") }
+                    _uiState.update { it.copy(isLoading = false, error = ERR_LOAD_PROFILE) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
@@ -65,7 +65,7 @@ class EditProfileViewModel @Inject constructor(
     fun saveProfile() {
         val state = _uiState.value
         if (state.firstName.isBlank() || state.lastName.isBlank()) {
-            _uiState.update { it.copy(error = "First and last name are required") }
+            _uiState.update { it.copy(error = ERR_NAME_REQUIRED) }
             return
         }
 
@@ -82,7 +82,7 @@ class EditProfileViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _uiState.update { it.copy(isSaving = false, saved = true) }
                 } else {
-                    _uiState.update { it.copy(isSaving = false, error = "Couldn't save profile") }
+                    _uiState.update { it.copy(isSaving = false, error = ERR_SAVE_PROFILE) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = e.localizedMessage ?: "Network error") }
@@ -91,4 +91,10 @@ class EditProfileViewModel @Inject constructor(
     }
 
     fun clearError() = _uiState.update { it.copy(error = null) }
+
+    companion object {
+        internal const val ERR_LOAD_PROFILE = "Couldn't load profile"
+        internal const val ERR_SAVE_PROFILE = "Couldn't save profile"
+        internal const val ERR_NAME_REQUIRED = "First and last name are required"
+    }
 }

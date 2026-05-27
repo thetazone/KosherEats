@@ -8,6 +8,7 @@ struct MenuManagementView: View {
     @State private var showAddCategory = false
     @State private var newCategoryName = ""
     @State private var searchText = ""
+    @State private var itemToDelete: MenuItem?
 
     var body: some View {
         NavigationStack {
@@ -133,15 +134,44 @@ struct MenuManagementView: View {
                     newCategoryName = ""
                 }
                 Button("Create") {
+                    let trimmed = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else {
+                        vm.errorMessage = "Category name cannot be empty."
+                        newCategoryName = ""
+                        return
+                    }
                     Task {
-                        await vm.createCategory(name: newCategoryName)
+                        await vm.createCategory(name: trimmed)
                         newCategoryName = ""
                     }
+                }
+            } message: {
+                Text("Enter a name for the new category.")
+            }
+            .alert("Delete Item", isPresented: Binding(
+                get: { itemToDelete != nil },
+                set: { if !$0 { itemToDelete = nil } }
+            )) {
+                Button("Cancel", role: .cancel) {
+                    itemToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let item = itemToDelete {
+                        Task { await vm.deleteItem(id: item.id) }
+                        itemToDelete = nil
+                    }
+                }
+            } message: {
+                if let item = itemToDelete {
+                    Text("Are you sure you want to delete \"\(item.name)\"? This cannot be undone.")
                 }
             }
             .overlay {
                 if let msg = vm.successMessage {
                     successToast(msg)
+                }
+                if let err = vm.errorMessage, !vm.categories.isEmpty {
+                    errorToast(err)
                 }
             }
         }
@@ -160,6 +190,26 @@ struct MenuManagementView: View {
         }
         .transition(.move(edge: .bottom))
         .animation(.easeInOut, value: vm.successMessage)
+    }
+
+    private func errorToast(_ message: String) -> some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                Text(message)
+                    .lineLimit(2)
+            }
+            .font(.subheadline.bold())
+            .foregroundColor(.keTextOnAccent)
+            .padding()
+            .background(Color.keError)
+            .cornerRadius(12)
+            .padding(.bottom, 20)
+            .onTapGesture { vm.errorMessage = nil }
+        }
+        .transition(.move(edge: .bottom))
+        .animation(.easeInOut, value: vm.errorMessage)
     }
 
     // MARK: - Menu List
@@ -245,6 +295,8 @@ struct MenuManagementView: View {
                 .tint(.kePrimary)
                 .labelsHidden()
                 .disabled(vm.togglingItemIDs.contains(item.id))
+                .accessibilityLabel("Availability for \(item.name)")
+                .accessibilityValue(item.isAvailable ? "Available" : "Unavailable")
 
                 Text(item.isAvailable ? "Available" : "Unavailable")
                     .font(.caption2)
@@ -260,7 +312,7 @@ struct MenuManagementView: View {
                 }
 
                 Button(role: .destructive) {
-                    Task { await vm.deleteItem(id: item.id) }
+                    itemToDelete = item
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }

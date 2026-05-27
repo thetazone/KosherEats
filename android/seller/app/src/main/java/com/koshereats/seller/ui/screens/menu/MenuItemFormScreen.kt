@@ -101,6 +101,8 @@ import okio.BufferedSink
 import okio.source
 import java.io.ByteArrayOutputStream
 
+private data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuItemFormScreen(
@@ -126,7 +128,7 @@ fun MenuItemFormScreen(
     var prepTime by rememberSaveable { mutableStateOf("15") }
     var caloriesInput by rememberSaveable { mutableStateOf("") }
     var allergensStr by rememberSaveable { mutableStateOf("") }
-    var categoryExpanded by remember { mutableStateOf(false) }
+    var categoryExpanded by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isUploadingImage by remember { mutableStateOf(false) }
     var formInitialized by rememberSaveable { mutableStateOf(false) }
@@ -355,7 +357,14 @@ fun MenuItemFormScreen(
                 value = price,
                 onValueChange = { v ->
                     val filtered = v.filter { c -> c.isDigit() || c == '.' }
-                    if (filtered.count { it == '.' } <= 1) price = filtered
+                    if (filtered.count { it == '.' } <= 1) {
+                        // Cap at $999.99 to prevent fat-finger overcharges; backend will
+                        // still apply its own validation, but this stops the typo earlier.
+                        val parsed = filtered.toDoubleOrNull()
+                        if (filtered.isEmpty() || (parsed != null && parsed <= 999.99)) {
+                            price = filtered
+                        }
+                    }
                 },
                 label = { Text("Price (\$)") },
                 singleLine = true,
@@ -519,7 +528,7 @@ fun MenuItemFormScreen(
 
             // Modifier Groups (only when editing an existing item)
             if (isEditing && itemId != null) {
-                var showModifierDialog by remember { mutableStateOf(false) }
+                var showModifierDialog by rememberSaveable { mutableStateOf(false) }
                 var editingGroup by remember { mutableStateOf<ModifierGroup?>(null) }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -555,13 +564,14 @@ fun MenuItemFormScreen(
                 }
 
                 if (showModifierDialog) {
+                    val groupBeingEdited = editingGroup
                     ModifierGroupDialog(
-                        existing = editingGroup,
+                        existing = groupBeingEdited,
                         onDismiss = { showModifierDialog = false },
                         onSave = { request ->
                             showModifierDialog = false
-                            if (editingGroup != null) {
-                                viewModel.updateModifierGroup(editingGroup!!.id, itemId, request)
+                            if (groupBeingEdited != null) {
+                                viewModel.updateModifierGroup(groupBeingEdited.id, itemId, request)
                             } else {
                                 viewModel.createModifierGroup(itemId, request)
                             }
@@ -646,6 +656,7 @@ private val uploadClient = OkHttpClient.Builder()
     .connectTimeout(30, TimeUnit.SECONDS)
     .writeTimeout(60, TimeUnit.SECONDS)
     .readTimeout(60, TimeUnit.SECONDS)
+    .callTimeout(120, TimeUnit.SECONDS)
     .build()
 
 private const val MAX_LONG_EDGE_PX = 1080
@@ -689,8 +700,12 @@ private suspend fun uploadImage(
             .build()
 
         val response = uploadClient.newCall(request).execute()
-        response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
-    } catch (_: Exception) {
+        response.use { if (it.isSuccessful) presignResponse.publicUrl else {
+            android.util.Log.w("MenuItemFormScreen", "Menu image upload failed: HTTP ${it.code}")
+            null
+        } }
+    } catch (e: Exception) {
+        android.util.Log.w("MenuItemFormScreen", "Menu image upload threw", e)
         null
     }
 }
@@ -795,8 +810,6 @@ private fun ModifierGroupDialog(
     var minSel by remember { mutableStateOf((existing?.minSelections ?: 0).toString()) }
     var maxSel by remember { mutableStateOf((existing?.maxSelections ?: 1).toString()) }
 
-    data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true)
-
     var options by remember {
         mutableStateOf(
             existing?.modifiers?.map {
@@ -886,7 +899,7 @@ private fun ModifierGroupDialog(
                         OutlinedTextField(
                             value = option.name,
                             onValueChange = { v ->
-                                options = options.toMutableList().also { it[index] = option.copy(name = v) }
+                                options = options.mapIndexed { i, o -> if (i == index) o.copy(name = v) else o }
                             },
                             label = { Text("Name") },
                             modifier = Modifier.weight(1f),
@@ -897,7 +910,7 @@ private fun ModifierGroupDialog(
                             value = option.priceDelta,
                             onValueChange = { v ->
                                 val filtered = v.filter { c -> c.isDigit() || c == '.' }
-                                options = options.toMutableList().also { it[index] = option.copy(priceDelta = filtered) }
+                                options = options.mapIndexed { i, o -> if (i == index) o.copy(priceDelta = filtered) else o }
                             },
                             label = { Text("+$") },
                             modifier = Modifier.width(80.dp),
@@ -908,7 +921,7 @@ private fun ModifierGroupDialog(
                         Switch(
                             checked = option.isAvailable,
                             onCheckedChange = { v ->
-                                options = options.toMutableList().also { it[index] = option.copy(isAvailable = v) }
+                                options = options.mapIndexed { i, o -> if (i == index) o.copy(isAvailable = v) else o }
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = TextWhite,
@@ -919,7 +932,7 @@ private fun ModifierGroupDialog(
                         )
                         if (options.size > 1) {
                             IconButton(
-                                onClick = { options = options.toMutableList().also { it.removeAt(index) } },
+                                onClick = { options = options.filterIndexed { i, _ -> i != index } },
                                 modifier = Modifier.size(28.dp),
                             ) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = ErrorRed, modifier = Modifier.size(16.dp))
@@ -947,7 +960,7 @@ private fun ModifierGroupDialog(
                             ModifierOptionRequest(
                                 id = opt.id,
                                 name = opt.name.trim(),
-                                priceDelta = ((opt.priceDelta.toDoubleOrNull() ?: 0.0) * 100).roundToInt(),
+                                priceDelta = (((opt.priceDelta.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 999.99)) * 100).roundToInt(),
                                 isAvailable = opt.isAvailable,
                                 sortOrder = i,
                             )

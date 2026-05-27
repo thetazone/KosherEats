@@ -21,7 +21,15 @@ class RestaurantViewModel: ObservableObject {
 
             let rest = try await restTask
             let menu = try await menuTask
-            let fetchedDeals = (try? await dealsTask) ?? []
+            let fetchedDeals: [Deal]
+            do {
+                fetchedDeals = try await dealsTask
+            } catch {
+                #if DEBUG
+                print("[RestaurantViewModel] deals fetch failed for \(restaurantID): \(error.localizedDescription)")
+                #endif
+                fetchedDeals = []
+            }
 
             restaurant = rest
             menuCategories = menu.sorted { $0.sortOrder < $1.sortOrder }

@@ -124,6 +124,7 @@ class MenuViewModel: ObservableObject {
     }
 
     func deleteItem(id: String) async {
+        errorMessage = nil
         do {
             try await APIService.shared.deleteMenuItem(id: id)
             flash("Item deleted")
@@ -179,6 +180,7 @@ class MenuViewModel: ObservableObject {
     }
 
     func createCategory(name: String) async {
+        errorMessage = nil
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             errorMessage = "Category name cannot be empty."
@@ -194,6 +196,7 @@ class MenuViewModel: ObservableObject {
         }
         do {
             _ = try await APIService.shared.createCategory(trimmed)
+            flash("Category created")
             await load()
         } catch {
             errorMessage = error.localizedDescription
@@ -201,8 +204,10 @@ class MenuViewModel: ObservableObject {
     }
 
     func deleteCategory(id: String) async {
+        errorMessage = nil
         do {
             try await APIService.shared.deleteCategory(id: id)
+            flash("Category deleted")
             await load()
         } catch {
             errorMessage = error.localizedDescription

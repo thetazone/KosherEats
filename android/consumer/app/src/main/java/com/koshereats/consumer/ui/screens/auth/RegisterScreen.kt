@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -79,6 +80,8 @@ fun RegisterScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
+    val onTyping: () -> Unit = { if (state.error != null) viewModel.clearError() }
     val lastNameFocus = remember { FocusRequester() }
     val emailFocus = remember { FocusRequester() }
     val phoneFocus = remember { FocusRequester() }
@@ -92,6 +95,9 @@ fun RegisterScreen(
         }
     }
 
+    // Clear stale errors from prior screens on entry.
+    LaunchedEffect(Unit) { viewModel.clearError() }
+
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Orange,
         unfocusedBorderColor = SurfaceDarkBorder,
@@ -104,7 +110,7 @@ fun RegisterScreen(
         unfocusedContainerColor = SurfaceDark,
     )
 
-    Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
+    Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack).imePadding()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -187,7 +193,7 @@ fun RegisterScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = state.registerFirstName,
-                onValueChange = { viewModel.updateRegisterFirstName(it) },
+                onValueChange = { viewModel.updateRegisterFirstName(it); onTyping() },
                 label = { Text("First Name") },
                 leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = TextMuted) },
                 modifier = Modifier.weight(1f),
@@ -199,7 +205,7 @@ fun RegisterScreen(
             )
             OutlinedTextField(
                 value = state.registerLastName,
-                onValueChange = { viewModel.updateRegisterLastName(it) },
+                onValueChange = { viewModel.updateRegisterLastName(it); onTyping() },
                 label = { Text("Last Name") },
                 modifier = Modifier.weight(1f).focusRequester(lastNameFocus),
                 shape = RoundedCornerShape(12.dp),
@@ -214,7 +220,7 @@ fun RegisterScreen(
 
         OutlinedTextField(
             value = state.registerEmail,
-            onValueChange = { viewModel.updateRegisterEmail(it) },
+            onValueChange = { viewModel.updateRegisterEmail(it); onTyping() },
             label = { Text("Email") },
             leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
             modifier = Modifier.fillMaxWidth().focusRequester(emailFocus),
@@ -229,7 +235,7 @@ fun RegisterScreen(
 
         OutlinedTextField(
             value = state.registerPhone,
-            onValueChange = { viewModel.updateRegisterPhone(it) },
+            onValueChange = { viewModel.updateRegisterPhone(it); onTyping() },
             label = { Text("Phone Number") },
             leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null, tint = TextMuted) },
             modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
@@ -244,14 +250,14 @@ fun RegisterScreen(
 
         OutlinedTextField(
             value = state.registerPassword,
-            onValueChange = { viewModel.updateRegisterPassword(it) },
+            onValueChange = { viewModel.updateRegisterPassword(it); onTyping() },
             label = { Text("Password") },
             leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                     Icon(
                         if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                        contentDescription = "Toggle password",
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
                         tint = TextMuted,
                     )
                 }
@@ -269,10 +275,19 @@ fun RegisterScreen(
 
         OutlinedTextField(
             value = state.registerConfirmPassword,
-            onValueChange = { viewModel.updateRegisterConfirmPassword(it) },
+            onValueChange = { viewModel.updateRegisterConfirmPassword(it); onTyping() },
             label = { Text("Confirm Password") },
             leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
-            visualTransformation = PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                    Icon(
+                        if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                        contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
+                        tint = TextMuted,
+                    )
+                }
+            },
+            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth().focusRequester(confirmFocus),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
@@ -283,7 +298,7 @@ fun RegisterScreen(
 
         state.error?.let { msg ->
             Spacer(modifier = Modifier.height(12.dp))
-            Text(text = msg, color = ErrorRed, fontSize = 14.sp)
+            Text(text = msg, color = ErrorRed, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
         }
 
         Spacer(modifier = Modifier.height(24.dp))

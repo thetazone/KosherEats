@@ -40,6 +40,7 @@ extension Country {
         Country(iso: "DO", name: "Dominican Republic", flag: "🇩🇴", dialCode: "+1"),
         Country(iso: "EC", name: "Ecuador",         flag: "🇪🇨", dialCode: "+593"),
         Country(iso: "EG", name: "Egypt",           flag: "🇪🇬", dialCode: "+20"),
+        Country(iso: "ET", name: "Ethiopia",       flag: "🇪🇹", dialCode: "+251"),
         Country(iso: "SV", name: "El Salvador",     flag: "🇸🇻", dialCode: "+503"),
         Country(iso: "EE", name: "Estonia",         flag: "🇪🇪", dialCode: "+372"),
         Country(iso: "FI", name: "Finland",         flag: "🇫🇮", dialCode: "+358"),

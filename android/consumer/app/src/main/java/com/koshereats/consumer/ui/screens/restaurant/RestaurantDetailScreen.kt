@@ -340,6 +340,21 @@ fun RestaurantDetailScreen(
                     }
                 }
 
+                if (uiState.menuCategories.isEmpty() && !uiState.isLoading) {
+                    item(key = "empty_menu") {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                text = "This restaurant has no menu items yet.",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextMuted,
+                            )
+                        }
+                    }
+                }
+
                 // Category tabs
                 if (uiState.menuCategories.isNotEmpty()) {
                     item {
@@ -532,15 +547,17 @@ fun RestaurantDetailScreen(
         }
 
         sheetItem?.let { item ->
+            val activeRestaurant = restaurant
             MenuItemSheet(
                 menuItem = item,
                 onDismiss = { sheetItem = null },
                 onAddToCart = { qty, customizations, instructions ->
+                    if (activeRestaurant == null) return@MenuItemSheet
                     cartViewModel.addItem(
                         menuItem = item,
-                        restaurantId = restaurant!!.id,
-                        restaurantName = restaurant.name,
-                        restaurantImageUrl = restaurant.logoUrl ?: restaurant.imageUrl,
+                        restaurantId = activeRestaurant.id,
+                        restaurantName = activeRestaurant.name,
+                        restaurantImageUrl = activeRestaurant.logoUrl ?: activeRestaurant.imageUrl,
                         quantity = qty,
                         selectedCustomizations = customizations,
                         specialInstructions = instructions,

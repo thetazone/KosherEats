@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -44,6 +46,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.greeneats.consumer.ui.theme.*
 import com.greeneats.consumer.ui.viewmodels.EditProfileViewModel
+
+/** Minimal phone validation: digits only, 10-15 chars (E.164 without +). */
+private fun isPhoneValid(phone: String): Boolean {
+    val digits = phone.filter { it.isDigit() }
+    return phone.isBlank() || digits.length in 10..15
+}
 
 private val fieldColors
     @Composable get() = TextFieldDefaults.colors(
@@ -117,6 +125,10 @@ fun EditProfileScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
 
+                val firstNameBlank = state.firstName.isBlank()
+                val lastNameBlank = state.lastName.isBlank()
+                val phoneInvalid = !isPhoneValid(state.phone)
+
                 TextField(
                     value = state.firstName,
                     onValueChange = viewModel::updateFirstName,
@@ -126,6 +138,10 @@ fun EditProfileScreen(
                         .clip(RoundedCornerShape(12.dp)),
                     colors = fieldColors,
                     singleLine = true,
+                    isError = firstNameBlank && state.error != null,
+                    supportingText = if (firstNameBlank && state.error != null) {
+                        { Text("First name is required", color = ErrorRed) }
+                    } else null,
                 )
 
                 TextField(
@@ -137,6 +153,10 @@ fun EditProfileScreen(
                         .clip(RoundedCornerShape(12.dp)),
                     colors = fieldColors,
                     singleLine = true,
+                    isError = lastNameBlank && state.error != null,
+                    supportingText = if (lastNameBlank && state.error != null) {
+                        { Text("Last name is required", color = ErrorRed) }
+                    } else null,
                 )
 
                 TextField(
@@ -149,6 +169,10 @@ fun EditProfileScreen(
                     colors = fieldColors,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    isError = phoneInvalid,
+                    supportingText = if (phoneInvalid) {
+                        { Text("Enter a valid phone number (10-15 digits)", color = ErrorRed) }
+                    } else null,
                 )
 
                 state.error?.let { error ->
@@ -162,12 +186,16 @@ fun EditProfileScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                val saveEnabled = !state.isSaving && !phoneInvalid
                 Button(
                     onClick = viewModel::saveProfile,
-                    enabled = !state.isSaving,
+                    enabled = saveEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(52.dp)
+                        .semantics {
+                            contentDescription = if (state.isSaving) "Saving profile" else "Save profile changes"
+                        },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
                 ) {

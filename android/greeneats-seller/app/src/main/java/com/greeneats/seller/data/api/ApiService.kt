@@ -91,11 +91,20 @@ interface ApiService {
     @DELETE("seller/menu/categories/{id}")
     suspend fun deleteCategory(@Path("id") categoryId: String): Response<Unit>
 
+    /**
+     * Creates a menu item using [UpdateMenuItemRequest] (legacy path, no
+     * category_id). Prefer [createMenuItemWithCategory] for new code.
+     */
     @POST("seller/menu/items")
     suspend fun createMenuItem(
         @Body item: UpdateMenuItemRequest,
     ): Response<MenuItem>
 
+    /**
+     * Creates a menu item with an explicit category_id in the body.
+     * Same endpoint as [createMenuItem] -- Retrofit dispatches based on
+     * the body type at the call-site.
+     */
     @POST("seller/menu/items")
     suspend fun createMenuItemWithCategory(
         @Body item: CreateMenuItemBody,

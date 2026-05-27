@@ -46,17 +46,21 @@ final class RestaurantStore: ObservableObject {
     private var loadTask: Task<Void, Never>?
 
     func ensureRestaurantsLoaded() async {
-        if let loadTask {
-            await loadTask.value
+        if let existing = loadTask {
+            await existing.value
             return
         }
         guard !hasLoadedRestaurants else { return }
-        await refreshRestaurants()
+        let task = Task { @MainActor in
+            await self.loadRestaurants()
+        }
+        loadTask = task
+        await task.value
     }
 
     func refreshRestaurants() async {
-        if let loadTask {
-            await loadTask.value
+        if let existing = loadTask {
+            await existing.value
             return
         }
 

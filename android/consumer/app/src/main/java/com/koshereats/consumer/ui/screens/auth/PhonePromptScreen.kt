@@ -111,7 +111,7 @@ fun PhonePromptScreen(
             }
             OutlinedTextField(
                 value = phone,
-                onValueChange = { phone = it.filter { c -> c.isDigit() }.take(10) },
+                onValueChange = { phone = it.filter { c -> c.isDigit() }.take(15) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -132,9 +132,9 @@ fun PhonePromptScreen(
             )
         }
 
-        if (state.error != null) {
+        state.error?.let { errMsg ->
             Spacer(Modifier.height(12.dp))
-            Text(state.error!!, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+            Text(errMsg, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
         }
 
         Spacer(Modifier.height(24.dp))

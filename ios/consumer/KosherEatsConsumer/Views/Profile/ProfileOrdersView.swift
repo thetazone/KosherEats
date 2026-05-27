@@ -19,5 +19,8 @@ struct ProfileOrdersView: View {
         )
         .navigationTitle("My Orders")
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("My Orders")
+        .accessibilityHint("View your active and past orders")
     }
 }

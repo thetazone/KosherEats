@@ -32,6 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +53,8 @@ fun PhoneAuthScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    var resendCountdown by remember { mutableIntStateOf(0) }
+    val canResend = resendCountdown <= 0 && !state.phoneIsSending
 
     LaunchedEffect(state.isLoggedIn, state.isGuest) {
         if (state.isLoggedIn && !state.isGuest) onAuthSuccess()
@@ -62,12 +67,23 @@ fun PhoneAuthScreen(
         }
     }
 
+    // Start a 30-second countdown when OTP is sent; auto-resend once at 15s
+    // if the user hasn't entered anything yet.
     LaunchedEffect(state.otpSent) {
         if (state.otpSent) {
-            delay(15_000)
-            val current = viewModel.uiState.value
-            if (current.otpSent && current.otpCode.isEmpty() && !current.phoneIsVerifying) {
-                viewModel.silentResend()
+            resendCountdown = 30
+            var silentResendDone = false
+            while (resendCountdown > 0) {
+                delay(1_000)
+                resendCountdown--
+                // Silent auto-resend at the 15-second mark
+                if (!silentResendDone && resendCountdown == 15) {
+                    val current = viewModel.uiState.value
+                    if (current.otpSent && current.otpCode.isEmpty() && !current.phoneIsVerifying) {
+                        viewModel.silentResend()
+                        silentResendDone = true
+                    }
+                }
             }
         }
     }
@@ -176,15 +192,24 @@ fun PhoneAuthScreen(
 
             if (state.otpSent) {
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "Didn't get it? Resend code",
-                    color = Orange,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    modifier = Modifier.clickable(enabled = !state.phoneIsSending) {
-                        viewModel.startPhoneLogin()
-                    },
-                )
+                if (canResend) {
+                    Text(
+                        text = "Didn't get it? Resend code",
+                        color = Orange,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.clickable {
+                            viewModel.startPhoneLogin()
+                        },
+                    )
+                } else {
+                    Text(
+                        text = "Resend code in ${resendCountdown}s",
+                        color = TextMuted,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
+                    )
+                }
             }
         }
     }

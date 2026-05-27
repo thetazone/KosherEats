@@ -1,6 +1,7 @@
 package com.greeneats.consumer.ui.screens.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +47,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,10 +60,12 @@ import com.greeneats.consumer.ui.theme.BackgroundBlack
 import com.greeneats.consumer.ui.theme.BackgroundDark
 import com.greeneats.consumer.ui.theme.ErrorRed
 import com.greeneats.consumer.ui.theme.Orange
+import com.greeneats.consumer.ui.theme.SuccessGreen
 import com.greeneats.consumer.ui.theme.SurfaceDark
 import com.greeneats.consumer.ui.theme.TextMuted
 import com.greeneats.consumer.ui.theme.TextSecondary
 import com.greeneats.consumer.ui.theme.TextWhite
+import com.greeneats.consumer.ui.theme.WarningYellow
 import com.greeneats.consumer.ui.viewmodels.ChatViewModel
 
 /**
@@ -100,7 +110,11 @@ fun ChatScreen(
             title = { Text("Chat", color = TextWhite, fontWeight = FontWeight.SemiBold) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextWhite)
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Navigate back",
+                        tint = TextWhite,
+                    )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
@@ -114,7 +128,8 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp)
+                    .semantics { contentDescription = "Chat messages" },
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp),
             ) {
@@ -126,13 +141,44 @@ fun ChatScreen(
             }
         }
 
-        state.error?.let {
-            Text(
-                text = it,
-                color = ErrorRed,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
+        state.error?.let { errorText ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Error: $errorText"
+                    },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.ErrorOutline,
+                    contentDescription = null,
+                    tint = ErrorRed,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = errorText,
+                    color = ErrorRed,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.lastFailedText != null) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Retry",
+                        color = Orange,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { viewModel.retryLastMessage() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
 
         InputBar(
@@ -173,14 +219,26 @@ private fun ChatBubble(message: ChatMessage) {
     val alignment = if (isMine) Alignment.End else Alignment.Start
     val bubbleColor = if (isMine) Orange else SurfaceDark
     val textColor = if (isMine) Color.White else TextWhite
+    val senderName = senderLabel(message.senderRole)
+    val timeStr = shortTime(message.createdAt)
+
+    // Message status: if the id is blank the message was added optimistically
+    // and hasn't been confirmed by the server yet.
+    val isSent = message.id.isNotBlank()
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription =
+                    "$senderName said: ${message.text}, $timeStr" +
+                            if (isMine && !isSent) ", sending" else ""
+            },
         horizontalAlignment = alignment,
     ) {
         if (!isMine) {
             Text(
-                text = senderLabel(message.senderRole),
+                text = senderName,
                 color = Orange,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -199,12 +257,35 @@ private fun ChatBubble(message: ChatMessage) {
         ) {
             Text(message.text, color = textColor, fontSize = 14.sp)
         }
-        Text(
-            text = shortTime(message.createdAt),
-            color = TextMuted,
-            fontSize = 10.sp,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp),
-        )
+        ) {
+            Text(
+                text = timeStr,
+                color = TextMuted,
+                fontSize = 10.sp,
+            )
+            // Status indicator for own messages
+            if (isMine) {
+                Spacer(Modifier.width(4.dp))
+                if (isSent) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = "Sent",
+                        tint = SuccessGreen,
+                        modifier = Modifier.size(12.dp),
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Schedule,
+                        contentDescription = "Sending",
+                        tint = WarningYellow,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -254,9 +335,17 @@ private fun InputBar(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (isSending) {
-                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp),
+                    )
                 } else {
-                    Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Color.White)
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = if (canSend) "Send message" else "Send message (disabled)",
+                        tint = Color.White,
+                    )
                 }
             }
         }

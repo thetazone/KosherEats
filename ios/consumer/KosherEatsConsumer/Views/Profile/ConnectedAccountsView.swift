@@ -4,6 +4,8 @@ import GoogleSignIn
 
 struct ConnectedAccountsView: View {
     @StateObject private var vm = ConnectedAccountsViewModel()
+    @State private var providerToUnlink: String?
+    @State private var showUnlinkConfirmation = false
 
     var body: some View {
         ZStack {
@@ -36,6 +38,27 @@ struct ConnectedAccountsView: View {
         .sheet(isPresented: $vm.showPhoneLinkSheet) {
             PhoneLinkSheet(vm: vm)
         }
+        .alert("Remove Sign-In Method", isPresented: $showUnlinkConfirmation) {
+            Button("Remove", role: .destructive) {
+                if let provider = providerToUnlink {
+                    Task { await vm.unlink(provider) }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                providerToUnlink = nil
+            }
+        } message: {
+            Text("You'll no longer be able to sign in with \(displayName(for: providerToUnlink ?? "this method")). You can reconnect it later.")
+        }
+    }
+
+    private func displayName(for provider: String) -> String {
+        switch provider {
+        case "apple": return "Apple"
+        case "google": return "Google"
+        case "phone": return "Phone"
+        default: return provider
+        }
     }
 
     @ViewBuilder
@@ -61,12 +84,16 @@ struct ConnectedAccountsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.keSuccess)
+                        .accessibilityLabel("Connected")
                     if vm.linkedProviders.count > 1 {
                         Button("Remove") {
-                            Task { await vm.unlink(provider) }
+                            providerToUnlink = provider
+                            showUnlinkConfirmation = true
                         }
                         .font(.caption.bold())
                         .foregroundColor(.keError)
+                        .accessibilityLabel("Remove \(name) sign-in")
+                        .accessibilityHint("Disconnects \(name) from your account")
                     }
                 }
             } else {
@@ -79,11 +106,15 @@ struct ConnectedAccountsView: View {
                 .padding(.vertical, 8)
                 .background(Color.kePrimary)
                 .cornerRadius(8)
+                .accessibilityLabel("Connect \(name)")
+                .accessibilityHint("Link \(name) sign-in to your account")
             }
         }
         .padding()
         .background(Color.keBackgroundElevated)
         .cornerRadius(12)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(name) sign-in, \(isLinked ? "connected" : "not connected")")
     }
 
     private func connect(_ provider: String) async {

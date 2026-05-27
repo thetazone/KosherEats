@@ -1,4 +1,5 @@
 import CoreLocation
+import UIKit
 
 @MainActor
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -8,11 +9,53 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var currentLocation: CLLocationCoordinate2D?
 
+    /// Whether location updates were active before the app backgrounded.
+    /// Used to auto-resume when the app returns to the foreground.
+    private var wasUpdatingBeforeBackground = false
+    private var backgroundObserver: NSObjectProtocol?
+    private var foregroundObserver: NSObjectProtocol?
+
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         authorizationStatus = manager.authorizationStatus
+        observeAppLifecycle()
+    }
+
+    /// Stop continuous location updates when the app backgrounds to avoid
+    /// unnecessary battery drain (we only have WhenInUse authorization).
+    /// Resume automatically when the app returns to the foreground.
+    private func observeAppLifecycle() {
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            // CLLocationManager doesn't expose an "isUpdating" flag, so we
+            // track it ourselves. If nobody called startUpdatingLocation we
+            // don't need to stop anything.
+            self.wasUpdatingBeforeBackground = true
+            self.manager.stopUpdatingLocation()
+        }
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.wasUpdatingBeforeBackground else { return }
+            self.wasUpdatingBeforeBackground = false
+            let status = self.manager.authorizationStatus
+            if status == .authorizedWhenInUse || status == .authorizedAlways {
+                self.manager.startUpdatingLocation()
+            }
+        }
+    }
+
+    deinit {
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
+        if let foregroundObserver { NotificationCenter.default.removeObserver(foregroundObserver) }
     }
 
     func requestLocationPermission() {

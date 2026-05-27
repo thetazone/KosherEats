@@ -116,14 +116,15 @@ fun OrdersScreen(
                             modifier = Modifier.size(80.dp),
                         )
                         Spacer(modifier = Modifier.height(16.dp))
+                        val hasError = uiState.error != null
                         Text(
-                            text = "No orders yet",
+                            text = if (hasError) "Couldn't load your orders" else "No orders yet",
                             style = MaterialTheme.typography.headlineSmall,
                             color = TextWhite,
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Your order history will appear here",
+                            text = if (hasError) "Pull down to retry." else "Your order history will appear here",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextTertiary,
                         )

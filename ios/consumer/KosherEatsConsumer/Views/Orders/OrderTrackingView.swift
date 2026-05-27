@@ -94,6 +94,19 @@ struct OrderTrackingView: View {
         }
         .onChange(of: vm.order?.status) { _, newStatus in
             maybePromptForRating(newStatus: newStatus)
+            if let newStatus {
+                UIAccessibility.post(
+                    notification: .announcement,
+                    argument: phaseText(for: newStatus)
+                )
+            }
+        }
+        .onChange(of: vm.order?.estDeliveryTime) { oldETA, newETA in
+            guard let newETA, oldETA != nil, newETA != oldETA else { return }
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: "Estimated delivery updated to \(newETA.formatted(date: .omitted, time: .shortened))"
+            )
         }
         .sheet(isPresented: $showRatingSheet) {
             if let o = vm.order, let courier = o.courier {
@@ -217,12 +230,22 @@ struct OrderTrackingView: View {
                 .font(.caption)
                 .foregroundColor(.keTextSecondary)
 
+            if order.status == .pickedUp || order.status == .preparing || order.status == .ready {
+                let etaText = "ETA: \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))"
+                Text(etaText)
+                    .font(.subheadline.bold())
+                    .foregroundColor(.kePrimary)
+                    .accessibilityValue("Estimated delivery at \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))")
+            }
+
             progressBar(for: order.status)
                 .padding(.top, Theme.spacingSM)
         }
         .padding(Theme.spacingMD)
         .frame(maxWidth: .infinity)
         .background(Color.keBackgroundElevated)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Order status: \(phaseText(for: order.status))")
     }
 
     private func phaseText(for status: OrderStatus) -> String {
@@ -238,6 +261,8 @@ struct OrderTrackingView: View {
             return "Order was " + status.displayName.lowercased()
         case .completed:
             return "Order completed"
+        case .unknown:
+            return "Processing your order"
         }
     }
 
@@ -263,6 +288,8 @@ struct OrderTrackingView: View {
             return "The order will not be fulfilled."
         case .rejected:
             return "The restaurant could not accept this order."
+        case .unknown:
+            return "We're working on your order. Check back shortly."
         }
     }
     /// 6-step timeline stepper: Ordered → Accepted → Preparing → Ready → En route → Delivered.
@@ -311,6 +338,7 @@ struct OrderTrackingView: View {
                         .background(Color.keCardHover)
                         .clipShape(Circle())
                 }
+                .accessibilityLabel("Message \(courier.firstName)")
 
                 if let url = URL(string: "tel:\(courier.phone)") {
                     Link(destination: url) {
@@ -320,6 +348,7 @@ struct OrderTrackingView: View {
                             .background(Color.keCardHover)
                             .clipShape(Circle())
                     }
+                    .accessibilityLabel("Call \(courier.firstName)")
                 }
             }
         }

@@ -74,6 +74,7 @@ class OrdersViewModel @Inject constructor(
     fun loadMore() {
         val state = _uiState.value
         if (state.isLoading || !state.hasMore) return
+        if (state.currentPage >= 100) return
         loadOrders(page = state.currentPage + 1)
     }
 }

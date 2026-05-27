@@ -62,22 +62,27 @@ class FavoritesViewModel @Inject constructor(
             it.copy(favoriteIds = if (isFavorite) current - restaurantId else current + restaurantId)
         }
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val resp = if (isFavorite) api.removeFavorite(restaurantId)
                 else api.addFavorite(restaurantId)
+                succeeded = resp.isSuccessful
                 if (!resp.isSuccessful) {
-                    // Roll back
+                    // Roll back favoriteIds only — list mutations are gated on success.
                     _uiState.update { it.copy(favoriteIds = current) }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.w("FavoritesViewModel", "toggleFavorite($restaurantId) failed", e)
                 _uiState.update { it.copy(favoriteIds = current) }
             }
-            if (!isFavorite) {
-                // We just added — refresh the list view
-                load()
-            } else {
-                _uiState.update { state ->
-                    state.copy(restaurants = state.restaurants.filterNot { r -> r.id == restaurantId })
+            // Only mutate the visible list when the server agreed with the toggle.
+            if (succeeded) {
+                if (!isFavorite) {
+                    load()
+                } else {
+                    _uiState.update { state ->
+                        state.copy(restaurants = state.restaurants.filterNot { r -> r.id == restaurantId })
+                    }
                 }
             }
         }

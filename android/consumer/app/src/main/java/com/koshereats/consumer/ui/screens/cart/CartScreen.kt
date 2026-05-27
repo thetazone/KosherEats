@@ -329,7 +329,7 @@ private fun RestaurantCartCard(
 
             // Item summary
             val itemSummary = cart.items.take(3).joinToString(", ") { "${it.quantity}x ${it.menuItem.name}" }
-            val suffix = if (cart.items.size > 3) " ..." else ""
+            val suffix = if (cart.items.size > 3) " + ${cart.items.size - 3} more" else ""
             Text(
                 text = itemSummary + suffix,
                 style = MaterialTheme.typography.bodySmall,

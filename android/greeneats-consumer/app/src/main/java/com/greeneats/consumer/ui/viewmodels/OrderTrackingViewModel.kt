@@ -39,6 +39,13 @@ class OrderTrackingViewModel @Inject constructor(
     private val sessionManager: SessionManager,
 ) : ViewModel() {
 
+    companion object {
+        /** Order poll interval in milliseconds. Matches iOS pollIntervalNanos (8s). */
+        const val POLL_INTERVAL_MS = 8_000L
+        const val ERROR_LIVE_TRACKING = "Live tracking unavailable. Retrying…"
+        const val ERROR_SSE_STATUS = "SSE status"
+    }
+
     private val _uiState = MutableStateFlow(OrderTrackingUiState())
     val uiState: StateFlow<OrderTrackingUiState> = _uiState.asStateFlow()
 
@@ -66,6 +73,21 @@ class OrderTrackingViewModel @Inject constructor(
         viewModelScope.launch { loadOnce(id) }
     }
 
+    /** Stop polling and SSE streaming. Called when the screen leaves the
+     *  foreground so we don't drain battery with background network. */
+    fun stop() {
+        stopInternal()
+    }
+
+    /** Resume polling/SSE after a stop(). Safe to call if already running. */
+    fun resume() {
+        val id = currentOrderId ?: return
+        if (completedNormally) return
+        if (pollJob?.isActive == true) return
+        pollJob = launchPollLoop(id)
+        streamJob = launchLocationStream(id)
+    }
+
     override fun onCleared() {
         stopInternal()
         super.onCleared()
@@ -91,7 +113,7 @@ class OrderTrackingViewModel @Inject constructor(
 
     private fun launchPollLoop(orderId: String): Job = viewModelScope.launch {
         while (isActive) {
-            delay(8_000)
+            delay(POLL_INTERVAL_MS)
             loadOnce(orderId)
             val status = _uiState.value.order?.status ?: continue
             if (!status.isActive) { completedNormally = true; break }
@@ -125,7 +147,7 @@ class OrderTrackingViewModel @Inject constructor(
                         sessionManager.signalLogout()
                         return@launch
                     }
-                    if (!response.isSuccessful) throw RuntimeException("SSE status ${response.code}")
+                    if (!response.isSuccessful) throw RuntimeException("$ERROR_SSE_STATUS ${response.code}")
                     val source = response.body?.source() ?: throw RuntimeException("no SSE body")
                     _uiState.update { it.copy(errorMessage = null) }
                     backoffMs = 3_000L
@@ -144,7 +166,7 @@ class OrderTrackingViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "Live tracking unavailable. Retrying\u2026") }
+                _uiState.update { it.copy(errorMessage = ERROR_LIVE_TRACKING) }
             }
             if (!isActive) break
             val status = _uiState.value.order?.status
@@ -157,6 +179,12 @@ class OrderTrackingViewModel @Inject constructor(
     private suspend fun handleLocationEvent(json: String) = withContext(Dispatchers.Default) {
         val event = runCatching { gson.fromJson(json, CourierLocationEvent::class.java) }.getOrNull()
             ?: return@withContext
+        // Validate coordinate bounds (mirrors iOS OrderTrackingViewModel):
+        // lat must be in [-90, 90], lng in [-180, 180], and neither can be 0/0.
+        if (event.lat < -90 || event.lat > 90 ||
+            event.lng < -180 || event.lng > 180 ||
+            (event.lat == 0.0 && event.lng == 0.0)
+        ) return@withContext
         _uiState.update { state ->
             val current = state.order ?: return@update state
             val courier = current.courier?.copy(lat = event.lat, lng = event.lng) ?: return@update state

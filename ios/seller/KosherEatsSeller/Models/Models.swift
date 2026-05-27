@@ -482,9 +482,20 @@ struct Order: Codable, Identifiable {
         return Self.displayFormatter.string(from: date)
     }
 
-    /// Parsed `createdAt` as a Date, or nil if the backend sent something
-    /// we can't decode. Tries fractional-seconds ISO8601 first (Postgres
-    /// TIMESTAMPTZ default) then falls back to plain ISO8601.
+    /// Parsed `createdAt` as a `Date`, or `nil` if the string doesn't match
+    /// any supported format.
+    ///
+    /// **Fallback chain:**
+    /// 1. ISO 8601 with fractional seconds (`2025-05-26T14:30:00.123Z`) --
+    ///    this is the default Postgres `TIMESTAMPTZ` text representation and
+    ///    the most common format the backend returns.
+    /// 2. Plain ISO 8601 without fractional seconds (`2025-05-26T14:30:00Z`)
+    ///    -- covers older rows or hand-crafted timestamps where the
+    ///    sub-second component is absent.
+    ///
+    /// Returning `nil` when both fail is intentional: callers (e.g.
+    /// `formattedDate`) fall back to displaying the raw string, which is
+    /// better than crashing or showing a meaningless default date.
     var createdAtDate: Date? {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

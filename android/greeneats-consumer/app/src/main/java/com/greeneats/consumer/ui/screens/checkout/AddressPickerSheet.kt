@@ -41,6 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -110,7 +113,7 @@ fun AddressPickerSheet(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = null, tint = Orange, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Add, contentDescription = "Add", tint = Orange, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Add a new address", color = Orange, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 }
@@ -125,6 +128,10 @@ private fun AddressRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val addressLabel = address.label.ifEmpty { "Address" }
+    val defaultLabel = if (address.isDefault) ", default address" else ""
+    val selectedLabel = if (selected) ", selected" else ""
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -135,19 +142,34 @@ private fun AddressRow(
                 if (selected) Orange else SurfaceDarkBorder,
                 RoundedCornerShape(12.dp),
             )
-            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$addressLabel, ${address.formatted}$defaultLabel$selectedLabel"
+                this.selected = selected
+            }
+            .clickable(onClickLabel = "Select $addressLabel", onClick = onClick)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Filled.Home, contentDescription = null, tint = if (selected) Orange else TextMuted, modifier = Modifier.size(22.dp))
+        Icon(Icons.Filled.Home, contentDescription = addressLabel, tint = if (selected) Orange else TextMuted, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = address.label.ifEmpty { "Address" },
-                color = TextWhite,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 15.sp,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = addressLabel,
+                    color = TextWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                )
+                if (address.isDefault) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Default",
+                        color = Orange,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
             Text(
                 text = address.formatted,
                 color = TextTertiary,
@@ -155,7 +177,7 @@ private fun AddressRow(
             )
         }
         if (selected) {
-            Icon(Icons.Filled.Check, contentDescription = null, tint = Orange, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Orange, modifier = Modifier.size(20.dp))
         }
     }
 }

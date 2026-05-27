@@ -36,6 +36,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,6 +51,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -82,9 +87,40 @@ fun IntegrationsScreen(
     val state by viewModel.state.collectAsState()
     val testResults: SnapshotStateMap<String, String> = remember { mutableStateMapOf() }
     var testingID by remember { mutableStateOf<String?>(null) }
+    var isConnecting by remember { mutableStateOf(false) }
+    var disconnectTarget by remember { mutableStateOf<POSIntegration?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.load()
+    }
+
+    // Disconnect confirmation dialog
+    disconnectTarget?.let { integ ->
+        AlertDialog(
+            onDismissRequest = { disconnectTarget = null },
+            title = { Text("Disconnect ${integ.provider.replaceFirstChar { it.uppercase() }}", color = TextWhite) },
+            text = {
+                Text(
+                    "Are you sure you want to disconnect this integration? Orders will no longer auto-print to your POS.",
+                    color = TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = integ.id
+                    disconnectTarget = null
+                    scope.launch { viewModel.disconnect(id) }
+                }) {
+                    Text("Disconnect", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { disconnectTarget = null }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
     }
 
     Column(
@@ -116,6 +152,7 @@ fun IntegrationsScreen(
                 style = MaterialTheme.typography.titleLarge,
                 color = TextWhite,
                 fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
             )
             Text(
                 "When you tap Accept on a new order, it'll push to your POS so your kitchen printer fires automatically.",
@@ -145,7 +182,7 @@ fun IntegrationsScreen(
                             }
                         },
                         onDisconnect = {
-                            scope.launch { viewModel.disconnect(integ.id) }
+                            disconnectTarget = integ
                         },
                     )
                 }
@@ -153,8 +190,10 @@ fun IntegrationsScreen(
 
             Button(
                 onClick = {
+                    isConnecting = true
                     scope.launch {
                         val url = viewModel.cloverConnectURL()
+                        isConnecting = false
                         if (url != null) {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -166,17 +205,39 @@ fun IntegrationsScreen(
                         }
                     }
                 },
+                enabled = !isConnecting,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Orange, contentColor = TextWhite),
             ) {
-                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Connect Clover", fontWeight = FontWeight.SemiBold)
+                if (isConnecting) {
+                    CircularProgressIndicator(
+                        color = TextWhite,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Connecting...", fontWeight = FontWeight.SemiBold)
+                } else {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Connect Clover", fontWeight = FontWeight.SemiBold)
+                }
             }
 
             state.error?.let {
-                Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+                Card(
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(containerColor = ErrorRed.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        it,
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(12.dp),
+                    )
+                }
             }
 
             Text(
@@ -215,10 +276,15 @@ private fun IntegrationCard(
     onTest: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
+    val statusLabel = if (integ.isActive) "active" else "disconnected"
     Card(
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics {
+                contentDescription = "${integ.provider.replaceFirstChar { it.uppercase() }} integration, $statusLabel, merchant ${integ.merchantId}"
+            },
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

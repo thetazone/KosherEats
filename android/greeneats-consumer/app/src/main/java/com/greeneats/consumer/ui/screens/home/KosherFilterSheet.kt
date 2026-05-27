@@ -43,6 +43,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -231,11 +239,23 @@ fun KosherFilterSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
                     enabled = previewCount > 0,
                 ) {
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val buttonLabel = if (previewCount > 0) {
+                        "Show $previewCount result${if (previewCount == 1) "" else "s"}"
+                    } else "No matches"
+                    val filterLabel = if (activeFilterCount > 0) {
+                        ", $activeFilterCount filter${if (activeFilterCount == 1) "" else "s"} active"
+                    } else ""
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clearAndSetSemantics {
+                                contentDescription = "$buttonLabel$filterLabel"
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
-                            text = if (previewCount > 0) {
-                                "Show $previewCount result${if (previewCount == 1) "" else "s"}"
-                            } else "No matches",
+                            text = buttonLabel,
                             color = TextWhite,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -269,7 +289,7 @@ private fun TopBarPill(text: String, color: Color, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(SurfaceDark)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClickLabel = text, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
         Text(
@@ -287,6 +307,7 @@ private fun CertCard(
     selected: Boolean,
     onToggle: () -> Unit,
 ) {
+    val certName = certShortName(cert)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -298,7 +319,13 @@ private fun CertCard(
                 color = if (selected) Orange else Color.Transparent,
                 shape = RoundedCornerShape(14.dp),
             )
-            .clickable(onClick = onToggle)
+            .semantics(mergeDescendants = true) {
+                role = Role.Checkbox
+                stateDescription = if (selected) "Selected" else "Not selected"
+                contentDescription = "$certName certification, ${if (selected) "selected" else "not selected"}"
+                toggleableState = if (selected) ToggleableState.On else ToggleableState.Off
+            }
+            .clickable(onClickLabel = "Toggle $certName certification", onClick = onToggle)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -348,14 +375,20 @@ private fun DietaryToggleRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(SurfaceDark)
-            .clickable { onChange(!checked) }
+            .semantics(mergeDescendants = true) {
+                role = Role.Switch
+                stateDescription = if (checked) "On" else "Off"
+                contentDescription = "$title, $subtitle, ${if (checked) "on" else "off"}"
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+            }
+            .clickable(onClickLabel = "Toggle $title") { onChange(!checked) }
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = title,
             tint = iconTint,
             modifier = Modifier.size(28.dp),
         )

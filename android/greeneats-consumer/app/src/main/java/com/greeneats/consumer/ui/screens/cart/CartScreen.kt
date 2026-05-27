@@ -64,6 +64,36 @@ import com.greeneats.consumer.data.models.formatPrice
 import com.greeneats.consumer.ui.theme.*
 import com.greeneats.consumer.ui.viewmodels.CartViewModel
 
+private object CartStrings {
+    const val BACK = "Back"
+    const val CLEAR_CART = "Clear cart"
+    const val VIEW_CART = "View cart"
+    const val VIEW_STORE = "View store"
+    const val REMOVE_CART = "Remove cart"
+    const val DECREASE = "Decrease"
+    const val INCREASE = "Increase"
+    const val ADD_A_TIP = "Add a Tip"
+    const val TIP_NONE = "None"
+    const val SUBTOTAL = "Subtotal"
+    const val DEAL_DISCOUNT_DEFAULT = "Deal discount"
+    const val DELIVERY_FEE = "Delivery fee"
+    const val SERVICE_FEE = "Service fee"
+    const val TAX = "Tax"
+    const val TIP = "Tip"
+    const val TOTAL = "Total"
+    const val CHECKOUT_PREFIX = "Checkout - "
+    /**
+     * Quantity prefix for multi-cart item summaries (e.g. "2x Falafel").
+     * NOTE: In RTL locales the "x" glyph and digit ordering may need to
+     * be mirrored or replaced with a localised multiplier symbol.
+     */
+    const val QUANTITY_FORMAT = "x "
+    const val RESTAURANT_CARTS_SUFFIX = " restaurant carts"
+    const val ITEM_SINGULAR = " item"
+    const val ITEM_PLURAL = " items"
+    const val ELLIPSIS_SUFFIX = " ..."
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CartScreen(
@@ -106,7 +136,7 @@ fun CartScreen(
                         onBackClick()
                     }
                 }) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                    Icon(Icons.Filled.ArrowBack, contentDescription = CartStrings.BACK, tint = TextWhite)
                 }
             },
             actions = {
@@ -118,7 +148,7 @@ fun CartScreen(
                             showingDetail = false
                         }
                     }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Clear cart", tint = TextMuted)
+                        Icon(Icons.Filled.Delete, contentDescription = CartStrings.CLEAR_CART, tint = TextMuted)
                     }
                 }
             },
@@ -224,7 +254,7 @@ private fun MultiCartListView(
     ) {
         item {
             Text(
-                text = "${carts.size} restaurant carts",
+                text = "${carts.size}${CartStrings.RESTAURANT_CARTS_SUFFIX}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextTertiary,
                 modifier = Modifier.padding(bottom = 4.dp),
@@ -301,7 +331,7 @@ private fun RestaurantCartCard(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "${cart.itemCount} item${if (cart.itemCount != 1) "s" else ""}",
+                        text = "${cart.itemCount}${if (cart.itemCount != 1) CartStrings.ITEM_PLURAL else CartStrings.ITEM_SINGULAR}",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextTertiary,
                     )
@@ -321,8 +351,8 @@ private fun RestaurantCartCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             // Item summary
-            val itemSummary = cart.items.take(3).joinToString(", ") { "${it.quantity}x ${it.menuItem.name}" }
-            val suffix = if (cart.items.size > 3) " ..." else ""
+            val itemSummary = cart.items.take(3).joinToString(", ") { "${it.quantity}${CartStrings.QUANTITY_FORMAT}${it.menuItem.name}" }
+            val suffix = if (cart.items.size > 3) CartStrings.ELLIPSIS_SUFFIX else ""
             Text(
                 text = itemSummary + suffix,
                 style = MaterialTheme.typography.bodySmall,
@@ -347,7 +377,7 @@ private fun RestaurantCartCard(
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
                 ) {
                     Text(
-                        text = "View cart",
+                        text = CartStrings.VIEW_CART,
                         style = MaterialTheme.typography.labelLarge,
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
@@ -363,7 +393,7 @@ private fun RestaurantCartCard(
                     border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceDarkBorder),
                 ) {
                     Text(
-                        text = "View store",
+                        text = CartStrings.VIEW_STORE,
                         style = MaterialTheme.typography.labelLarge,
                         color = TextSecondary,
                         fontWeight = FontWeight.Bold,
@@ -379,7 +409,7 @@ private fun RestaurantCartCard(
                 ) {
                     Icon(
                         Icons.Filled.Delete,
-                        contentDescription = "Remove cart",
+                        contentDescription = CartStrings.REMOVE_CART,
                         tint = TextMuted,
                         modifier = Modifier.size(20.dp),
                     )
@@ -431,7 +461,7 @@ private fun CartDetailView(
             item {
                 Spacer(modifier = Modifier.height(24.dp))
                 Text(
-                    text = "Add a Tip",
+                    text = CartStrings.ADD_A_TIP,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -464,7 +494,7 @@ private fun CartDetailView(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = if (tipAmount == 0) "None" else "$${tipAmount / 100}",
+                                text = if (tipAmount == 0) CartStrings.TIP_NONE else "$${tipAmount / 100}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = when {
                                     isDisabled -> TextMuted
@@ -489,24 +519,24 @@ private fun CartDetailView(
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        PriceRow("Subtotal", state.subtotal)
+                        PriceRow(CartStrings.SUBTOTAL, state.subtotal)
                         if (state.discount > 0) {
                             Spacer(modifier = Modifier.height(10.dp))
                             PriceRow(
-                                label = state.appliedDeal?.title?.let { "Deal: $it" } ?: "Deal discount",
+                                label = state.appliedDeal?.title?.let { "Deal: $it" } ?: CartStrings.DEAL_DISCOUNT_DEFAULT,
                                 cents = -state.discount,
                                 accent = true,
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Delivery fee", state.deliveryFee)
+                        PriceRow(CartStrings.DELIVERY_FEE, state.deliveryFee)
                         Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Service fee", state.serviceFee)
+                        PriceRow(CartStrings.SERVICE_FEE, state.serviceFee)
                         Spacer(modifier = Modifier.height(10.dp))
-                        PriceRow("Tax", state.tax)
+                        PriceRow(CartStrings.TAX, state.tax)
                         if (state.tip > 0) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            PriceRow("Tip", state.tip)
+                            PriceRow(CartStrings.TIP, state.tip)
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         HorizontalDivider(color = SurfaceDarkBorder)
@@ -516,7 +546,7 @@ private fun CartDetailView(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = "Total",
+                                text = CartStrings.TOTAL,
                                 style = MaterialTheme.typography.titleLarge,
                                 color = TextWhite,
                                 fontWeight = FontWeight.Bold,
@@ -549,7 +579,7 @@ private fun CartDetailView(
                 CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
             } else {
                 Text(
-                    text = "Checkout - ${state.total.formatPrice()}",
+                    text = "${CartStrings.CHECKOUT_PREFIX}${state.total.formatPrice()}",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
@@ -635,7 +665,7 @@ private fun CartItemRow(
                 ) {
                     Icon(
                         Icons.Filled.Remove,
-                        contentDescription = "Decrease",
+                        contentDescription = CartStrings.DECREASE,
                         tint = TextWhite,
                         modifier = Modifier.size(20.dp),
                     )
@@ -658,7 +688,7 @@ private fun CartItemRow(
                 ) {
                     Icon(
                         Icons.Filled.Add,
-                        contentDescription = "Increase",
+                        contentDescription = CartStrings.INCREASE,
                         tint = if (atMax) TextMuted else Orange,
                         modifier = Modifier.size(20.dp),
                     )

@@ -1,6 +1,8 @@
 package com.koshereats.seller.ui.screens.auth
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -11,11 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,12 +30,14 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,11 +46,17 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -52,6 +64,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
 import com.koshereats.seller.R
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
@@ -70,13 +83,28 @@ fun SellerLoginScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
+    // rememberSaveable so process-death / config changes don't blow away
+    // an in-progress login attempt.
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val passwordFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.isLoggedIn) {
         if (state.isLoggedIn) onLoginSuccess()
+    }
+
+    // Clear any error left over from a previous screen so users don't see
+    // stale "Incorrect email or password" copy on re-entry.
+    LaunchedEffect(Unit) { viewModel.clearError() }
+
+    val submit: () -> Unit = {
+        focusManager.clearFocus()
+        viewModel.login(email.trim(), password)
     }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -94,7 +122,8 @@ fun SellerLoginScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundBlack),
+            .background(BackgroundBlack)
+            .imePadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -138,12 +167,12 @@ fun SellerLoginScreen(
                 enabled = !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(52.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF2A2A2A),
+                    containerColor = SurfaceDark,
                     contentColor = TextWhite,
-                    disabledContainerColor = Color(0xFF2A2A2A).copy(alpha = 0.4f),
+                    disabledContainerColor = SurfaceDark.copy(alpha = 0.4f),
                     disabledContentColor = TextWhite.copy(alpha = 0.6f),
                 ),
             ) {
@@ -156,11 +185,17 @@ fun SellerLoginScreen(
 
             TextButton(
                 onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_ADD_ACCOUNT).apply {
-                            putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                    try {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ADD_ACCOUNT).apply {
+                                putExtra(Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                            }
+                        )
+                    } catch (_: ActivityNotFoundException) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Account settings not available on this device")
                         }
-                    )
+                    }
                 },
             ) {
                 Text(
@@ -177,7 +212,7 @@ fun SellerLoginScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier.weight(1f),
                     color = DividerColor,
                 )
@@ -187,7 +222,7 @@ fun SellerLoginScreen(
                     color = TextMuted,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                Divider(
+                HorizontalDivider(
                     modifier = Modifier.weight(1f),
                     color = DividerColor,
                 )
@@ -201,12 +236,12 @@ fun SellerLoginScreen(
                 enabled = !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(52.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF2A2A2A),
+                    containerColor = SurfaceDark,
                     contentColor = TextWhite,
-                    disabledContainerColor = Color(0xFF2A2A2A).copy(alpha = 0.4f),
+                    disabledContainerColor = SurfaceDark.copy(alpha = 0.4f),
                     disabledContentColor = TextWhite.copy(alpha = 0.6f),
                 ),
             ) {
@@ -228,11 +263,19 @@ fun SellerLoginScreen(
             // Email
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
+                onValueChange = {
+                    // Trim whitespace as user types so trailing spaces never get persisted.
+                    email = it.filter { c -> !c.isWhitespace() }
+                    if (state.error != null) viewModel.clearError()
+                },
                 label = { Text(stringResource(R.string.auth_email)) },
                 placeholder = { Text(stringResource(R.string.auth_email_placeholder), color = TextMuted) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -243,12 +286,19 @@ fun SellerLoginScreen(
             // Password
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = {
+                    password = it
+                    if (state.error != null) viewModel.clearError()
+                },
                 label = { Text(stringResource(R.string.auth_password)) },
                 singleLine = true,
                 visualTransformation = if (passwordVisible) VisualTransformation.None
                     else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
@@ -261,8 +311,33 @@ fun SellerLoginScreen(
                 },
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(passwordFocus),
             )
+
+            // Forgot password — opens mail to support
+            TextButton(
+                onClick = {
+                    try {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@koshereats.dev"))
+                                .apply { putExtra(Intent.EXTRA_SUBJECT, "Seller password reset") }
+                        )
+                    } catch (_: ActivityNotFoundException) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar("No email app available — contact support@koshereats.dev")
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(
+                    text = "Forgot password?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Orange,
+                )
+            }
 
             // Error
             if (state.error != null) {
@@ -280,7 +355,7 @@ fun SellerLoginScreen(
 
             // Login button
             Button(
-                onClick = { viewModel.login(email.trim(), password) },
+                onClick = submit,
                 enabled = email.isNotBlank() && password.isNotBlank() && !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -316,5 +391,6 @@ fun SellerLoginScreen(
                 color = TextSecondary,
             )
         }
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 }

@@ -9,6 +9,7 @@ struct SavedAddressesView: View {
     @State private var showAddForm = false
     @State private var errorMessage: String?
     @State private var pendingDefaultID: String?
+    @State private var addressToDelete: Address?
 
     var body: some View {
         ZStack {
@@ -26,7 +27,7 @@ struct SavedAddressesView: View {
                             .listRowSeparatorTint(Color.keDivider)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
-                                    Task { await delete(a) }
+                                    addressToDelete = a
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -39,6 +40,8 @@ struct SavedAddressesView: View {
                                     .tint(.kePrimary)
                                 }
                             }
+                            .accessibilityLabel("\(a.label), \(a.formatted)\(a.isDefault ? ", default address" : "")")
+                            .accessibilityHint("Swipe left for options")
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -65,6 +68,7 @@ struct SavedAddressesView: View {
                 Button { showAddForm = true } label: {
                     Image(systemName: "plus").foregroundColor(.kePrimary)
                 }
+                .accessibilityLabel("Add new address")
             }
         }
         .sheet(isPresented: $showAddForm) {
@@ -76,6 +80,33 @@ struct SavedAddressesView: View {
             )
         }
         .task { await load() }
+        .alert("Delete Address", isPresented: Binding(
+            get: { addressToDelete != nil },
+            set: { if !$0 { addressToDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let address = addressToDelete {
+                    Task { await delete(address) }
+                }
+                addressToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                addressToDelete = nil
+            }
+        } message: {
+            if let address = addressToDelete {
+                Text("Are you sure you want to delete \"\(address.label)\"?")
+            }
+        }
+        .onChange(of: errorMessage) { _, newValue in
+            guard newValue != nil else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(4))
+                if errorMessage == newValue {
+                    withAnimation { errorMessage = nil }
+                }
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -83,6 +114,7 @@ struct SavedAddressesView: View {
             Image(systemName: "mappin.and.ellipse")
                 .font(.system(size: 48))
                 .foregroundColor(.keTextMuted)
+                .accessibilityHidden(true)
             Text("No saved addresses")
                 .font(.headline)
                 .foregroundColor(.keTextPrimary)
@@ -97,6 +129,7 @@ struct SavedAddressesView: View {
             }
             .buttonStyle(KEPrimaryButtonStyle())
             .frame(maxWidth: 320)
+            .accessibilityHint("Opens a form to add a new delivery address")
         }
     }
 

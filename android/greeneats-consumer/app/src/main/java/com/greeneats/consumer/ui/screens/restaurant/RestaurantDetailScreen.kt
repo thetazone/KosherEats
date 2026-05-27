@@ -43,7 +43,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+// Divider import removed — use HorizontalDivider instead (Material3)
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -57,7 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -102,8 +102,8 @@ fun RestaurantDetailScreen(
     cartViewModel: CartViewModel,
     viewModel: RestaurantViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val cartState by cartViewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cartState by cartViewModel.uiState.collectAsStateWithLifecycle()
     val totalItemCount = cartState.totalItemCount
     val restaurant = uiState.restaurant
     val listState = rememberLazyListState()
@@ -244,7 +244,7 @@ fun RestaurantDetailScreen(
                             isPasYisroel = restaurant.isPasYisroel,
                         )
 
-                        if (!restaurant.certifyingAgency.isNullOrBlank()) {
+                        if (restaurant.certifyingAgency.isNotBlank()) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "Certified by: ${restaurant.certifyingAgency}",
@@ -527,15 +527,20 @@ fun RestaurantDetailScreen(
                 menuItem = item,
                 onDismiss = { sheetItem = null },
                 onAddToCart = { qty, customizations, instructions ->
-                    cartViewModel.addItem(
-                        menuItem = item,
-                        restaurantId = restaurant!!.id,
-                        restaurantName = restaurant.name,
-                        restaurantImageUrl = restaurant.logoUrl ?: restaurant.imageUrl,
-                        quantity = qty,
-                        selectedCustomizations = customizations,
-                        specialInstructions = instructions,
-                    )
+                    // restaurant is guaranteed non-null here because sheetItem
+                    // is only set inside the `restaurant != null` branch, but
+                    // use safe-call to satisfy the compiler and avoid !! crash.
+                    restaurant?.let { r ->
+                        cartViewModel.addItem(
+                            menuItem = item,
+                            restaurantId = r.id,
+                            restaurantName = r.name,
+                            restaurantImageUrl = r.logoUrl ?: r.imageUrl,
+                            quantity = qty,
+                            selectedCustomizations = customizations,
+                            specialInstructions = instructions,
+                        )
+                    }
                 },
             )
         }

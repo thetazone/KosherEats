@@ -1,5 +1,6 @@
 package com.koshereats.seller.ui.screens.auth
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -79,7 +81,16 @@ fun PhoneLoginScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
+    BackHandler(enabled = state.otpSent) {
+        viewModel.backToPhoneEntry()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundBlack)
+            .imePadding(),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -90,7 +101,7 @@ fun PhoneLoginScreen(
                     onBack()
                 }
             }) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
             }
         }
 
@@ -149,8 +160,12 @@ fun PhoneLoginScreen(
                     OutlinedTextField(
                         value = state.phoneCountryCode,
                         onValueChange = {
-                            val cleaned = "+" + it.removePrefix("+").filter { c -> c.isDigit() }.take(3)
+                            val digits = it.removePrefix("+").filter { c -> c.isDigit() }.take(3)
+                            // Never let the field collapse to empty — leave a bare "+" so the
+                            // user can see the format hint and Send Code can validate.
+                            val cleaned = if (digits.isEmpty()) "+" else "+$digits"
                             viewModel.updatePhoneCountryCode(cleaned)
+                            if (state.error != null) viewModel.clearError()
                         },
                         modifier = Modifier.width(96.dp),
                         shape = RoundedCornerShape(12.dp),
@@ -160,7 +175,10 @@ fun PhoneLoginScreen(
                     )
                     OutlinedTextField(
                         value = state.phoneNumber,
-                        onValueChange = viewModel::updatePhoneNumber,
+                        onValueChange = {
+                            viewModel.updatePhoneNumber(it)
+                            if (state.error != null) viewModel.clearError()
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = phoneFieldColors(),
@@ -172,20 +190,23 @@ fun PhoneLoginScreen(
             } else {
                 OutlinedTextField(
                     value = state.otpCode,
-                    onValueChange = viewModel::updateOtpCode,
+                    onValueChange = {
+                        viewModel.updateOtpCode(it)
+                        if (state.error != null) viewModel.clearError()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = phoneFieldColors(),
-                    placeholder = { Text("1234", color = TextMuted) },
+                    placeholder = { Text("0".repeat(AuthViewModel.OTP_CODE_LENGTH), color = TextMuted) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                 )
             }
 
-            if (state.error != null) {
+            state.error?.let { errMsg ->
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = state.error!!,
+                    text = errMsg,
                     color = ErrorRed,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -193,6 +214,12 @@ fun PhoneLoginScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            val canSubmit = if (state.otpSent) {
+                state.otpCode.length == AuthViewModel.OTP_CODE_LENGTH
+            } else {
+                // Country code must be at least "+1" (one digit after "+").
+                state.phoneNumber.length >= 7 && state.phoneCountryCode.length >= 2
+            }
             Button(
                 onClick = {
                     if (state.otpSent) viewModel.verifyPhoneCode() else viewModel.startPhoneLogin()
@@ -205,7 +232,7 @@ fun PhoneLoginScreen(
                     disabledContainerColor = Orange.copy(alpha = 0.4f),
                     disabledContentColor = TextWhite.copy(alpha = 0.6f),
                 ),
-                enabled = !state.phoneIsSending && !state.phoneIsVerifying,
+                enabled = canSubmit && !state.phoneIsSending && !state.phoneIsVerifying,
             ) {
                 if (state.phoneIsSending || state.phoneIsVerifying) {
                     CircularProgressIndicator(
@@ -224,12 +251,13 @@ fun PhoneLoginScreen(
 
             if (state.otpSent) {
                 Spacer(Modifier.height(16.dp))
+                val resendEnabled = !state.phoneIsSending && !state.phoneIsVerifying
                 Text(
                     text = stringResource(R.string.auth_resend_code),
-                    color = Orange,
+                    color = if (resendEnabled) Orange else Orange.copy(alpha = 0.4f),
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.clickable(enabled = !state.phoneIsSending) {
+                    modifier = Modifier.clickable(enabled = resendEnabled) {
                         viewModel.startPhoneLogin()
                     },
                 )

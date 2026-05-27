@@ -33,10 +33,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -58,6 +63,7 @@ fun PhoneLoginScreen(
     viewModel: AuthViewModel,
 ) {
     val state by viewModel.state.collectAsState()
+    var resendCountdown by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(state.isLoggedIn) {
         if (state.isLoggedIn) onLoginSuccess()
@@ -69,9 +75,15 @@ fun PhoneLoginScreen(
         }
     }
 
+    // Start a 30-second cooldown each time an OTP is sent
     LaunchedEffect(state.otpSent) {
         if (state.otpSent) {
-            delay(15_000)
+            resendCountdown = 30
+            while (resendCountdown > 0) {
+                delay(1_000)
+                resendCountdown--
+            }
+            // Auto-resend once if user hasn't entered any code
             val current = viewModel.state.value
             if (current.otpSent && current.otpCode.isEmpty() && !current.phoneIsVerifying) {
                 viewModel.silentResend()
@@ -90,7 +102,11 @@ fun PhoneLoginScreen(
                     onBack()
                 }
             }) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                Icon(
+                    Icons.Filled.ArrowBack,
+                    contentDescription = if (state.otpSent) "Back to phone number entry" else "Back to login options",
+                    tint = TextWhite,
+                )
             }
         }
 
@@ -152,7 +168,10 @@ fun PhoneLoginScreen(
                             val cleaned = "+" + it.removePrefix("+").filter { c -> c.isDigit() }.take(3)
                             viewModel.updatePhoneCountryCode(cleaned)
                         },
-                        modifier = Modifier.width(96.dp),
+                        modifier = Modifier
+                            .width(96.dp)
+                            .semantics { contentDescription = "Country code" },
+                        label = { Text("Code", color = TextMuted) },
                         shape = RoundedCornerShape(12.dp),
                         colors = phoneFieldColors(),
                         singleLine = true,
@@ -160,11 +179,12 @@ fun PhoneLoginScreen(
                     )
                     OutlinedTextField(
                         value = state.phoneNumber,
-                        onValueChange = viewModel::updatePhoneNumber,
+                        onValueChange = { viewModel.updatePhoneNumber(it.filter { c -> c.isDigit() || c == '-' || c == ' ' }) },
                         modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Phone number", color = TextMuted) },
                         shape = RoundedCornerShape(12.dp),
                         colors = phoneFieldColors(),
-                        placeholder = { Text("Phone number", color = TextMuted) },
+                        placeholder = { Text("(555) 123-4567", color = TextMuted) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     )
@@ -174,6 +194,7 @@ fun PhoneLoginScreen(
                     value = state.otpCode,
                     onValueChange = viewModel::updateOtpCode,
                     modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Verification code", color = TextMuted) },
                     shape = RoundedCornerShape(12.dp),
                     colors = phoneFieldColors(),
                     placeholder = { Text("1234", color = TextMuted) },
@@ -195,7 +216,16 @@ fun PhoneLoginScreen(
 
             Button(
                 onClick = {
-                    if (state.otpSent) viewModel.verifyPhoneCode() else viewModel.startPhoneLogin()
+                    if (state.otpSent) {
+                        viewModel.verifyPhoneCode()
+                    } else {
+                        val digits = state.phoneNumber.filter { it.isDigit() }
+                        if (digits.length < 7) {
+                            viewModel.setPhoneError("Please enter a valid phone number")
+                            return@Button
+                        }
+                        viewModel.startPhoneLogin()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -224,14 +254,28 @@ fun PhoneLoginScreen(
 
             if (state.otpSent) {
                 Spacer(Modifier.height(16.dp))
+                val resendEnabled = resendCountdown == 0 && !state.phoneIsSending
                 Text(
-                    text = stringResource(R.string.auth_resend_code),
-                    color = Orange,
+                    text = if (resendCountdown > 0) {
+                        "Resend code in ${resendCountdown}s"
+                    } else {
+                        stringResource(R.string.auth_resend_code)
+                    },
+                    color = if (resendEnabled) Orange else TextMuted,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.clickable(enabled = !state.phoneIsSending) {
-                        viewModel.startPhoneLogin()
-                    },
+                    modifier = Modifier
+                        .clickable(enabled = resendEnabled) {
+                            viewModel.startPhoneLogin()
+                            resendCountdown = 30
+                        }
+                        .semantics {
+                            contentDescription = if (resendCountdown > 0) {
+                                "Resend code available in $resendCountdown seconds"
+                            } else {
+                                "Resend verification code"
+                            }
+                        },
                 )
             }
         }

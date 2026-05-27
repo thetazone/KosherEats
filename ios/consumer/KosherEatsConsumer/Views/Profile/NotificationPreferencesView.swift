@@ -16,6 +16,7 @@ struct NotificationPreferencesView: View {
     @State private var systemAuthorized = true
     @State private var lastSyncedPrefs: APIService.NotificationPreferences = .allOn
     @State private var saveGeneration = 0
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -93,12 +94,18 @@ struct NotificationPreferencesView: View {
             await refreshSystemAuthorization()
             await load()
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                Task { await refreshSystemAuthorization() }
+            }
+        }
     }
 
     private var systemDisabledBanner: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundColor(.keWarning)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Push notifications are off")
                     .font(.subheadline.bold())
@@ -139,10 +146,12 @@ struct NotificationPreferencesView: View {
                     .foregroundColor(.keTextSecondary)
             }
             Spacer()
-            Toggle("", isOn: isOn)
+            Toggle(title, isOn: isOn)
                 .labelsHidden()
                 .tint(.kePrimary)
                 .disabled(isSaving)
+                .accessibilityLabel(title)
+                .accessibilityHint(subtitle)
         }
         .padding(16)
     }

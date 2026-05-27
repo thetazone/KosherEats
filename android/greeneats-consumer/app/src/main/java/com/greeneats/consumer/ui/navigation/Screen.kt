@@ -19,22 +19,37 @@ sealed class Screen(val route: String) {
     data object NearbyMap : Screen("map")
     data object Deals : Screen("deals")
     data object Restaurant : Screen("restaurant/{restaurantId}") {
-        fun createRoute(restaurantId: String) = "restaurant/${Uri.encode(restaurantId)}"
+        fun createRoute(restaurantId: String): String {
+            require(restaurantId.isNotBlank()) { "restaurantId must not be blank" }
+            return "restaurant/${Uri.encode(restaurantId)}"
+        }
     }
     data object Cart : Screen("cart")
     data object Checkout : Screen("checkout")
     data object OrderConfirmation : Screen("order-confirmation/{orderId}") {
-        fun createRoute(orderId: String) = "order-confirmation/${Uri.encode(orderId)}"
+        fun createRoute(orderId: String): String {
+            require(orderId.isNotBlank()) { "orderId must not be blank" }
+            return "order-confirmation/${Uri.encode(orderId)}"
+        }
     }
     data object Orders : Screen("orders")
     data object OrderDetail : Screen("orders/{orderId}") {
-        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}"
+        fun createRoute(orderId: String): String {
+            require(orderId.isNotBlank()) { "orderId must not be blank" }
+            return "orders/${Uri.encode(orderId)}"
+        }
     }
     data object OrderTracking : Screen("orders/{orderId}/tracking") {
-        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/tracking"
+        fun createRoute(orderId: String): String {
+            require(orderId.isNotBlank()) { "orderId must not be blank" }
+            return "orders/${Uri.encode(orderId)}/tracking"
+        }
     }
     data object Chat : Screen("orders/{orderId}/chat") {
-        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/chat"
+        fun createRoute(orderId: String): String {
+            require(orderId.isNotBlank()) { "orderId must not be blank" }
+            return "orders/${Uri.encode(orderId)}/chat"
+        }
     }
     data object Login : Screen("login")
     data object EmailLogin : Screen("email-login")
@@ -49,7 +64,10 @@ sealed class Screen(val route: String) {
     data object NotificationPreferences : Screen("profile/notification-preferences")
     data object ConnectedAccounts : Screen("profile/connected-accounts")
     data object Rating : Screen("orders/{orderId}/rating") {
-        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/rating"
+        fun createRoute(orderId: String): String {
+            require(orderId.isNotBlank()) { "orderId must not be blank" }
+            return "orders/${Uri.encode(orderId)}/rating"
+        }
     }
 }
 

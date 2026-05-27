@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var searchText = ""
     @State private var selectedCuisine: String?
     @State private var kosherFilters = KosherFilters()
+    @State private var isFilterTransitioning = false
 
     var body: some View {
         NavigationStack {
@@ -63,7 +64,15 @@ struct HomeView: View {
                     isPresented: $showKosherFilter,
                     allRestaurants: vm.restaurants,
                     currentFilters: kosherFilters,
-                    onApply: { kosherFilters = $0 },
+                    onApply: { newFilters in
+                        isFilterTransitioning = true
+                        kosherFilters = newFilters
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                isFilterTransitioning = false
+                            }
+                        }
+                    },
                 )
             }
         }
@@ -83,10 +92,10 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("KosherEats")
+                    Text(String(localized: "KosherEats"))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.kePrimary)
-                    Text("Delivering kosher, done right")
+                    Text(String(localized: "Delivering kosher, done right"))
                         .font(.subheadline)
                         .foregroundColor(.keTextSecondary)
                 }
@@ -130,7 +139,7 @@ struct HomeView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.keTextMuted)
-            TextField("Search restaurants...", text: $searchText)
+            TextField(String(localized: "Search restaurants..."), text: $searchText)
                 .foregroundColor(.keTextPrimary)
                 .autocorrectionDisabled()
         }
@@ -150,10 +159,18 @@ struct HomeView: View {
                         title: cuisine,
                         isSelected: selectedCuisine == cuisine || (cuisine == "All" && selectedCuisine == nil)
                     ) {
+                        isFilterTransitioning = true
                         if cuisine == "All" {
                             selectedCuisine = nil
                         } else {
                             selectedCuisine = selectedCuisine == cuisine ? nil : cuisine
+                        }
+                        // Brief delay so the user sees a loading flash,
+                        // then reveal the filtered list.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                isFilterTransitioning = false
+                            }
                         }
                     }
                 }
@@ -219,7 +236,7 @@ struct HomeView: View {
                 .foregroundColor(.keTextPrimary)
                 .padding(.horizontal)
 
-            if vm.isLoading {
+            if vm.isLoading || isFilterTransitioning {
                 ProgressView()
                     .tint(.kePrimary)
                     .frame(maxWidth: .infinity, minHeight: 200)

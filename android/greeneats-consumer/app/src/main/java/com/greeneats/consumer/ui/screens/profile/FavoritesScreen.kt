@@ -66,10 +66,36 @@ fun FavoritesScreen(
         )
 
         when {
-            state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            state.isLoading && state.restaurants.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Orange)
             }
-            state.restaurants.isEmpty() -> Box(
+            !state.isLoading && state.error != null && state.restaurants.isEmpty() -> Box(
+                Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Filled.FavoriteBorder,
+                        contentDescription = null,
+                        tint = TextTertiary,
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        state.error ?: "",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextWhite,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Tap to retry",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Orange,
+                        modifier = Modifier.clickable { vm.load() },
+                    )
+                }
+            }
+            !state.isLoading && state.restaurants.isEmpty() -> Box(
                 Modifier.fillMaxSize().padding(24.dp),
                 contentAlignment = Alignment.Center,
             ) {

@@ -110,13 +110,17 @@ class CartViewModel @Inject constructor(
                         null
                     }
                     snap?.let { s ->
+                        // Filter out any restaurant carts with zero items (e.g. empty shells
+                        // left by applyDeal()) so the restored cart only contains real items.
+                        val nonEmptyCarts = s.carts.filterValues { it.items.isNotEmpty() }
                         // Merge: snapshot is the base; any in-memory carts (added before
                         // restore finished) win for the same restaurant key so they are
                         // never silently overwritten by a stale snapshot.
                         _uiState.update { current ->
                             current.copy(
-                                carts = s.carts + current.carts,
-                                activeRestaurantId = current.activeRestaurantId ?: s.activeRestaurantId,
+                                carts = nonEmptyCarts + current.carts,
+                                activeRestaurantId = current.activeRestaurantId
+                                    ?: s.activeRestaurantId?.takeIf { it in nonEmptyCarts },
                             )
                         }
                     }
@@ -168,7 +172,7 @@ class CartViewModel @Inject constructor(
                 menuItem = menuItem,
                 quantity = quantity.coerceIn(1, 99),
                 selectedCustomizations = selectedCustomizations,
-                specialInstructions = specialInstructions?.takeIf { it.isNotBlank() },
+                specialInstructions = specialInstructions?.trim()?.take(500)?.takeIf { it.isNotBlank() },
             )
 
             val existingIndex = if (selectedCustomizations.isEmpty()) {
@@ -180,7 +184,7 @@ class CartViewModel @Inject constructor(
             val updatedItems = if (existingIndex >= 0) {
                 currentCart.items.toMutableList().apply {
                     val existing = this[existingIndex]
-                    this[existingIndex] = existing.copy(quantity = (existing.quantity + quantity).coerceAtMost(99))
+                    this[existingIndex] = existing.copy(quantity = minOf(existing.quantity + quantity, 99))
                 }
             } else {
                 currentCart.items + newCartItem

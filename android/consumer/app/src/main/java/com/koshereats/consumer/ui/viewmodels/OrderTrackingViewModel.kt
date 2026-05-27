@@ -53,11 +53,18 @@ class OrderTrackingViewModel @Inject constructor(
     private val gson = Gson()
     private val sseClient = okHttpClient.newBuilder()
         .readTimeout(60, TimeUnit.SECONDS)
+        .pingInterval(30, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     fun start(orderId: String) {
         // Cancel any in-flight setup first to prevent races on rapid STOP→START.
         setupJob?.cancel()
+        if (orderId.isBlank() || !orderId.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+            android.util.Log.w("OrderTrackingViewModel", "Refusing to start with invalid orderId='$orderId'")
+            _uiState.update { it.copy(isLoading = false, errorMessage = "Invalid order link.") }
+            return
+        }
         if (currentOrderId == orderId && pollJob?.isActive == true && streamJob?.isActive == true) return
         completedNormally = false
         consecutiveSseUnauthorized = 0
@@ -151,10 +158,16 @@ class OrderTrackingViewModel @Inject constructor(
                     }
                     consecutiveSseUnauthorized = 0
                     if (!response.isSuccessful) throw RuntimeException("SSE status ${response.code}")
-                    val source = response.body?.source() ?: throw RuntimeException("no SSE body")
+                    val source = response.body?.source() ?: run {
+                        android.util.Log.w("OrderTrackingViewModel", "SSE: no body. status=${response.code} contentType=${response.header("Content-Type")}")
+                        throw RuntimeException("no SSE body")
+                    }
                     _uiState.update { it.copy(errorMessage = null) }
                     backoffMs = 3_000L
                     val dataBuf = StringBuilder()
+                    // Server should never push more than a few KB per event; cap to avoid
+                    // unbounded growth if a misbehaving server never sends the empty terminator.
+                    val maxBufBytes = 64 * 1024
                     while (isActive && !source.exhausted()) {
                         val line = source.readUtf8Line() ?: break
                         if (line.isEmpty()) {
@@ -164,17 +177,25 @@ class OrderTrackingViewModel @Inject constructor(
                                 handleLocationEvent(json)
                             }
                         } else if (line.startsWith("data:")) {
+                            if (dataBuf.length + line.length > maxBufBytes) {
+                                android.util.Log.w("OrderTrackingViewModel", "SSE buffer exceeded $maxBufBytes bytes — discarding fragment")
+                                dataBuf.setLength(0)
+                                continue
+                            }
                             dataBuf.append(line.removePrefix("data:").trimStart())
                         }
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = "Live tracking unavailable. Retrying\u2026") }
+                android.util.Log.w("OrderTrackingViewModel", "SSE stream error \u2014 will retry after backoff: ${e.message}")
+                _uiState.update { it.copy(errorMessage = "Live tracking unavailable. Retrying...") }
             }
             if (!isActive) break
             val status = _uiState.value.order?.status
             if (status != null && !status.isActive) break
-            delay(backoffMs)
+            // ±20% jitter to avoid thundering herd on server recovery.
+            val jitter = (backoffMs * (kotlin.random.Random.nextDouble() * 0.4 - 0.2)).toLong()
+            delay(backoffMs + jitter)
             backoffMs = (backoffMs * 2).coerceAtMost(30_000L)
         }
     }

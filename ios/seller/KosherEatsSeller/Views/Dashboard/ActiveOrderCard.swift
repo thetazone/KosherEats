@@ -50,6 +50,8 @@ struct ActiveOrderCard: View {
 
                         Spacer()
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("\(item.quantity) times \(item.name)")
                 }
 
                 if order.items.count > 3 {
@@ -74,12 +76,19 @@ struct ActiveOrderCard: View {
                     .font(.headline)
                     .foregroundColor(.kePrimary)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(order.itemCount) items, total \(order.totalFormatted)")
 
             // Action hint — live countdown for pending orders so the seller
             // sees how close they are to the auto-reject deadline.
-            if order.status == .pending, let placedAt = order.createdAtDate {
-                PendingCountdown(placedAt: placedAt)
-                    .padding(.top, 4)
+            // Guard: only render the countdown when createdAtDate is non-nil;
+            // a nil date (e.g. malformed server response) skips the timer
+            // rather than crashing.
+            if order.status == .pending {
+                if let placedAt = order.createdAtDate {
+                    PendingCountdown(placedAt: placedAt)
+                        .padding(.top, 4)
+                }
             }
         }
         .padding()
@@ -92,12 +101,16 @@ struct ActiveOrderCard: View {
                     lineWidth: 1
                 )
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Order \(String(order.id.prefix(8))), \(order.status.displayName)")
+        .accessibilityHint("\(order.itemCount) items, \(order.totalFormatted)")
     }
 
     private var statusBadge: some View {
         HStack(spacing: 4) {
             Image(systemName: order.status.icon)
                 .font(.caption2)
+                .accessibilityHidden(true)
             Text(order.status.displayName)
                 .font(.caption.bold())
         }
@@ -106,6 +119,8 @@ struct ActiveOrderCard: View {
         .padding(.vertical, 6)
         .background(statusColor.opacity(0.15))
         .cornerRadius(8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Status: \(order.status.displayName)")
     }
 
     private var statusColor: Color {
@@ -135,10 +150,13 @@ private struct PendingCountdown: View {
 
             HStack(spacing: 6) {
                 Image(systemName: expired ? "xmark.octagon.fill" : "clock.fill")
+                    .accessibilityHidden(true)
                 Text(label(elapsed: elapsed, remaining: remaining, expired: expired))
                     .font(.caption.bold())
             }
             .foregroundColor(expired || urgent ? .keError : .keWarning)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(expired ? "Order auto-rejecting" : "Respond in \(Int(remaining / 60)) minutes \(Int(remaining) % 60) seconds")
         }
     }
 

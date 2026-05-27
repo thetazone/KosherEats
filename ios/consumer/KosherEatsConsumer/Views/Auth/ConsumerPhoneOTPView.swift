@@ -12,6 +12,9 @@ struct ConsumerPhoneOTPView: View {
     @State private var code = ""
     @State private var isResending = false
     @State private var autoResendTask: Task<Void, Never>?
+    @State private var resendCountdown: Int = 0
+    @State private var countdownTimer: Task<Void, Never>?
+    @State private var hasAutoSubmitted = false
     @FocusState private var codeFieldFocused: Bool
 
     var body: some View {
@@ -38,11 +41,14 @@ struct ConsumerPhoneOTPView: View {
                         .background(Color.keCard)
                         .cornerRadius(Theme.cornerRadiusMedium)
                         .focused($codeFieldFocused)
+                        .accessibilityLabel("Verification code")
+                        .accessibilityHint("Enter the 4-digit code sent to \(phoneDisplay)")
                         .onChange(of: code) { _, newValue in
                             let digits = newValue.filter(\.isNumber)
                             if digits != newValue { code = digits }
                             if code.count > 4 { code = String(code.prefix(4)) }
-                            if code.count == 4 {
+                            if code.count == 4, !hasAutoSubmitted {
+                                hasAutoSubmitted = true
                                 Task { await submit() }
                             }
                         }
@@ -80,11 +86,22 @@ struct ConsumerPhoneOTPView: View {
                         Button {
                             Task { await resend() }
                         } label: {
-                            Text(isResending ? "Sending…" : "Resend")
-                                .font(.caption.bold())
-                                .foregroundColor(.kePrimary)
+                            if isResending {
+                                Text("Sending…")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.kePrimary)
+                            } else if resendCountdown > 0 {
+                                Text("Resend in \(resendCountdown)s")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.keTextSecondary)
+                            } else {
+                                Text("Resend")
+                                    .font(.caption.bold())
+                                    .foregroundColor(.kePrimary)
+                            }
                         }
-                        .disabled(isResending)
+                        .disabled(isResending || resendCountdown > 0)
+                        .accessibilityLabel(resendCountdown > 0 ? "Resend code available in \(resendCountdown) seconds" : "Resend code")
                     }
 
                     Spacer()
@@ -95,6 +112,7 @@ struct ConsumerPhoneOTPView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             codeFieldFocused = true
+            startResendCountdown()
             autoResendTask = Task {
                 try? await Task.sleep(for: .seconds(15))
                 if !Task.isCancelled && code.isEmpty {
@@ -102,17 +120,34 @@ struct ConsumerPhoneOTPView: View {
                 }
             }
         }
-        .onDisappear { autoResendTask?.cancel() }
+        .onDisappear {
+            autoResendTask?.cancel()
+            countdownTimer?.cancel()
+        }
     }
 
     private func submit() async {
         guard code.count == 4, !authVM.isLoading else { return }
         _ = await authVM.verifyPhoneLogin(phone: phoneE164, code: code)
+        // Allow re-submit if verification failed (e.g. wrong code).
+        if !authVM.isAuthenticated { hasAutoSubmitted = false }
     }
 
     private func resend() async {
         isResending = true
         defer { isResending = false }
         _ = await authVM.startPhoneLogin(phone: phoneE164)
+        startResendCountdown()
+    }
+
+    private func startResendCountdown() {
+        resendCountdown = 30
+        countdownTimer?.cancel()
+        countdownTimer = Task {
+            while resendCountdown > 0, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if !Task.isCancelled { resendCountdown -= 1 }
+            }
+        }
     }
 }

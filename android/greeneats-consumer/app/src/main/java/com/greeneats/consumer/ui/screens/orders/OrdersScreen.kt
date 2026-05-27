@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -81,50 +82,56 @@ fun OrdersScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (uiState.isLoading && uiState.orders.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Orange)
-            }
-        } else if (uiState.orders.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.Receipt,
-                        contentDescription = null,
-                        tint = TextMuted,
-                        modifier = Modifier.size(80.dp),
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No orders yet",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = TextWhite,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Your order history will appear here",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextTertiary,
-                    )
+        PullToRefreshBox(
+            isRefreshing = uiState.isRefreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (uiState.isLoading && uiState.orders.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Orange)
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                items(uiState.orders, key = { it.id }) { order ->
-                    OrderCard(
-                        order = order,
-                        onClick = { onOrderClick(order.id) },
-                        onReorder = { onReorderClick(order.restaurantId) },
-                    )
+            } else if (uiState.orders.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Filled.Receipt,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(80.dp),
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No orders yet",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = TextWhite,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Your order history will appear here",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextTertiary,
+                        )
+                    }
                 }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    items(uiState.orders, key = { it.id }) { order ->
+                        OrderCard(
+                            order = order,
+                            onClick = { onOrderClick(order.id) },
+                            onReorder = { onReorderClick(order.restaurantId) },
+                        )
+                    }
 
-                if (uiState.isLoading) {
-                    item {
-                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                    if (uiState.isLoading) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                            }
                         }
                     }
                 }

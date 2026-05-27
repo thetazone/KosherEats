@@ -215,11 +215,13 @@ struct SellerLoginView: View {
         }
     }
 
-    /// Minimum national-number length of 7 handles short E.164 cases (e.g.
-    /// some Caribbean +1 subscribers) without opening up obviously-bogus
-    /// short inputs. Most countries land in the 7-11 range.
+    /// National-number length must be between 7 and 15 digits. The minimum of
+    /// 7 handles short E.164 cases (e.g. some Caribbean +1 subscribers)
+    /// without opening up obviously-bogus short inputs. Most countries land
+    /// in the 7-11 range. The max of 15 matches E.164's ceiling, which is
+    /// already enforced by the onChange truncation above.
     private var isPhoneValid: Bool {
-        phoneDigits.count >= 7
+        phoneDigits.count >= 7 && phoneDigits.count <= 15
     }
 
     private func startPhoneFlow() async {

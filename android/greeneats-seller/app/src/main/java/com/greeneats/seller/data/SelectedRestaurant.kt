@@ -1,10 +1,12 @@
 package com.greeneats.seller.data
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import com.greeneats.seller.data.api.PrefsKeys
 import com.greeneats.seller.data.api.dataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 /**
@@ -19,10 +21,18 @@ import kotlinx.coroutines.flow.map
  * falls back to the seller's first owned restaurant.
  */
 object SelectedRestaurant {
+    private const val TAG = "SelectedRestaurant"
+
     fun flow(context: Context): Flow<String?> =
-        context.dataStore.data.map { it[PrefsKeys.RESTAURANT_ID] }
+        context.dataStore.data
+            .catch { e ->
+                Log.e(TAG, "Failed to read restaurant selection", e)
+                emit(androidx.datastore.preferences.core.emptyPreferences())
+            }
+            .map { it[PrefsKeys.RESTAURANT_ID] }
 
     suspend fun set(context: Context, id: String) {
+        require(id.isNotBlank()) { "Restaurant ID must not be blank" }
         context.dataStore.edit { it[PrefsKeys.RESTAURANT_ID] = id }
     }
 

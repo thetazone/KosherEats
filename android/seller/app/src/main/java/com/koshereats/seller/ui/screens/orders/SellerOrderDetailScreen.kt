@@ -18,7 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LocalShipping
@@ -96,7 +96,9 @@ fun SellerOrderDetailScreen(
 
     LaunchedEffect(state.error) {
         if (state.error != null) {
-            Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
+            // Errors (e.g. reject failure, Stripe refund 502) need to stay visible
+            // long enough for the seller to actually read them.
+            Toast.makeText(context, state.error, Toast.LENGTH_LONG).show()
             viewModel.clearMessages()
         }
     }
@@ -175,7 +177,7 @@ fun SellerOrderDetailScreen(
             },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),

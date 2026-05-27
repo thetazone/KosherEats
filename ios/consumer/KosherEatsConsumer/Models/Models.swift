@@ -55,6 +55,16 @@ enum OrderStatus: String, Codable {
     case completed
     case cancelled
     case rejected
+    /// Catch-all for any status value the backend adds in the future.
+    /// Without this, decoding a response containing an unknown status
+    /// throws DecodingError.dataCorrupted and blanks the entire list.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = OrderStatus(rawValue: raw) ?? .unknown
+    }
 
     var displayName: String {
         switch self {
@@ -68,6 +78,7 @@ enum OrderStatus: String, Codable {
         case .completed: return "Completed"
         case .cancelled: return "Cancelled"
         case .rejected: return "Rejected"
+        case .unknown: return "Processing"
         }
     }
 
@@ -82,12 +93,13 @@ enum OrderStatus: String, Codable {
         case .delivered, .completed: return "house.fill"
         case .cancelled: return "xmark.circle.fill"
         case .rejected: return "exclamationmark.circle.fill"
+        case .unknown: return "questionmark.circle"
         }
     }
 
     var isActive: Bool {
         switch self {
-        case .scheduled, .pending, .accepted, .preparing, .ready, .pickedUp:
+        case .scheduled, .pending, .accepted, .preparing, .ready, .pickedUp, .unknown:
             return true
         default:
             return false
@@ -104,6 +116,7 @@ enum OrderStatus: String, Codable {
         case .pickedUp: return 4
         case .delivered, .completed: return 5
         case .cancelled, .rejected: return -1
+        case .unknown: return 0
         }
     }
 }
@@ -271,7 +284,7 @@ struct MenuItem: Codable, Identifiable {
     var modifierGroups: [ModifierGroup]?
 
     var priceFormatted: String {
-        "$\(String(format: "%.2f", Double(price) / 100))"
+        "$\(String(format: "%.2f", Double(max(price, 0)) / 100))"
     }
 
     var kashrusType: String {
@@ -384,7 +397,7 @@ struct Cart: Codable, Identifiable {
     var subtotal: Int
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(subtotal) / 100))"
+        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
     }
 
     var itemCount: Int {
@@ -409,7 +422,7 @@ struct CartItem: Codable, Identifiable {
     var selectedModifiers: [SelectedModifier]?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(price * quantity) / 100))"
+        "$\(String(format: "%.2f", Double(max(price * quantity, 0)) / 100))"
     }
 
     /// "Large • Extra hummus • Extra tahini" summary for the cart row.
@@ -485,29 +498,30 @@ struct Order: Codable, Identifiable {
     var courier: CourierPublic?
     var courierRating: Int?
     var courierTip: Int?
+    var fulfillmentType: String?
     var deliveryProofURL: String?
     var claimedAt: Date?
     var pickedUpAt: Date?
     var deliveredAt: Date?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(total) / 100))"
+        "$\(String(format: "%.2f", Double(max(total, 0)) / 100))"
     }
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(subtotal) / 100))"
+        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
     }
 
     var deliveryFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(deliveryFee) / 100))"
+        "$\(String(format: "%.2f", Double(max(deliveryFee, 0)) / 100))"
     }
 
     var serviceFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(serviceFee) / 100))"
+        "$\(String(format: "%.2f", Double(max(serviceFee, 0)) / 100))"
     }
 
     var taxFormatted: String {
-        "$\(String(format: "%.2f", Double(tax) / 100))"
+        "$\(String(format: "%.2f", Double(max(tax, 0)) / 100))"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -526,6 +540,7 @@ struct Order: Codable, Identifiable {
         case estDeliveryTime = "est_delivery_time"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case fulfillmentType = "fulfillment_type"
         case courierRating = "courier_rating"
         case courierTip = "courier_tip"
         case deliveryProofURL = "delivery_proof_url"
@@ -546,7 +561,7 @@ struct OrderItem: Codable, Identifiable {
     var selectedModifiers: [SelectedModifier]?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(price * quantity) / 100))"
+        "$\(String(format: "%.2f", Double(max(price * quantity, 0)) / 100))"
     }
 
     var modifierSummary: String? {

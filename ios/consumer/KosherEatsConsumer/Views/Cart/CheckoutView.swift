@@ -198,6 +198,7 @@ struct CheckoutView: View {
                 }
                 .buttonStyle(KEPrimaryButtonStyle(isEnabled: canPay))
                 .disabled(!canPay)
+                .accessibilityLabel(vm.bundle != nil ? "Place order for \(format(vm.bundle!.total))" : "Place order")
             }
             .padding()
             .background(Color.keBackgroundElevated)
@@ -269,6 +270,8 @@ private struct FulfillmentPicker: View {
             .background(isSelected ? Color.kePrimary : Color.clear)
             .cornerRadius(Theme.cornerRadiusMedium)
         }
+        .accessibilityLabel("\(title) fulfillment")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -303,6 +306,9 @@ private struct AddressCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(address != nil ? "Delivering to \(address!.formatted)" : "No delivery address set")
+        .accessibilityHint("Double tap to change address")
     }
 }
 
@@ -392,10 +398,10 @@ private struct DeliveryTimeCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.subheadline.bold())
-                    .foregroundColor(isSelected ? .white : .keTextSecondary)
+                    .foregroundColor(isSelected ? .keTextOnAccent : .keTextSecondary)
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundColor(isSelected ? .white.opacity(0.9) : .keTextTertiary)
+                    .foregroundColor(isSelected ? .keTextOnAccent.opacity(0.9) : .keTextTertiary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -404,6 +410,8 @@ private struct DeliveryTimeCard: View {
             .background(isSelected ? Color.kePrimary : Color.keBackgroundElevated)
             .cornerRadius(10)
         }
+        .accessibilityLabel("\(title): \(subtitle)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func formatted(_ date: Date) -> String {
@@ -463,6 +471,8 @@ private struct TipSelector: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Tip your driver")
     }
 }
 
@@ -520,6 +530,8 @@ private struct SavedCardCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Paying with \(brand.capitalized) ending in \(last4)")
     }
 }
 

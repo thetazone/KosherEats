@@ -1,14 +1,19 @@
 package com.koshereats.consumer.ui.screens.auth
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -29,14 +34,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -64,12 +75,19 @@ fun EmailLoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     val passwordFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.isLoggedIn, state.isGuest) {
         if (state.isLoggedIn && !state.isGuest) onLoginSuccess()
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
+    // Clear stale errors from prior screens on entry.
+    LaunchedEffect(Unit) { viewModel.clearError() }
+
+    Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack).imePadding()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -99,7 +117,10 @@ fun EmailLoginScreen(
 
             OutlinedTextField(
                 value = state.loginEmail,
-                onValueChange = viewModel::updateLoginEmail,
+                onValueChange = {
+                    viewModel.updateLoginEmail(it)
+                    if (state.error != null) viewModel.clearError()
+                },
                 label = { Text("Email") },
                 leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
                 modifier = Modifier.fillMaxWidth(),
@@ -114,14 +135,17 @@ fun EmailLoginScreen(
 
             OutlinedTextField(
                 value = state.loginPassword,
-                onValueChange = viewModel::updateLoginPassword,
+                onValueChange = {
+                    viewModel.updateLoginPassword(it)
+                    if (state.error != null) viewModel.clearError()
+                },
                 label = { Text("Password") },
                 leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
                             if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = null,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
                             tint = TextMuted,
                         )
                     }
@@ -135,19 +159,49 @@ fun EmailLoginScreen(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
             )
 
-            state.error?.let { msg ->
-                Spacer(Modifier.height(12.dp))
-                Text(msg, color = ErrorRed, fontSize = 14.sp)
+            // Forgot password — opens mail to support
+            TextButton(
+                onClick = {
+                    try {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@koshereats.dev"))
+                                .apply { putExtra(Intent.EXTRA_SUBJECT, "Password reset request") }
+                        )
+                    } catch (_: ActivityNotFoundException) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                "No email app available — contact support@koshereats.dev"
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(
+                    text = "Forgot password?",
+                    color = Orange,
+                    fontSize = 13.sp,
+                )
             }
 
-            Spacer(Modifier.height(24.dp))
+            state.error?.let { msg ->
+                Spacer(Modifier.height(12.dp))
+                Text(msg, color = ErrorRed, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
+            }
+
+            Spacer(Modifier.height(16.dp))
 
             Button(
                 onClick = { viewModel.login() },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                enabled = !state.isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Orange,
+                    disabledContainerColor = Orange.copy(alpha = 0.4f),
+                    contentColor = TextWhite,
+                    disabledContentColor = TextWhite.copy(alpha = 0.6f),
+                ),
+                enabled = state.loginEmail.isNotBlank() && state.loginPassword.isNotBlank() && !state.isLoading,
             ) {
                 if (state.isLoading) {
                     CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
@@ -169,6 +223,8 @@ fun EmailLoginScreen(
                 )
             }
         }
+    }
+    SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
 }
 

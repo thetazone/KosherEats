@@ -8,6 +8,8 @@ final class OrderChatViewModel: ObservableObject {
     @Published var sendErrorMessage: String?
     @Published var authErrorOccurred = false
 
+    static let maxMessageLength = 2000
+
     let orderID: String
 
     private let api = APIService.shared
@@ -51,7 +53,7 @@ final class OrderChatViewModel: ObservableObject {
     private func send(text: String, allowAuthRefresh: Bool) async -> Bool {
         let text = text.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return false }
-        guard text.count <= 2000 else {
+        guard text.count <= Self.maxMessageLength else {
             sendErrorMessage = "Message is too long"
             return false
         }
@@ -123,7 +125,7 @@ final class OrderChatViewModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if Task.isCancelled || self.authErrorOccurred { break }
                 await self.fetch(allowAuthRefresh: true)
-                if self.authErrorOccurred { break }
+                if Task.isCancelled || self.authErrorOccurred { break }
             }
         }
     }

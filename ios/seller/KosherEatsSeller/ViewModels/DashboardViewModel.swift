@@ -46,9 +46,13 @@ class DashboardViewModel: ObservableObject {
     }
 
     func startAutoRefresh() {
+        stopAutoRefresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Capture generation *inside* the task so it reflects the
+                // current value at tick time, not the value when the timer
+                // was created.
                 let gen = self.loadGeneration
                 await withTaskGroup(of: Void.self) { group in
                     group.addTask { await self.fetchActiveOrders(generation: gen) }
@@ -62,6 +66,7 @@ class DashboardViewModel: ObservableObject {
                 .dropFirst()
                 .removeDuplicates()
                 .sink { [weak self] _ in
+                    guard let self else { return }
                     Task { @MainActor [weak self] in
                         await self?.load()
                     }
@@ -72,6 +77,8 @@ class DashboardViewModel: ObservableObject {
     func stopAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        restaurantSubscription?.cancel()
+        restaurantSubscription = nil
     }
 
     @Published var isTogglingOpen = false
@@ -79,6 +86,7 @@ class DashboardViewModel: ObservableObject {
     func setRestaurantOpen(_ isOpen: Bool) async {
         guard !isTogglingOpen else { return }
         isTogglingOpen = true
+        errorMessage = nil
         let gen = loadGeneration
         defer { isTogglingOpen = false }
         do {
@@ -86,6 +94,7 @@ class DashboardViewModel: ObservableObject {
             guard gen == loadGeneration else { return }
             self.restaurant = result
         } catch {
+            guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -95,7 +104,7 @@ class DashboardViewModel: ObservableObject {
             let orders = try await APIService.shared.getOrders()
             guard generation == loadGeneration else { return }
             let filtered = orders.filter { $0.status.isActive }
-                .sorted { $0.createdAt < $1.createdAt }
+                .sorted { $0.createdAt > $1.createdAt }
             self.activeOrders = filtered
         } catch {
             guard generation == loadGeneration else { return }

@@ -76,8 +76,14 @@ class RestaurantPickerViewModel @Inject constructor(
         }
     }
 
+    private var selectJob: kotlinx.coroutines.Job? = null
+
     fun select(restaurantId: String, onDone: () -> Unit) {
-        viewModelScope.launch {
+        // If a previous select is still running (rapid double-tap on two rows), cancel it
+        // so we don't race two restaurantChanged emissions for inconsistent IDs.
+        selectJob?.cancel()
+        selectJob = viewModelScope.launch {
+            android.util.Log.i("RestaurantPickerVM", "Switching active restaurant to id=$restaurantId")
             SelectedRestaurant.set(context, restaurantId)
             // Wait until the DataStore flow reflects the new ID so that any
             // runBlocking { flow.first() } on the OkHttp interceptor thread

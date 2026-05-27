@@ -41,6 +41,15 @@ object PrefsKeys {
     val RESTAURANT_ID = stringPreferencesKey("restaurant_id")
 }
 
+// URL configuration:
+// BuildConfig.BASE_URL is set in app/build.gradle.kts — one value per build
+// type (debug / release). Both currently point at the production Fly.io
+// backend (greeneats-api.fly.dev). To test against a local backend, override
+// the debug buildConfigField in build.gradle.kts to "http://10.0.2.2:8080/api/v1/"
+// (10.0.2.2 is the emulator's alias for the host machine's localhost).
+//
+// On iOS the equivalent lives in APIService.swift as a hardcoded baseURL with
+// an environment-variable override (KOSHEREATS_API_URL) in DEBUG builds.
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
@@ -156,12 +165,17 @@ private class TokenAuthenticator(
         .build()
 
     override fun authenticate(route: Route?, response: okhttp3.Response): okhttp3.Request? {
+        // Bail after 1 prior attempt to avoid infinite retry loops
         if (responseCount(response) > 1) return null
 
         val path = response.request.url.encodedPath
         if (path.contains("/auth/")) return null
 
         synchronized(lock) {
+            // Check if another thread already refreshed the token while we
+            // waited on the lock. If so, just retry with the new token
+            // instead of hitting /auth/refresh again (avoids race condition
+            // where N concurrent 401s each trigger a separate refresh).
             val currentToken = NetworkModule.cachedToken
             val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
 
@@ -183,6 +197,13 @@ private class TokenAuthenticator(
 
             NetworkModule.cachedToken = newTokens.first
             NetworkModule.cachedRefreshToken = newTokens.second
+
+            // RISK: runBlocking on an OkHttp thread can deadlock if the
+            // DataStore dispatcher is contended. This is acceptable here
+            // because (a) the synchronized(lock) already serialises
+            // refresh attempts, (b) DataStore I/O is fast, and (c) the
+            // alternative (fire-and-forget) risks losing the new token if
+            // the process dies before the write completes.
             runBlocking {
                 context.dataStore.edit { prefs ->
                     prefs[PrefsKeys.AUTH_TOKEN] = newTokens.first
@@ -206,10 +227,17 @@ private class TokenAuthenticator(
 
         return try {
             refreshClient.newCall(request).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    val parsed = JSONObject(resp.body?.string() ?: return null)
-                    Pair(parsed.getString("token"), parsed.getString("refresh_token"))
-                } else null
+                if (!resp.isSuccessful) return@use null
+
+                val bodyString = resp.body?.string()
+                if (bodyString.isNullOrBlank()) return@use null
+
+                val parsed = JSONObject(bodyString)
+                val token = parsed.optString("token", "")
+                val newRefresh = parsed.optString("refresh_token", "")
+                if (token.isBlank() || newRefresh.isBlank()) return@use null
+
+                Pair(token, newRefresh)
             }
         } catch (_: Exception) {
             null

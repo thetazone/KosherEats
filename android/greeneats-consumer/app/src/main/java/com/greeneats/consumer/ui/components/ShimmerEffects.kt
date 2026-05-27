@@ -7,14 +7,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.greeneats.consumer.ui.theme.SurfaceDark
 import com.greeneats.consumer.ui.theme.SurfaceDarkElevated
 
+/**
+ * Returns a shimmer [Brush] suitable for use in [Modifier.drawBehind].
+ * The animation runs on the render thread via [graphicsLayer] on each
+ * shimmer placeholder, keeping the main-thread cost near zero.
+ */
 @Composable
 fun ShimmerBrush(
     targetValue: Float = 1000f,
@@ -32,7 +41,7 @@ fun ShimmerBrush(
             initialValue = 0f,
             targetValue = targetValue,
             animationSpec = infiniteRepeatable(
-                animation = tween(800), repeatMode = RepeatMode.Restart
+                animation = tween(800, easing = LinearEasing), repeatMode = RepeatMode.Restart
             ),
             label = "shimmer"
         )
@@ -51,6 +60,19 @@ fun ShimmerBrush(
     }
 }
 
+/**
+ * Modifier that draws the shimmer gradient behind the content on the GPU
+ * render thread via [graphicsLayer] + [drawBehind], avoiding main-thread
+ * recomposition on every animation frame.
+ */
+@Composable
+private fun Modifier.shimmerBackground(): Modifier {
+    val brush = ShimmerBrush()
+    return this
+        .graphicsLayer { /* promotes to a hardware layer for GPU compositing */ }
+        .drawBehind { drawRect(brush) }
+}
+
 @Composable
 fun RestaurantCardShimmer() {
     Column(
@@ -59,12 +81,14 @@ fun RestaurantCardShimmer() {
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
+            // Hide entire shimmer tree from screen readers
+            .clearAndSetSemantics { contentDescription = "Loading restaurant" }
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(132.dp)
-                .background(ShimmerBrush())
+                .shimmerBackground()
         )
         Column(modifier = Modifier.padding(12.dp)) {
             Box(
@@ -72,7 +96,7 @@ fun RestaurantCardShimmer() {
                     .fillMaxWidth(0.6f)
                     .height(20.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(ShimmerBrush())
+                    .shimmerBackground()
             )
             Spacer(modifier = Modifier.height(8.dp))
             Box(
@@ -80,7 +104,7 @@ fun RestaurantCardShimmer() {
                     .fillMaxWidth(0.4f)
                     .height(16.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(ShimmerBrush())
+                    .shimmerBackground()
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -88,13 +112,13 @@ fun RestaurantCardShimmer() {
                     modifier = Modifier
                         .size(60.dp, 24.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(ShimmerBrush())
+                        .shimmerBackground()
                 )
                 Box(
                     modifier = Modifier
                         .size(60.dp, 24.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(ShimmerBrush())
+                        .shimmerBackground()
                 )
             }
         }
@@ -109,7 +133,9 @@ fun MenuItemShimmer() {
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
-            .padding(12.dp),
+            .padding(12.dp)
+            // Hide entire shimmer tree from screen readers
+            .clearAndSetSemantics { contentDescription = "Loading menu item" },
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -118,7 +144,7 @@ fun MenuItemShimmer() {
                     .fillMaxWidth(0.7f)
                     .height(20.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(ShimmerBrush())
+                    .shimmerBackground()
             )
             Spacer(modifier = Modifier.height(8.dp))
             Box(
@@ -126,14 +152,14 @@ fun MenuItemShimmer() {
                     .fillMaxWidth(0.9f)
                     .height(16.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(ShimmerBrush())
+                    .shimmerBackground()
             )
             Spacer(modifier = Modifier.height(12.dp))
             Box(
                 modifier = Modifier
                     .size(60.dp, 20.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(ShimmerBrush())
+                    .shimmerBackground()
             )
         }
         Spacer(modifier = Modifier.width(12.dp))
@@ -141,7 +167,7 @@ fun MenuItemShimmer() {
             modifier = Modifier
                 .size(80.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(ShimmerBrush())
+                .shimmerBackground()
         )
     }
 }

@@ -121,11 +121,26 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    fun clearError() {
+        if (_state.value.error != null) {
+            _state.value = _state.value.copy(error = null)
+        }
+    }
+
     fun login(email: String, password: String) {
+        val trimmedEmail = email.trim()
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
+            _state.value = _state.value.copy(error = "Please enter a valid email address")
+            return
+        }
+        if (password.isBlank()) {
+            _state.value = _state.value.copy(error = "Please enter your password")
+            return
+        }
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val response = apiService.login(LoginRequest(email, password))
+                val response = apiService.login(LoginRequest(trimmedEmail, password))
                 if (response.isSuccessful) {
                     val body = response.body()
                     if (body == null) {
@@ -155,18 +170,31 @@ class AuthViewModel @Inject constructor(
                     PushBootstrap.registerCurrentToken(apiService)
                     loadRestaurant()
                 } else {
-                    _state.value = _state.value.copy(
-                        isLoading = false,
-                        error = "Invalid credentials. Please try again.",
-                    )
+                    android.util.Log.w("SellerAuth", "login ${response.code()}")
+                    val msg = when (response.code()) {
+                        401 -> "Incorrect email or password"
+                        403 -> "Your account has been locked — please contact support"
+                        422 -> "Please check your details and try again"
+                        429 -> "Too many attempts — please try again later"
+                        in 500..599 -> "Server error — please try again later"
+                        else -> "Login failed"
+                    }
+                    _state.value = _state.value.copy(isLoading = false, error = msg)
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Connection error: ${e.message}",
+                    error = friendlyNetworkError(e),
                 )
             }
         }
+    }
+
+    private fun friendlyNetworkError(e: Throwable): String = when (e) {
+        is java.net.UnknownHostException -> "No internet connection"
+        is java.net.SocketTimeoutException -> "The server took too long to respond"
+        is java.io.IOException -> "Network error — please try again"
+        else -> e.localizedMessage ?: "Something went wrong"
     }
 
     fun socialLogin(provider: String, token: String, firstName: String, lastName: String) {
@@ -218,7 +246,7 @@ class AuthViewModel @Inject constructor(
                 )
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = "Connection error: ${e.javaClass.simpleName} — ${e.message ?: "no message"}",
+                    error = friendlyNetworkError(e),
                 )
             }
         }
@@ -237,9 +265,14 @@ class AuthViewModel @Inject constructor(
                 },
                 onFailure = { e ->
                     android.util.Log.e("GoogleSignIn", "failure: ${e.javaClass.name} — ${e.message}")
+                    val raw = e.message.orEmpty()
+                    // Suppress the user-initiated cancel — backing out of the picker shouldn't
+                    // surface as a red error string.
+                    val isCancel = raw.equals("cancelled", ignoreCase = true) ||
+                        raw.contains("cancel", ignoreCase = true)
                     _state.value = _state.value.copy(
                         isLoading = false,
-                        error = e.message ?: "Google Sign-In failed",
+                        error = if (isCancel) null else (raw.ifBlank { "Google Sign-In failed" }),
                     )
                 },
             )
@@ -251,7 +284,12 @@ class AuthViewModel @Inject constructor(
             try {
                 val response = apiService.updateRestaurant(mapOf(key to value))
                 if (response.isSuccessful) {
-                    _state.value = _state.value.copy(restaurant = response.body())
+                    val updated = response.body()
+                    if (updated != null) {
+                        _state.value = _state.value.copy(restaurant = updated)
+                    } else {
+                        _state.value = _state.value.copy(updateFieldError = "Server returned empty response.")
+                    }
                 } else {
                     _state.value = _state.value.copy(
                         updateFieldError = "Failed to save changes (HTTP ${response.code()})",
@@ -301,7 +339,8 @@ class AuthViewModel @Inject constructor(
     }
 
     fun updatePhoneNumber(value: String) {
-        _state.value = _state.value.copy(phoneNumber = value.filter { it.isDigit() })
+        // E.164 max is 15 digits — cap input length so the value cannot grow without bound.
+        _state.value = _state.value.copy(phoneNumber = value.filter { it.isDigit() }.take(15))
     }
 
     fun updateOtpCode(value: String) {
@@ -326,8 +365,9 @@ class AuthViewModel @Inject constructor(
 
     fun startPhoneLogin() {
         val current = _state.value
-        val e164 = "${current.phoneCountryCode}${current.phoneNumber}"
-        if (current.phoneNumber.length < 7) {
+        val countryCode = current.phoneCountryCode.trim().let { if (it.startsWith("+")) it else "+$it" }
+        val e164 = "$countryCode${current.phoneNumber}"
+        if (current.phoneNumber.length < 7 || countryCode.length < 2) {
             _state.value = current.copy(error = "Enter a valid phone number")
             return
         }

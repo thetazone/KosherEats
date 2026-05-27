@@ -49,7 +49,7 @@ struct OrderChatView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.fill")
-                        Text("Session expired — tap to sign in again")
+                        Text(String(localized: "Session expired — tap to sign in again"))
                             .fontWeight(.semibold)
                         Spacer()
                         Image(systemName: "chevron.right")
@@ -114,7 +114,7 @@ struct OrderChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: 8) {
-            TextField("Type a message…", text: $input, axis: .vertical)
+            TextField(String(localized: "Type a message…"), text: $input, axis: .vertical)
                 .lineLimit(1...4)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)

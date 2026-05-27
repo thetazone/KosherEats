@@ -113,7 +113,7 @@ fun EmailLoginScreen(
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
                             if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = null,
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password",
                             tint = TextMuted,
                         )
                     }
@@ -133,12 +133,18 @@ fun EmailLoginScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            val canSubmit = state.loginEmail.isNotBlank() && state.loginPassword.isNotBlank()
             Button(
                 onClick = { viewModel.login() },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                enabled = !state.isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (canSubmit) Orange else Orange.copy(alpha = 0.4f),
+                    disabledContainerColor = Orange.copy(alpha = 0.4f),
+                    contentColor = TextWhite,
+                    disabledContentColor = TextWhite,
+                ),
+                enabled = canSubmit && !state.isLoading,
             ) {
                 if (state.isLoading) {
                     CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))

@@ -1,6 +1,7 @@
 package com.greeneats.seller.ui.screens.dashboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,11 +107,31 @@ fun RestaurantPickerSheet(
                     )
                 }
                 state.restaurants.isEmpty() -> {
-                    Text(
-                        text = "No restaurants assigned to this seller account yet.",
-                        color = TextMuted,
-                        fontSize = 13.sp,
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Storefront,
+                            contentDescription = null,
+                            tint = TextMuted,
+                            modifier = Modifier.size(40.dp),
+                        )
+                        Text(
+                            text = "No restaurants yet",
+                            color = TextWhite,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = "No restaurants are assigned to this seller account yet.",
+                            color = TextMuted,
+                            fontSize = 13.sp,
+                        )
+                    }
                 }
                 else -> {
                     // Small list (a seller's own restaurants, usually < 10)
@@ -144,13 +170,24 @@ private fun RestaurantRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
+    val statusText = if (restaurant.isOpen) "Open" else "Closed"
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceDark)
-            .clickable { onClick() }
-            .padding(14.dp),
+            .background(if (isSelected) SurfaceDark.copy(alpha = 0.9f) else SurfaceDark)
+            .border(
+                width = if (isSelected) 1.dp else 0.dp,
+                color = if (isSelected) Orange.copy(alpha = 0.5f) else SurfaceDark,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .clickable(role = Role.RadioButton) { onClick() }
+            .padding(14.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${restaurant.name}, $statusText${if (isSelected) ", currently selected" else ""}"
+                selected = isSelected
+                role = Role.RadioButton
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -163,12 +200,12 @@ private fun RestaurantRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = restaurant.name,
-                color = TextWhite,
+                color = if (isSelected) TextWhite else TextWhite.copy(alpha = 0.85f),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = if (restaurant.isOpen) "Open" else "Closed",
+                text = statusText,
                 color = if (restaurant.isOpen) Orange else TextMuted,
                 fontSize = 12.sp,
             )

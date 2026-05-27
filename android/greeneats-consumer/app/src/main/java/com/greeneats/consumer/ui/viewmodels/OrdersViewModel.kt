@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class OrdersUiState(
     val orders: List<Order> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val error: String? = null,
     val currentPage: Int = 1,
     val hasMore: Boolean = true,
@@ -60,6 +61,30 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun refresh() {
-        loadOrders(page = 1)
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            repository.getOrders(page = 1).collect { result ->
+                when (result) {
+                    is Resource.Loading -> {
+                        // keep isRefreshing true, skip isLoading to avoid skeleton flash
+                    }
+                    is Resource.Success -> {
+                        _uiState.update { state ->
+                            state.copy(
+                                orders = result.data,
+                                isLoading = false,
+                                isRefreshing = false,
+                                currentPage = 1,
+                                hasMore = result.data.size >= 50,
+                                error = null,
+                            )
+                        }
+                    }
+                    is Resource.Error -> {
+                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message) }
+                    }
+                }
+            }
+        }
     }
 }

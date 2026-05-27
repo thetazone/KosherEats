@@ -1,7 +1,13 @@
 package com.greeneats.seller.push
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.messaging.FirebaseMessaging
@@ -27,6 +33,9 @@ object PushBootstrap {
     @Volatile
     private var initialized: Boolean = false
 
+    /** Request code callers can use to match the POST_NOTIFICATIONS permission result. */
+    const val REQUEST_CODE_POST_NOTIFICATIONS = 9001
+
     fun init(context: Context) {
         if (BuildConfig.FIREBASE_PROJECT_ID.isBlank() ||
             BuildConfig.FIREBASE_API_KEY.isBlank() ||
@@ -39,15 +48,36 @@ object PushBootstrap {
             initialized = true
             return
         }
-        val options = FirebaseOptions.Builder()
-            .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
-            .setApplicationId(BuildConfig.FIREBASE_APP_ID)
-            .setApiKey(BuildConfig.FIREBASE_API_KEY)
-            .setGcmSenderId(BuildConfig.FIREBASE_SENDER_ID)
-            .build()
-        FirebaseApp.initializeApp(context, options)
-        initialized = true
-        Log.i(TAG, "Firebase initialized for project=${BuildConfig.FIREBASE_PROJECT_ID}")
+        try {
+            val options = FirebaseOptions.Builder()
+                .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
+                .setApplicationId(BuildConfig.FIREBASE_APP_ID)
+                .setApiKey(BuildConfig.FIREBASE_API_KEY)
+                .setGcmSenderId(BuildConfig.FIREBASE_SENDER_ID)
+                .build()
+            FirebaseApp.initializeApp(context, options)
+            initialized = true
+            Log.i(TAG, "Firebase initialized for project=${BuildConfig.FIREBASE_PROJECT_ID}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Firebase initialization failed: ${e.message}", e)
+            // Leave initialized = false so push calls are no-ops.
+        }
+    }
+
+    /**
+     * On Android 13+ (API 33), POST_NOTIFICATIONS is a runtime permission.
+     * Call from your main Activity's onCreate or after login. Returns true
+     * if the permission is already granted; false if a request was launched
+     * (result arrives in onRequestPermissionsResult).
+     */
+    fun ensureNotificationPermission(activity: Activity): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        val perm = Manifest.permission.POST_NOTIFICATIONS
+        if (ContextCompat.checkSelfPermission(activity, perm) == PackageManager.PERMISSION_GRANTED) {
+            return true
+        }
+        ActivityCompat.requestPermissions(activity, arrayOf(perm), REQUEST_CODE_POST_NOTIFICATIONS)
+        return false
     }
 
     /**
@@ -63,7 +93,7 @@ object PushBootstrap {
                 api.registerDevice(RegisterDeviceRequest(token = token))
                 Log.i(TAG, "FCM token registered")
             } catch (t: Throwable) {
-                Log.w(TAG, "FCM token registration failed: ${t.message}")
+                Log.w(TAG, "FCM token registration failed: ${t.message}", t)
             }
         }
     }

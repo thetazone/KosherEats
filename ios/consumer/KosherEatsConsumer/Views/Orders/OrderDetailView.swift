@@ -85,12 +85,8 @@ struct OrderDetailView: View {
                     .padding(.top)
                 }
             } else if let error = vm.errorMessage {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 40))
-                        .foregroundColor(.keError)
-                    Text(error)
-                        .foregroundColor(.keTextSecondary)
+                ErrorStateView(message: error) {
+                    Task { await vm.loadOrder(id: orderID) }
                 }
             }
         }
@@ -139,6 +135,8 @@ struct OrderDetailView: View {
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusLarge)
         .padding(.horizontal)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Order status: \(order.status.displayName), step \(order.status.stepIndex + 1) of 6")
     }
 
     private func progressSteps(currentStep: Int) -> some View {
@@ -270,6 +268,7 @@ struct OrderDetailView: View {
             Image(systemName: "mappin.circle.fill")
                 .font(.system(size: 24))
                 .foregroundColor(.kePrimary)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Delivery Address")
@@ -286,6 +285,8 @@ struct OrderDetailView: View {
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
         .padding(.horizontal)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Delivery address: \(order.deliveryAddress)")
     }
 
     // MARK: - Price Breakdown

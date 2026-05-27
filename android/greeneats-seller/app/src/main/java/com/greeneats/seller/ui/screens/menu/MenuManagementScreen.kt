@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
@@ -31,20 +33,28 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +66,8 @@ import com.greeneats.seller.data.models.MenuCategory
 import com.greeneats.seller.data.models.MenuItem
 import com.greeneats.seller.data.models.formatPrice
 import com.greeneats.seller.ui.theme.BackgroundBlack
+import com.greeneats.seller.ui.theme.DividerColor
+import com.greeneats.seller.ui.theme.ErrorRed
 import com.greeneats.seller.ui.theme.Orange
 import com.greeneats.seller.ui.theme.SuccessGreen
 import com.greeneats.seller.ui.theme.SurfaceDark
@@ -72,7 +84,7 @@ fun MenuManagementScreen(
     onEditItem: (String) -> Unit,
     viewModel: MenuViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -84,8 +96,19 @@ fun MenuManagementScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    var searchQuery by remember { mutableStateOf("") }
+
     val categories = listOf(null to "All") + MenuCategory.entries.map { cat ->
         cat to cat.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
+    }
+
+    val filteredItems = if (searchQuery.isBlank()) {
+        state.items
+    } else {
+        state.items.filter { item ->
+            item.name.contains(searchQuery, ignoreCase = true) ||
+                item.description.contains(searchQuery, ignoreCase = true)
+        }
     }
 
     Scaffold(
@@ -121,6 +144,50 @@ fun MenuManagementScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                 )
+            }
+
+            // Search bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search menu items...", color = TextMuted) },
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = "Search", tint = TextMuted)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotBlank()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear", tint = TextMuted)
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextWhite,
+                    unfocusedTextColor = TextWhite,
+                    focusedBorderColor = Orange,
+                    unfocusedBorderColor = DividerColor,
+                    cursorColor = Orange,
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                ),
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Error message
+            state.error?.let { errorMessage ->
+                Text(
+                    text = errorMessage,
+                    color = ErrorRed,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             // Category chips
@@ -164,7 +231,7 @@ fun MenuManagementScreen(
                 ) {
                     CircularProgressIndicator(color = Orange)
                 }
-            } else if (state.items.isEmpty()) {
+            } else if (filteredItems.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
@@ -188,9 +255,10 @@ fun MenuManagementScreen(
                     modifier = Modifier.padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(state.items, key = { it.id }) { item ->
+                    items(filteredItems, key = { it.id }) { item ->
                         MenuItemCard(
                             item = item,
+                            isPending = state.pendingItemIds.contains(item.id),
                             onEdit = { onEditItem(item.id) },
                             onToggleAvailability = { viewModel.toggleAvailability(item) },
                         )
@@ -205,6 +273,7 @@ fun MenuManagementScreen(
 @Composable
 private fun MenuItemCard(
     item: MenuItem,
+    isPending: Boolean,
     onEdit: () -> Unit,
     onToggleAvailability: () -> Unit,
 ) {
@@ -320,9 +389,18 @@ private fun MenuItemCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                val availabilityLabel = if (item.isAvailable) {
+                    "${item.name}, available. Double tap to mark unavailable"
+                } else {
+                    "${item.name}, unavailable. Double tap to mark available"
+                }
                 Switch(
                     checked = item.isAvailable,
                     onCheckedChange = { onToggleAvailability() },
+                    enabled = !isPending,
+                    modifier = Modifier.semantics {
+                        contentDescription = availabilityLabel
+                    },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextWhite,
                         checkedTrackColor = SuccessGreen,

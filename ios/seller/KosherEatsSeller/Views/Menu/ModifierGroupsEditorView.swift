@@ -51,6 +51,7 @@ struct ModifierGroupsEditorView: View {
                     Image(systemName: "plus")
                         .foregroundColor(.kePrimary)
                 }
+                .accessibilityLabel("Add modifier group")
             }
         }
         .task { await load() }
@@ -61,6 +62,7 @@ struct ModifierGroupsEditorView: View {
             Image(systemName: "slider.horizontal.3")
                 .font(.system(size: 48))
                 .foregroundColor(.keTextMuted)
+                .accessibilityHidden(true)
             Text("No modifier groups yet")
                 .font(.headline)
                 .foregroundColor(.keTextSecondary)
@@ -70,6 +72,7 @@ struct ModifierGroupsEditorView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var groupList: some View {
@@ -128,6 +131,9 @@ struct ModifierGroupsEditorView: View {
         .padding()
         .background(Color.keCard)
         .cornerRadius(12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.name), \(group.modifiers.count) options, pick \(selectionSummary(group))\(group.isRequired ? ", required" : "")")
+        .accessibilityHint("Double tap to edit")
     }
 
     private func selectionSummary(_ g: ModifierGroup) -> String {
@@ -189,6 +195,7 @@ struct ModifierGroupEditorView: View {
                             .padding()
                             .background(Color.keCard)
                             .cornerRadius(12)
+                            .accessibilityLabel("Group name")
                     }
 
                     formSection("Selection Rules") {
@@ -304,6 +311,7 @@ struct ModifierGroupEditorView: View {
             TextField("Option name", text: binding.name)
                 .foregroundColor(.keTextPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("Option name")
 
             HStack(spacing: 2) {
                 Text("$")
@@ -312,14 +320,16 @@ struct ModifierGroupEditorView: View {
                 TextField("0.00", text: Binding(
                     get: { String(format: "%.2f", Double(opt.priceDelta) / 100) },
                     set: { newVal in
-                        let cents = Int(round((Double(newVal) ?? 0) * 100))
+                        let filtered = newVal.filter { $0.isNumber || $0 == "." }
+                        let cents = max(0, Int(round((Double(filtered) ?? 0) * 100)))
                         binding.wrappedValue.priceDelta = cents
                     }
                 ))
-                .keyboardType(.numbersAndPunctuation)
+                .keyboardType(.decimalPad)
                 .foregroundColor(.keTextPrimary)
                 .frame(width: 60)
                 .multilineTextAlignment(.trailing)
+                .accessibilityLabel("Price adjustment in dollars")
             }
 
             Button {
@@ -330,6 +340,7 @@ struct ModifierGroupEditorView: View {
                 Image(systemName: "minus.circle.fill")
                     .foregroundColor(.keError)
             }
+            .accessibilityLabel("Remove \(opt.name.isEmpty ? "option" : opt.name)")
         }
         .padding()
         .background(Color.keCard)
@@ -356,7 +367,9 @@ struct ModifierGroupEditorView: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && maxSelections >= minSelections
             && (!isRequired || minSelections >= 1)
+            && !options.isEmpty
             && options.allSatisfy { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+            && options.allSatisfy { $0.priceDelta >= 0 }
     }
 
     private func save() async {

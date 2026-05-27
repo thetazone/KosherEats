@@ -88,7 +88,9 @@ class RestaurantViewModel @Inject constructor(
                     is Resource.Success -> {
                         _uiState.update { it.copy(restaurantDeals = result.data) }
                     }
-                    is Resource.Error -> {}
+                    is Resource.Error -> {
+                        _uiState.update { it.copy(error = result.message) }
+                    }
                 }
             }
         }

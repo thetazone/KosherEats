@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -94,6 +95,22 @@ fun NavGraph() {
         }
     }
 
+    // Deep-link from push notifications: when the user taps an order
+    // notification, the FCM handler launches MainActivity with an
+    // "order_id" extra. Navigate straight to the detail screen once
+    // the user is authenticated.
+    val context = LocalContext.current
+    LaunchedEffect(authState.isLoggedIn) {
+        if (!authState.isLoggedIn) return@LaunchedEffect
+        val activity = context as? android.app.Activity ?: return@LaunchedEffect
+        val orderId = activity.intent?.getStringExtra("order_id")
+        if (!orderId.isNullOrBlank()) {
+            // Consume the extra so we don't re-navigate on recomposition.
+            activity.intent?.removeExtra("order_id")
+            navController.navigate(Screen.OrderDetail.createRoute(orderId))
+        }
+    }
+
     Scaffold(
         containerColor = BackgroundBlack,
         bottomBar = {
@@ -112,10 +129,12 @@ fun NavGraph() {
                             it.route == screen.route
                         } == true
 
+                        val icon = if (selected) screen.selectedIcon else screen.unselectedIcon
+                        if (icon == null) return@forEach
                         NavigationBarItem(
                             icon = {
                                 Icon(
-                                    imageVector = if (selected) screen.selectedIcon!! else screen.unselectedIcon!!,
+                                    imageVector = icon,
                                     contentDescription = screen.title,
                                 )
                             },
@@ -212,7 +231,12 @@ fun NavGraph() {
                 route = Screen.OrderDetail.route,
                 arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
             ) { backStackEntry ->
-                val orderId = backStackEntry.arguments?.getString("orderId") ?: return@composable
+                val orderId = backStackEntry.arguments?.getString("orderId")
+                if (orderId.isNullOrBlank()) {
+                    // Argument missing -- navigate back rather than showing a blank screen
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
                 SellerOrderDetailScreen(
                     orderId = orderId,
                     onBack = { navController.popBackStack() },
@@ -271,10 +295,9 @@ fun NavGraph() {
             composable(Screen.Settings.route) {
                 RestaurantSettingsScreen(
                     onLogout = {
+                        // The LaunchedEffect(authState.isLoggedIn) at the top of NavGraph
+                        // handles redirecting to Login once isLoggedIn flips false.
                         authViewModel.logout()
-                        navController.navigate(Screen.Login.route) {
-                            popUpTo(0) { inclusive = true }
-                        }
                     },
                     onIntegrations = {
                         navController.navigate(Screen.Integrations.route)

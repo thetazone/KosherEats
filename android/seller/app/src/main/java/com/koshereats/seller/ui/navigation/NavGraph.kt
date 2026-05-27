@@ -79,6 +79,11 @@ fun NavGraph(
     LaunchedEffect(initialOrderId, authState.isLoggedIn, authState.hasRestaurants) {
         val orderId = initialOrderId ?: return@LaunchedEffect
         if (!authState.isLoggedIn || authState.hasRestaurants != true) return@LaunchedEffect
+        if (orderId.isBlank() || !orderId.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+            android.util.Log.w("NavGraph", "Dropping deep-link with invalid order_id='$orderId'")
+            onOrderDeepLinkConsumed()
+            return@LaunchedEffect
+        }
         navController.navigate(Screen.OrderDetail.createRoute(orderId)) {
             launchSingleTop = true
         }

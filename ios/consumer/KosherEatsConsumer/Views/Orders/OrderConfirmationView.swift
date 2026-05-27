@@ -22,6 +22,7 @@ struct OrderConfirmationView: View {
                             .font(.system(size: 28))
                             .foregroundColor(.keTextMuted)
                     }
+                    .accessibilityLabel("Close")
                 }
                 .padding()
 
@@ -100,7 +101,7 @@ struct OrderConfirmationView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 showCheckmark = true
             }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            Haptics.success()
         }
     }
 
@@ -118,13 +119,18 @@ struct OrderConfirmationView: View {
                 .font(.system(size: 44, weight: .bold))
                 .foregroundColor(.keSuccess)
         }
+        .accessibilityLabel("Order confirmed")
     }
 
     // MARK: - ETA
 
+    private var isPickup: Bool {
+        order.fulfillmentType == "pickup"
+    }
+
     private var etaCard: some View {
         VStack(spacing: 8) {
-            Text("Estimated delivery")
+            Text(isPickup ? "Estimated pickup" : "Estimated delivery")
                 .font(.caption)
                 .foregroundColor(.keTextTertiary)
             Text(etaText)
@@ -138,6 +144,8 @@ struct OrderConfirmationView: View {
         .frame(maxWidth: .infinity)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(isPickup ? "Estimated pickup" : "Estimated delivery") at \(etaText), Order number \(order.id.prefix(8))")
     }
 
     // MARK: - Courier
@@ -194,6 +202,7 @@ struct OrderConfirmationView: View {
                         .font(.system(size: 36))
                         .foregroundColor(.keSuccess)
                 }
+                .accessibilityLabel("Call \(courier.firstName)")
             }
         }
         .padding()
@@ -288,11 +297,11 @@ struct OrderConfirmationView: View {
 
     private var addressCard: some View {
         HStack(spacing: 10) {
-            Image(systemName: "mappin.circle.fill")
+            Image(systemName: isPickup ? "bag.circle.fill" : "mappin.circle.fill")
                 .font(.system(size: 24))
                 .foregroundColor(.kePrimary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Delivering to")
+                Text(isPickup ? "Pickup from" : "Delivering to")
                     .font(.system(size: 12))
                     .foregroundColor(.keTextTertiary)
                 Text(order.deliveryAddress)
@@ -304,6 +313,7 @@ struct OrderConfirmationView: View {
         .padding()
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Helpers

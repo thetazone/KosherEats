@@ -34,6 +34,7 @@ struct RestaurantCardView: View {
                         .clipShape(Circle())
                 }
                 .padding(4)
+                .accessibilityLabel(isFavorite ? String(localized: "Remove \(restaurant.name) from favorites") : String(localized: "Add \(restaurant.name) to favorites"))
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -111,6 +112,8 @@ struct RestaurantCardView: View {
         .padding(12)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(restaurant.name), \(restaurant.kosherCertification.displayName), \(restaurant.ratingFormatted) stars, \(restaurant.deliveryTimeFormatted) delivery\(restaurant.isOpen ? "" : ", closed")")
     }
 }
 

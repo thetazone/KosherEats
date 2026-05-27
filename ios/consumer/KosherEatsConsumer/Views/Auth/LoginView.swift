@@ -70,6 +70,8 @@ struct LoginView: View {
                                     .background(Color.keCard)
                                     .cornerRadius(Theme.cornerRadiusMedium)
                                 }
+                                .accessibilityLabel("Country code: \(selectedCountry.name) \(selectedCountry.dialCode)")
+                                .accessibilityHint("Double tap to change country code")
 
                                 TextField("Mobile number", text: $phoneDigits)
                                     .keyboardType(.numberPad)
@@ -117,6 +119,7 @@ struct LoginView: View {
                                 .cornerRadius(Theme.cornerRadiusMedium)
                             }
                             .disabled(!isPhoneValid || authVM.isLoading)
+                            .accessibilityHint(isPhoneValid ? "Double tap to send verification code" : "Enter a valid phone number first")
                         }
                         .padding(.horizontal)
 
@@ -230,6 +233,8 @@ struct LoginView: View {
                                 .foregroundColor(.keError)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
+                                .accessibilityLabel("Error: \(error)")
+                                .accessibilityAddTraits(.isStaticText)
                         }
 
                         Spacer().frame(height: 40)

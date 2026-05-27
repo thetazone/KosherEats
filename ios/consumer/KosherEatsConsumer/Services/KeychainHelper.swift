@@ -4,25 +4,32 @@ import Security
 enum KeychainHelper {
     private static func logFailure(_ operation: String, status: OSStatus, key: String) {
         guard status != errSecSuccess, status != errSecItemNotFound else { return }
+        #if DEBUG
         print("[keychain] \(operation) failed for \(key): \(status)")
+        #endif
     }
 
-    static func save(_ value: String, forKey key: String) {
+    @discardableResult
+    static func save(_ value: String, forKey key: String) -> Bool {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key
         ]
         let deleteStatus = SecItemDelete(query as CFDictionary)
-        logFailure("delete-before-save", status: deleteStatus, key: key)
+        if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+            logFailure("delete-before-save", status: deleteStatus, key: key)
+            return false
+        }
         let attrs: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
         let addStatus = SecItemAdd(attrs as CFDictionary, nil)
         logFailure("save", status: addStatus, key: key)
+        return addStatus == errSecSuccess
     }
 
     static func load(forKey key: String) -> String? {

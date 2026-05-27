@@ -63,6 +63,17 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // Dedup by FCM message id — duplicates can arrive after FCM reconnect.
+        val msgId = message.messageId
+        if (msgId != null && !recentMessageIds.add(msgId)) {
+            android.util.Log.d("KosherEatsMessagingService", "duplicate FCM message_id=$msgId — ignoring")
+            return
+        }
+        if (recentMessageIds.size > 64) {
+            // Bounded LRU-ish: just clear when it grows so memory stays flat.
+            recentMessageIds.clear()
+            msgId?.let { recentMessageIds.add(it) }
+        }
         val title = message.notification?.title ?: message.data["title"] ?: "KosherEats"
         val body = message.notification?.body ?: message.data["body"] ?: ""
         showNotification(this, title, body, message.data["order_id"])
@@ -70,6 +81,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
 
     companion object {
         const val CHANNEL_ID = "koshereats_consumer_default"
+        private val recentMessageIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -102,6 +114,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
                 .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .setContentIntent(pi)

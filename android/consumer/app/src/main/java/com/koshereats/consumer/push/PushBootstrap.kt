@@ -61,25 +61,36 @@ object PushBootstrap {
     fun registerCurrentToken(api: ApiService) {
         if (!initialized) return
         scope.launch {
-            try {
-                val prefs = appContext?.getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
-                // Use the token persisted by onNewToken when it fired while signed-out;
-                // fall back to asking Firebase for the current token.
-                val token = prefs?.getString("pending_fcm_token", null)
+            val prefs = appContext?.getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
+            val token = try {
+                prefs?.getString("pending_fcm_token", null)
                     ?: FirebaseMessaging.getInstance().token.await()
-                val lastRegistered = prefs?.getString("last_registered_fcm_token", null)
-                if (token == lastRegistered) {
-                    Log.d(TAG, "FCM token unchanged — skipping registration")
-                    return@launch
-                }
-                api.registerDevice(RegisterDeviceRequest(token = token))
-                prefs?.edit()
-                    ?.remove("pending_fcm_token")
-                    ?.putString("last_registered_fcm_token", token)
-                    ?.apply()
-                Log.i(TAG, "FCM token registered")
             } catch (t: Throwable) {
-                Log.w(TAG, "FCM token registration failed: ${t.message}")
+                Log.w(TAG, "FCM token fetch failed: ${t.message}")
+                return@launch
+            }
+            val lastRegistered = prefs?.getString("last_registered_fcm_token", null)
+            if (token == lastRegistered) {
+                Log.d(TAG, "FCM token unchanged — skipping registration")
+                return@launch
+            }
+            // Retry once on transient failure (e.g. token rotates during a backend
+            // restart) so we don't leave the user pushless until next app launch.
+            var attempt = 0
+            while (attempt < 2) {
+                try {
+                    api.registerDevice(RegisterDeviceRequest(token = token))
+                    prefs?.edit()
+                        ?.remove("pending_fcm_token")
+                        ?.putString("last_registered_fcm_token", token)
+                        ?.apply()
+                    Log.i(TAG, "FCM token registered (attempt=${attempt + 1})")
+                    return@launch
+                } catch (t: Throwable) {
+                    Log.w(TAG, "FCM token registration failed (attempt=${attempt + 1}): ${t.message}")
+                    attempt++
+                    if (attempt < 2) kotlinx.coroutines.delay(2_000)
+                }
             }
         }
     }
@@ -91,10 +102,15 @@ object PushBootstrap {
      */
     suspend fun deleteToken() {
         if (!initialized) return
+        // Always clear local prefs even if the Firebase call fails — otherwise the next
+        // user on the device sees a "skip" via the unchanged-token guard in registerCurrentToken.
+        appContext?.getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
+            ?.edit()
+            ?.remove("last_registered_fcm_token")
+            ?.remove("pending_fcm_token")
+            ?.apply()
         try {
             FirebaseMessaging.getInstance().deleteToken().await()
-            appContext?.getSharedPreferences("koshereats_push_prefs", Context.MODE_PRIVATE)
-                ?.edit()?.remove("last_registered_fcm_token")?.apply()
             Log.i(TAG, "FCM token deleted")
         } catch (t: Throwable) {
             Log.w(TAG, "FCM token deletion failed: ${t.message}")

@@ -24,24 +24,50 @@ enum APIError: LocalizedError {
 class APIService: ObservableObject {
     static let shared = APIService()
 
-    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
+    // ISO8601DateFormatter is not Sendable, so wrap each instance in a
+    // lock-protected box to avoid a data-race if the custom dateDecodingStrategy
+    // closure is ever invoked off the main actor.
+    private static let iso8601Fractional: LockedFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
+        return LockedFormatter(formatter)
     }()
 
-    nonisolated(unsafe) private static let iso8601Plain: ISO8601DateFormatter = {
+    private static let iso8601Plain: LockedFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter
+        return LockedFormatter(formatter)
     }()
 
-    // Pointing DEBUG at prod Fly temporarily so the simulator builds round-trip
-    // through the same backend the seller/courier apps use (and the same Stripe
-    // creds). Switch back to "http://localhost:8080/api/v1" when running a
-    // local backend stack with its own Stripe keys.
+    /// Thread-safe wrapper around ISO8601DateFormatter (which is not Sendable).
+    private final class LockedFormatter: @unchecked Sendable {
+        private let formatter: ISO8601DateFormatter
+        private let lock = NSLock()
+
+        init(_ formatter: ISO8601DateFormatter) {
+            self.formatter = formatter
+        }
+
+        func date(from string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.date(from: string)
+        }
+    }
+
+    // URL configuration:
+    // Both DEBUG and RELEASE point at the production Fly.io backend. To test
+    // against a local backend, manually change the DEBUG value below to
+    // "http://localhost:8080/api/v1" (or whatever your local stack uses).
+    //
+    // On Android the equivalent lives in build.gradle.kts as
+    // BuildConfig.BASE_URL — one per build type (debug / release).
+    //
+    // TODO: Read from an environment variable or Xcode scheme so switching
+    // doesn't require a code change (e.g. KOSHEREATS_API_URL).
     #if DEBUG
-    private var baseURL = "https://koshereats-api.fly.dev/api/v1"
+    private var baseURL = ProcessInfo.processInfo.environment["KOSHEREATS_API_URL"]
+        ?? "https://koshereats-api.fly.dev/api/v1"
     #else
     private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #endif
@@ -135,6 +161,9 @@ class APIService: ObservableObject {
             req.httpBody = try encoder.encode(body)
         }
 
+        // URLSession.shared is used intentionally — APIService is an app-scoped
+        // singleton so the session lives for the process lifetime and never needs
+        // explicit invalidation.
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await URLSession.shared.data(for: req)

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.util.Log
 import javax.inject.Inject
 
 data class AddressUiState(
@@ -85,7 +86,10 @@ class AddressViewModel @Inject constructor(
                     }
                     dataStore.edit { it[SELECTED_ADDRESS_ID] = saved.id }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add address", e)
+                _uiState.update { it.copy(error = "Couldn't add address") }
+            }
         }
     }
 
@@ -104,7 +108,10 @@ class AddressViewModel @Inject constructor(
                         state.copy(addresses = remaining, selectedAddress = newSelected)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete address", e)
+                _uiState.update { it.copy(error = "Couldn't delete address") }
+            }
         }
     }
 
@@ -118,7 +125,10 @@ class AddressViewModel @Inject constructor(
                         state.copy(addresses = updated)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set default address", e)
+                _uiState.update { it.copy(error = "Couldn't set default address") }
+            }
         }
     }
 
@@ -134,11 +144,15 @@ class AddressViewModel @Inject constructor(
                         state.copy(addresses = updated)
                     }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear default address", e)
+                _uiState.update { it.copy(error = "Couldn't update address") }
+            }
         }
     }
 
     companion object {
+        private const val TAG = "AddressViewModel"
         private val SELECTED_ADDRESS_ID = stringPreferencesKey("selected_address_id")
     }
 }

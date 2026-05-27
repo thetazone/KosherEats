@@ -49,6 +49,9 @@ struct AddressPickerSheet: View {
                                 addressRow(a)
                             }
                             .listRowBackground(Color.keCard)
+                            .accessibilityLabel("\(a.label), \(a.formatted)\(a.isDefault ? ", default address" : "")")
+                            .accessibilityAddTraits(selected?.id == a.id ? .isSelected : [])
+                            .accessibilityHint("Double tap to select this address")
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -75,6 +78,7 @@ struct AddressPickerSheet: View {
                         Image(systemName: "plus")
                             .foregroundColor(.kePrimary)
                     }
+                    .accessibilityLabel("Add new address")
                 }
             }
             .sheet(isPresented: $showAddForm) {
@@ -95,6 +99,7 @@ struct AddressPickerSheet: View {
             Image(systemName: "house")
                 .font(.system(size: 48))
                 .foregroundColor(.keTextMuted)
+                .accessibilityHidden(true)
             Text("No saved addresses")
                 .font(.headline)
                 .foregroundColor(.keTextPrimary)
@@ -109,6 +114,7 @@ struct AddressPickerSheet: View {
             }
             .buttonStyle(KEPrimaryButtonStyle())
             .frame(maxWidth: 320)
+            .accessibilityHint("Opens a form to add a new delivery address")
         }
     }
 
@@ -137,6 +143,7 @@ struct AddressPickerSheet: View {
             if selected?.id == a.id {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.kePrimary)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.vertical, 6)

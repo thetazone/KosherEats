@@ -172,7 +172,7 @@ struct CartFloatingButton: View {
             HStack(spacing: 12) {
                 Image(systemName: "cart.fill")
                     .font(.system(size: 18, weight: .semibold))
-                Text("View Cart")
+                Text(String(localized: "View Cart"))
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Text("\(itemCount) item\(itemCount == 1 ? "" : "s")")
@@ -216,7 +216,7 @@ struct SearchView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.keTextMuted)
-                        TextField("Search restaurants, cuisines...", text: $searchText)
+                        TextField(String(localized: "Search restaurants, cuisines..."), text: $searchText)
                             .foregroundColor(.keTextPrimary)
                             .autocorrectionDisabled()
                             .onSubmit {
@@ -262,7 +262,7 @@ struct SearchView: View {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 48))
                                 .foregroundColor(.keTextMuted)
-                            Text("Search for your favorite\nkosher restaurants")
+                            Text(String(localized: "Search for your favorite\nkosher restaurants"))
                                 .font(.body)
                                 .foregroundColor(.keTextSecondary)
                                 .multilineTextAlignment(.center)

@@ -46,6 +46,13 @@ class RestaurantPickerViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val response = apiService.listRestaurants()
+                if (!response.isSuccessful) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = "Failed to load restaurants (HTTP ${response.code()})",
+                    )
+                    return@launch
+                }
                 val list = response.body().orEmpty()
                 val current = SelectedRestaurant.flow(context).first()
                 // First-launch default: if nothing is set and the seller owns

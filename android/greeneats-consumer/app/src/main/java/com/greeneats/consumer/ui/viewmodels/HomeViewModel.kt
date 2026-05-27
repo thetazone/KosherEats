@@ -41,6 +41,12 @@ class HomeViewModel @Inject constructor(
     private val repository: RestaurantRepository,
 ) : ViewModel() {
 
+    companion object {
+        const val PAGE_SIZE = 50
+        const val ERROR_INVALID_RESTAURANT = "Invalid restaurant."
+        const val ERROR_SEARCH_FAILED = "Search failed"
+    }
+
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -102,12 +108,22 @@ class HomeViewModel @Inject constructor(
                                 isLoading = false,
                                 isRefreshing = false,
                                 currentPage = page,
-                                hasMore = result.data.size >= 50,
+                                hasMore = result.data.size >= PAGE_SIZE,
                             )
                         }
                     }
                     is Resource.Error -> {
-                        _uiState.update { it.copy(isLoading = false, isRefreshing = false, error = result.message, hasMore = false) }
+                        _uiState.update {
+                            // On pagination errors (page > 1), keep hasMore = true so the
+                            // user can retry loading more restaurants instead of being stuck.
+                            val preserveHasMore = page > 1
+                            it.copy(
+                                isLoading = false,
+                                isRefreshing = false,
+                                error = result.message,
+                                hasMore = if (preserveHasMore) it.hasMore else false,
+                            )
+                        }
                     }
                 }
             }

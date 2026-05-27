@@ -16,6 +16,7 @@ struct ErrorStateView: View {
             Image(systemName: symbol)
                 .font(.system(size: 48))
                 .foregroundColor(.keError)
+                .accessibilityHidden(true)
 
             VStack(spacing: 6) {
                 Text("Something went wrong")
@@ -27,6 +28,8 @@ struct ErrorStateView: View {
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, Theme.spacingLG)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Error: Something went wrong. \(message)")
 
             if let onRetry = onRetry {
                 Button {
@@ -41,6 +44,8 @@ struct ErrorStateView: View {
                 .buttonStyle(KEPrimaryButtonStyle())
                 .frame(width: 220)
                 .padding(.top, 4)
+                .accessibilityLabel("Try again")
+                .accessibilityHint("Double tap to retry the failed action")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -59,6 +64,7 @@ struct InlineErrorBanner: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundColor(.keError)
+                .accessibilityHidden(true)
             Text(message)
                 .font(.caption)
                 .foregroundColor(.keTextSecondary)
@@ -71,6 +77,7 @@ struct InlineErrorBanner: View {
                 }
                 .font(.caption.bold())
                 .foregroundColor(.kePrimary)
+                .accessibilityHint("Double tap to retry")
             }
         }
         .padding(12)
@@ -80,5 +87,7 @@ struct InlineErrorBanner: View {
                 .stroke(Color.keError.opacity(0.3), lineWidth: 1),
         )
         .cornerRadius(Theme.cornerRadiusSmall)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Error: \(message)")
     }
 }

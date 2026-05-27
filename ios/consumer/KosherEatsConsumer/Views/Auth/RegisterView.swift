@@ -18,10 +18,10 @@ struct RegisterView: View {
                 VStack(spacing: Theme.spacingLG) {
                     // Header
                     VStack(spacing: 8) {
-                        Text("Create Account")
+                        Text(String(localized: "Create Account"))
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(.keTextPrimary)
-                        Text("Join KosherEats and start ordering")
+                        Text(String(localized: "Join KosherEats and start ordering"))
                             .font(.body)
                             .foregroundColor(.keTextSecondary)
                     }
@@ -116,6 +116,21 @@ struct RegisterView: View {
                             Text("Passwords do not match")
                                 .font(.system(size: 13))
                                 .foregroundColor(.keError)
+                                .accessibilityLabel("Error: Passwords do not match")
+                        }
+
+                        if !email.isEmpty && !isValidEmail(email) {
+                            Text("Please enter a valid email address")
+                                .font(.system(size: 13))
+                                .foregroundColor(.keError)
+                                .accessibilityLabel("Error: Invalid email address")
+                        }
+
+                        if !password.isEmpty && password.count < 8 {
+                            Text("Password must be at least 8 characters")
+                                .font(.system(size: 13))
+                                .foregroundColor(.keError)
+                                .accessibilityLabel("Error: Password too short")
                         }
                     }
                     .padding(.horizontal)
@@ -126,6 +141,7 @@ struct RegisterView: View {
                             .foregroundColor(.keError)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
+                            .accessibilityLabel("Error: \(error)")
                     }
 
                     // Register button
@@ -177,10 +193,18 @@ struct RegisterView: View {
     private var isFormValid: Bool {
         !firstName.trimmingCharacters(in: .whitespaces).isEmpty &&
         !lastName.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !email.trimmingCharacters(in: .whitespaces).isEmpty &&
+        isValidEmail(email) &&
         !phone.trimmingCharacters(in: .whitespaces).isEmpty &&
         password.count >= 8 &&
         password == confirmPassword
+    }
+
+    private func isValidEmail(_ email: String) -> Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        // Simple but effective email pattern check
+        let pattern = #"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"#
+        return trimmed.range(of: pattern, options: .regularExpression) != nil
     }
 }
 

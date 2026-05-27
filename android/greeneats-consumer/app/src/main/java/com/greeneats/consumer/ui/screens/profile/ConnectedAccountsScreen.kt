@@ -29,16 +29,18 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.greeneats.consumer.data.models.LinkedProvider
 import com.greeneats.consumer.ui.theme.*
 import com.greeneats.consumer.ui.viewmodels.LinkedProvidersViewModel
@@ -49,7 +51,7 @@ fun ConnectedAccountsScreen(
     onBack: () -> Unit,
     vm: LinkedProvidersViewModel = hiltViewModel(),
 ) {
-    val state by vm.uiState.collectAsState()
+    val state by vm.uiState.collectAsStateWithLifecycle()
     var unlinkConfirm by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().background(BackgroundBlack)) {
@@ -57,7 +59,7 @@ fun ConnectedAccountsScreen(
             title = { Text("Connected Accounts", color = TextWhite) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextWhite)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
@@ -68,6 +70,12 @@ fun ConnectedAccountsScreen(
                 CircularProgressIndicator(color = Orange)
             }
             return@Column
+        }
+
+        if (state.isUnlinking) {
+            Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Orange, modifier = Modifier.size(24.dp))
+            }
         }
 
         Text(
@@ -93,6 +101,7 @@ fun ConnectedAccountsScreen(
                         ProviderRow(
                             provider = provider,
                             onUnlink = { unlinkConfirm = provider.provider },
+                            enabled = !state.isUnlinking,
                         )
                         if (index < providers.lastIndex) HorizontalDivider(color = SurfaceDarkBorder)
                     }
@@ -139,16 +148,21 @@ fun ConnectedAccountsScreen(
 }
 
 @Composable
-private fun ProviderRow(provider: LinkedProvider, onUnlink: () -> Unit) {
+private fun ProviderRow(provider: LinkedProvider, onUnlink: () -> Unit, enabled: Boolean = true) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${provider.displayName}, connected"
+            },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (provider.provider == "phone") Icons.Filled.Phone else Icons.Filled.AccountCircle,
-                contentDescription = null,
+                contentDescription = "${provider.displayName} account",
                 tint = Orange,
                 modifier = Modifier.size(28.dp),
             )
@@ -162,8 +176,8 @@ private fun ProviderRow(provider: LinkedProvider, onUnlink: () -> Unit) {
                 )
             }
         }
-        TextButton(onClick = onUnlink) {
-            Text("Disconnect", color = ErrorRed)
+        TextButton(onClick = onUnlink, enabled = enabled) {
+            Text("Disconnect", color = if (enabled) ErrorRed else ErrorRed.copy(alpha = 0.4f))
         }
     }
 }

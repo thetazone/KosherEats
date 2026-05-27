@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.LocalMall
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
@@ -46,8 +45,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,6 +63,30 @@ import coil.compose.AsyncImage
 import com.greeneats.consumer.ui.theme.*
 import com.greeneats.consumer.ui.viewmodels.AuthViewModel
 
+private object ProfileStrings {
+    const val TITLE = "Profile"
+    const val UNLOCK_TITLE = "Unlock your full experience"
+    const val UNLOCK_SUBTITLE = "Sign in to track orders, save addresses, and earn rewards on every kosher meal."
+    const val TRACK_ORDERS = "Track your orders in real-time"
+    const val SAVE_ADDRESSES = "Save multiple delivery addresses"
+    const val SECURE_CHECKOUT = "Secure and fast checkout"
+    const val SIGN_IN = "Sign In or Register"
+    const val EDIT_PROFILE = "Edit Profile"
+    const val SAVED_ADDRESSES = "Saved Addresses"
+    const val PAYMENT_METHODS = "Payment Methods"
+    const val FAVORITES = "Favorites"
+    const val NOTIFICATION_PREFS = "Notification Preferences"
+    const val CONNECTED_ACCOUNTS = "Connected Accounts"
+    const val HELP_SUPPORT = "Help & Support"
+    const val SIGN_OUT = "Sign Out"
+    const val DELETE_ACCOUNT = "Delete Account"
+    const val DELETE_CONFIRM_TITLE = "Delete account?"
+    const val DELETE_CONFIRM_BODY = "This permanently deletes your account, order history, saved addresses, and payment methods. This cannot be undone."
+    const val DELETE = "Delete"
+    const val CANCEL = "Cancel"
+    const val APP_VERSION = "GreenEats v1.0.0"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
@@ -76,7 +99,7 @@ fun ProfileScreen(
     onConnectedAccountsClick: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Column(
@@ -87,7 +110,7 @@ fun ProfileScreen(
         TopAppBar(
             title = {
                 Text(
-                    "Profile", 
+                    ProfileStrings.TITLE,
                     style = MaterialTheme.typography.headlineLarge,
                     color = TextWhite
                 )
@@ -122,7 +145,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(32.dp))
                 
                 Text(
-                    text = "Unlock your full experience",
+                    text = ProfileStrings.UNLOCK_TITLE,
                     style = MaterialTheme.typography.headlineMedium,
                     color = TextWhite,
                     textAlign = TextAlign.Center
@@ -131,7 +154,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 Text(
-                    text = "Sign in to track orders, save addresses, and earn rewards on every kosher meal.",
+                    text = ProfileStrings.UNLOCK_SUBTITLE,
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextTertiary,
                     textAlign = TextAlign.Center,
@@ -141,9 +164,9 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(40.dp))
                 
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    GuestBenefitRow(icon = Icons.Filled.LocalMall, text = "Track your orders in real-time")
-                    GuestBenefitRow(icon = Icons.Filled.LocationOn, text = "Save multiple delivery addresses")
-                    GuestBenefitRow(icon = Icons.Filled.Security, text = "Secure and fast checkout")
+                    GuestBenefitRow(icon = Icons.Filled.LocalMall, text = ProfileStrings.TRACK_ORDERS)
+                    GuestBenefitRow(icon = Icons.Filled.LocationOn, text = ProfileStrings.SAVE_ADDRESSES)
+                    GuestBenefitRow(icon = Icons.Filled.Security, text = ProfileStrings.SECURE_CHECKOUT)
                 }
                 
                 Spacer(modifier = Modifier.height(48.dp))
@@ -157,7 +180,7 @@ fun ProfileScreen(
                         .height(56.dp),
                 ) {
                     Text(
-                        "Sign In or Register", 
+                        ProfileStrings.SIGN_IN,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -242,25 +265,25 @@ fun ProfileScreen(
                     Column {
                         ProfileMenuItem(
                             icon = Icons.Filled.Person,
-                            title = "Edit Profile",
+                            title = ProfileStrings.EDIT_PROFILE,
                             onClick = onEditProfileClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.LocationOn,
-                            title = "Saved Addresses",
+                            title = ProfileStrings.SAVED_ADDRESSES,
                             onClick = onSavedAddressesClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.CreditCard,
-                            title = "Payment Methods",
+                            title = ProfileStrings.PAYMENT_METHODS,
                             onClick = onPaymentMethodsClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.Favorite,
-                            title = "Favorites",
+                            title = ProfileStrings.FAVORITES,
                             onClick = onFavoritesClick,
                         )
                     }
@@ -278,19 +301,19 @@ fun ProfileScreen(
                     Column {
                         ProfileMenuItem(
                             icon = Icons.Filled.Notifications,
-                            title = "Notification Preferences",
+                            title = ProfileStrings.NOTIFICATION_PREFS,
                             onClick = onNotificationPreferencesClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.Filled.Link,
-                            title = "Connected Accounts",
+                            title = ProfileStrings.CONNECTED_ACCOUNTS,
                             onClick = onConnectedAccountsClick,
                         )
                         HorizontalDivider(color = SurfaceDarkBorder)
                         ProfileMenuItem(
                             icon = Icons.AutoMirrored.Filled.HelpOutline,
-                            title = "Help & Support",
+                            title = ProfileStrings.HELP_SUPPORT,
                             onClick = {},
                         )
                     }
@@ -321,7 +344,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Sign Out",
+                            text = ProfileStrings.SIGN_OUT,
                             style = MaterialTheme.typography.titleMedium,
                             color = ErrorRed,
                             fontWeight = FontWeight.SemiBold,
@@ -354,7 +377,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Delete Account",
+                            text = ProfileStrings.DELETE_ACCOUNT,
                             style = MaterialTheme.typography.titleMedium,
                             color = ErrorRed,
                             fontWeight = FontWeight.SemiBold,
@@ -366,7 +389,7 @@ fun ProfileScreen(
 
                 // App version
                 Text(
-                    text = "GreenEats v1.0.0",
+                    text = ProfileStrings.APP_VERSION,
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -381,10 +404,10 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             containerColor = SurfaceDark,
-            title = { Text("Delete account?", color = TextWhite) },
+            title = { Text(ProfileStrings.DELETE_CONFIRM_TITLE, color = TextWhite) },
             text = {
                 Text(
-                    "This permanently deletes your account, order history, saved addresses, and payment methods. This cannot be undone.",
+                    ProfileStrings.DELETE_CONFIRM_BODY,
                     color = TextSecondary,
                 )
             },
@@ -393,12 +416,12 @@ fun ProfileScreen(
                     showDeleteConfirm = false
                     viewModel.deleteAccount()
                 }) {
-                    Text("Delete", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                    Text(ProfileStrings.DELETE, color = ErrorRed, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text(ProfileStrings.CANCEL, color = TextSecondary)
                 }
             },
         )

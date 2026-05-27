@@ -5,6 +5,7 @@ import GoogleSignIn
 struct ConnectedAccountsView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var vm = ConnectedAccountsViewModel()
+    @State private var providerToUnlink: String?
 
     var body: some View {
         ZStack {
@@ -37,6 +38,20 @@ struct ConnectedAccountsView: View {
         .sheet(isPresented: $vm.showPhoneLinkSheet) {
             PhoneLinkSheet(vm: vm)
         }
+        .alert("Remove Account", isPresented: Binding(
+            get: { providerToUnlink != nil },
+            set: { if !$0 { providerToUnlink = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { providerToUnlink = nil }
+            Button("Remove", role: .destructive) {
+                if let provider = providerToUnlink {
+                    Task { await vm.unlink(provider) }
+                }
+                providerToUnlink = nil
+            }
+        } message: {
+            Text("You will no longer be able to sign in with this method. Are you sure?")
+        }
     }
 
     @ViewBuilder
@@ -62,12 +77,14 @@ struct ConnectedAccountsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.keSuccess)
+                        .accessibilityLabel("\(name) connected")
                     if vm.linkedProviders.count > 1 {
                         Button("Remove") {
-                            Task { await vm.unlink(provider) }
+                            providerToUnlink = provider
                         }
                         .font(.caption.bold())
                         .foregroundColor(.keError)
+                        .accessibilityLabel("Remove \(name) account")
                     }
                 }
             } else {
@@ -80,6 +97,7 @@ struct ConnectedAccountsView: View {
                 .padding(.vertical, 8)
                 .background(Color.kePrimary)
                 .cornerRadius(8)
+                .accessibilityLabel("Connect \(name) account")
             }
         }
         .padding()

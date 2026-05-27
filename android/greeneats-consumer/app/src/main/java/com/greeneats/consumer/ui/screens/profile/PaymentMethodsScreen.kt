@@ -29,7 +29,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,9 +37,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.greeneats.consumer.ui.theme.*
 import com.greeneats.consumer.ui.viewmodels.PaymentMethodsViewModel
 import com.stripe.android.PaymentConfiguration
@@ -57,7 +59,7 @@ fun PaymentMethodsScreen(
     onBack: () -> Unit,
     vm: PaymentMethodsViewModel = hiltViewModel(),
 ) {
-    val state by vm.uiState.collectAsState()
+    val state by vm.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     val scope = rememberCoroutineScope()
@@ -129,7 +131,7 @@ fun PaymentMethodsScreen(
             title = { Text("Payment Methods", color = TextWhite) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = TextWhite)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
@@ -139,12 +141,30 @@ fun PaymentMethodsScreen(
             state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Orange)
             }
+            state.error != null && state.bundle == null -> Box(
+                Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Filled.CreditCard, contentDescription = null, tint = TextMuted, modifier = Modifier.size(64.dp))
+                    Spacer(Modifier.height(16.dp))
+                    Text(state.error ?: "Something went wrong", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { vm.loadBundle() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text("Retry", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             state.bundle?.isStub == true -> Box(
                 Modifier.fillMaxSize().padding(24.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.CreditCard, null, tint = TextMuted, modifier = Modifier.size(64.dp))
+                    Icon(Icons.Filled.CreditCard, contentDescription = "Credit card", tint = TextMuted, modifier = Modifier.size(64.dp))
                     Spacer(Modifier.height(16.dp))
                     Text("Payment methods unavailable", color = TextWhite, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
@@ -160,7 +180,7 @@ fun PaymentMethodsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Top,
             ) {
-                Icon(Icons.Filled.CreditCard, null, tint = Orange, modifier = Modifier.size(64.dp))
+                Icon(Icons.Filled.CreditCard, contentDescription = "Credit card", tint = Orange, modifier = Modifier.size(64.dp))
                 Spacer(Modifier.height(16.dp))
                 Text(
                     "Manage your saved cards",
@@ -188,7 +208,12 @@ fun PaymentMethodsScreen(
                     enabled = customerSheet != null,
                     colors = ButtonDefaults.buttonColors(containerColor = Orange),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .semantics {
+                            contentDescription = "Manage payment cards"
+                        },
                 ) {
                     Text("Manage cards", fontWeight = FontWeight.Bold)
                 }

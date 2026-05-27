@@ -56,6 +56,8 @@ struct SellerOrderDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        // Intentional: prefix(8) keeps the nav title short while still being
+        // unique enough to identify the order at a glance.
         .navigationTitle("Order #\(String(orderID.prefix(8)))")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

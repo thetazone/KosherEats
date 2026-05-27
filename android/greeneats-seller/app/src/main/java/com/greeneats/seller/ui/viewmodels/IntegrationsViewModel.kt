@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.greeneats.seller.data.api.ApiService
 import com.greeneats.seller.data.models.POSIntegration
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +23,14 @@ class IntegrationsViewModel @Inject constructor(
     private val apiService: ApiService,
 ) : ViewModel() {
 
+    companion object {
+        private const val ERR_LOAD = "Failed to load integrations"
+        private const val ERR_CONNECT = "Couldn't start Clover connect"
+        private const val ERR_TEST = "Integration test failed"
+        private const val ERR_DISCONNECT = "Disconnect failed"
+        private const val ERR_CONNECTION = "Connection error"
+    }
+
     private val _state = MutableStateFlow(IntegrationsState())
     val state: StateFlow<IntegrationsState> = _state.asStateFlow()
 
@@ -33,10 +42,11 @@ class IntegrationsViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _state.value = IntegrationsState(integrations = response.body() ?: emptyList(), isLoading = false)
                 } else {
-                    _state.value = _state.value.copy(isLoading = false, error = "Failed to load (${response.code()})")
+                    _state.value = _state.value.copy(isLoading = false, error = "$ERR_LOAD (${response.code()})")
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message ?: "Connection error")
+                if (e is CancellationException) throw e
+                _state.value = _state.value.copy(isLoading = false, error = "$ERR_CONNECTION: ${e.message}")
             }
         }
     }
@@ -47,11 +57,12 @@ class IntegrationsViewModel @Inject constructor(
             if (response.isSuccessful) {
                 response.body()?.connectUrl
             } else {
-                _state.value = _state.value.copy(error = "Couldn't start Clover connect (${response.code()})")
+                _state.value = _state.value.copy(error = "$ERR_CONNECT (${response.code()})")
                 null
             }
         } catch (e: Exception) {
-            _state.value = _state.value.copy(error = "Connection error: ${e.message}")
+            if (e is CancellationException) throw e
+            _state.value = _state.value.copy(error = "$ERR_CONNECTION: ${e.message}")
             null
         }
     }
@@ -60,10 +71,18 @@ class IntegrationsViewModel @Inject constructor(
     suspend fun test(id: String): String? {
         return try {
             val response = apiService.testIntegration(id)
-            if (response.isSuccessful) null
-            else "HTTP ${response.code()}"
+            if (response.isSuccessful) {
+                null
+            } else {
+                val msg = "$ERR_TEST: HTTP ${response.code()}"
+                _state.value = _state.value.copy(error = msg)
+                msg
+            }
         } catch (e: Exception) {
-            e.message ?: "Connection error"
+            if (e is CancellationException) throw e
+            val msg = "$ERR_CONNECTION: ${e.message}"
+            _state.value = _state.value.copy(error = msg)
+            msg
         }
     }
 
@@ -74,10 +93,11 @@ class IntegrationsViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     load()
                 } else {
-                    _state.value = _state.value.copy(error = "Disconnect failed (${response.code()})")
+                    _state.value = _state.value.copy(error = "$ERR_DISCONNECT (${response.code()})")
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = "Disconnect failed: ${e.message}")
+                if (e is CancellationException) throw e
+                _state.value = _state.value.copy(error = "$ERR_DISCONNECT: ${e.message}")
             }
         }
     }

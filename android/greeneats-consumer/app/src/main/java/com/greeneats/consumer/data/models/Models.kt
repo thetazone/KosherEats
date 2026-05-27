@@ -23,28 +23,35 @@ enum class DietaryType(val displayName: String) {
 }
 
 enum class OrderStatus(val displayName: String) {
+    @SerializedName("scheduled") SCHEDULED("Scheduled"),
     @SerializedName("pending") PENDING("Pending"),
+    @SerializedName("accepted") ACCEPTED("Accepted"),
     @SerializedName("confirmed") CONFIRMED("Confirmed"),
     @SerializedName("preparing") PREPARING("Preparing"),
     @SerializedName("ready") READY("Ready for Pickup"),
     @SerializedName("picked_up") PICKED_UP("Out for Delivery"),
     @SerializedName("delivered") DELIVERED("Delivered"),
     @SerializedName("cancelled") CANCELLED("Cancelled"),
-    @SerializedName("completed") COMPLETED("Completed");
+    @SerializedName("completed") COMPLETED("Completed"),
+    @SerializedName("rejected") REJECTED("Rejected"),
+    /** Catch-all so Gson deserializes unknown future statuses instead of crashing. */
+    UNKNOWN("Processing");
 
     val stepIndex: Int
         get() = when (this) {
+            SCHEDULED -> 0
             PENDING -> 1
-            CONFIRMED -> 2
+            ACCEPTED, CONFIRMED -> 2
             PREPARING -> 3
             READY, PICKED_UP, DELIVERED -> 4
             COMPLETED -> 5
-            CANCELLED -> -1
+            CANCELLED, REJECTED -> -1
+            UNKNOWN -> 0
         }
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, CANCELLED, COMPLETED -> false
+            DELIVERED, CANCELLED, COMPLETED, REJECTED -> false
             else -> true
         }
 }
@@ -299,7 +306,8 @@ private fun computeDiscount(deal: Deal, subtotal: Int, items: List<CartItem>): I
     val minOrder = deal.minOrderAmount ?: 0
     if (subtotal < minOrder) return 0
     return when (deal.discountType) {
-        DiscountType.PERCENTAGE -> (subtotal * deal.discountValue / 100).coerceAtMost(subtotal)
+        // Use Long multiplication to prevent Int overflow on large subtotals
+        DiscountType.PERCENTAGE -> (subtotal.toLong() * deal.discountValue / 100).toInt().coerceAtMost(subtotal)
         DiscountType.FIXED -> deal.discountValue.coerceAtMost(subtotal)
         DiscountType.BOGO -> {
             val totalQty = items.sumOf { it.quantity }
@@ -361,7 +369,11 @@ data class Order(
     @SerializedName("claimed_at") val claimedAt: String? = null,
     @SerializedName("picked_up_at") val pickedUpAt: String? = null,
     @SerializedName("delivered_at") val deliveredAt: String? = null,
-)
+    /** "delivery" or "pickup". Defaults to delivery when omitted by the backend. */
+    @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
+) {
+    val isPickup: Boolean get() = fulfillmentType.equals("pickup", ignoreCase = true)
+}
 
 data class OrderItem(
     val id: String = "",
@@ -444,9 +456,13 @@ data class DeliveryQuoteResponse(
 )
 
 data class RateOrderRequest(
-    val stars: Int,
+    val stars: Int = 5,
     val comment: String = "",
-)
+) {
+    init {
+        require(stars in 1..5) { "stars must be between 1 and 5, got $stars" }
+    }
+}
 
 data class UpdateCartItemRequest(
     val quantity: Int,

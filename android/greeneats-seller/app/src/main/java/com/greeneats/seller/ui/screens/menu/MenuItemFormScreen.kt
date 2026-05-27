@@ -59,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -90,6 +92,57 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
+private const val MAX_IMAGE_SIZE_BYTES = 10L * 1024 * 1024 // 10 MB
+
+private object MenuItemFormStrings {
+    const val EDIT_ITEM = "Edit Item"
+    const val NEW_ITEM = "New Item"
+    const val BACK = "Back"
+    const val DELETE = "Delete"
+    const val DELETE_ITEM = "Delete Item"
+    const val DELETE_CONFIRM = "Are you sure you want to delete this item? This cannot be undone."
+    const val CANCEL = "Cancel"
+    const val UPLOADING = "Uploading..."
+    const val UPLOADING_PHOTO_A11Y = "Uploading menu item photo"
+    const val PHOTO_CHANGE_A11Y = "Menu item photo. Tap to change. Max 10 MB."
+    const val PHOTO_ADD_A11Y = "Tap to add menu item photo. Max 10 MB."
+    const val TAP_TO_ADD_PHOTO = "Tap to add photo"
+    const val ADD_PHOTO = "Add photo"
+    const val MENU_ITEM_IMAGE = "Menu item image"
+    const val ITEM_NAME_LABEL = "Item Name *"
+    const val ITEM_NAME_MIN_ERROR = "Name must be at least 2 characters"
+    const val DESCRIPTION_LABEL = "Description"
+    const val PRICE_LABEL = "Price (\$)"
+    const val CATEGORY_LABEL = "Category"
+    const val SPICE_LEVEL_LABEL = "Spice Level (0-5, optional)"
+    const val KOSHER_TYPE = "Kosher Type"
+    const val PAREVE = "Pareve"
+    const val DAIRY = "Dairy"
+    const val MEAT = "Meat"
+    const val MODIFIER_GROUPS = "Modifier Groups"
+    const val ADD = "+ Add"
+    const val REQUIRED = "Required"
+    const val OPTIONAL = "Optional"
+    const val SELECT_RANGE_FORMAT = "Select %d-%d"
+    const val UPDATE_ITEM = "Update Item"
+    const val CREATE_ITEM = "Create Item"
+    const val ERR_NAME_MIN = "Item name must be at least 2 characters"
+    const val ERR_PRICE_ZERO = "Price must be greater than \$0.00"
+    const val ERR_KOSHER_TYPE = "Select a Kosher type (Meat, Dairy, or Pareve)"
+    const val EDIT_MODIFIER_GROUP = "Edit Modifier Group"
+    const val ADD_MODIFIER_GROUP = "Add Modifier Group"
+    const val GROUP_NAME_LABEL = "Group Name"
+    const val GROUP_NAME_PLACEHOLDER = "e.g., Size, Toppings"
+    const val MIN = "Min"
+    const val MAX = "Max"
+    const val OPTIONS = "Options"
+    const val NAME = "Name"
+    const val PRICE_DELTA_LABEL = "+\$"
+    const val REMOVE = "Remove"
+    const val ADD_OPTION = "+ Add Option"
+    const val SAVE = "Save"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuItemFormScreen(
@@ -120,6 +173,14 @@ fun MenuItemFormScreen(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
+        // Validate file size before uploading (max 10 MB)
+        val fileSize = try {
+            context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+        } catch (_: Exception) { -1L }
+        if (fileSize > MAX_IMAGE_SIZE_BYTES) {
+            viewModel.setError("Image is too large (${fileSize / (1024 * 1024)}MB). Maximum size is ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)}MB.")
+            return@rememberLauncherForActivityResult
+        }
         isUploadingImage = true
         scope.launch {
             val result = uploadImage(context, uri, viewModel)
@@ -193,19 +254,19 @@ fun MenuItemFormScreen(
     if (showDeleteConfirm && itemId != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Item", color = TextWhite) },
-            text = { Text("Are you sure you want to delete this item? This cannot be undone.", color = TextMuted) },
+            title = { Text(MenuItemFormStrings.DELETE_ITEM, color = TextWhite) },
+            text = { Text(MenuItemFormStrings.DELETE_CONFIRM, color = TextMuted) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     viewModel.deleteMenuItem(itemId)
                 }) {
-                    Text("Delete Item", color = ErrorRed)
+                    Text(MenuItemFormStrings.DELETE_ITEM, color = ErrorRed)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel", color = TextWhite)
+                    Text(MenuItemFormStrings.CANCEL, color = TextWhite)
                 }
             },
             containerColor = SurfaceDark,
@@ -220,20 +281,20 @@ fun MenuItemFormScreen(
         TopAppBar(
             title = {
                 Text(
-                    text = if (isEditing) "Edit Item" else "New Item",
+                    text = if (isEditing) MenuItemFormStrings.EDIT_ITEM else MenuItemFormStrings.NEW_ITEM,
                     style = MaterialTheme.typography.titleLarge,
                     color = TextWhite,
                 )
             },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                    Icon(Icons.Filled.ArrowBack, contentDescription = MenuItemFormStrings.BACK, tint = TextWhite)
                 }
             },
             actions = {
                 if (isEditing && itemId != null) {
                     IconButton(onClick = { showDeleteConfirm = true }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed)
+                        Icon(Icons.Filled.Delete, contentDescription = MenuItemFormStrings.DELETE, tint = ErrorRed)
                     }
                 }
             },
@@ -257,6 +318,13 @@ fun MenuItemFormScreen(
                     .background(SurfaceDark)
                     .clickable(enabled = !isUploadingImage) {
                         imagePicker.launch("image/*")
+                    }
+                    .semantics {
+                        contentDescription = when {
+                            isUploadingImage -> MenuItemFormStrings.UPLOADING_PHOTO_A11Y
+                            imageUrl.isNotBlank() -> MenuItemFormStrings.PHOTO_CHANGE_A11Y
+                            else -> MenuItemFormStrings.PHOTO_ADD_A11Y
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -264,12 +332,12 @@ fun MenuItemFormScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Uploading...", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text(MenuItemFormStrings.UPLOADING, color = TextMuted, style = MaterialTheme.typography.bodySmall)
                     }
                 } else if (imageUrl.isNotBlank()) {
                     AsyncImage(
                         model = imageUrl,
-                        contentDescription = "Menu item image",
+                        contentDescription = MenuItemFormStrings.MENU_ITEM_IMAGE,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -277,12 +345,12 @@ fun MenuItemFormScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
                             Icons.Filled.AddAPhoto,
-                            contentDescription = "Add photo",
+                            contentDescription = MenuItemFormStrings.ADD_PHOTO,
                             tint = TextMuted,
                             modifier = Modifier.size(40.dp),
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tap to add photo", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text(MenuItemFormStrings.TAP_TO_ADD_PHOTO, color = TextMuted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -291,8 +359,14 @@ fun MenuItemFormScreen(
             OutlinedTextField(
                 value = name,
                 onValueChange = { if (it.length <= 100) name = it },
-                label = { Text("Item Name") },
+                label = { Text(MenuItemFormStrings.ITEM_NAME_LABEL) },
                 singleLine = true,
+                isError = name.isNotEmpty() && name.trim().length < 2,
+                supportingText = if (name.isNotEmpty() && name.trim().length < 2) {
+                    { Text(MenuItemFormStrings.ITEM_NAME_MIN_ERROR, color = ErrorRed, fontSize = 12.sp) }
+                } else {
+                    { Text("${name.length}/100", color = TextMuted, fontSize = 12.sp) }
+                },
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -302,9 +376,12 @@ fun MenuItemFormScreen(
             OutlinedTextField(
                 value = description,
                 onValueChange = { if (it.length <= 500) description = it },
-                label = { Text("Description") },
+                label = { Text(MenuItemFormStrings.DESCRIPTION_LABEL) },
                 minLines = 2,
                 maxLines = 4,
+                supportingText = {
+                    Text("${description.length}/500", color = TextMuted, fontSize = 12.sp)
+                },
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -317,7 +394,7 @@ fun MenuItemFormScreen(
                     val filtered = v.filter { c -> c.isDigit() || c == '.' }
                     if (filtered.count { it == '.' } <= 1) price = filtered
                 },
-                label = { Text("Price (\$)") },
+                label = { Text(MenuItemFormStrings.PRICE_LABEL) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 colors = textFieldColors,
@@ -334,7 +411,7 @@ fun MenuItemFormScreen(
                     value = category.name.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() },
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Category") },
+                    label = { Text(MenuItemFormStrings.CATEGORY_LABEL) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
                     colors = textFieldColors,
                     shape = RoundedCornerShape(12.dp),
@@ -371,7 +448,7 @@ fun MenuItemFormScreen(
                     val n = v.filter { it.isDigit() }
                     if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 5) spiceLevel = n
                 },
-                label = { Text("Spice Level (0-5, optional)") },
+                label = { Text(MenuItemFormStrings.SPICE_LEVEL_LABEL) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 colors = textFieldColors,
@@ -381,7 +458,7 @@ fun MenuItemFormScreen(
 
             // Kosher type checkboxes
             Text(
-                text = "Kosher Type",
+                text = MenuItemFormStrings.KOSHER_TYPE,
                 style = MaterialTheme.typography.titleSmall,
                 color = TextWhite,
                 fontWeight = FontWeight.SemiBold,
@@ -391,15 +468,15 @@ fun MenuItemFormScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                KosherCheckbox(label = "Pareve", checked = isPareve) {
+                KosherCheckbox(label = MenuItemFormStrings.PAREVE, checked = isPareve) {
                     isPareve = it
                     if (it) { isDairy = false; isMeat = false }
                 }
-                KosherCheckbox(label = "Dairy", checked = isDairy) {
+                KosherCheckbox(label = MenuItemFormStrings.DAIRY, checked = isDairy) {
                     isDairy = it
                     if (it) { isPareve = false; isMeat = false }
                 }
-                KosherCheckbox(label = "Meat", checked = isMeat) {
+                KosherCheckbox(label = MenuItemFormStrings.MEAT, checked = isMeat) {
                     isMeat = it
                     if (it) { isPareve = false; isDairy = false }
                 }
@@ -417,12 +494,12 @@ fun MenuItemFormScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "Modifier Groups",
+                        text = MenuItemFormStrings.MODIFIER_GROUPS,
                         color = TextWhite,
                         fontWeight = FontWeight.SemiBold,
                     )
                     TextButton(onClick = { editingGroup = null; showModifierDialog = true }) {
-                        Text("+ Add", color = Orange)
+                        Text(MenuItemFormStrings.ADD, color = Orange)
                     }
                 }
 
@@ -465,13 +542,17 @@ fun MenuItemFormScreen(
             // Save button
             Button(
                 onClick = {
-                    val dollars = price.toDoubleOrNull() ?: 0.0
-                    if (!isPareve && !isDairy && !isMeat) {
-                        viewModel.setError("Select a Kosher type (Meat, Dairy, or Pareve)")
+                    if (name.trim().length < 2) {
+                        viewModel.setError(MenuItemFormStrings.ERR_NAME_MIN)
                         return@Button
                     }
+                    val dollars = price.toDoubleOrNull() ?: 0.0
                     if (dollars <= 0) {
-                        viewModel.setError("Price must be greater than \$0.00")
+                        viewModel.setError(MenuItemFormStrings.ERR_PRICE_ZERO)
+                        return@Button
+                    }
+                    if (!isPareve && !isDairy && !isMeat) {
+                        viewModel.setError(MenuItemFormStrings.ERR_KOSHER_TYPE)
                         return@Button
                     }
                     val request = UpdateMenuItemRequest(
@@ -511,7 +592,7 @@ fun MenuItemFormScreen(
                     )
                 } else {
                     Text(
-                        text = if (isEditing) "Update Item" else "Create Item",
+                        text = if (isEditing) MenuItemFormStrings.UPDATE_ITEM else MenuItemFormStrings.CREATE_ITEM,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -554,7 +635,12 @@ private fun KosherCheckbox(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = "$label: ${if (checked) "selected" else "not selected"}"
+        },
+    ) {
         Checkbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
@@ -596,7 +682,7 @@ private fun ModifierGroupCard(
                 Text(group.name, color = TextWhite, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (group.isRequired) "Required" else "Optional",
+                    text = if (group.isRequired) MenuItemFormStrings.REQUIRED else MenuItemFormStrings.OPTIONAL,
                     color = if (group.isRequired) Orange else TextMuted,
                     style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier
@@ -606,7 +692,7 @@ private fun ModifierGroupCard(
                 )
             }
             IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Delete, contentDescription = MenuItemFormStrings.DELETE, tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
             }
         }
         if (group.modifiers.isNotEmpty()) {
@@ -625,7 +711,7 @@ private fun ModifierGroupCard(
         }
         if (group.maxSelections > 1) {
             Text(
-                text = "Select ${group.minSelections}-${group.maxSelections}",
+                text = String.format(MenuItemFormStrings.SELECT_RANGE_FORMAT, group.minSelections, group.maxSelections),
                 color = TextMuted,
                 style = MaterialTheme.typography.labelSmall,
             )
@@ -668,7 +754,7 @@ private fun ModifierGroupDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceDark,
-        title = { Text(if (existing != null) "Edit Modifier Group" else "Add Modifier Group", color = TextWhite) },
+        title = { Text(if (existing != null) MenuItemFormStrings.EDIT_MODIFIER_GROUP else MenuItemFormStrings.ADD_MODIFIER_GROUP, color = TextWhite) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -677,8 +763,8 @@ private fun ModifierGroupDialog(
                 OutlinedTextField(
                     value = groupName,
                     onValueChange = { groupName = it },
-                    label = { Text("Group Name") },
-                    placeholder = { Text("e.g., Size, Toppings", color = TextMuted) },
+                    label = { Text(MenuItemFormStrings.GROUP_NAME_LABEL) },
+                    placeholder = { Text(MenuItemFormStrings.GROUP_NAME_PLACEHOLDER, color = TextMuted) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = textFieldColors,
                     singleLine = true,
@@ -693,14 +779,14 @@ private fun ModifierGroupDialog(
                         },
                         colors = CheckboxDefaults.colors(checkedColor = Orange, uncheckedColor = TextMuted, checkmarkColor = TextWhite),
                     )
-                    Text("Required", color = TextWhite)
+                    Text(MenuItemFormStrings.REQUIRED, color = TextWhite)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = minSel,
                         onValueChange = { minSel = it.filter { c -> c.isDigit() } },
-                        label = { Text("Min") },
+                        label = { Text(MenuItemFormStrings.MIN) },
                         modifier = Modifier.weight(1f),
                         colors = textFieldColors,
                         singleLine = true,
@@ -709,7 +795,7 @@ private fun ModifierGroupDialog(
                     OutlinedTextField(
                         value = maxSel,
                         onValueChange = { maxSel = it.filter { c -> c.isDigit() } },
-                        label = { Text("Max") },
+                        label = { Text(MenuItemFormStrings.MAX) },
                         modifier = Modifier.weight(1f),
                         colors = textFieldColors,
                         singleLine = true,
@@ -717,7 +803,7 @@ private fun ModifierGroupDialog(
                     )
                 }
 
-                Text("Options", color = TextWhite, fontWeight = FontWeight.SemiBold)
+                Text(MenuItemFormStrings.OPTIONS, color = TextWhite, fontWeight = FontWeight.SemiBold)
 
                 options.forEachIndexed { index, option ->
                     Row(
@@ -729,7 +815,7 @@ private fun ModifierGroupDialog(
                             onValueChange = { v ->
                                 options = options.toMutableList().also { it[index] = option.copy(name = v) }
                             },
-                            label = { Text("Name") },
+                            label = { Text(MenuItemFormStrings.NAME) },
                             modifier = Modifier.weight(1f),
                             colors = textFieldColors,
                             singleLine = true,
@@ -740,7 +826,7 @@ private fun ModifierGroupDialog(
                                 val filtered = v.filter { c -> c.isDigit() || c == '.' }
                                 options = options.toMutableList().also { it[index] = option.copy(priceDelta = filtered) }
                             },
-                            label = { Text("+$") },
+                            label = { Text(MenuItemFormStrings.PRICE_DELTA_LABEL) },
                             modifier = Modifier.width(80.dp),
                             colors = textFieldColors,
                             singleLine = true,
@@ -751,14 +837,14 @@ private fun ModifierGroupDialog(
                                 onClick = { options = options.toMutableList().also { it.removeAt(index) } },
                                 modifier = Modifier.size(28.dp),
                             ) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = ErrorRed, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Filled.Delete, contentDescription = MenuItemFormStrings.REMOVE, tint = ErrorRed, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
                 }
 
                 TextButton(onClick = { options = options + OptionEntry() }) {
-                    Text("+ Add Option", color = Orange)
+                    Text(MenuItemFormStrings.ADD_OPTION, color = Orange)
                 }
             }
         },
@@ -784,12 +870,12 @@ private fun ModifierGroupDialog(
                 },
                 enabled = groupName.isNotBlank() && options.any { it.name.isNotBlank() },
             ) {
-                Text("Save", color = Orange)
+                Text(MenuItemFormStrings.SAVE, color = Orange)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextMuted)
+                Text(MenuItemFormStrings.CANCEL, color = TextMuted)
             }
         },
     )

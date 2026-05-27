@@ -32,7 +32,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -58,6 +60,24 @@ import com.greeneats.seller.ui.theme.ErrorRed
 import com.greeneats.seller.ui.viewmodels.AuthViewModel
 import com.greeneats.seller.ui.viewmodels.DashboardViewModel
 
+private object DashboardStrings {
+    const val TITLE = "Dashboard"
+    const val SUBTITLE = "Restaurant overview"
+    const val SWITCH_RESTAURANT = "Switch restaurant"
+    const val PENDING_APPROVAL = "Pending approval"
+    const val OPEN_FOR_ORDERS = "Open for orders"
+    const val CLOSED = "Closed"
+    const val CLOSE_RESTAURANT = "Close restaurant"
+    const val OPEN_RESTAURANT = "Open restaurant"
+    const val PENDING_APPROVAL_BODY = "We'll email you once the platform admin reviews your application. You can edit your menu and settings while you wait."
+    const val TODAYS_ORDERS = "Today's Orders"
+    const val REVENUE = "Revenue"
+    const val ACTIVE_ORDERS = "Active Orders"
+    const val AVG_PREP_TIME = "Avg Prep Time"
+    const val ACTIVE_ORDERS_SECTION = "Active Orders"
+    const val NO_ACTIVE_ORDERS = "No active orders right now"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
@@ -65,8 +85,8 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
-    val authState by authViewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val authState by authViewModel.state.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
@@ -101,20 +121,20 @@ fun DashboardScreen(
                         .clickable { showPicker = true },
                 ) {
                     Text(
-                        text = "Dashboard",
+                        text = DashboardStrings.TITLE,
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextWhite,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "Restaurant overview",
+                            text = DashboardStrings.SUBTITLE,
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary,
                         )
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "Switch restaurant",
+                            contentDescription = DashboardStrings.SWITCH_RESTAURANT,
                             tint = TextSecondary,
                             modifier = Modifier.size(18.dp),
                         )
@@ -143,9 +163,9 @@ fun DashboardScreen(
                                 Column {
                                     Text(
                                         text = when {
-                                            !isApproved -> "Pending approval"
-                                            restaurant.isOpen -> "Open for orders"
-                                            else -> "Closed"
+                                            !isApproved -> DashboardStrings.PENDING_APPROVAL
+                                            restaurant.isOpen -> DashboardStrings.OPEN_FOR_ORDERS
+                                            else -> DashboardStrings.CLOSED
                                         },
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
@@ -161,10 +181,12 @@ fun DashboardScreen(
                                         color = TextMuted,
                                     )
                                 }
+                                val toggleLabel = if (isApproved && restaurant.isOpen) DashboardStrings.CLOSE_RESTAURANT else DashboardStrings.OPEN_RESTAURANT
                                 Switch(
                                     checked = isApproved && restaurant.isOpen,
                                     onCheckedChange = { authViewModel.toggleOpen(it) },
                                     enabled = isApproved && !authState.isTogglingOpen,
+                                    modifier = Modifier.semantics { contentDescription = toggleLabel },
                                     colors = SwitchDefaults.colors(
                                         checkedThumbColor = TextWhite,
                                         checkedTrackColor = SuccessGreen,
@@ -178,7 +200,7 @@ fun DashboardScreen(
                             if (!isApproved) {
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "We'll email you once the platform admin reviews your application. You can edit your menu and settings while you wait.",
+                                    text = DashboardStrings.PENDING_APPROVAL_BODY,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextMuted,
                                 )
@@ -195,14 +217,14 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     StatCard(
-                        title = "Today's Orders",
+                        title = DashboardStrings.TODAYS_ORDERS,
                         value = "${state.stats.todayOrders}",
                         icon = Icons.Filled.ShoppingBag,
                         iconTint = Orange,
                         modifier = Modifier.weight(1f),
                     )
                     StatCard(
-                        title = "Revenue",
+                        title = DashboardStrings.REVENUE,
                         value = state.stats.todayRevenue.formatPriceWhole(),
                         icon = Icons.Filled.AttachMoney,
                         iconTint = SuccessGreen,
@@ -217,14 +239,14 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     StatCard(
-                        title = "Active Orders",
+                        title = DashboardStrings.ACTIVE_ORDERS,
                         value = "${state.stats.activeOrders}",
                         icon = Icons.Filled.TrendingUp,
                         iconTint = StatusAccepted,
                         modifier = Modifier.weight(1f),
                     )
                     StatCard(
-                        title = "Avg Prep Time",
+                        title = DashboardStrings.AVG_PREP_TIME,
                         value = "${state.stats.avgPrepTime.toInt()} min",
                         icon = Icons.Filled.AccessTime,
                         iconTint = StatusPreparing,
@@ -237,7 +259,7 @@ fun DashboardScreen(
             item {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Active Orders",
+                    text = DashboardStrings.ACTIVE_ORDERS_SECTION,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = TextWhite,
@@ -264,7 +286,7 @@ fun DashboardScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "No active orders right now",
+                            text = DashboardStrings.NO_ACTIVE_ORDERS,
                             style = MaterialTheme.typography.bodyLarge,
                             color = TextMuted,
                         )
@@ -309,7 +331,7 @@ fun StatCard(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = null,
+                    contentDescription = title,
                     tint = iconTint,
                     modifier = Modifier.size(22.dp),
                 )

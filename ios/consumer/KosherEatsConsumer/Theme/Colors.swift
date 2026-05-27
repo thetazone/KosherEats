@@ -25,7 +25,7 @@ extension Color {
     static let keTextSecondary = dynamic(dark: "D4D4D4", light: "262626")
     static let keTextTertiary = dynamic(dark: "A3A3A3", light: "525252")
     static let keTextMuted = dynamic(dark: "737373", light: "737373")
-    static let keTextOnAccent = dynamic(dark: "FFFFFF", light: "0A0A0A")
+    static let keTextOnAccent = Color.white
 
     // MARK: - Status (punch through in both modes)
     static let keSuccess = Color(hex: "22C55E")

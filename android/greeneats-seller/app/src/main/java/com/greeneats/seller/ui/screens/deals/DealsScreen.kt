@@ -54,6 +54,20 @@ import com.greeneats.seller.ui.theme.TextSecondary
 import com.greeneats.seller.ui.theme.TextWhite
 import com.greeneats.seller.ui.viewmodels.DealsViewModel
 import java.time.ZonedDateTime
+
+private object DealsStrings {
+    const val CREATE_DEAL = "Create Deal"
+    const val TITLE = "Deals"
+    const val SUBTITLE = "Post limited-time deals for your customers"
+    const val NO_DEALS_YET = "No deals yet"
+    const val TAP_TO_CREATE = "Tap + to create your first deal"
+    const val DEACTIVATE_DEAL = "Deactivate deal"
+    const val EXPIRED = "Expired"
+    const val DEACTIVATED = "Deactivated"
+    const val ACTIVE = "Active"
+    /** Separator between status and expiry countdown. */
+    const val STATUS_SEPARATOR = "  ·  "
+}
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
@@ -83,7 +97,7 @@ fun DealsScreen(
             ) {
                 Icon(
                     Icons.Filled.Add,
-                    contentDescription = "Create Deal",
+                    contentDescription = DealsStrings.CREATE_DEAL,
                 )
             }
         },
@@ -99,14 +113,14 @@ fun DealsScreen(
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Deals",
+                    text = DealsStrings.TITLE,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = TextWhite,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Post limited-time deals for your customers",
+                    text = DealsStrings.SUBTITLE,
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                 )
@@ -141,12 +155,12 @@ fun DealsScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "No deals yet",
+                                text = DealsStrings.NO_DEALS_YET,
                                 color = TextMuted,
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                             Text(
-                                text = "Tap + to create your first deal",
+                                text = DealsStrings.TAP_TO_CREATE,
                                 color = TextMuted,
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -182,7 +196,7 @@ private fun DealCard(
         val expiry = ZonedDateTime.parse(deal.expiresAt)
         val now = ZonedDateTime.now()
         if (expiry.isBefore(now)) {
-            "Expired"
+            DealsStrings.EXPIRED
         } else {
             val hours = ChronoUnit.HOURS.between(now, expiry)
             if (hours < 24) "${hours}h left" else "${hours / 24}d left"
@@ -252,9 +266,9 @@ private fun DealCard(
                         else -> SuccessGreen
                     }
                     val statusText = when {
-                        !deal.isActive -> "Deactivated"
-                        isExpired -> "Expired"
-                        else -> "Active"
+                        !deal.isActive -> DealsStrings.DEACTIVATED
+                        isExpired -> DealsStrings.EXPIRED
+                        else -> DealsStrings.ACTIVE
                     }
                     Box(
                         modifier = Modifier
@@ -271,7 +285,7 @@ private fun DealCard(
                     )
                     if (expiryText.isNotEmpty() && deal.isActive && !isExpired) {
                         Text(
-                            text = "  ·  $expiryText",
+                            text = "${DealsStrings.STATUS_SEPARATOR}$expiryText",
                             color = TextMuted,
                             fontSize = 12.sp,
                         )
@@ -283,7 +297,7 @@ private fun DealCard(
                 IconButton(onClick = onDelete) {
                     Icon(
                         Icons.Filled.Delete,
-                        contentDescription = "Deactivate deal",
+                        contentDescription = DealsStrings.DEACTIVATE_DEAL,
                         tint = ErrorRed.copy(alpha = 0.7f),
                     )
                 }

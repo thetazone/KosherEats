@@ -27,10 +27,14 @@ struct ChatMessage: Codable, Identifiable {
         }
     }
 
-    var shortTime: String {
+    private static let shortTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
         formatter.timeStyle = .short
-        return formatter.string(from: createdAt)
+        return formatter
+    }()
+
+    var shortTime: String {
+        Self.shortTimeFormatter.string(from: createdAt)
     }
 }

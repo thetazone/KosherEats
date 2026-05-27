@@ -20,6 +20,8 @@ data class OrdersState(
     val selectedOrder: Order? = null,
     val selectedFilter: OrderStatus? = null,
     val isLoading: Boolean = false,
+    val isDetailLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val pendingOrderIds: Set<String> = emptySet(),
     val error: String? = null,
     val updateSuccess: String? = null,
@@ -44,6 +46,34 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    fun refresh() {
+        viewModelScope.launch {
+            val filter = _state.value.selectedFilter
+            _state.update { it.copy(isRefreshing = true, error = null) }
+            try {
+                val statusStr = filter?.name?.lowercase()
+                val response = apiService.getOrders(status = statusStr)
+                if (response.isSuccessful) {
+                    _state.update { it.copy(
+                        orders = response.body() ?: emptyList(),
+                        isRefreshing = false,
+                    ) }
+                } else {
+                    _state.update { it.copy(
+                        isRefreshing = false,
+                        error = "Failed to refresh orders (HTTP ${response.code()})",
+                    ) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    isRefreshing = false,
+                    error = "Connection error: ${e.localizedMessage}",
+                ) }
+            }
+        }
+    }
+
     fun loadOrders(status: OrderStatus? = null) {
         viewModelScope.launch {
             _state.update { it.copy(
@@ -60,9 +90,10 @@ class OrdersViewModel @Inject constructor(
                         isLoading = false,
                     ) }
                 } else {
+                    val errorBody = response.errorBody()?.string()?.take(500)
                     _state.update { it.copy(
                         isLoading = false,
-                        error = "Failed to load orders",
+                        error = errorBody ?: "Failed to load orders (HTTP ${response.code()})",
                     ) }
                 }
             } catch (e: Exception) {
@@ -77,24 +108,25 @@ class OrdersViewModel @Inject constructor(
 
     fun loadOrderDetail(orderId: String) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _state.update { it.copy(isDetailLoading = true, error = null) }
             try {
                 val response = apiService.getOrderDetail(orderId)
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         selectedOrder = response.body(),
-                        isLoading = false,
+                        isDetailLoading = false,
                     ) }
                 } else {
+                    val errorBody = response.errorBody()?.string()?.take(500)
                     _state.update { it.copy(
-                        isLoading = false,
-                        error = "Failed to load order details",
+                        isDetailLoading = false,
+                        error = errorBody ?: "Failed to load order details (HTTP ${response.code()})",
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    isLoading = false,
+                    isDetailLoading = false,
                     error = "Connection error: ${e.localizedMessage}",
                 ) }
             }
@@ -164,10 +196,11 @@ class OrdersViewModel @Inject constructor(
                         updateSuccess = "Order updated to ${newStatus.name.lowercase().replace('_', ' ')}",
                     ) }
                 } else {
+                    val errorBody = response.errorBody()?.string()?.take(500)
                     _state.update { it.copy(
                         selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
                         pendingOrderIds = it.pendingOrderIds - orderId,
-                        error = "Failed to update order status",
+                        error = errorBody ?: "Failed to update order status (HTTP ${response.code()})",
                     ) }
                 }
             } catch (e: Exception) {

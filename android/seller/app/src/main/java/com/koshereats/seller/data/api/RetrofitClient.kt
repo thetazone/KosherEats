@@ -128,8 +128,11 @@ object NetworkModule {
         }
 
         val loggingInterceptor = HttpLoggingInterceptor().apply {
+            redactHeader("Authorization")
+            redactHeader("Cookie")
+            redactHeader("Set-Cookie")
             level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.BODY
+                HttpLoggingInterceptor.Level.HEADERS
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }
@@ -174,10 +177,14 @@ private class TokenAuthenticator(
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
     override fun authenticate(route: Route?, response: okhttp3.Response): okhttp3.Request? {
-        if (responseCount(response) > 1) return null
+        // OkHttp Authenticator can be invoked up to 2-3 times per request when concurrent
+        // 401s come in; cap aggressively to avoid an infinite refresh loop wedging the dispatcher.
+        if (responseCount(response) >= 2) return null
 
         val path = response.request.url.encodedPath
         if (path.contains("/auth/")) return null
@@ -202,6 +209,7 @@ private class TokenAuthenticator(
                 return null
             }
 
+            android.util.Log.i("RetrofitClient", "Token refresh succeeded")
             NetworkModule.cachedToken = newTokens.first
             NetworkModule.cachedRefreshToken = newTokens.second
             // Persist asynchronously — cachedToken is the runtime source of truth,
@@ -234,14 +242,28 @@ private class TokenAuthenticator(
         return try {
             refreshClient.newCall(request).execute().use { resp ->
                 if (resp.isSuccessful) {
-                    val bodyStr = resp.body?.string() ?: return null
+                    val bodyStr = resp.body?.string()
+                    if (bodyStr.isNullOrBlank()) {
+                        android.util.Log.w("RetrofitClient", "Token refresh: empty body")
+                        return@use null
+                    }
                     val adapter = moshi.adapter(RefreshResponse::class.java)
-                    val parsed = adapter.fromJson(bodyStr) ?: return null
-                    val token = parsed.token.ifBlank { return null }
-                    Pair(token, parsed.refreshToken)
-                } else null
+                    val parsed = try {
+                        adapter.fromJson(bodyStr)
+                    } catch (e: Exception) {
+                        android.util.Log.w("RetrofitClient", "Token refresh: bad JSON", e)
+                        null
+                    } ?: return@use null
+                    val token = parsed.token.ifBlank { return@use null }
+                    val refresh = parsed.refreshToken.ifBlank { return@use null }
+                    Pair(token, refresh)
+                } else {
+                    android.util.Log.w("RetrofitClient", "Token refresh failed: HTTP ${resp.code}")
+                    null
+                }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("RetrofitClient", "Token refresh threw", e)
             null
         }
     }

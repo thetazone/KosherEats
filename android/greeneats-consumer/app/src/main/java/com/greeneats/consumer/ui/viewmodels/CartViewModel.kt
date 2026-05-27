@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import java.util.UUID
 import javax.inject.Inject
 
@@ -34,7 +33,8 @@ data class CartUiState(
     val activeRestaurantId: String? = null,
     val deliveryFee: Int = 399,
     val serviceFee: Int = 249,
-    val taxRate: Double = 0.08875,
+    /** Tax rate as parts-per-million (8.875 % = 88 750 ppm) for integer-only math. */
+    val taxRatePpm: Int = 88_750,
     val tip: Int = 0,
     /**
      * Scheduled delivery time. `null` = deliver ASAP (the default). Any
@@ -53,7 +53,7 @@ data class CartUiState(
 
     val subtotal: Int get() = cart.subtotal
     val discount: Int get() = cart.discount
-    val tax: Int get() = (cart.discountedSubtotal * taxRate).roundToInt()
+    val tax: Int get() = ((cart.discountedSubtotal.toLong() * taxRatePpm + 500_000) / 1_000_000).toInt()
     val total: Int get() = cart.discountedSubtotal + deliveryFee + serviceFee + tax + tip
     val isEmpty: Boolean get() = cart.items.isEmpty()
     val itemCount: Int get() = cart.itemCount

@@ -119,6 +119,14 @@ fun KosherEatsNavHost(
     LaunchedEffect(pendingOrderId.value, authState.sessionState) {
         val id = pendingOrderId.value ?: return@LaunchedEffect
         if (authState.sessionState != SessionState.Authenticated) return@LaunchedEffect
+        // Defensive: a malformed FCM data payload could push a non-UUID-looking value here.
+        // Only accept plain ASCII identifiers to avoid building a bogus route.
+        if (id.isBlank() || !id.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+            android.util.Log.w("NavGraph", "Dropping deep-link with invalid order_id='$id'")
+            pendingOrderId.value = null
+            onPendingOrderIdConsumed()
+            return@LaunchedEffect
+        }
         pendingOrderId.value = null
         onPendingOrderIdConsumed()
         navController.navigate(Screen.OrderTracking.createRoute(id)) {

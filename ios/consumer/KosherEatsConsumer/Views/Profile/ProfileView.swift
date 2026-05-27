@@ -157,9 +157,10 @@ struct ProfileView: View {
 
     private var initials: String {
         guard let user = authVM.user else { return "?" }
-        let first = user.firstName.prefix(1)
-        let last = user.lastName.prefix(1)
-        return "\(first)\(last)".uppercased()
+        let first = user.firstName.first.map(String.init) ?? ""
+        let last = user.lastName.first.map(String.init) ?? ""
+        let result = "\(first)\(last)".uppercased()
+        return result.isEmpty ? "?" : result
     }
 }
 

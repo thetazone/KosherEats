@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,7 +78,7 @@ fun PhoneAuthScreen(
         viewModel.backToPhoneEntry()
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
+    Column(modifier = Modifier.fillMaxSize().background(BackgroundBlack).imePadding()) {
         // Top back bar
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
@@ -181,12 +182,13 @@ fun PhoneAuthScreen(
 
             if (state.otpSent) {
                 Spacer(Modifier.height(16.dp))
+                val resendEnabled = !state.phoneIsSending && !state.phoneIsVerifying
                 Text(
                     text = "Didn't get it? Resend code",
-                    color = Orange,
+                    color = if (resendEnabled) Orange else Orange.copy(alpha = 0.4f),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
-                    modifier = Modifier.clickable(enabled = !state.phoneIsSending) {
+                    modifier = Modifier.clickable(enabled = resendEnabled) {
                         viewModel.startPhoneLogin()
                     },
                 )
@@ -209,7 +211,10 @@ private fun PhoneEntry(
         OutlinedTextField(
             value = countryCode,
             onValueChange = {
-                val cleaned = "+" + it.removePrefix("+").filter { c -> c.isDigit() }.take(3)
+                val digits = it.removePrefix("+").filter { c -> c.isDigit() }.take(3)
+                // Guarantee a leading "+" and never let the value collapse to empty —
+                // an empty country code makes the Send Code submit invalid silently.
+                val cleaned = if (digits.isEmpty()) "+" else "+$digits"
                 onCountryCodeChange(cleaned)
             },
             modifier = Modifier.width(96.dp),

@@ -123,19 +123,23 @@ class AuthViewModel @Inject constructor(
         if (!_uiState.value.isRehydrating) checkAuthStatus()
     }
 
-    fun updateLoginEmail(value: String) = _uiState.update { it.copy(loginEmail = value) }
-    fun updateLoginPassword(value: String) = _uiState.update { it.copy(loginPassword = value) }
-    fun updateRegisterFirstName(value: String) = _uiState.update { it.copy(registerFirstName = value) }
-    fun updateRegisterLastName(value: String) = _uiState.update { it.copy(registerLastName = value) }
-    fun updateRegisterEmail(value: String) = _uiState.update { it.copy(registerEmail = value) }
-    fun updateRegisterPhone(value: String) = _uiState.update { it.copy(registerPhone = value) }
-    fun updateRegisterPassword(value: String) = _uiState.update { it.copy(registerPassword = value) }
-    fun updateRegisterConfirmPassword(value: String) = _uiState.update { it.copy(registerConfirmPassword = value) }
+    fun updateLoginEmail(value: String) = _uiState.update { it.copy(loginEmail = value.trim().take(254)) }
+    fun updateLoginPassword(value: String) = _uiState.update { it.copy(loginPassword = value.take(128)) }
+    fun updateRegisterFirstName(value: String) = _uiState.update { it.copy(registerFirstName = value.take(100)) }
+    fun updateRegisterLastName(value: String) = _uiState.update { it.copy(registerLastName = value.take(100)) }
+    fun updateRegisterEmail(value: String) = _uiState.update { it.copy(registerEmail = value.trim().take(254)) }
+    fun updateRegisterPhone(value: String) = _uiState.update { it.copy(registerPhone = value.filter { it.isDigit() || it == '+' }.take(20)) }
+    fun updateRegisterPassword(value: String) = _uiState.update { it.copy(registerPassword = value.take(128)) }
+    fun updateRegisterConfirmPassword(value: String) = _uiState.update { it.copy(registerConfirmPassword = value.take(128)) }
 
     fun login() {
         val state = _uiState.value
         if (state.loginEmail.isBlank() || state.loginPassword.isBlank()) {
             _uiState.update { it.copy(error = "Please fill in all fields") }
+            return
+        }
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(state.loginEmail.trim()).matches()) {
+            _uiState.update { it.copy(error = "Please enter a valid email address") }
             return
         }
 
@@ -196,6 +200,14 @@ class AuthViewModel @Inject constructor(
         }
         if (state.registerPassword != state.registerConfirmPassword) {
             _uiState.update { it.copy(error = "Passwords do not match") }
+            return
+        }
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(state.registerEmail.trim()).matches()) {
+            _uiState.update { it.copy(error = "Please enter a valid email address") }
+            return
+        }
+        if (state.registerPassword.length < 8) {
+            _uiState.update { it.copy(error = "Password must be at least 8 characters") }
             return
         }
 
@@ -364,7 +376,9 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 apiService.phoneStart(PhoneStartRequest(phone = state.phoneE164))
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.d("AuthViewModel", "silentResend failed (non-fatal): ${e.message}")
+            }
         }
     }
 

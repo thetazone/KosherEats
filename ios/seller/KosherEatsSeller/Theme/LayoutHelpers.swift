@@ -18,7 +18,7 @@ struct AdaptiveContentWidth: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: sizeClass == .regular ? maxWidth : .infinity)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 

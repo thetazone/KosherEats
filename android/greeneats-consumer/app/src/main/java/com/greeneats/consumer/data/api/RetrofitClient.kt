@@ -6,8 +6,15 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
 import com.greeneats.consumer.BuildConfig
+import com.greeneats.consumer.data.models.OrderStatus
 import com.greeneats.consumer.data.session.SessionManager
+import java.lang.reflect.Type
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -78,6 +85,20 @@ class TokenProvider @Inject constructor(
         return token
     }
 
+    /**
+     * Persists new auth tokens to DataStore.
+     *
+     * WARNING: [runBlocking] here risks deadlocking an OkHttp thread when called
+     * from [TokenAuthenticator.authenticate], because OkHttp's thread pool is
+     * bounded and DataStore I/O contends for the same Dispatchers.IO pool.
+     * However, DataStore's `edit` is a suspend function and OkHttp's
+     * [okhttp3.Authenticator] interface is synchronous, so there is no way to
+     * call `edit` without bridging to a coroutine. The in-memory volatile fields
+     * are updated first so subsequent requests see the new token immediately;
+     * the DataStore write is a durability concern. If this becomes a production
+     * issue, replace with a fire-and-forget `appScope.launch` (accepting that a
+     * process kill before the write completes would lose the tokens on disk).
+     */
     fun persistNewTokens(newToken: String, newRefreshToken: String) {
         token = newToken
         refreshToken = newRefreshToken
@@ -144,11 +165,17 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    fun provideGson(): Gson = GsonBuilder()
+        .registerTypeAdapter(OrderStatus::class.java, OrderStatusDeserializer())
+        .create()
+
+    @Provides
+    @Singleton
+    fun provideRetrofit(okHttpClient: OkHttpClient, gson: Gson): Retrofit {
         return Retrofit.Builder()
             .baseUrl(BuildConfig.BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
     }
 
@@ -156,6 +183,24 @@ object NetworkModule {
     @Singleton
     fun provideApiService(retrofit: Retrofit): ApiService {
         return retrofit.create(ApiService::class.java)
+    }
+}
+
+/**
+ * Maps unknown order-status strings from the backend to [OrderStatus.UNKNOWN]
+ * instead of letting Gson return null (which crashes Kotlin non-null fields).
+ */
+private class OrderStatusDeserializer : JsonDeserializer<OrderStatus> {
+    private val lookup: Map<String, OrderStatus> = OrderStatus.entries.associateBy { entry ->
+        try {
+            val field = OrderStatus::class.java.getField(entry.name)
+            field.getAnnotation(com.google.gson.annotations.SerializedName::class.java)?.value ?: entry.name
+        } catch (_: Exception) { entry.name }
+    }
+
+    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): OrderStatus {
+        val raw = json.asString
+        return lookup[raw] ?: OrderStatus.UNKNOWN
     }
 }
 

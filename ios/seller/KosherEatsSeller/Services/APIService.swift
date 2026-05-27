@@ -2,17 +2,19 @@ import Foundation
 
 enum APIError: LocalizedError {
     case invalidURL
+    case invalidResponse
     case unauthorized
     case serverError(Int, String)
-    case decodingError(String)
+    case decodingError(Error)
     case networkError(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid URL"
+        case .invalidResponse: return "Invalid response from server"
         case .unauthorized: return "Session expired. Please log in again."
         case .serverError(let code, let msg): return "Server error (\(code)): \(msg)"
-        case .decodingError(let msg): return "Data error: \(msg)"
+        case .decodingError(let err): return "Data error: \(err.localizedDescription)"
         case .networkError(let msg): return "Network error: \(msg)"
         }
     }
@@ -20,6 +22,37 @@ enum APIError: LocalizedError {
 
 actor APIService {
     static let shared = APIService()
+
+    // ISO8601DateFormatter is not Sendable, so wrap each instance in a
+    // lock-protected box to avoid a data-race if the custom dateDecodingStrategy
+    // closure is ever invoked off the main actor.
+    private static let iso8601Fractional: LockedFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return LockedFormatter(formatter)
+    }()
+
+    private static let iso8601Plain: LockedFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return LockedFormatter(formatter)
+    }()
+
+    /// Thread-safe wrapper around ISO8601DateFormatter (which is not Sendable).
+    private final class LockedFormatter: @unchecked Sendable {
+        private let formatter: ISO8601DateFormatter
+        private let lock = NSLock()
+
+        init(_ formatter: ISO8601DateFormatter) {
+            self.formatter = formatter
+        }
+
+        func date(from string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.date(from: string)
+        }
+    }
 
     private let baseURL: String
     private let decoder: JSONDecoder
@@ -36,14 +69,39 @@ actor APIService {
     /// via `setRefreshToken(_:)`.
     private var refreshToken: String?
 
+    // URL configuration:
+    // Hardcoded to the production Fly.io backend. To test against a local
+    // backend, change the value below to "http://localhost:8080/api/v1".
+    //
+    // On Android the equivalent lives in build.gradle.kts as
+    // BuildConfig.BASE_URL — one per build type (debug / release).
+    //
+    // TODO: Read from an environment variable (e.g. KOSHEREATS_API_URL) in
+    // DEBUG builds so switching doesn't require a code change — the consumer
+    // iOS app already does this via ProcessInfo.processInfo.environment.
     private init() {
+        #if DEBUG
+        self.baseURL = ProcessInfo.processInfo.environment["KOSHEREATS_API_URL"]
+            ?? "https://koshereats-api.fly.dev/api/v1"
+        #else
         self.baseURL = "https://koshereats-api.fly.dev/api/v1"
+        #endif
         // Pre-load synchronously so any API call that races the AuthViewModel
         // init Task still carries an Authorization header and refresh token.
         self.token = KeychainHelper.load(forKey: "ke_seller_token")
         self.refreshToken = KeychainHelper.load(forKey: "ke_seller_refresh_token")
 
         self.decoder = JSONDecoder()
+        self.decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = APIService.iso8601Fractional.date(from: value) { return date }
+            if let date = APIService.iso8601Plain.date(from: value) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO8601 date: \(value)"
+            )
+        }
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase
     }
@@ -104,7 +162,7 @@ actor APIService {
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.networkError("Invalid response")
+                throw APIError.invalidResponse
             }
 
             // Retry on transient server errors (cold-start 502/503/504)
@@ -136,7 +194,7 @@ actor APIService {
             do {
                 return try decoder.decode(T.self, from: data)
             } catch {
-                throw APIError.decodingError(error.localizedDescription)
+                throw APIError.decodingError(error)
             }
         }
         throw lastError
@@ -222,7 +280,7 @@ actor APIService {
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.networkError("Invalid response")
+                throw APIError.invalidResponse
             }
 
             // Retry on transient server errors (cold-start 502/503/504)

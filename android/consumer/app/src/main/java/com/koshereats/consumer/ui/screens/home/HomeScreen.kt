@@ -388,9 +388,10 @@ fun HomeScreen(
                             contentAlignment = Alignment.Center,
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (uiState.error != null) {
+                                val errorMessage = uiState.error
+                                if (errorMessage != null) {
                                     Text(
-                                        uiState.error!!,
+                                        errorMessage,
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = TextMuted,
                                     )

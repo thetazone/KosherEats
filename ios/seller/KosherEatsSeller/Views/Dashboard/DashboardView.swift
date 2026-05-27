@@ -5,6 +5,7 @@ struct DashboardView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showingPicker = false
     @State private var pickerSelectionID: String? = SelectedRestaurant.shared.id
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -68,7 +69,9 @@ struct DashboardView: View {
                         // Re-fetch everything under the new restaurant context.
                         // All seller endpoints key off SelectedRestaurant.shared,
                         // which the sheet has already updated.
-                        Task { await vm.load() }
+                        // Cancel any in-flight load to avoid concurrent fetches.
+                        loadTask?.cancel()
+                        loadTask = Task { await vm.load() }
                     }
                 )
             }

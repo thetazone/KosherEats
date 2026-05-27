@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,16 +36,35 @@ import com.greeneats.consumer.ui.components.GlattBadge
 import com.greeneats.consumer.ui.components.KosherBadge
 import com.greeneats.consumer.ui.theme.*
 
+private object RestaurantCardStrings {
+    const val KOSHER_DEFAULT = "Kosher"
+    const val GLATT_LABEL = "Glatt"
+    const val CURRENTLY_CLOSED = "Currently Closed"
+    /** Separator between cuisine names. Kept as a constant for future l10n / RTL review. */
+    const val CUISINE_SEPARATOR = " · "
+    const val CUISINE_SEPARATOR_ACCESSIBILITY = ", "
+}
+
 @Composable
 fun RestaurantCard(
     restaurant: Restaurant,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val kosherLabel = restaurant.kosherCertification?.name ?: RestaurantCardStrings.KOSHER_DEFAULT
+    val cuisines = restaurant.cuisineTypes
+        .mapNotNull { it?.displayName }
+        .joinToString(RestaurantCardStrings.CUISINE_SEPARATOR_ACCESSIBILITY)
+    val statusLabel = if (restaurant.isOpen) "" else ", ${RestaurantCardStrings.CURRENTLY_CLOSED}"
+    val cardDescription = "${restaurant.name}, $kosherLabel${if (restaurant.isGlattKosher) ", ${RestaurantCardStrings.GLATT_LABEL}" else ""}${if (cuisines.isNotBlank()) ", $cuisines" else ""}$statusLabel"
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .semantics(mergeDescendants = true) {
+                contentDescription = cardDescription
+            }
+            .clickable(onClickLabel = "Open ${restaurant.name}", onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDarkElevated),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -92,7 +113,7 @@ fun RestaurantCard(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "Currently Closed",
+                            text = RestaurantCardStrings.CURRENTLY_CLOSED,
                             color = TextWhite,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -124,7 +145,7 @@ fun RestaurantCard(
 
                     val cuisines = restaurant.cuisineTypes
                         .mapNotNull { it?.displayName }
-                        .joinToString(" · ")
+                        .joinToString(RestaurantCardStrings.CUISINE_SEPARATOR)
                     if (cuisines.isNotBlank()) {
                         Text(
                             text = cuisines,

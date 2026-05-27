@@ -130,6 +130,9 @@ class HomeViewModel @Inject constructor(
     fun loadMore() {
         val state = _uiState.value
         if (state.isLoading || !state.hasMore) return
+        // Defensive cap: even if the server keeps reporting hasMore, stop after 100 pages
+        // (≈2000 restaurants) to avoid runaway pagination on a buggy/recursive response.
+        if (state.currentPage >= 100) return
         val nextPage = state.currentPage + 1
         _uiState.update { it.copy(isLoading = true) }
         loadTrigger.value = loadTrigger.value.copy(page = nextPage)

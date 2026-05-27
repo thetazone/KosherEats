@@ -2,7 +2,10 @@ package com.greeneats.consumer.ui.screens.map
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -21,12 +24,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -42,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,7 +99,8 @@ fun NearbyMapScreen(
                 PackageManager.PERMISSION_GRANTED
 
     var locationGranted by remember { mutableStateOf(hasLocationPermission()) }
-    // Tracks whether we've already moved the camera to the user — prevents the
+    var permissionDenied by remember { mutableStateOf(false) }
+    // Tracks whether we've already moved the camera to the user -- prevents the
     // restaurant bounds-fit effect below from overriding their location zoom.
     var centeredOnUser by remember { mutableStateOf(false) }
 
@@ -101,7 +111,7 @@ fun NearbyMapScreen(
             if (loc != null) {
                 cameraPositionState.position = CameraPosition.fromLatLngZoom(
                     LatLng(loc.latitude, loc.longitude),
-                    15f, // ~10 cross streets visible — matches iOS reference
+                    15f, // ~10 cross streets visible -- matches iOS reference
                 )
                 centeredOnUser = true
             }
@@ -114,6 +124,7 @@ fun NearbyMapScreen(
         val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         locationGranted = granted
+        permissionDenied = !granted
         if (granted) centerOnUser()
     }
 
@@ -153,46 +164,156 @@ fun NearbyMapScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            GoogleMap(
+        // Permission denied state -- show a prompt instead of the map
+        if (permissionDenied && !locationGranted) {
+            Box(
                 modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(
-                    mapType = MapType.NORMAL,
-                    isMyLocationEnabled = locationGranted,
-                ),
-                uiSettings = MapUiSettings(
-                    zoomControlsEnabled = false,
-                    myLocationButtonEnabled = locationGranted,
-                    mapToolbarEnabled = false,
-                ),
-                onMapClick = { selectedId = null },
+                contentAlignment = Alignment.Center,
             ) {
-                restaurants.forEach { restaurant ->
-                    MarkerComposable(
-                        keys = arrayOf(restaurant.id, restaurant.isOpen, restaurant.rating),
-                        state = MarkerState(position = LatLng(restaurant.address.latitude, restaurant.address.longitude)),
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.LocationOff,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = "Location Access Needed",
+                        color = TextWhite,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "We need your location to show nearby kosher restaurants. Enable location in Settings to see what's around you.",
+                        color = TextTertiary,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 20.sp,
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Button(
                         onClick = {
-                            selectedId = restaurant.id
-                            true
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                            )
                         },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
                     ) {
-                        RestaurantMapPin(restaurant = restaurant)
+                        Text("Open Settings", color = TextWhite, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                            ),
+                        )
+                    }) {
+                        Text("Try Again", color = Orange)
                     }
                 }
             }
-
-            if (selected != null) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                GoogleMap(
+                    modifier = Modifier.fillMaxSize(),
+                    cameraPositionState = cameraPositionState,
+                    properties = MapProperties(
+                        mapType = MapType.NORMAL,
+                        isMyLocationEnabled = locationGranted,
+                    ),
+                    uiSettings = MapUiSettings(
+                        zoomControlsEnabled = false,
+                        myLocationButtonEnabled = locationGranted,
+                        mapToolbarEnabled = false,
+                    ),
+                    onMapClick = { selectedId = null },
                 ) {
-                    SelectedRestaurantCard(
-                        restaurant = selected,
-                        onClick = { onRestaurantClick(selected.id) },
-                    )
+                    restaurants.forEach { restaurant ->
+                        MarkerComposable(
+                            keys = arrayOf(restaurant.id, restaurant.isOpen, restaurant.rating),
+                            state = MarkerState(position = LatLng(restaurant.address.latitude, restaurant.address.longitude)),
+                            onClick = {
+                                selectedId = restaurant.id
+                                true
+                            },
+                        ) {
+                            RestaurantMapPin(restaurant = restaurant)
+                        }
+                    }
+                }
+
+                // Empty state overlay when no restaurants have coordinates
+                if (restaurants.isEmpty() && !state.isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(BackgroundBlack.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(32.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Restaurant,
+                                contentDescription = null,
+                                tint = Orange.copy(alpha = 0.5f),
+                                modifier = Modifier.size(64.dp),
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = "No Restaurants Nearby",
+                                color = TextWhite,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "We couldn't find any kosher restaurants near your location. Try zooming out or check back later.",
+                                color = TextTertiary,
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 20.sp,
+                            )
+                        }
+                    }
+                }
+
+                // Loading indicator while restaurants are being fetched
+                if (state.isLoading && restaurants.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SurfaceDark)
+                            .padding(20.dp),
+                    ) {
+                        CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
+                    }
+                }
+
+                if (selected != null) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                    ) {
+                        SelectedRestaurantCard(
+                            restaurant = selected,
+                            onClick = { onRestaurantClick(selected.id) },
+                        )
+                    }
                 }
             }
         }

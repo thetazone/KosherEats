@@ -14,6 +14,8 @@ struct DeliveryAttributes: ActivityAttributes {
         var statusText: String       // "Your food is being prepared"
         var eta: Date
         var courierName: String?
+        var courierPhone: String?    // used to surface a call-courier action on the Lock Screen
         var courierVehicle: String?  // "Silver Toyota Camry"
+        var orderTotal: String?      // formatted total, e.g. "$23.50"
     }
 }

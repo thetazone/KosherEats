@@ -1,0 +1,815 @@
+import Foundation
+
+enum APIError: LocalizedError {
+    case invalidURL
+    case invalidResponse
+    case httpError(Int, String)
+    case decodingError(Error)
+    case networkError(Error)
+    case unauthorized
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: return "Invalid URL"
+        case .invalidResponse: return "Invalid response from server"
+        case .httpError(let code, let msg): return "Error \(code): \(msg)"
+        case .decodingError(let err): return "Decoding error: \(err.localizedDescription)"
+        case .networkError(let err): return err.localizedDescription
+        case .unauthorized: return "Please log in again"
+        }
+    }
+}
+
+@MainActor
+class APIService: ObservableObject {
+    static let shared = APIService()
+
+    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    nonisolated(unsafe) private static let iso8601Plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    // Pointing DEBUG at prod Fly temporarily so the simulator builds round-trip
+    // through the same backend the seller/courier apps use (and the same Stripe
+    // creds). Switch back to "http://localhost:8080/api/v1" when running a
+    // local backend stack with its own Stripe keys.
+    #if DEBUG
+    private var baseURL = "https://koshereats-api.fly.dev/api/v1"
+    #else
+    private var baseURL = "https://koshereats-api.fly.dev/api/v1"
+    #endif
+
+    private var token: String? {
+        get { KeychainHelper.load(forKey: "auth_token") }
+        set {
+            if let v = newValue { KeychainHelper.save(v, forKey: "auth_token") }
+            else { KeychainHelper.delete(forKey: "auth_token") }
+        }
+    }
+
+    private var refreshToken: String? {
+        get { KeychainHelper.load(forKey: "refresh_token") }
+        set {
+            if let v = newValue { KeychainHelper.save(v, forKey: "refresh_token") }
+            else { KeychainHelper.delete(forKey: "refresh_token") }
+        }
+    }
+
+    private let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+
+            if let date = APIService.iso8601Fractional.date(from: value) {
+                return date
+            }
+
+            if let date = APIService.iso8601Plain.date(from: value) {
+                return date
+            }
+
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO8601 date: \(value)"
+            )
+        }
+        return d
+    }()
+
+    private let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    // MARK: - Configuration
+
+    func setBaseURL(_ url: String) {
+        baseURL = url
+    }
+
+    func setToken(_ token: String, refresh: String) {
+        self.token = token
+        self.refreshToken = refresh
+    }
+
+    func clearToken() {
+        self.token = nil
+        self.refreshToken = nil
+    }
+
+    var isAuthenticated: Bool {
+        token != nil
+    }
+
+    // MARK: - Core Request
+
+    private func request<T: Decodable>(
+        method: String,
+        path: String,
+        body: (any Encodable)? = nil,
+        authenticated: Bool = false,
+        allowAuthRefresh: Bool = true
+    ) async throws -> T {
+        guard let url = URL(string: "\(baseURL)\(path)") else {
+            throw APIError.invalidURL
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if authenticated, let token = token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if let body = body {
+            req.httpBody = try encoder.encode(body)
+        }
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw APIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 {
+            // Try token refresh
+            guard path != "/auth/refresh" else {
+                logout()
+                throw APIError.unauthorized
+            }
+            if allowAuthRefresh, authenticated, refreshToken != nil {
+                do {
+                    let refreshed = try await performTokenRefresh()
+                    if refreshed {
+                        return try await request(
+                            method: method,
+                            path: path,
+                            body: body,
+                            authenticated: authenticated,
+                            allowAuthRefresh: false
+                        )
+                    }
+                } catch APIError.unauthorized {
+                    // Refresh token itself is dead — fall through to throw
+                } catch {
+                    // Transient error (5xx, network) — don't logout, propagate
+                    throw error
+                }
+            }
+            throw APIError.unauthorized
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMsg = (try? decoder.decode(APIErrorResponse.self, from: data))?.error ?? "Unknown error"
+            throw APIError.httpError(httpResponse.statusCode, errorMsg)
+        }
+
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+
+    private func requestVoid(
+        method: String,
+        path: String,
+        body: (any Encodable)? = nil,
+        authenticated: Bool = false,
+        allowAuthRefresh: Bool = true
+    ) async throws {
+        guard let url = URL(string: "\(baseURL)\(path)") else {
+            throw APIError.invalidURL
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if authenticated, let token = token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        if let body = body {
+            req.httpBody = try encoder.encode(body)
+        }
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: req)
+        } catch {
+            throw APIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        // Match request<T>'s refresh behavior — otherwise a 401 on any void
+        // endpoint (DELETE /user/account, device registration, etc.) kicks
+        // the user back to login with a perfectly refreshable token still
+        // sitting in UserDefaults.
+        if httpResponse.statusCode == 401 {
+            guard path != "/auth/refresh" else {
+                logout()
+                throw APIError.unauthorized
+            }
+            if allowAuthRefresh, authenticated, refreshToken != nil {
+                do {
+                    let refreshed = try await performTokenRefresh()
+                    if refreshed {
+                        try await requestVoid(
+                            method: method,
+                            path: path,
+                            body: body,
+                            authenticated: authenticated,
+                            allowAuthRefresh: false
+                        )
+                        return
+                    }
+                } catch APIError.unauthorized {
+                    // Refresh token dead — fall through
+                } catch {
+                    throw error
+                }
+            }
+            throw APIError.unauthorized
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMsg = (try? decoder.decode(APIErrorResponse.self, from: data))?.error ?? "Unknown error"
+            throw APIError.httpError(httpResponse.statusCode, errorMsg)
+        }
+    }
+
+    private var refreshTask: Task<Bool, Error>?
+
+    func performTokenRefresh() async throws -> Bool {
+        // Coalesce concurrent refresh attempts into a single in-flight request.
+        // Since this class is @MainActor, the check-then-set below is safe —
+        // no suspension point between reading refreshTask and assigning it.
+        if let existing = refreshTask {
+            return try await existing.value
+        }
+        let task = Task { @MainActor in
+            defer { self.refreshTask = nil }
+            struct RefreshBody: Encodable {
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey { case refreshToken = "refresh_token" }
+            }
+            // The backend's /auth/refresh returns just `{token, refresh_token}`,
+            // not a full AuthResponse with a `user` field. Decoding into
+            // AuthResponse blew up on the missing `user` key, the refresh
+            // appeared to fail to the caller, and every authenticated request
+            // afterwards stayed 401 with a misleading "decoding error" message.
+            struct RefreshResponse: Decodable {
+                let token: String
+                let refreshToken: String
+                enum CodingKeys: String, CodingKey {
+                    case token
+                    case refreshToken = "refresh_token"
+                }
+            }
+            guard let refresh = self.refreshToken else { return false }
+            let response: RefreshResponse = try await self.request(
+                method: "POST", path: "/auth/refresh",
+                body: RefreshBody(refreshToken: refresh))
+            self.setToken(response.token, refresh: response.refreshToken)
+            return true
+        }
+        refreshTask = task
+        return try await task.value
+    }
+
+    // MARK: - Auth
+
+    struct EmailCheckResponse: Decodable {
+        let exists: Bool
+        let role: String
+    }
+
+    /// Returns `exists=true` iff a consumer account with this email is already
+    /// in the GreenEats (vertical=vegan) database. Scoped by (email, role,
+    /// vertical) — a KosherEats account with the same email won't false-positive.
+    func checkEmail(_ email: String) async throws -> EmailCheckResponse {
+        struct Body: Encodable { let email: String; let role: String; let vertical: String }
+        return try await request(method: "POST", path: "/auth/email/check",
+            body: Body(email: email, role: "consumer", vertical: "vegan"), authenticated: false)
+    }
+
+    func login(email: String, password: String) async throws -> AuthResponse {
+        let body = LoginRequest(email: email, password: password, role: "consumer", vertical: "vegan")
+        let response: AuthResponse = try await request(method: "POST", path: "/auth/login", body: body)
+        setToken(response.token, refresh: response.refreshToken)
+        return response
+    }
+
+    func register(email: String, password: String, firstName: String, lastName: String, phone: String) async throws -> AuthResponse {
+        let body = RegisterRequest(email: email, password: password, firstName: firstName, lastName: lastName, phone: phone, role: "consumer", vertical: "vegan")
+        let response: AuthResponse = try await request(method: "POST", path: "/auth/register", body: body)
+        setToken(response.token, refresh: response.refreshToken)
+        return response
+    }
+
+    func socialLogin(provider: String, token: String, firstName: String, lastName: String, nonce: String? = nil) async throws -> AuthResponse {
+        let body = SocialLoginRequest(provider: provider, token: token, firstName: firstName, lastName: lastName, role: "consumer", vertical: "vegan", nonce: nonce)
+        let response: AuthResponse = try await request(method: "POST", path: "/auth/social", body: body)
+        setToken(response.token, refresh: response.refreshToken)
+        return response
+    }
+
+    // MARK: - Phone OTP login
+    //
+    // Backend is wired to Twilio Verify. /auth/phone/start triggers the SMS,
+    // /auth/phone/verify trades a valid code for a JWT. Phone must be E.164.
+    // The verify call sends role="consumer" so the backend creates a brand
+    // new consumer account for first-time phone signups. Existing sellers or
+    // couriers keep their elevated role (backend never demotes), so a courier
+    // logging into the consumer app via phone still gets their courier token
+    // — which is fine, the consumer app's endpoints work for any role.
+
+    struct PhoneStartBody: Encodable { let phone: String }
+    struct PhoneVerifyBody: Encodable {
+        let phone: String
+        let code: String
+        let role: String
+        let vertical: String
+        let firstName: String?
+        let lastName: String?
+        enum CodingKeys: String, CodingKey {
+            case phone, code, role, vertical
+            case firstName = "first_name"
+            case lastName = "last_name"
+        }
+    }
+
+    func startPhoneLogin(phone: String) async throws {
+        let _: [String: String] = try await request(
+            method: "POST", path: "/auth/phone/start",
+            body: PhoneStartBody(phone: phone))
+    }
+
+    func verifyPhoneLogin(phone: String, code: String,
+                          firstName: String? = nil, lastName: String? = nil) async throws -> AuthResponse {
+        let response: AuthResponse = try await request(
+            method: "POST", path: "/auth/phone/verify",
+            body: PhoneVerifyBody(phone: phone, code: code, role: "consumer", vertical: "vegan",
+                                  firstName: firstName, lastName: lastName))
+        setToken(response.token, refresh: response.refreshToken)
+        return response
+    }
+
+    func logout() {
+        clearToken()
+    }
+
+    // MARK: - Restaurants
+
+    /// `?vertical=vegan` appended on every anonymous restaurant query so the
+    /// backend filters its catalog to GreenEats listings. Authenticated calls
+    /// already carry the vertical in the JWT; the query param is just for
+    /// guest browsing before sign-in.
+    func listRestaurants() async throws -> [Restaurant] {
+        try await request(method: "GET", path: "/restaurants?vertical=vegan")
+    }
+
+    func getRestaurant(id: String) async throws -> Restaurant {
+        try await request(method: "GET", path: "/restaurants/\(id)?vertical=vegan")
+    }
+
+    func getMenu(restaurantID: String) async throws -> [MenuCategory] {
+        try await request(method: "GET", path: "/restaurants/\(restaurantID)/menu?vertical=vegan")
+    }
+
+    func searchRestaurants(query: String) async throws -> [Restaurant] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        return try await request(method: "GET", path: "/restaurants/search?q=\(encoded)&vertical=vegan")
+    }
+
+    // MARK: - Deals
+
+    func getNearbyDeals() async throws -> [Deal] {
+        try await request(method: "GET", path: "/deals/nearby?vertical=vegan")
+    }
+
+    func getRestaurantDeals(restaurantID: String) async throws -> [Deal] {
+        try await request(method: "GET", path: "/restaurants/\(restaurantID)/deals?vertical=vegan")
+    }
+
+    // MARK: - Favorites
+
+    func listFavoriteIDs() async throws -> [String] {
+        try await request(method: "GET", path: "/favorites/ids", authenticated: true)
+    }
+
+    func addFavorite(restaurantID: String) async throws {
+        let _: [String: String] = try await request(method: "POST", path: "/favorites/\(restaurantID)", authenticated: true)
+    }
+
+    func removeFavorite(restaurantID: String) async throws {
+        let _: [String: String] = try await request(method: "DELETE", path: "/favorites/\(restaurantID)", authenticated: true)
+    }
+
+    // MARK: - Cart
+
+    func getCart() async throws -> Cart {
+        try await request(method: "GET", path: "/cart", authenticated: true)
+    }
+
+    func addToCart(
+        menuItemID: String,
+        quantity: Int,
+        notes: String?,
+        restaurantID: String,
+        modifierIDs: [String] = [],
+    ) async throws -> Cart {
+        let body = AddToCartRequest(
+            menuItemID: menuItemID,
+            quantity: quantity,
+            notes: notes,
+            restaurantID: restaurantID,
+            modifierIDs: modifierIDs,
+        )
+        return try await request(method: "POST", path: "/cart/items", body: body, authenticated: true)
+    }
+
+    func updateCartItem(id: String, quantity: Int) async throws -> Cart {
+        let body = UpdateCartItemRequest(quantity: quantity)
+        return try await request(method: "PATCH", path: "/cart/items/\(id)", body: body, authenticated: true)
+    }
+
+    func removeCartItem(id: String) async throws -> Cart {
+        try await request(method: "DELETE", path: "/cart/items/\(id)", authenticated: true)
+    }
+
+    func clearCart() async throws {
+        try await requestVoid(method: "DELETE", path: "/cart", authenticated: true)
+    }
+
+    // MARK: - Orders
+
+    func createOrder(
+        deliveryAddress: String,
+        lat: Double,
+        lng: Double,
+        paymentIntentId: String,
+        tip: Int,
+        scheduledFor: Date? = nil,
+        fulfillmentType: String = "delivery",
+        appliedDealId: String? = nil
+    ) async throws -> Order {
+        struct Body: Encodable {
+            let deliveryAddress: String
+            let deliveryLat: Double
+            let deliveryLng: Double
+            let paymentIntentId: String
+            let tip: Int
+            let scheduledFor: Date?
+            let fulfillmentType: String
+            let appliedDealId: String?
+            enum CodingKeys: String, CodingKey {
+                case deliveryAddress = "delivery_address"
+                case deliveryLat = "delivery_lat"
+                case deliveryLng = "delivery_lng"
+                case paymentIntentId = "payment_intent_id"
+                case tip
+                case scheduledFor = "scheduled_for"
+                case fulfillmentType = "fulfillment_type"
+                case appliedDealId = "applied_deal_id"
+            }
+        }
+        let body = Body(deliveryAddress: deliveryAddress, deliveryLat: lat, deliveryLng: lng,
+                        paymentIntentId: paymentIntentId, tip: tip, scheduledFor: scheduledFor,
+                        fulfillmentType: fulfillmentType, appliedDealId: appliedDealId)
+        return try await request(method: "POST", path: "/orders", body: body, authenticated: true)
+    }
+
+    // MARK: - Checkout (Stripe PaymentSheet)
+
+    struct PaymentSheetBundle: Decodable {
+        let paymentIntentSecret: String
+        let ephemeralKeySecret: String
+        let customerId: String
+        let publishableKey: String
+        let subtotal: Int
+        let deliveryFee: Int
+        let serviceFee: Int
+        let tax: Int
+        let tip: Int
+        let total: Int
+        let discount: Int?
+        let appliedDealId: String?
+        let defaultCardBrand: String?
+        let defaultCardLast4: String?
+
+        enum CodingKeys: String, CodingKey {
+            case paymentIntentSecret = "payment_intent_secret"
+            case ephemeralKeySecret = "ephemeral_key_secret"
+            case customerId = "customer_id"
+            case publishableKey = "publishable_key"
+            case subtotal, tax, tip, total, discount
+            case deliveryFee = "delivery_fee"
+            case serviceFee = "service_fee"
+            case appliedDealId = "applied_deal_id"
+            case defaultCardBrand = "default_card_brand"
+            case defaultCardLast4 = "default_card_last4"
+        }
+
+        var isStub: Bool { paymentIntentSecret.hasPrefix("pi_stub_") }
+    }
+
+    func createPaymentSheet(tip: Int, fulfillmentType: String = "delivery", appliedDealId: String? = nil) async throws -> PaymentSheetBundle {
+        struct Body: Encodable {
+            let tip: Int
+            let fulfillmentType: String
+            let appliedDealId: String?
+            enum CodingKeys: String, CodingKey {
+                case tip
+                case fulfillmentType = "fulfillment_type"
+                case appliedDealId = "applied_deal_id"
+            }
+        }
+        return try await request(method: "POST", path: "/payments/intent",
+                                 body: Body(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId), authenticated: true)
+    }
+
+    // CustomerSheet bundle — used by Profile → Payment Methods to let the
+    // user manage saved cards outside of a checkout flow. No PaymentIntent
+    // because CustomerSheet uses SetupIntents to tokenize new cards.
+    struct CustomerBundle: Decodable {
+        let customerId: String
+        let ephemeralKeySecret: String
+        let publishableKey: String
+
+        enum CodingKeys: String, CodingKey {
+            case customerId = "customer_id"
+            case ephemeralKeySecret = "ephemeral_key_secret"
+            case publishableKey = "publishable_key"
+        }
+
+        var isStub: Bool { customerId.hasPrefix("cus_stub_") }
+    }
+
+    func getPaymentCustomer() async throws -> CustomerBundle {
+        try await request(method: "GET", path: "/payments/customer", authenticated: true)
+    }
+
+    struct SetupIntentResponse: Decodable {
+        let clientSecret: String
+        enum CodingKeys: String, CodingKey { case clientSecret = "client_secret" }
+    }
+
+    func createSetupIntent() async throws -> String {
+        let resp: SetupIntentResponse = try await request(method: "POST", path: "/payments/setup-intent",
+                                                          body: EmptyBody(), authenticated: true)
+        return resp.clientSecret
+    }
+
+    private struct EmptyBody: Encodable {}
+
+    func listOrders() async throws -> [Order] {
+        try await request(method: "GET", path: "/orders", authenticated: true)
+    }
+
+    func getOrder(id: String) async throws -> Order {
+        try await request(method: "GET", path: "/orders/\(id)", authenticated: true)
+    }
+
+    func cancelOrder(id: String) async throws -> Order {
+        try await request(method: "PATCH", path: "/orders/\(id)/cancel", authenticated: true)
+    }
+
+    func rateCourier(orderId: String, stars: Int, comment: String?) async throws {
+        struct Body: Encodable { let stars: Int; let comment: String }
+        try await requestVoid(
+            method: "POST",
+            path: "/orders/\(orderId)/rating",
+            body: Body(stars: stars, comment: comment ?? ""),
+            authenticated: true,
+        )
+    }
+
+    // MARK: - Courier location stream (SSE)
+
+    struct CourierLocationEvent: Decodable {
+        let orderID: String
+        let lat: Double
+        let lng: Double
+        let heading: Double
+        let speed: Double
+        let at: Date
+
+        enum CodingKeys: String, CodingKey {
+            case lat, lng, heading, speed, at
+            case orderID = "order_id"
+        }
+    }
+
+    // streamOrderLocation opens an SSE connection to the backend and emits
+    // decoded CourierLocationEvents as they arrive. The stream ends when the
+    // caller cancels the enclosing Task (e.g. the tracking view disappears)
+    // or the server closes the connection (e.g. order reaches a terminal state).
+    //
+    // Throws APIError.unauthorized on a 401, so callers can decide whether
+    // to refresh the token and retry rather than treating it as a generic
+    // network error and burning into an exponential-backoff hole.
+    func streamOrderLocation(id: String) -> AsyncThrowingStream<CourierLocationEvent, Error> {
+        let url = URL(string: "\(baseURL)/orders/\(id)/location/stream")
+        let authToken = self.token
+        let decoder = self.decoder
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                guard let url = url else {
+                    continuation.finish(throwing: APIError.invalidURL)
+                    return
+                }
+                guard let authToken else {
+                    continuation.finish(throwing: APIError.unauthorized)
+                    return
+                }
+                var req = URLRequest(url: url)
+                req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+                req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                // Backend sends a comment ping every 15s. 60s gives us 4 pings
+                // of headroom before declaring the connection dead. The old
+                // greatestFiniteMagnitude meant a silent cellular drop would
+                // freeze the courier pin until the user backgrounded the app.
+                req.timeoutInterval = 60
+
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: req)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw APIError.invalidResponse
+                    }
+                    if http.statusCode == 401 {
+                        throw APIError.unauthorized
+                    }
+                    guard (200...299).contains(http.statusCode) else {
+                        throw APIError.httpError(http.statusCode, "stream open failed")
+                    }
+
+                    // Minimal SSE parser: accumulate `data:` lines per event,
+                    // flush on blank line. We only care about events whose
+                    // payload decodes as a CourierLocationEvent.
+                    var dataBuf = ""
+                    for try await line in bytes.lines {
+                        if Task.isCancelled { break }
+                        if line.isEmpty {
+                            if !dataBuf.isEmpty, let payload = dataBuf.data(using: .utf8) {
+                                do {
+                                    let event = try decoder.decode(CourierLocationEvent.self, from: payload)
+                                    continuation.yield(event)
+                                } catch {
+                                    // Don't tear down the stream on a malformed
+                                    // event — backend may add new event types
+                                    // we don't yet know about. Log so we can
+                                    // notice schema drift in TestFlight builds.
+                                    print("[sse] decode error: \(error) payload=\(dataBuf)")
+                                }
+                            }
+                            dataBuf = ""
+                            continue
+                        }
+                        if line.hasPrefix("data:") {
+                            let piece = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                            if dataBuf.isEmpty { dataBuf = piece } else { dataBuf += "\n" + piece }
+                        }
+                        // `event:` and `: ping` lines are ignored — we only
+                        // publish one event type and the periodic ping resets
+                        // URLSession's per-request timeout for us.
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    // MARK: - User Profile
+
+    func getProfile() async throws -> User {
+        try await request(method: "GET", path: "/user/profile", authenticated: true)
+    }
+
+    func updateProfile(firstName: String, lastName: String, phone: String, email: String? = nil) async throws -> User {
+        struct Body: Encodable {
+            let firstName: String
+            let lastName: String
+            let phone: String
+            let email: String?
+            enum CodingKeys: String, CodingKey {
+                case firstName = "first_name"
+                case lastName = "last_name"
+                case phone
+                case email
+            }
+        }
+        return try await request(method: "PUT", path: "/user/profile",
+            body: Body(firstName: firstName, lastName: lastName, phone: phone, email: email),
+            authenticated: true)
+    }
+
+    func listAddresses() async throws -> [Address] {
+        try await request(method: "GET", path: "/user/addresses", authenticated: true)
+    }
+
+    func addAddress(_ address: Address) async throws -> Address {
+        try await request(method: "POST", path: "/user/addresses", body: address, authenticated: true)
+    }
+
+    func deleteAddress(id: String) async throws {
+        try await requestVoid(method: "DELETE", path: "/user/addresses/\(id)", authenticated: true)
+    }
+
+    func setDefaultAddress(id: String) async throws {
+        try await requestVoid(method: "PATCH", path: "/user/addresses/\(id)/default", authenticated: true)
+    }
+
+    func deleteAccount() async throws {
+        try await requestVoid(method: "DELETE", path: "/user/account", authenticated: true)
+    }
+
+    // MARK: - Linked Providers (Account Linking)
+
+    func listLinkedProviders() async throws -> [LinkedProvider] {
+        try await request(method: "GET", path: "/user/linked-providers", authenticated: true)
+    }
+
+    func linkProvider(provider: String, token: String, nonce: String? = nil) async throws {
+        var body: [String: String] = ["provider": provider, "token": token]
+        if let nonce { body["nonce"] = nonce }
+        try await requestVoid(method: "POST", path: "/user/linked-providers", body: body, authenticated: true)
+    }
+
+    func linkPhone(phone: String, code: String) async throws {
+        let body: [String: String] = ["provider": "phone", "phone": phone, "code": code]
+        try await requestVoid(method: "POST", path: "/user/linked-providers", body: body, authenticated: true)
+    }
+
+    func unlinkProvider(_ provider: String) async throws {
+        try await requestVoid(method: "DELETE", path: "/user/linked-providers/\(provider)", authenticated: true)
+    }
+
+    // MARK: - Device tokens (push)
+
+    func registerDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid(method: "POST", path: "/devices/register",
+                              body: Body(token: token, platform: platform, app: app),
+                              authenticated: true)
+    }
+
+    // MARK: - Notification preferences
+
+    struct NotificationPreferences: Codable, Equatable {
+        var orderUpdates: Bool
+        var chatMessages: Bool
+        var promotions: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case orderUpdates = "order_updates"
+            case chatMessages = "chat_messages"
+            case promotions
+        }
+
+        static let allOn = NotificationPreferences(orderUpdates: true, chatMessages: true, promotions: true)
+    }
+
+    func getNotificationPreferences() async throws -> NotificationPreferences {
+        try await request(method: "GET", path: "/user/notification-preferences", authenticated: true)
+    }
+
+    func updateNotificationPreferences(_ prefs: NotificationPreferences) async throws -> NotificationPreferences {
+        try await request(method: "PUT", path: "/user/notification-preferences",
+                          body: prefs, authenticated: true)
+    }
+
+    // MARK: - Chat
+
+    func listChatMessages(orderID: String) async throws -> [ChatMessage] {
+        try await request(method: "GET", path: "/orders/\(orderID)/chat", authenticated: true)
+    }
+
+    func sendChatMessage(orderID: String, text: String) async throws -> ChatMessage {
+        struct Body: Encodable { let text: String }
+        return try await request(method: "POST", path: "/orders/\(orderID)/chat",
+                                 body: Body(text: text), authenticated: true)
+    }
+}

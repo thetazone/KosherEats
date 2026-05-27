@@ -72,6 +72,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -100,6 +102,91 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.Locale
 
+private object OnboardingStrings {
+    const val STEP_BASICS = "Restaurant Details"
+    const val STEP_ADDRESS = "Address"
+    const val STEP_KOSHER = "Kosher Certification"
+    const val STEP_MENU = "Menu Items"
+    const val STEP_REVIEW = "Review & Submit"
+    const val STEP_REVIEW_ALT = "Review and Submit"
+    const val BACK = "Back"
+    const val USE_DIFFERENT_ACCOUNT = "Use a different account?"
+    const val SIGN_OUT_BODY = "You'll be signed out and any progress in this onboarding flow will be lost. You can then sign in with a different Google account, phone number, or email."
+    const val SIGN_OUT = "Sign out"
+    const val CANCEL = "Cancel"
+    const val CONTINUE = "Continue"
+    const val CONTINUE_TO_REVIEW = "Continue to Review"
+    const val SUBMIT_FOR_REVIEW = "Submit for Review"
+    const val RESTAURANT_PICTURE_LABEL = "Restaurant Picture *"
+    const val RESTAURANT_PICTURE_HINT = "Required — the photo customers see in the marketplace. Pick a wide, landscape-friendly photo (crop in your Gallery app first for best fit)."
+    const val TAP_TO_ADD_PICTURE = "Tap to add restaurant picture"
+    const val RESTAURANT_LOGO_LABEL = "Restaurant Logo (optional)"
+    const val RESTAURANT_LOGO_HINT = "Small mark shown as a badge on your card. Use if your logo differs from your picture."
+    const val LOGO_SKIP_HINT = "Skip if your picture already includes your logo."
+    const val LOGO_ADDED = "Logo added"
+    const val UPLOAD_FAILED_RETRY = "Upload failed. Tap to retry."
+    const val RESTAURANT_NAME_LABEL = "Restaurant Name"
+    const val DESCRIPTION_LABEL = "Description (optional)"
+    const val PHONE_LABEL = "Phone"
+    const val EMAIL_LABEL = "Email"
+    const val ERR_NAME_REQUIRED = "Restaurant name is required"
+    const val ERR_PHONE_REQUIRED = "Phone is required"
+    const val ERR_VALID_EMAIL = "Please enter a valid email address"
+    const val ERR_PICTURE_REQUIRED = "Restaurant picture is required"
+    const val ERR_PHOTO_UPLOADING = "Photo is still uploading…"
+    const val STREET_ADDRESS_LABEL = "Street Address"
+    const val CITY_LABEL = "City"
+    const val STATE_LABEL = "State"
+    const val ZIP_CODE_LABEL = "Zip Code"
+    const val ERR_ADDRESS_REQUIRED = "All address fields are required"
+    const val ERR_STATE_ABBR = "State must be a 2-letter abbreviation (e.g., NY)"
+    const val ERR_VALID_ZIP = "Please enter a valid zip code"
+    const val KOSHER_CERTIFICATION_LABEL = "Kosher Certification"
+    const val CERTIFYING_AGENCY_LABEL = "Certifying Agency (optional)"
+    const val KOSHER_CERT_PHOTO = "Kosher Certificate Photo"
+    const val KOSHER_CERT_HINT = "Upload a clear, well-lit photo of your current kosher certificate"
+    const val TAP_TO_UPLOAD_CERT = "Tap to upload certificate"
+    const val UPLOAD_CERT_A11Y = "Upload certificate"
+    const val ADDITIONAL_CERTS = "Additional Certifications"
+    const val CHOLOV_YISROEL = "Cholov Yisroel"
+    const val PAS_YISROEL = "Pas Yisroel"
+    const val GLATT_KOSHER = "Glatt Kosher"
+    const val ERR_CERT_REQUIRED = "Kosher certificate photo is required — sellers must upload a clear photo of their current cert before continuing."
+    const val MENU_INSTRUCTIONS = "Add your menu items so they're ready when you launch."
+    const val ADD_MENU_ITEM = "Add Menu Item"
+    const val NEW_MENU_ITEM = "New Menu Item"
+    const val ADD_PHOTO = "Add photo"
+    const val ITEM_NAME_LABEL = "Item Name"
+    const val PRICE_LABEL = "Price (\$)"
+    const val CATEGORY_LABEL = "Category"
+    const val KOSHER_TYPE = "Kosher Type"
+    const val ERR_NAME_BLANK = "Name is required"
+    const val ERR_VALID_PRICE = "Enter a valid price"
+    const val ERR_KOSHER_TYPE = "Select a kosher type"
+    const val ADD = "Add"
+    const val ERR_IMAGE_UPLOAD = "Image upload failed. You can still add the item."
+    const val REVIEW_RESTAURANT = "Restaurant"
+    const val REVIEW_NAME = "Name"
+    const val REVIEW_DESCRIPTION = "Description"
+    const val REVIEW_PHONE = "Phone"
+    const val REVIEW_EMAIL = "Email"
+    const val REVIEW_ADDRESS = "Address"
+    const val REVIEW_STREET = "Street"
+    const val REVIEW_CITY = "City"
+    const val REVIEW_STATE = "State"
+    const val REVIEW_ZIP = "Zip Code"
+    const val REVIEW_KOSHER = "Kosher"
+    const val REVIEW_CERTIFICATION = "Certification"
+    const val REVIEW_AGENCY = "Agency"
+    const val REVIEW_NO_MENU = "No menu items added. You can add them later from the Menu tab."
+    const val SUBMITTED_TITLE = "You're all set!"
+    const val SUBMITTED_BODY = "Your restaurant has been submitted for review. We'll notify you once it's approved and ready to go live."
+    const val GO_TO_DASHBOARD = "Go to Dashboard"
+    const val SUCCESS = "Success"
+    const val REMOVE = "Remove"
+    const val UPLOADING = "Uploading..."
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
@@ -123,11 +210,10 @@ fun OnboardingScreen(
         AlertDialog(
             onDismissRequest = { showSignOutConfirm = false },
             containerColor = SurfaceDark,
-            title = { Text("Use a different account?", color = TextWhite) },
+            title = { Text(OnboardingStrings.USE_DIFFERENT_ACCOUNT, color = TextWhite) },
             text = {
                 Text(
-                    "You'll be signed out and any progress in this onboarding flow will be lost. " +
-                        "You can then sign in with a different Google account, phone number, or email.",
+                    OnboardingStrings.SIGN_OUT_BODY,
                     color = TextMuted,
                 )
             },
@@ -136,12 +222,12 @@ fun OnboardingScreen(
                     showSignOutConfirm = false
                     onSignOut()
                 }) {
-                    Text("Sign out", color = Orange)
+                    Text(OnboardingStrings.SIGN_OUT, color = Orange)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showSignOutConfirm = false }) {
-                    Text("Cancel", color = TextMuted)
+                    Text(OnboardingStrings.CANCEL, color = TextMuted)
                 }
             },
         )
@@ -156,11 +242,11 @@ fun OnboardingScreen(
             title = {
                 Text(
                     text = when (state.step) {
-                        OnboardingStep.BASICS -> "Restaurant Details"
-                        OnboardingStep.ADDRESS -> "Address"
-                        OnboardingStep.KOSHER -> "Kosher Certification"
-                        OnboardingStep.MENU -> "Menu Items"
-                        OnboardingStep.REVIEW -> "Review & Submit"
+                        OnboardingStep.BASICS -> OnboardingStrings.STEP_BASICS
+                        OnboardingStep.ADDRESS -> OnboardingStrings.STEP_ADDRESS
+                        OnboardingStep.KOSHER -> OnboardingStrings.STEP_KOSHER
+                        OnboardingStep.MENU -> OnboardingStrings.STEP_MENU
+                        OnboardingStep.REVIEW -> OnboardingStrings.STEP_REVIEW
                     },
                     style = MaterialTheme.typography.titleLarge,
                     color = TextWhite,
@@ -169,7 +255,7 @@ fun OnboardingScreen(
             navigationIcon = {
                 if (state.step != OnboardingStep.BASICS) {
                     IconButton(onClick = { viewModel.previousStep() }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                        Icon(Icons.Filled.ArrowBack, contentDescription = OnboardingStrings.BACK, tint = TextWhite)
                     }
                 }
             },
@@ -177,7 +263,7 @@ fun OnboardingScreen(
                 IconButton(onClick = { showSignOutConfirm = true }) {
                     Icon(
                         Icons.Filled.Logout,
-                        contentDescription = "Use a different account",
+                        contentDescription = OnboardingStrings.USE_DIFFERENT_ACCOUNT,
                         tint = TextMuted,
                     )
                 }
@@ -185,11 +271,23 @@ fun OnboardingScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
+        val stepLabel = "Step ${stepIndex + 1} of ${OnboardingStep.entries.size}"
+        val stepTitle = when (state.step) {
+            OnboardingStep.BASICS -> OnboardingStrings.STEP_BASICS
+            OnboardingStep.ADDRESS -> OnboardingStrings.STEP_ADDRESS
+            OnboardingStep.KOSHER -> OnboardingStrings.STEP_KOSHER
+            OnboardingStep.MENU -> OnboardingStrings.STEP_MENU
+            OnboardingStep.REVIEW -> OnboardingStrings.STEP_REVIEW_ALT
+        }
+
         LinearProgressIndicator(
             progress = { progress },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = 20.dp)
+                .semantics {
+                    contentDescription = "$stepLabel: $stepTitle. ${(progress * 100).toInt()} percent complete"
+                },
             color = Orange,
             trackColor = SurfaceDark,
         )
@@ -201,7 +299,7 @@ fun OnboardingScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                "Step ${stepIndex + 1} of ${OnboardingStep.entries.size}",
+                stepLabel,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
             )
@@ -279,7 +377,7 @@ private fun BasicsStep(
             if (uploaded != null) {
                 pictureUrl = uploaded
             } else {
-                pictureUploadError = "Upload failed. Tap to retry."
+                pictureUploadError = OnboardingStrings.UPLOAD_FAILED_RETRY
             }
             isUploadingPicture = false
         }
@@ -297,7 +395,7 @@ private fun BasicsStep(
             if (uploaded != null) {
                 logoUrl = uploaded
             } else {
-                logoUploadError = "Upload failed. Tap to retry."
+                logoUploadError = OnboardingStrings.UPLOAD_FAILED_RETRY
             }
             isUploadingLogo = false
         }
@@ -314,13 +412,13 @@ private fun BasicsStep(
 
         // ─── Required: Restaurant Picture (the hero/cover photo) ───
         Text(
-            "Restaurant Picture *",
+            OnboardingStrings.RESTAURANT_PICTURE_LABEL,
             style = MaterialTheme.typography.titleSmall,
             color = TextWhite,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "Required — the photo customers see in the marketplace. Pick a wide, landscape-friendly photo (crop in your Gallery app first for best fit).",
+            OnboardingStrings.RESTAURANT_PICTURE_HINT,
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
@@ -361,7 +459,7 @@ private fun BasicsStep(
                         modifier = Modifier.size(40.dp),
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text("Tap to add restaurant picture", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(OnboardingStrings.TAP_TO_ADD_PICTURE, color = TextMuted, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -372,13 +470,13 @@ private fun BasicsStep(
         // ─── Optional: Logo (small badge) ───
         Spacer(Modifier.height(4.dp))
         Text(
-            "Restaurant Logo (optional)",
+            OnboardingStrings.RESTAURANT_LOGO_LABEL,
             style = MaterialTheme.typography.titleSmall,
             color = TextWhite,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "Small mark shown as a badge on your card. Use if your logo differs from your picture.",
+            OnboardingStrings.RESTAURANT_LOGO_HINT,
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
@@ -423,7 +521,7 @@ private fun BasicsStep(
             }
             Spacer(Modifier.width(12.dp))
             Text(
-                if (logoUrl.isBlank()) "Skip if your picture already includes your logo." else "Logo added",
+                if (logoUrl.isBlank()) OnboardingStrings.LOGO_SKIP_HINT else OnboardingStrings.LOGO_ADDED,
                 color = TextMuted,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f),
@@ -436,7 +534,7 @@ private fun BasicsStep(
         OutlinedTextField(
             value = name,
             onValueChange = { if (it.length <= 200) name = it },
-            label = { Text("Restaurant Name") },
+            label = { Text(OnboardingStrings.RESTAURANT_NAME_LABEL) },
             singleLine = true,
             colors = colors,
             shape = RoundedCornerShape(12.dp),
@@ -446,7 +544,7 @@ private fun BasicsStep(
         OutlinedTextField(
             value = description,
             onValueChange = { if (it.length <= 2000) description = it },
-            label = { Text("Description (optional)") },
+            label = { Text(OnboardingStrings.DESCRIPTION_LABEL) },
             minLines = 2,
             maxLines = 4,
             colors = colors,
@@ -457,7 +555,7 @@ private fun BasicsStep(
         OutlinedTextField(
             value = phone,
             onValueChange = { phone = it },
-            label = { Text("Phone") },
+            label = { Text(OnboardingStrings.PHONE_LABEL) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             colors = colors,
@@ -468,7 +566,7 @@ private fun BasicsStep(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text(OnboardingStrings.EMAIL_LABEL) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             colors = colors,
@@ -485,25 +583,26 @@ private fun BasicsStep(
         Button(
             onClick = {
                 if (name.isBlank()) {
-                    viewModel.setError("Restaurant name is required")
+                    viewModel.setError(OnboardingStrings.ERR_NAME_REQUIRED)
                     return@Button
                 }
                 if (phone.isBlank()) {
-                    viewModel.setError("Phone is required")
+                    viewModel.setError(OnboardingStrings.ERR_PHONE_REQUIRED)
                     return@Button
                 }
-                if (email.isBlank() || !email.contains("@")) {
-                    viewModel.setError("Valid email is required")
+                if (email.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
+                    viewModel.setError(OnboardingStrings.ERR_VALID_EMAIL)
                     return@Button
                 }
                 if (pictureUrl.isBlank()) {
-                    viewModel.setError("Restaurant picture is required")
+                    viewModel.setError(OnboardingStrings.ERR_PICTURE_REQUIRED)
                     return@Button
                 }
                 if (isUploadingPicture || isUploadingLogo) {
-                    viewModel.setError("Photo is still uploading…")
+                    viewModel.setError(OnboardingStrings.ERR_PHOTO_UPLOADING)
                     return@Button
                 }
+                viewModel.setError(null)
                 viewModel.updateBasics(name, description, pictureUrl, logoUrl, phone, email)
                 viewModel.nextStep()
             },
@@ -516,7 +615,7 @@ private fun BasicsStep(
                 contentColor = TextWhite,
             ),
         ) {
-            Text("Continue", fontWeight = FontWeight.SemiBold)
+            Text(OnboardingStrings.CONTINUE, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -548,7 +647,7 @@ private fun AddressStep(
         OutlinedTextField(
             value = street,
             onValueChange = { street = it },
-            label = { Text("Street Address") },
+            label = { Text(OnboardingStrings.STREET_ADDRESS_LABEL) },
             singleLine = true,
             colors = colors,
             shape = RoundedCornerShape(12.dp),
@@ -558,7 +657,7 @@ private fun AddressStep(
         OutlinedTextField(
             value = city,
             onValueChange = { city = it },
-            label = { Text("City") },
+            label = { Text(OnboardingStrings.CITY_LABEL) },
             singleLine = true,
             colors = colors,
             shape = RoundedCornerShape(12.dp),
@@ -572,7 +671,7 @@ private fun AddressStep(
             OutlinedTextField(
                 value = stateVal,
                 onValueChange = { if (it.length <= 2) stateVal = it.uppercase() },
-                label = { Text("State") },
+                label = { Text(OnboardingStrings.STATE_LABEL) },
                 singleLine = true,
                 colors = colors,
                 shape = RoundedCornerShape(12.dp),
@@ -581,7 +680,7 @@ private fun AddressStep(
             OutlinedTextField(
                 value = zipCode,
                 onValueChange = { if (it.length <= 10) zipCode = it },
-                label = { Text("Zip Code") },
+                label = { Text(OnboardingStrings.ZIP_CODE_LABEL) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 colors = colors,
@@ -599,9 +698,19 @@ private fun AddressStep(
         Button(
             onClick = {
                 if (street.isBlank() || city.isBlank() || stateVal.isBlank() || zipCode.isBlank()) {
-                    viewModel.setError("All address fields are required")
+                    viewModel.setError(OnboardingStrings.ERR_ADDRESS_REQUIRED)
                     return@Button
                 }
+                if (stateVal.length != 2) {
+                    viewModel.setError(OnboardingStrings.ERR_STATE_ABBR)
+                    return@Button
+                }
+                val zipDigits = zipCode.filter { it.isDigit() }
+                if (zipDigits.length !in 5..10) {
+                    viewModel.setError(OnboardingStrings.ERR_VALID_ZIP)
+                    return@Button
+                }
+                viewModel.setError(null)
                 viewModel.updateAddress(street, city, stateVal, zipCode)
                 viewModel.nextStep()
             },
@@ -614,7 +723,7 @@ private fun AddressStep(
                 contentColor = TextWhite,
             ),
         ) {
-            Text("Continue", fontWeight = FontWeight.SemiBold)
+            Text(OnboardingStrings.CONTINUE, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -678,7 +787,7 @@ private fun KosherStep(
                 value = certification.name,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Kosher Certification") },
+                label = { Text(OnboardingStrings.KOSHER_CERTIFICATION_LABEL) },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = certExpanded) },
                 colors = colors,
                 shape = RoundedCornerShape(12.dp),
@@ -706,7 +815,7 @@ private fun KosherStep(
         OutlinedTextField(
             value = agency,
             onValueChange = { agency = it },
-            label = { Text("Certifying Agency (optional)") },
+            label = { Text(OnboardingStrings.CERTIFYING_AGENCY_LABEL) },
             singleLine = true,
             colors = colors,
             shape = RoundedCornerShape(12.dp),
@@ -714,14 +823,14 @@ private fun KosherStep(
         )
 
         Text(
-            "Kosher Certificate Photo",
+            OnboardingStrings.KOSHER_CERT_PHOTO,
             style = MaterialTheme.typography.titleSmall,
             color = TextWhite,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 8.dp),
         )
         Text(
-            "Upload a clear, well-lit photo of your current kosher certificate",
+            OnboardingStrings.KOSHER_CERT_HINT,
             style = MaterialTheme.typography.bodySmall,
             color = TextMuted,
         )
@@ -755,7 +864,7 @@ private fun KosherStep(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Orange, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Uploading...", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(OnboardingStrings.UPLOADING, color = TextMuted, style = MaterialTheme.typography.bodySmall)
                 }
             } else if (displayModel != null) {
                 AsyncImage(
@@ -779,27 +888,27 @@ private fun KosherStep(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         Icons.Filled.AddAPhoto,
-                        contentDescription = "Upload certificate",
+                        contentDescription = OnboardingStrings.UPLOAD_CERT_A11Y,
                         tint = TextMuted,
                         modifier = Modifier.size(40.dp),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Tap to upload certificate", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                    Text(OnboardingStrings.TAP_TO_UPLOAD_CERT, color = TextMuted, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
 
         Text(
-            "Additional Certifications",
+            OnboardingStrings.ADDITIONAL_CERTS,
             style = MaterialTheme.typography.titleSmall,
             color = TextWhite,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 8.dp),
         )
 
-        LabeledCheckbox("Cholov Yisroel", cholovYisroel) { cholovYisroel = it }
-        LabeledCheckbox("Pas Yisroel", pasYisroel) { pasYisroel = it }
-        LabeledCheckbox("Glatt Kosher", glattKosher) { glattKosher = it }
+        LabeledCheckbox(OnboardingStrings.CHOLOV_YISROEL, cholovYisroel) { cholovYisroel = it }
+        LabeledCheckbox(OnboardingStrings.PAS_YISROEL, pasYisroel) { pasYisroel = it }
+        LabeledCheckbox(OnboardingStrings.GLATT_KOSHER, glattKosher) { glattKosher = it }
 
         state.error?.let {
             Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
@@ -810,9 +919,10 @@ private fun KosherStep(
         Button(
             onClick = {
                 if (certificateUrl.isBlank()) {
-                    viewModel.setError("Kosher certificate photo is required — sellers must upload a clear photo of their current cert before continuing.")
+                    viewModel.setError(OnboardingStrings.ERR_CERT_REQUIRED)
                     return@Button
                 }
+                viewModel.setError(null)
                 viewModel.updateKosher(certification, agency, cholovYisroel, pasYisroel, glattKosher, certificateUrl)
                 viewModel.nextStep()
             },
@@ -827,7 +937,7 @@ private fun KosherStep(
                 disabledContainerColor = Orange.copy(alpha = 0.4f),
             ),
         ) {
-            Text("Continue", fontWeight = FontWeight.SemiBold)
+            Text(OnboardingStrings.CONTINUE, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -875,7 +985,7 @@ private fun MenuStep(
         Spacer(Modifier.height(4.dp))
 
         Text(
-            "Add your menu items so they're ready when you launch.",
+            OnboardingStrings.MENU_INSTRUCTIONS,
             style = MaterialTheme.typography.bodyMedium,
             color = TextMuted,
         )
@@ -927,7 +1037,7 @@ private fun MenuStep(
                         }
                     }
                     IconButton(onClick = { viewModel.removeMenuItem(index) }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Remove", tint = ErrorRed)
+                        Icon(Icons.Filled.Close, contentDescription = OnboardingStrings.REMOVE, tint = ErrorRed)
                     }
                 }
             }
@@ -951,7 +1061,7 @@ private fun MenuStep(
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Add Menu Item")
+                Text(OnboardingStrings.ADD_MENU_ITEM)
             }
         }
 
@@ -968,7 +1078,7 @@ private fun MenuStep(
                 contentColor = TextWhite,
             ),
         ) {
-            Text("Continue to Review", fontWeight = FontWeight.SemiBold)
+            Text(OnboardingStrings.CONTINUE_TO_REVIEW, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -1009,7 +1119,7 @@ private fun AddMenuItemForm(
             if (result != null) {
                 imageUrl = result
             } else {
-                error = "Image upload failed. You can still add the item."
+                error = OnboardingStrings.ERR_IMAGE_UPLOAD
             }
             isUploadingImage = false
         }
@@ -1025,7 +1135,7 @@ private fun AddMenuItemForm(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                "New Menu Item",
+                OnboardingStrings.NEW_MENU_ITEM,
                 style = MaterialTheme.typography.titleSmall,
                 color = TextWhite,
                 fontWeight = FontWeight.SemiBold,
@@ -1071,7 +1181,7 @@ private fun AddMenuItemForm(
                             modifier = Modifier.size(32.dp),
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Add photo", color = TextMuted, style = MaterialTheme.typography.bodySmall)
+                        Text(OnboardingStrings.ADD_PHOTO, color = TextMuted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -1079,7 +1189,7 @@ private fun AddMenuItemForm(
             OutlinedTextField(
                 value = name,
                 onValueChange = { if (it.length <= 100) name = it },
-                label = { Text("Item Name") },
+                label = { Text(OnboardingStrings.ITEM_NAME_LABEL) },
                 singleLine = true,
                 colors = colors,
                 shape = RoundedCornerShape(12.dp),
@@ -1089,7 +1199,7 @@ private fun AddMenuItemForm(
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
-                label = { Text("Description (optional)") },
+                label = { Text(OnboardingStrings.DESCRIPTION_LABEL) },
                 maxLines = 2,
                 colors = colors,
                 shape = RoundedCornerShape(12.dp),
@@ -1106,7 +1216,7 @@ private fun AddMenuItemForm(
                         val filtered = v.filter { c -> c.isDigit() || c == '.' }
                         if (filtered.count { it == '.' } <= 1) price = filtered
                     },
-                    label = { Text("Price ($)") },
+                    label = { Text(OnboardingStrings.PRICE_LABEL) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     colors = colors,
@@ -1124,7 +1234,7 @@ private fun AddMenuItemForm(
                             .replaceFirstChar { it.uppercase() },
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Category") },
+                        label = { Text(OnboardingStrings.CATEGORY_LABEL) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = catExpanded) },
                         colors = colors,
                         shape = RoundedCornerShape(12.dp),
@@ -1155,7 +1265,7 @@ private fun AddMenuItemForm(
             }
 
             Text(
-                "Kosher Type",
+                OnboardingStrings.KOSHER_TYPE,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
             )
@@ -1186,15 +1296,15 @@ private fun AddMenuItemForm(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMuted),
                 ) {
-                    Text("Cancel")
+                    Text(OnboardingStrings.CANCEL)
                 }
                 Button(
                     onClick = {
-                        if (name.isBlank()) { error = "Name is required"; return@Button }
+                        if (name.isBlank()) { error = OnboardingStrings.ERR_NAME_BLANK; return@Button }
                         val dollars = price.toDoubleOrNull() ?: 0.0
-                        if (dollars <= 0) { error = "Enter a valid price"; return@Button }
+                        if (dollars <= 0) { error = OnboardingStrings.ERR_VALID_PRICE; return@Button }
                         if (!isMeat && !isDairy && !isPareve) {
-                            error = "Select a kosher type"
+                            error = OnboardingStrings.ERR_KOSHER_TYPE
                             return@Button
                         }
                         onAdd(
@@ -1213,7 +1323,7 @@ private fun AddMenuItemForm(
                         contentColor = TextWhite,
                     ),
                 ) {
-                    Text("Add", fontWeight = FontWeight.SemiBold)
+                    Text(OnboardingStrings.ADD, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -1256,32 +1366,32 @@ private fun ReviewStep(
     ) {
         Spacer(Modifier.height(4.dp))
 
-        ReviewSection("Restaurant") {
-            ReviewRow("Name", state.restaurantName)
-            if (state.description.isNotBlank()) ReviewRow("Description", state.description)
-            ReviewRow("Phone", state.phone)
-            ReviewRow("Email", state.email)
+        ReviewSection(OnboardingStrings.REVIEW_RESTAURANT) {
+            ReviewRow(OnboardingStrings.REVIEW_NAME, state.restaurantName)
+            if (state.description.isNotBlank()) ReviewRow(OnboardingStrings.REVIEW_DESCRIPTION, state.description)
+            ReviewRow(OnboardingStrings.REVIEW_PHONE, state.phone)
+            ReviewRow(OnboardingStrings.REVIEW_EMAIL, state.email)
         }
 
-        ReviewSection("Address") {
-            ReviewRow("Street", state.street)
-            ReviewRow("City", state.city)
-            ReviewRow("State", state.state)
-            ReviewRow("Zip Code", state.zipCode)
+        ReviewSection(OnboardingStrings.REVIEW_ADDRESS) {
+            ReviewRow(OnboardingStrings.REVIEW_STREET, state.street)
+            ReviewRow(OnboardingStrings.REVIEW_CITY, state.city)
+            ReviewRow(OnboardingStrings.REVIEW_STATE, state.state)
+            ReviewRow(OnboardingStrings.REVIEW_ZIP, state.zipCode)
         }
 
-        ReviewSection("Kosher") {
-            ReviewRow("Certification", state.certification.name)
-            if (state.certifyingAgency.isNotBlank()) ReviewRow("Agency", state.certifyingAgency)
-            if (state.isCholovYisroel) ReviewRow("", "Cholov Yisroel")
-            if (state.isPasYisroel) ReviewRow("", "Pas Yisroel")
-            if (state.isGlattKosher) ReviewRow("", "Glatt Kosher")
+        ReviewSection(OnboardingStrings.REVIEW_KOSHER) {
+            ReviewRow(OnboardingStrings.REVIEW_CERTIFICATION, state.certification.name)
+            if (state.certifyingAgency.isNotBlank()) ReviewRow(OnboardingStrings.REVIEW_AGENCY, state.certifyingAgency)
+            if (state.isCholovYisroel) ReviewRow("", OnboardingStrings.CHOLOV_YISROEL)
+            if (state.isPasYisroel) ReviewRow("", OnboardingStrings.PAS_YISROEL)
+            if (state.isGlattKosher) ReviewRow("", OnboardingStrings.GLATT_KOSHER)
         }
 
         ReviewSection("Menu (${state.menuItems.size} items)") {
             if (state.menuItems.isEmpty()) {
                 Text(
-                    "No menu items added. You can add them later from the Menu tab.",
+                    OnboardingStrings.REVIEW_NO_MENU,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                 )
@@ -1327,7 +1437,7 @@ private fun ReviewStep(
                     modifier = Modifier.size(24.dp),
                 )
             } else {
-                Text("Submit for Review", fontWeight = FontWeight.SemiBold)
+                Text(OnboardingStrings.SUBMIT_FOR_REVIEW, fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -1414,21 +1524,21 @@ private fun SubmittedScreen(onContinue: () -> Unit) {
             ) {
                 Icon(
                     Icons.Filled.Restaurant,
-                    contentDescription = null,
+                    contentDescription = OnboardingStrings.SUCCESS,
                     tint = Orange,
                     modifier = Modifier.size(40.dp),
                 )
             }
 
             Text(
-                "You're all set!",
+                OnboardingStrings.SUBMITTED_TITLE,
                 style = MaterialTheme.typography.headlineSmall,
                 color = TextWhite,
                 fontWeight = FontWeight.Bold,
             )
 
             Text(
-                "Your restaurant has been submitted for review. We'll notify you once it's approved and ready to go live.",
+                OnboardingStrings.SUBMITTED_BODY,
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
                 textAlign = TextAlign.Center,
@@ -1447,7 +1557,7 @@ private fun SubmittedScreen(onContinue: () -> Unit) {
                     contentColor = TextWhite,
                 ),
             ) {
-                Text("Go to Dashboard", fontWeight = FontWeight.SemiBold)
+                Text(OnboardingStrings.GO_TO_DASHBOARD, fontWeight = FontWeight.SemiBold)
             }
         }
     }

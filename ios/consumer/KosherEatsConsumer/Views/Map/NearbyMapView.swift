@@ -39,8 +39,15 @@ struct NearbyMapView: View {
                 .ignoresSafeArea(edges: .top)
                 .onChange(of: location.currentLocation?.latitude) { _, _ in
                     guard !hasSnappedToUser, let coord = location.currentLocation else { return }
-                    // ~800m span = 3–4 city blocks, matches Uber/DoorDash
-                    // default first-open zoom. 3km showed a whole suburb.
+                    position = .region(MKCoordinateRegion(
+                        center: coord,
+                        latitudinalMeters: 800,
+                        longitudinalMeters: 800
+                    ))
+                    hasSnappedToUser = true
+                }
+                .onChange(of: location.currentLocation?.longitude) { _, _ in
+                    guard !hasSnappedToUser, let coord = location.currentLocation else { return }
                     position = .region(MKCoordinateRegion(
                         center: coord,
                         latitudinalMeters: 800,

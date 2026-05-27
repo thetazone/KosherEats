@@ -69,6 +69,9 @@ struct MenuItemView: View {
         }
         .buttonStyle(.plain)
         .disabled(!item.isAvailable)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.name), \(item.priceFormatted)\(item.isAvailable ? "" : ", unavailable")")
+        .accessibilityHint(item.isAvailable ? String(localized: "Double tap to customize and add to cart") : "")
         .sheet(isPresented: $showAddSheet) {
             AddToCartSheet(item: item, restaurantID: restaurantID)
         }
@@ -81,6 +84,15 @@ struct KashrusTypeIndicator: View {
     let type: String
     let color: Color
 
+    private var accessibilityName: String {
+        switch type {
+        case "M": return String(localized: "Meat")
+        case "D": return String(localized: "Dairy")
+        case "P": return String(localized: "Pareve")
+        default: return type
+        }
+    }
+
     var body: some View {
         Text(type)
             .font(.system(size: 11, weight: .heavy))
@@ -88,6 +100,7 @@ struct KashrusTypeIndicator: View {
             .frame(width: 22, height: 22)
             .background(color)
             .cornerRadius(6)
+            .accessibilityLabel(accessibilityName)
     }
 }
 
@@ -256,11 +269,13 @@ struct AddToCartSheet: View {
                             .foregroundColor(quantity > 1 ? .kePrimary : .keTextMuted)
                     }
                     .disabled(quantity <= 1)
+                    .accessibilityLabel(String(localized: "Decrease quantity"))
 
                     Text("\(quantity)")
                         .font(.title3.bold())
                         .foregroundColor(.keTextPrimary)
                         .frame(width: 40)
+                        .accessibilityLabel(String(localized: "Quantity: \(quantity)"))
 
                     Button {
                         if quantity < 99 { quantity += 1 }
@@ -269,6 +284,7 @@ struct AddToCartSheet: View {
                             .font(.system(size: 32))
                             .foregroundColor(.kePrimary)
                     }
+                    .accessibilityLabel(String(localized: "Increase quantity"))
                 }
 
                 Button {
@@ -328,7 +344,7 @@ private struct ModifierGroupSection: View {
                     }
                 }
                 Spacer()
-                Text(group.isRequired ? "Required" : rangeLabel)
+                Text(group.isRequired ? String(localized: "Required") : rangeLabel)
                     .font(.caption.bold())
                     .foregroundColor(group.isRequired ? .kePrimary : .keTextMuted)
                     .padding(.horizontal, 8)

@@ -64,14 +64,35 @@ class DealsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    private static let expiryFormatters: [ISO8601DateFormatter] = {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return [f1, f2]
+    }()
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            deals = try await APIService.shared.getNearbyDeals()
+            let all = try await APIService.shared.getNearbyDeals()
+            deals = all.filter { !Self.isExpired($0) }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Returns `true` when the deal has an `expiresAt` timestamp that is in the past.
+    private static func isExpired(_ deal: Deal) -> Bool {
+        guard let raw = deal.expiresAt else { return false }
+        for f in expiryFormatters {
+            if let date = f.date(from: raw) {
+                return date <= Date()
+            }
+        }
+        // Unparseable expiry -- keep the deal visible rather than hiding it.
+        return false
     }
 }
 
@@ -232,6 +253,14 @@ struct DealListCard: View {
 private struct ExpiryLabel: View {
     let expiresAt: String
 
+    private static let formatters: [ISO8601DateFormatter] = {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return [f1, f2]
+    }()
+
     var body: some View {
         if let remaining = timeRemaining {
             HStack(spacing: 4) {
@@ -245,16 +274,8 @@ private struct ExpiryLabel: View {
     }
 
     private var timeRemaining: String? {
-        let formatters: [ISO8601DateFormatter] = {
-            let f1 = ISO8601DateFormatter()
-            f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let f2 = ISO8601DateFormatter()
-            f2.formatOptions = [.withInternetDateTime]
-            return [f1, f2]
-        }()
-
         var expiry: Date?
-        for f in formatters {
+        for f in Self.formatters {
             if let d = f.date(from: expiresAt) { expiry = d; break }
         }
         guard let expiry, expiry > Date() else { return nil }

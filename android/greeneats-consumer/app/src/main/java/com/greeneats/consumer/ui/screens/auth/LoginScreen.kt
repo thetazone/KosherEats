@@ -42,6 +42,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +65,10 @@ fun LoginScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val phoneValid = state.phoneNumber.length >= 7
+    val phoneError = if (state.phoneNumber.isNotEmpty() && state.phoneNumber.length < 7) {
+        "Enter at least 7 digits"
+    } else null
 
     LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
         if (state.isLoggedIn && !state.isGuest) {
@@ -176,9 +182,18 @@ fun LoginScreen(
             )
         }
 
+        if (phoneError != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = phoneError,
+                color = ErrorRed,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         Spacer(Modifier.height(20.dp))
 
-        val phoneValid = state.phoneNumber.length >= 7
         Button(
             onClick = { viewModel.startPhoneLogin() },
             modifier = Modifier
@@ -229,15 +244,24 @@ fun LoginScreen(
         Spacer(Modifier.height(24.dp))
 
         OutlinedAuthButton(
-            text = "Continue with Google",
-            onClick = { viewModel.signInWithGoogle(context) },
+            text = if (state.isLoading) "Signing in..." else "Continue with Google",
+            onClick = { if (!state.isLoading) viewModel.signInWithGoogle(context) },
+            accessibilityLabel = "Sign in with your Google account",
             leading = {
-                Text(
-                    text = "G",
-                    color = GoogleRed,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
+                if (state.isLoading) {
+                    CircularProgressIndicator(
+                        color = TextWhite,
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text(
+                        text = "G",
+                        color = GoogleRed,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             },
         )
 
@@ -262,8 +286,9 @@ fun LoginScreen(
         OutlinedAuthButton(
             text = "Continue with Email",
             onClick = onEmailLoginClick,
+            accessibilityLabel = "Sign in with your email address",
             leading = {
-                Icon(Icons.Filled.Email, contentDescription = null, tint = TextWhite, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Email, contentDescription = "Email", tint = TextWhite, modifier = Modifier.size(20.dp))
             },
         )
 
@@ -271,6 +296,7 @@ fun LoginScreen(
 
         OutlinedAuthButton(
             text = "Continue as Guest",
+            accessibilityLabel = "Continue without signing in",
             onClick = {
                 viewModel.continueAsGuest()
                 onGuestContinue()
@@ -288,6 +314,7 @@ private fun OutlinedAuthButton(
     onClick: () -> Unit,
     leading: (@Composable () -> Unit)? = null,
     textColor: androidx.compose.ui.graphics.Color = TextWhite,
+    accessibilityLabel: String? = null,
 ) {
     Box(
         modifier = Modifier
@@ -297,6 +324,11 @@ private fun OutlinedAuthButton(
             .background(SurfaceDark)
             .border(width = 1.dp, color = SurfaceDarkBorder, shape = RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
+            .then(
+                if (accessibilityLabel != null) {
+                    Modifier.semantics { contentDescription = accessibilityLabel }
+                } else Modifier
+            )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {

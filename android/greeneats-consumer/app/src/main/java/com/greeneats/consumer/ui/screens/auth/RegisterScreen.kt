@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -44,7 +45,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -116,7 +120,8 @@ fun RegisterScreen(
             onClick = { viewModel.signInWithGoogle(context) },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp),
+                .height(52.dp)
+                .semantics { contentDescription = "Sign up with your Google account" },
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF3C4043),
@@ -167,7 +172,7 @@ fun RegisterScreen(
                 value = state.registerFirstName,
                 onValueChange = { viewModel.updateRegisterFirstName(it) },
                 label = { Text("First Name") },
-                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = TextMuted) },
+                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = "First name", tint = TextMuted) },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp),
                 colors = textFieldColors,
@@ -190,12 +195,16 @@ fun RegisterScreen(
             value = state.registerEmail,
             onValueChange = { viewModel.updateRegisterEmail(it) },
             label = { Text("Email") },
-            leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
+            leadingIcon = { Icon(Icons.Filled.Email, contentDescription = "Email", tint = TextMuted) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            isError = state.registerEmail.isNotEmpty() && !android.util.Patterns.EMAIL_ADDRESS.matcher(state.registerEmail).matches(),
+            supportingText = if (state.registerEmail.isNotEmpty() && !android.util.Patterns.EMAIL_ADDRESS.matcher(state.registerEmail).matches()) {
+                { Text("Enter a valid email address", color = ErrorRed) }
+            } else null,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -204,7 +213,7 @@ fun RegisterScreen(
             value = state.registerPhone,
             onValueChange = { viewModel.updateRegisterPhone(it) },
             label = { Text("Phone Number") },
-            leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null, tint = TextMuted) },
+            leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = "Phone number", tint = TextMuted) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
@@ -218,12 +227,12 @@ fun RegisterScreen(
             value = state.registerPassword,
             onValueChange = { viewModel.updateRegisterPassword(it) },
             label = { Text("Password") },
-            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
+            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = "Password", tint = TextMuted) },
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                     Icon(
                         if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                        contentDescription = "Toggle password",
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
                         tint = TextMuted,
                     )
                 }
@@ -236,19 +245,71 @@ fun RegisterScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         )
 
+        // Password strength indicator
+        if (state.registerPassword.isNotEmpty()) {
+            val pwd = state.registerPassword
+            val hasMinLength = pwd.length >= 8
+            val hasUpper = pwd.any { it.isUpperCase() }
+            val hasDigit = pwd.any { it.isDigit() }
+            val hasSpecial = pwd.any { !it.isLetterOrDigit() }
+            val score = listOf(hasMinLength, hasUpper, hasDigit, hasSpecial).count { it }
+            val strengthLabel = when (score) {
+                0, 1 -> "Weak"
+                2 -> "Fair"
+                3 -> "Good"
+                else -> "Strong"
+            }
+            val strengthColor = when (score) {
+                0, 1 -> ErrorRed
+                2 -> WarningYellow
+                3 -> Orange
+                else -> SuccessGreen
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { score / 4f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .semantics { contentDescription = "Password strength: $strengthLabel" },
+                color = strengthColor,
+                trackColor = SurfaceDarkBorder,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = strengthLabel,
+                color = strengthColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (!hasMinLength) {
+                Text("At least 8 characters", color = TextMuted, fontSize = 11.sp)
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
+
+        val passwordMismatch = state.registerConfirmPassword.isNotEmpty() &&
+            state.registerConfirmPassword != state.registerPassword
 
         OutlinedTextField(
             value = state.registerConfirmPassword,
             onValueChange = { viewModel.updateRegisterConfirmPassword(it) },
             label = { Text("Confirm Password") },
-            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
+            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = "Confirm password", tint = TextMuted) },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = textFieldColors,
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            isError = passwordMismatch,
+            supportingText = if (passwordMismatch) {
+                { Text("Passwords do not match", color = ErrorRed) }
+            } else null,
         )
 
         if (state.error != null) {

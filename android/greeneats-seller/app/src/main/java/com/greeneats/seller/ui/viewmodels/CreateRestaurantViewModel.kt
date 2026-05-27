@@ -53,10 +53,28 @@ data class CreateRestaurantState(
         get() = name.isNotBlank() &&
             phone.isNotBlank() &&
             email.isNotBlank() &&
+            email.contains("@") &&
             street.isNotBlank() &&
             city.isNotBlank() &&
             state.isNotBlank() &&
             zipCode.isNotBlank()
+
+    /** Returns a user-facing validation error, or null if the form is valid. */
+    val validationError: String?
+        get() = when {
+            name.isBlank() -> "Restaurant name is required"
+            name.length < 2 -> "Restaurant name must be at least 2 characters"
+            phone.isBlank() -> "Phone number is required"
+            phone.replace(Regex("[^0-9]"), "").length < 7 -> "Phone number is too short"
+            email.isBlank() -> "Email is required"
+            !email.contains("@") || !email.contains(".") -> "Enter a valid email address"
+            street.isBlank() -> "Street address is required"
+            city.isBlank() -> "City is required"
+            state.isBlank() -> "State is required"
+            zipCode.isBlank() -> "ZIP code is required"
+            zipCode.length < 5 -> "ZIP code must be at least 5 digits"
+            else -> null
+        }
 }
 
 @HiltViewModel
@@ -150,7 +168,11 @@ class CreateRestaurantViewModel @Inject constructor(
 
     fun submit() {
         val s = _state.value
-        if (!s.isFormValid || s.isSubmitting) return
+        if (s.isSubmitting) return
+        s.validationError?.let { error ->
+            _state.value = s.copy(error = error)
+            return
+        }
 
         val cuisineList = s.cuisineTags
             .split(",")
@@ -188,7 +210,7 @@ class CreateRestaurantViewModel @Inject constructor(
                     val errorBody = response.errorBody()?.string()
                     _state.value = _state.value.copy(
                         isSubmitting = false,
-                        error = errorBody?.take(200)
+                        error = errorBody?.take(500)
                             ?: "Failed to create restaurant (HTTP ${response.code()})",
                     )
                 }

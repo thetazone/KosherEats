@@ -184,6 +184,9 @@ object NetworkModule {
 
         if (BuildConfig.DEBUG) {
             val loggingInterceptor = HttpLoggingInterceptor().apply {
+                redactHeader("Authorization")
+                redactHeader("Cookie")
+                redactHeader("Set-Cookie")
                 level = HttpLoggingInterceptor.Level.BASIC
             }
             builder.addInterceptor(loggingInterceptor)
@@ -284,10 +287,13 @@ private class TokenAuthenticator(
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
     override fun authenticate(route: Route?, response: okhttp3.Response): okhttp3.Request? {
-        if (responseCount(response) > 1) return null
+        // Cap retry chain to prevent an infinite refresh→401 loop from wedging the OkHttp dispatcher.
+        if (responseCount(response) >= 2) return null
 
         val path = response.request.url.encodedPath
         if (path.contains("/auth/")) return null
@@ -372,13 +378,20 @@ private class TokenAuthenticator(
                         }
                         try {
                             val parsed = JSONObject(bodyStr)
-                            RefreshResult.Success(
-                                parsed.getString("token"),
-                                parsed.getString("refresh_token")
-                            )
+                            val token = parsed.optString("token", "")
+                            val refresh = parsed.optString("refresh_token", "")
+                            if (token.isBlank() || refresh.isBlank()) {
+                                Log.w("KosherEats", "tryRefresh: response missing token fields")
+                                RefreshResult.Failure("missing_fields")
+                            } else {
+                                RefreshResult.Success(token, refresh)
+                            }
                         } catch (e: JSONException) {
                             Log.w("KosherEats", "tryRefresh: malformed JSON in refresh response — ${e.message}")
                             RefreshResult.Failure("json_parse")
+                        } catch (e: Exception) {
+                            Log.w("KosherEats", "tryRefresh: unexpected parse error", e)
+                            RefreshResult.Failure("parse_error")
                         }
                     }
                     resp.code == 401 -> RefreshResult.Unauthorized

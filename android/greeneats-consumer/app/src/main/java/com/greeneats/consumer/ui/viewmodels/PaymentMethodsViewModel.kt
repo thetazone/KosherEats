@@ -36,10 +36,10 @@ class PaymentMethodsViewModel @Inject constructor(
                 if (resp.isSuccessful) {
                     _uiState.update { it.copy(bundle = resp.body(), isLoading = false) }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load Stripe customer (${resp.code()})") }
+                    _uiState.update { it.copy(isLoading = false, error = "$ERR_LOAD_STRIPE_CUSTOMER (${resp.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK) }
             }
         }
     }
@@ -49,5 +49,10 @@ class PaymentMethodsViewModel @Inject constructor(
         if (resp.isSuccessful) resp.body()?.clientSecret else null
     } catch (_: Exception) {
         null
+    }
+
+    companion object {
+        const val ERR_LOAD_STRIPE_CUSTOMER = "Couldn't load Stripe customer"
+        const val ERR_NETWORK = "Network error"
     }
 }

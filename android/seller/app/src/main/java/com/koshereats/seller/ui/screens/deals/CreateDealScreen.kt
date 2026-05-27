@@ -54,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -110,17 +111,20 @@ fun CreateDealScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var isGeneralDeal by remember { mutableStateOf(true) }
+    var isGeneralDeal by rememberSaveable { mutableStateOf(true) }
     var selectedItem by remember { mutableStateOf<MenuItem?>(null) }
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var discountType by remember { mutableStateOf(DiscountType.PERCENTAGE) }
-    var discountValue by remember { mutableStateOf("") }
-    var minOrderAmount by remember { mutableStateOf("") }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
+    var discountType by rememberSaveable { mutableStateOf(DiscountType.PERCENTAGE) }
+    var discountValue by rememberSaveable { mutableStateOf("") }
+    var minOrderAmount by rememberSaveable { mutableStateOf("") }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
     val todayUtcMidnightMillis = remember {
-        Instant.now().atZone(ZoneId.systemDefault())
-            .toLocalDate().atStartOfDay(ZoneId.of("UTC"))
+        // DatePicker expects UTC midnight of the user's *local* date; staying in
+        // ZoneId.systemDefault() avoids the off-by-one-day on the day of a DST
+        // transition that the prior "atStartOfDay(UTC)" caused for some locales.
+        java.time.LocalDate.now(ZoneId.systemDefault())
+            .atStartOfDay(ZoneId.of("UTC"))
             .toInstant().toEpochMilli()
     }
     // First half-hour slot that is >= now + 30 min (may exceed 47 if no slot valid today)
@@ -131,7 +135,7 @@ fun CreateDealScreen(
     }
     var expiresAtMillis by remember { mutableStateOf<Long?>(todayUtcMidnightMillis) }
     var selectedHalfHour by remember { mutableIntStateOf(minValidSlot.coerceIn(0, 47)) }
-    var imageUrl by remember { mutableStateOf("") }
+    var imageUrl by rememberSaveable { mutableStateOf("") }
     var isUploadingImage by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.loadMenuItems() }
@@ -258,7 +262,8 @@ fun CreateDealScreen(
                     fontWeight = FontWeight.Medium,
                 )
 
-                if (selectedItem != null) {
+                val currentItem = selectedItem
+                if (currentItem != null) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -268,9 +273,9 @@ fun CreateDealScreen(
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (selectedItem!!.imageUrl.isNotBlank()) {
+                        if (currentItem.imageUrl.isNotBlank()) {
                             AsyncImage(
-                                model = selectedItem!!.imageUrl,
+                                model = currentItem.imageUrl,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
@@ -280,8 +285,8 @@ fun CreateDealScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(selectedItem!!.name, color = TextWhite, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(selectedItem!!.price.formatPrice(), color = Orange, fontSize = 13.sp)
+                            Text(currentItem.name, color = TextWhite, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(currentItem.price.formatPrice(), color = Orange, fontSize = 13.sp)
                         }
                         IconButton(
                             onClick = { selectedItem = null },
@@ -377,7 +382,7 @@ fun CreateDealScreen(
             // Title
             OutlinedTextField(
                 value = title,
-                onValueChange = { title = it },
+                onValueChange = { if (it.length <= 200) title = it },
                 label = { Text("Deal Title") },
                 placeholder = { Text("e.g., 20% off falafel plates", color = TextMuted) },
                 modifier = Modifier.fillMaxWidth(),
@@ -388,7 +393,7 @@ fun CreateDealScreen(
             // Description
             OutlinedTextField(
                 value = description,
-                onValueChange = { description = it },
+                onValueChange = { if (it.length <= 2000) description = it },
                 label = { Text("Description (optional)") },
                 placeholder = { Text("Describe the deal...", color = TextMuted) },
                 modifier = Modifier.fillMaxWidth(),
@@ -504,15 +509,16 @@ fun CreateDealScreen(
                     .clickable { showDatePicker = true },
                 contentAlignment = Alignment.CenterStart,
             ) {
+                val expiresAt = expiresAtMillis
                 Text(
-                    text = if (expiresAtMillis != null) {
-                        Instant.ofEpochMilli(expiresAtMillis!!)
+                    text = if (expiresAt != null) {
+                        Instant.ofEpochMilli(expiresAt)
                             .atZone(ZoneId.of("UTC"))
                             .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
                     } else {
                         "Select expiration date"
                     },
-                    color = if (expiresAtMillis != null) TextWhite else TextMuted,
+                    color = if (expiresAt != null) TextWhite else TextMuted,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
@@ -610,8 +616,10 @@ fun CreateDealScreen(
                     } ?: return@Button
 
                     val discountValueCents = when (discountType) {
-                        DiscountType.PERCENTAGE -> discountValue.toIntOrNull() ?: 0
-                        DiscountType.FIXED -> dollarsToCents(discountValue)
+                        // Cap percentage at 99 to prevent free-deal mistakes; FIXED already
+                        // capped by the input keyboard but coerce belt-and-braces.
+                        DiscountType.PERCENTAGE -> (discountValue.toIntOrNull() ?: 0).coerceIn(1, 99)
+                        DiscountType.FIXED -> dollarsToCents(discountValue).coerceAtLeast(0)
                         DiscountType.BOGO -> 0
                     }
 
@@ -620,8 +628,8 @@ fun CreateDealScreen(
                     }
 
                     viewModel.createDeal(
-                        title = title,
-                        description = description,
+                        title = title.trim().take(200),
+                        description = description.trim().take(2000),
                         imageUrl = imageUrl,
                         menuItemId = selectedItem?.id,
                         discountType = discountType,
@@ -730,7 +738,12 @@ private fun dollarsToCents(dollars: String): Int {
     return (amount * 100).roundToInt()
 }
 
-private val uploadClient = OkHttpClient()
+private val uploadClient = OkHttpClient.Builder()
+    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+    .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+    .callTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+    .build()
 
 private const val MAX_LONG_EDGE_PX = 1080
 
@@ -773,8 +786,12 @@ private suspend fun uploadDealImage(
             .build()
 
         val response = uploadClient.newCall(request).execute()
-        response.use { if (it.isSuccessful) presignResponse.publicUrl else null }
-    } catch (_: Exception) {
+        response.use { if (it.isSuccessful) presignResponse.publicUrl else {
+            android.util.Log.w("CreateDealScreen", "Deal image upload failed: HTTP ${it.code}")
+            null
+        } }
+    } catch (e: Exception) {
+        android.util.Log.w("CreateDealScreen", "Deal image upload threw", e)
         null
     }
 }

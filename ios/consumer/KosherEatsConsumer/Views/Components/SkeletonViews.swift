@@ -21,6 +21,8 @@ struct SkeletonBlock: View {
             .fill(Color.keCardHover)
             .overlay(ShimmerOverlay().opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .drawingGroup()
+            .accessibilityHidden(true)
     }
 }
 
@@ -76,6 +78,8 @@ struct RestaurantCardSkeleton: View {
         .padding(12)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement()
+        .accessibilityLabel("Loading restaurant")
     }
 }
 
@@ -102,6 +106,8 @@ struct OrderRowSkeleton: View {
         .padding(14)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement()
+        .accessibilityLabel("Loading order")
     }
 }
 
@@ -123,5 +129,7 @@ struct MenuItemSkeleton: View {
         .padding(12)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        .accessibilityElement()
+        .accessibilityLabel("Loading menu item")
     }
 }

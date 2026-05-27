@@ -55,6 +55,8 @@ class OrdersViewModel: ObservableObject {
 
     deinit {
         if let pushObserver { NotificationCenter.default.removeObserver(pushObserver) }
+        restaurantSubscription?.cancel()
+        restaurantSubscription = nil
     }
 
     /// Auto-dismisses `successMessage` after a short beat so the toast
@@ -196,10 +198,20 @@ class OrdersViewModel: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
+    /// Timestamp of the last alert sound. Used to debounce rapid-fire alerts
+    /// when multiple pending orders arrive in the same poll tick.
+    private var lastAlertTime: Date = .distantPast
+
     /// Triple-ping on a brand-new ticket — a single 1007 is easy to miss in
     /// a loud kitchen. Three short beeps within ~1.2s has a distinctive
     /// cadence sellers learn to recognize.
+    ///
+    /// Debounced: skips if an alert was played within the last 2 seconds so
+    /// multiple new pending orders in one poll don't stack overlapping pings.
     private func playNewOrderAlert() {
+        let now = Date()
+        guard now.timeIntervalSince(lastAlertTime) >= 2.0 else { return }
+        lastAlertTime = now
         AudioServicesPlaySystemSound(1007)
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 400_000_000)
@@ -250,6 +262,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.acceptOrder(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Order accepted")
         } catch {
             errorMessage = error.localizedDescription
@@ -266,6 +279,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.rejectOrder(id: id, reason: reason)
             updateOrder(updated)
+            Haptics.success()
             flash("Order rejected")
         } catch {
             errorMessage = error.localizedDescription
@@ -282,6 +296,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.markOrderPreparing(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Started preparing")
         } catch {
             errorMessage = error.localizedDescription
@@ -298,6 +313,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.markOrderReady(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Order ready for courier pickup")
         } catch {
             errorMessage = error.localizedDescription
@@ -317,6 +333,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.markOrderCompleted(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Order picked up")
         } catch {
             errorMessage = error.localizedDescription

@@ -30,18 +30,19 @@ import javax.inject.Inject
 
 sealed interface TipChoice {
     data object None : TipChoice
-    data class Percent(val fraction: Double) : TipChoice
+    /** Tip percentage stored as basis points (e.g. 1500 = 15%). */
+    data class Percent(val basisPoints: Int) : TipChoice
     data object Custom : TipChoice
 
     companion object {
-        val presets: List<TipChoice> = listOf(None, Percent(0.15), Percent(0.18), Percent(0.20), Custom)
+        val presets: List<TipChoice> = listOf(None, Percent(1500), Percent(1800), Percent(2000), Custom)
     }
 
     fun label(subtotalCents: Int): String = when (this) {
         None -> "None"
         is Percent -> {
-            val cents = (subtotalCents * fraction).toInt()
-            "${(fraction * 100).toInt()}%\n${cents.formatPrice()}"
+            val cents = (subtotalCents * basisPoints) / 10_000
+            "${basisPoints / 100}%\n${cents.formatPrice()}"
         }
         Custom -> "Custom"
     }
@@ -52,7 +53,7 @@ data class CheckoutUiState(
     val selectedAddress: Address? = null,
     /** "delivery" or "pickup". Pickup skips address, courier tip, and delivery fee. */
     val fulfillmentType: String = "delivery",
-    val tipChoice: TipChoice = TipChoice.Percent(0.18),
+    val tipChoice: TipChoice = TipChoice.Percent(1800),
     val customTipText: String = "",
     val scheduledFor: LocalDateTime? = null,
     val bundle: PaymentSheetBundle? = null,
@@ -151,11 +152,11 @@ class CheckoutViewModel @Inject constructor(
                     ),
                 )
                 if (!resp.isSuccessful) {
-                    throw Exception("Failed to add item to cart: ${resp.code()} ${resp.message()}")
+                    throw Exception("${ERR_CART_ADD_ITEM_FAILED}: ${resp.code()} ${resp.message()}")
                 }
             }
         } catch (e: Exception) {
-            _uiState.update { it.copy(errorMessage = "Failed to prepare cart: ${e.localizedMessage}") }
+            _uiState.update { it.copy(errorMessage = "$ERR_PREPARE_CART_FAILED: ${e.localizedMessage}") }
         }
     }
 
@@ -216,7 +217,7 @@ class CheckoutViewModel @Inject constructor(
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(errorMessage = "Could not save address") }
+                    _uiState.update { it.copy(errorMessage = ERR_SAVE_ADDRESS_FAILED) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = e.localizedMessage) }
@@ -245,8 +246,26 @@ class CheckoutViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Stores a scheduled delivery/pickup time. The [LocalDateTime] is assumed
+     * to be in the device's system default timezone — [finalizeOrder] converts
+     * it to an ISO offset string via [ZoneId.systemDefault] before sending to
+     * the backend. Null = ASAP.
+     *
+     * Validates that the chosen time is in the future (by at least 5 minutes)
+     * using system-default zone so daylight-saving transitions don't produce
+     * a time that's already in the past.
+     */
     fun updateScheduledFor(value: LocalDateTime?) {
-        _uiState.update { it.copy(scheduledFor = value) }
+        if (value != null) {
+            val zoned = value.atZone(ZoneId.systemDefault())
+            val now = java.time.ZonedDateTime.now(ZoneId.systemDefault())
+            if (zoned.isBefore(now.plusMinutes(5))) {
+                _uiState.update { it.copy(errorMessage = ERR_SCHEDULE_TOO_SOON) }
+                return
+            }
+        }
+        _uiState.update { it.copy(scheduledFor = value, errorMessage = null) }
     }
 
     private fun currentTipCents(): Int {
@@ -254,10 +273,10 @@ class CheckoutViewModel @Inject constructor(
         val subtotal = state.bundle?.subtotal ?: 0
         return when (val choice = state.tipChoice) {
             TipChoice.None -> 0
-            is TipChoice.Percent -> (subtotal * choice.fraction).toInt()
+            is TipChoice.Percent -> (subtotal * choice.basisPoints) / 10_000
             TipChoice.Custom -> {
-                val dollars = state.customTipText.toDoubleOrNull() ?: 0.0
-                (dollars * 100).toInt()
+                val dollars = (state.customTipText.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+                (dollars * 100).toInt().coerceAtMost(MAX_TIP_CENTS)
             }
         }
     }
@@ -282,7 +301,7 @@ class CheckoutViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isLoadingBundle = false,
-                        errorMessage = "Failed to price order (${resp.code()})",
+                        errorMessage = "$ERR_PRICE_ORDER_FAILED (${resp.code()})",
                     )
                 }
             }
@@ -312,6 +331,10 @@ class CheckoutViewModel @Inject constructor(
         }
         val bundle = _uiState.value.bundle ?: return
         val intentId = extractIntentId(bundle.paymentIntentSecret)
+        if (intentId == null) {
+            _uiState.update { it.copy(errorMessage = ERR_MALFORMED_INTENT) }
+            return
+        }
         finalizeOrder(intentId)
     }
 
@@ -320,7 +343,7 @@ class CheckoutViewModel @Inject constructor(
         val isPickup = state.fulfillmentType == "pickup"
         val address = state.selectedAddress
         if (!isPickup && address == null) {
-            _uiState.update { it.copy(errorMessage = "Select a delivery address") }
+            _uiState.update { it.copy(errorMessage = ERR_SELECT_ADDRESS) }
             return
         }
         val bundle = state.bundle ?: return
@@ -332,13 +355,23 @@ class CheckoutViewModel @Inject constructor(
                     .toOffsetDateTime()
                     .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             }
+            // Bind a non-null local so we never force-unwrap. For delivery
+            // the null guard already returned above; for pickup we supply a
+            // dummy that is never read because the `if(isPickup)` branches
+            // short-circuit to defaults.
+            val addr = address ?: if (isPickup) {
+                Address()
+            } else {
+                _uiState.update { it.copy(isProcessing = false, errorMessage = ERR_SELECT_ADDRESS) }
+                return@launch
+            }
             try {
                 val resp = api.createOrder(
                     CreateOrderRequest(
                         restaurantId = _restaurantId,
-                        deliveryAddress = if (isPickup) "" else "${address!!.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
-                        deliveryLat = if (isPickup) 0.0 else address!!.latitude,
-                        deliveryLng = if (isPickup) 0.0 else address!!.longitude,
+                        deliveryAddress = if (isPickup) "" else "${addr.streetAddress}, ${addr.city}, ${addr.state} ${addr.zipCode}",
+                        deliveryLat = if (isPickup) 0.0 else addr.latitude,
+                        deliveryLng = if (isPickup) 0.0 else addr.longitude,
                         paymentIntentId = paymentIntentId,
                         tip = bundle.tip,
                         scheduledFor = scheduledFor,
@@ -356,11 +389,11 @@ class CheckoutViewModel @Inject constructor(
                     if (existing != null) {
                         _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
                     } else {
-                        _uiState.update { it.copy(isProcessing = false, errorMessage = "Order failed (409)") }
+                        _uiState.update { it.copy(isProcessing = false, errorMessage = "$ERR_ORDER_FAILED (409)") }
                     }
                 } else {
                     _uiState.update {
-                        it.copy(isProcessing = false, errorMessage = "Order failed (${resp.code()})")
+                        it.copy(isProcessing = false, errorMessage = "$ERR_ORDER_FAILED (${resp.code()})")
                     }
                 }
             } catch (e: Exception) {
@@ -377,11 +410,44 @@ class CheckoutViewModel @Inject constructor(
     }
 
     // PaymentIntent client secrets look like `pi_xxxxxx_secret_yyyy`. We only
-    // want the `pi_xxxxxx` portion for our DB.
-    private fun extractIntentId(clientSecret: String): String =
-        clientSecret.substringBefore("_secret_", clientSecret)
+    // want the `pi_xxxxxx` portion for our DB. Returns null on malformed input
+    // so the caller can surface an error rather than send garbage to the backend.
+    // Mirrors iOS CheckoutViewModel.extractIntentId(from:) which throws on bad format.
+    private fun extractIntentId(clientSecret: String): String? {
+        if (!clientSecret.startsWith("pi_") || !clientSecret.contains("_secret_")) {
+            android.util.Log.e(
+                "CheckoutViewModel",
+                "extractIntentId: malformed client secret – expected pi_<id>_secret_<key>, got: ${clientSecret.take(12)}..."
+            )
+            return null
+        }
+        val id = clientSecret.substringBefore("_secret_")
+        if (id.isEmpty()) return null
+        return id
+    }
+
+    override fun onCleared() {
+        refreshBundleJob?.cancel()
+        refreshBundleJob = null
+        super.onCleared()
+    }
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    companion object {
+        /** Maximum custom tip in cents ($500). Matches iOS CheckoutViewModel.maxTipCents
+         *  and the backend cap in orders.go / payments.go (tip <= subtotal). */
+        const val MAX_TIP_CENTS = 50_000
+
+        const val ERR_PRICE_ORDER_FAILED = "Failed to price order"
+        const val ERR_SELECT_ADDRESS = "Select a delivery address"
+        const val ERR_ORDER_FAILED = "Order failed"
+        const val ERR_SAVE_ADDRESS_FAILED = "Could not save address"
+        const val ERR_PREPARE_CART_FAILED = "Failed to prepare cart"
+        const val ERR_CART_ADD_ITEM_FAILED = "Failed to add item to cart"
+        const val ERR_SCHEDULE_TOO_SOON = "Scheduled time must be at least 5 minutes from now"
+        const val ERR_MALFORMED_INTENT = "Malformed payment intent secret"
     }
 }

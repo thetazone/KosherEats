@@ -51,6 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,7 +141,7 @@ fun AddressPickerSheet(
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Search for an address", color = TextMuted) },
                 leadingIcon = {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted)
+                    Icon(Icons.Filled.Search, contentDescription = "Search", tint = TextMuted)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -227,7 +230,7 @@ fun AddressPickerSheet(
                 ) {
                     Icon(
                         Icons.Filled.Add,
-                        contentDescription = null,
+                        contentDescription = "Add",
                         tint = Orange,
                         modifier = Modifier.size(20.dp),
                     )
@@ -337,6 +340,22 @@ fun AddressPickerSheet(
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
+
+                    val missingFields = buildList {
+                        if (newStreet.isBlank()) add("street")
+                        if (newCity.isBlank()) add("city")
+                        if (newState.isBlank()) add("state")
+                        if (newZip.length < 5) add("ZIP code")
+                    }
+                    if (missingFields.isNotEmpty()) {
+                        Text(
+                            text = "Required: ${missingFields.joinToString(", ")}",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 2.dp, bottom = 4.dp),
+                        )
+                    }
+
                     Button(
                         onClick = {
                             if (newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.isNotBlank()) {
@@ -391,10 +410,15 @@ fun AddressPickerSheet(
 
                 filteredAddresses.take(8).forEach { address ->
                     val isSelected = selectedAddress?.id == address.id
+                    val addressDesc = address.label.ifBlank { address.streetAddress }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
+                            .semantics(mergeDescendants = true) {
+                                contentDescription = "$addressDesc, ${address.streetAddress}, ${address.city}, ${address.state}${if (isSelected) ", selected" else ""}"
+                                selected = isSelected
+                            }
+                            .clickable(onClickLabel = "Select $addressDesc") {
                                 onAddressSelected(address)
                                 onDismiss()
                             }
@@ -413,7 +437,7 @@ fun AddressPickerSheet(
                         ) {
                             Icon(
                                 imageVector = iconForLabel(address.label),
-                                contentDescription = null,
+                                contentDescription = address.label.ifBlank { "Location" },
                                 tint = if (isSelected) Orange else TextMuted,
                                 modifier = Modifier.size(18.dp),
                             )
@@ -447,6 +471,33 @@ fun AddressPickerSheet(
                 ) {
                     Text("No addresses found", color = TextMuted, fontSize = 14.sp)
                 }
+            } else if (addresses.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        tint = TextMuted,
+                        modifier = Modifier.size(40.dp),
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "No saved addresses",
+                        color = TextWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Tap \"Add new address\" to get started",
+                        color = TextMuted,
+                        fontSize = 14.sp,
+                    )
+                }
             }
         }
     }
@@ -464,13 +515,17 @@ private fun LabelChip(
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .background(if (isSelected) Orange.copy(alpha = 0.12f) else SurfaceDarkElevated)
-            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$label${if (subtitle != null) ", $subtitle" else ""}${if (isSelected) ", selected" else ""}"
+                selected = isSelected
+            }
+            .clickable(onClickLabel = "Select $label address", onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = label,
             tint = if (isSelected) Orange else TextMuted,
             modifier = Modifier.size(18.dp),
         )

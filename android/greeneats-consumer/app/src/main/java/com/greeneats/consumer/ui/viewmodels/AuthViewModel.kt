@@ -22,7 +22,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -104,7 +103,7 @@ class AuthViewModel @Inject constructor(
     fun login() {
         val state = _uiState.value
         if (state.loginEmail.isBlank() || state.loginPassword.isBlank()) {
-            _uiState.update { it.copy(error = "Please fill in all fields") }
+            _uiState.update { it.copy(error = ERR_FILL_ALL_FIELDS) }
             return
         }
 
@@ -116,7 +115,7 @@ class AuthViewModel @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     val authData = response.body() ?: run {
-                        _uiState.update { it.copy(isLoading = false, error = "Unexpected server response") }
+                        _uiState.update { it.copy(isLoading = false, error = ERR_UNEXPECTED_RESPONSE) }
                         return@launch
                     }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
@@ -135,13 +134,13 @@ class AuthViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Login failed",
+                            error = ERR_LOGIN_FAILED,
                         )
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
+                    it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
             }
         }
@@ -152,11 +151,11 @@ class AuthViewModel @Inject constructor(
         if (state.registerEmail.isBlank() || state.registerPassword.isBlank() ||
             state.registerFirstName.isBlank() || state.registerLastName.isBlank()
         ) {
-            _uiState.update { it.copy(error = "Please fill in all required fields") }
+            _uiState.update { it.copy(error = ERR_FILL_REQUIRED_FIELDS) }
             return
         }
         if (state.registerPassword != state.registerConfirmPassword) {
-            _uiState.update { it.copy(error = "Passwords do not match") }
+            _uiState.update { it.copy(error = ERR_PASSWORDS_NO_MATCH) }
             return
         }
 
@@ -174,7 +173,7 @@ class AuthViewModel @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     val authData = response.body() ?: run {
-                        _uiState.update { it.copy(isLoading = false, error = "Unexpected server response") }
+                        _uiState.update { it.copy(isLoading = false, error = ERR_UNEXPECTED_RESPONSE) }
                         return@launch
                     }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
@@ -191,13 +190,13 @@ class AuthViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Registration failed",
+                            error = ERR_REGISTRATION_FAILED,
                         )
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
+                    it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
             }
         }
@@ -217,7 +216,7 @@ class AuthViewModel @Inject constructor(
                 )
                 if (response.isSuccessful) {
                     val authData = response.body() ?: run {
-                        _uiState.update { it.copy(isLoading = false, error = "Unexpected server response") }
+                        _uiState.update { it.copy(isLoading = false, error = ERR_UNEXPECTED_RESPONSE) }
                         return@launch
                     }
                     saveAuth(authData.token, authData.refreshToken, authData.user.id)
@@ -236,13 +235,13 @@ class AuthViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Social login failed: $errorBody",
+                            error = "$ERR_SOCIAL_LOGIN_FAILED: $errorBody",
                         )
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
+                    it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
             }
         }
@@ -276,7 +275,7 @@ class AuthViewModel @Inject constructor(
         val state = _uiState.value
         val e164 = "${state.phoneCountryCode}${state.phoneNumber}"
         if (state.phoneNumber.length < 7) {
-            _uiState.update { it.copy(error = "Enter a valid phone number") }
+            _uiState.update { it.copy(error = ERR_INVALID_PHONE) }
             return
         }
         viewModelScope.launch {
@@ -294,15 +293,15 @@ class AuthViewModel @Inject constructor(
                     }
                 } else {
                     val msg = when (response.code()) {
-                        400 -> "Invalid phone number format"
-                        502 -> "SMS service unavailable — try again"
-                        else -> "Couldn't send code"
+                        400 -> ERR_PHONE_INVALID_FORMAT
+                        502 -> ERR_PHONE_SMS_UNAVAILABLE
+                        else -> ERR_PHONE_SEND_FAILED
                     }
                     _uiState.update { it.copy(phoneIsSending = false, error = msg) }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(phoneIsSending = false, error = e.localizedMessage ?: "Network error")
+                    it.copy(phoneIsSending = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
             }
         }
@@ -321,7 +320,7 @@ class AuthViewModel @Inject constructor(
     fun verifyPhoneCode() {
         val state = _uiState.value
         if (state.otpCode.length != 4) {
-            _uiState.update { it.copy(error = "Enter the 4-digit code") }
+            _uiState.update { it.copy(error = ERR_OTP_ENTER_CODE) }
             return
         }
         viewModelScope.launch {
@@ -350,15 +349,15 @@ class AuthViewModel @Inject constructor(
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
                     val msg = when (response.code()) {
-                        401 -> "Invalid or expired code"
-                        429 -> "Too many failed attempts — try again in 10 minutes"
-                        else -> "Verification failed"
+                        401 -> ERR_OTP_INVALID
+                        429 -> ERR_OTP_TOO_MANY
+                        else -> ERR_OTP_VERIFY_FAILED
                     }
                     _uiState.update { it.copy(phoneIsVerifying = false, error = msg) }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(phoneIsVerifying = false, error = e.localizedMessage ?: "Network error")
+                    it.copy(phoneIsVerifying = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
             }
         }
@@ -372,7 +371,7 @@ class AuthViewModel @Inject constructor(
                     socialLogin("google", result.idToken, result.firstName, result.lastName)
                 }
                 .onFailure { e ->
-                    val msg = e.localizedMessage ?: "Google Sign-In failed"
+                    val msg = e.localizedMessage ?: ERR_GOOGLE_SIGN_IN_FAILED
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -403,13 +402,13 @@ class AuthViewModel @Inject constructor(
                             .get("error")?.asString
                     } catch (_: Exception) { null }
                     val msg = when {
-                        response.code() == 409 -> serverMsg ?: "That phone number is already linked to another account"
-                        else -> serverMsg ?: "Failed to save phone number"
+                        response.code() == 409 -> serverMsg ?: ERR_PHONE_DUPLICATE
+                        else -> serverMsg ?: ERR_PHONE_SAVE_FAILED
                     }
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK) }
             }
         }
     }
@@ -421,8 +420,11 @@ class AuthViewModel @Inject constructor(
     fun logout() {
         viewModelScope.launch {
             PushBootstrap.deleteToken()
-            clearAuth()
+            // Signal logout before clearing the auth token so that
+            // subscribers (e.g. SSE streams) can still read the token
+            // for any server-side teardown before it is removed.
             sessionManager.signalLogout()
+            clearAuth()
             _uiState.update { AuthUiState() }
         }
     }
@@ -434,20 +436,20 @@ class AuthViewModel @Inject constructor(
                 val response = apiService.deleteAccount()
                 if (response.isSuccessful) {
                     PushBootstrap.deleteToken()
-                    clearAuth()
                     sessionManager.signalLogout()
+                    clearAuth()
                     _uiState.update { AuthUiState() }
                     onComplete(true)
                 } else {
                     val msg = when (response.code()) {
-                        401 -> "Session expired"
-                        else -> "Couldn't delete account (${response.code()})"
+                        401 -> ERR_SESSION_EXPIRED
+                        else -> "$ERR_DELETE_ACCOUNT_FAILED (${response.code()})"
                     }
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                     onComplete(false)
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK) }
                 onComplete(false)
             }
         }
@@ -459,6 +461,7 @@ class AuthViewModel @Inject constructor(
             prefs[PrefsKeys.REFRESH_TOKEN] = refreshToken
             prefs[PrefsKeys.USER_ID] = userId
         }
+        sessionManager.markActive()
     }
 
     private suspend fun clearAuth() {
@@ -471,6 +474,30 @@ class AuthViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    companion object {
+        const val ERR_FILL_ALL_FIELDS = "Please fill in all fields"
+        const val ERR_FILL_REQUIRED_FIELDS = "Please fill in all required fields"
+        const val ERR_PASSWORDS_NO_MATCH = "Passwords do not match"
+        const val ERR_UNEXPECTED_RESPONSE = "Unexpected server response"
+        const val ERR_LOGIN_FAILED = "Login failed"
+        const val ERR_REGISTRATION_FAILED = "Registration failed"
+        const val ERR_NETWORK = "Network error"
+        const val ERR_SOCIAL_LOGIN_FAILED = "Social login failed"
+        const val ERR_INVALID_PHONE = "Enter a valid phone number"
+        const val ERR_PHONE_INVALID_FORMAT = "Invalid phone number format"
+        const val ERR_PHONE_SMS_UNAVAILABLE = "SMS service unavailable — try again"
+        const val ERR_PHONE_SEND_FAILED = "Couldn't send code"
+        const val ERR_OTP_ENTER_CODE = "Enter the 4-digit code"
+        const val ERR_OTP_INVALID = "Invalid or expired code"
+        const val ERR_OTP_TOO_MANY = "Too many failed attempts — try again in 10 minutes"
+        const val ERR_OTP_VERIFY_FAILED = "Verification failed"
+        const val ERR_GOOGLE_SIGN_IN_FAILED = "Google Sign-In failed"
+        const val ERR_PHONE_DUPLICATE = "That phone number is already linked to another account"
+        const val ERR_PHONE_SAVE_FAILED = "Failed to save phone number"
+        const val ERR_SESSION_EXPIRED = "Session expired"
+        const val ERR_DELETE_ACCOUNT_FAILED = "Couldn't delete account"
     }
 
     /**

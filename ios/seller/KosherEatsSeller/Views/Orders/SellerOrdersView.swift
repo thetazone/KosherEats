@@ -13,14 +13,21 @@ struct SellerOrdersView: View {
             : [GridItem(.flexible())]
     }
 
+    /// Uses the seller's current timezone (device timezone) for the "today"
+    /// boundary. Calendar.current already uses TimeZone.current, but we set it
+    /// explicitly so the intent is clear and future refactors don't break it.
     private var todayOrders: [Order] {
-        let cal = Calendar.current
+        var cal = Calendar.current
+        cal.timeZone = TimeZone.current
         return vm.orders.filter { order in
             guard let date = order.createdAtDate else { return false }
             guard order.status != .cancelled && order.status != .rejected else { return false }
             return cal.isDateInToday(date)
         }
     }
+    /// Subtotal only (food sales before tax/fees/tip). This is intentional:
+    /// the seller ticker shows what they earned from food, not what the
+    /// customer paid — tax and platform fees are not seller revenue.
     private var todayRevenue: Int {
         todayOrders.reduce(0) { $0 + $1.subtotal }
     }
@@ -171,11 +178,13 @@ struct SellerOrdersView: View {
         HStack(spacing: 8) {
             Image(systemName: "chart.bar.fill")
                 .foregroundColor(.kePrimary)
+                .accessibilityHidden(true)
             Text("\(todayOrders.count) orders today")
                 .font(.subheadline.bold())
                 .foregroundColor(.keTextPrimary)
             Text("\u{2022}")
                 .foregroundColor(.keTextMuted)
+                .accessibilityHidden(true)
             Text("\(CurrencyFormat.string(fromCents: todayRevenue)) food sales")
                 .font(.subheadline.bold())
                 .foregroundColor(.kePrimary)
@@ -184,6 +193,8 @@ struct SellerOrdersView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color.keCard)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(todayOrders.count) orders today, \(CurrencyFormat.string(fromCents: todayRevenue)) in food sales")
     }
 
     private var emptyState: some View {
@@ -195,6 +206,10 @@ struct SellerOrdersView: View {
             Text("No \(vm.selectedFilter.rawValue.lowercased()) orders")
                 .font(.headline)
                 .foregroundColor(.keTextSecondary)
+
+            Text(String(localized: "New orders will appear here automatically."))
+                .font(.subheadline)
+                .foregroundColor(.keTextMuted)
         }
     }
 }

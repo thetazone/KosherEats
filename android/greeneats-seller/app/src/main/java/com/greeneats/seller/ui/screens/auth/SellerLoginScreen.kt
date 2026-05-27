@@ -44,10 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import android.util.Patterns
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,6 +76,8 @@ fun SellerLoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var emailError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(state.isLoggedIn) {
@@ -138,7 +143,8 @@ fun SellerLoginScreen(
                 enabled = !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(48.dp)
+                    .semantics { contentDescription = "Sign in with Google" },
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF2A2A2A),
@@ -147,6 +153,14 @@ fun SellerLoginScreen(
                     disabledContentColor = TextWhite.copy(alpha = 0.6f),
                 ),
             ) {
+                if (state.isLoading) {
+                    CircularProgressIndicator(
+                        color = TextWhite,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
                 Text(
                     text = stringResource(R.string.auth_continue_google),
                     style = MaterialTheme.typography.titleSmall,
@@ -201,7 +215,8 @@ fun SellerLoginScreen(
                 enabled = !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(48.dp)
+                    .semantics { contentDescription = "Sign in with phone number" },
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF2A2A2A),
@@ -228,10 +243,12 @@ fun SellerLoginScreen(
             // Email
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
+                onValueChange = { email = it; emailError = null },
                 label = { Text(stringResource(R.string.auth_email)) },
                 placeholder = { Text(stringResource(R.string.auth_email_placeholder), color = TextMuted) },
                 singleLine = true,
+                isError = emailError != null,
+                supportingText = emailError?.let { msg -> { Text(msg, color = ErrorRed) } },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 colors = textFieldColors,
                 shape = RoundedCornerShape(12.dp),
@@ -243,12 +260,14 @@ fun SellerLoginScreen(
             // Password
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = { password = it; passwordError = null },
                 label = { Text(stringResource(R.string.auth_password)) },
                 singleLine = true,
                 visualTransformation = if (passwordVisible) VisualTransformation.None
                     else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = passwordError != null,
+                supportingText = passwordError?.let { msg -> { Text(msg, color = ErrorRed) } },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
                         Icon(
@@ -280,7 +299,19 @@ fun SellerLoginScreen(
 
             // Login button
             Button(
-                onClick = { viewModel.login(email.trim(), password) },
+                onClick = {
+                    val trimmedEmail = email.trim()
+                    var valid = true
+                    if (!Patterns.EMAIL_ADDRESS.matcher(trimmedEmail).matches()) {
+                        emailError = "Please enter a valid email address"
+                        valid = false
+                    }
+                    if (password.length < 6) {
+                        passwordError = "Password must be at least 6 characters"
+                        valid = false
+                    }
+                    if (valid) viewModel.login(trimmedEmail, password)
+                },
                 enabled = email.isNotBlank() && password.isNotBlank() && !state.isLoading,
                 modifier = Modifier
                     .fillMaxWidth()

@@ -101,8 +101,8 @@ data class OrderItem(
     @Json(name = "name") val menuItemName: String = "",
     val quantity: Int = 1,
     @Json(name = "price") val unitPrice: Int = 0,
-    val totalPrice: Int = 0,
-    @Json(name = "notes") val specialInstructions: String = "",
+    @Json(name = "total_price") val totalPrice: Int = 0,
+    @Json(name = "notes") val specialInstructions: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -187,8 +187,8 @@ data class RegisterDeviceRequest(
 
 @JsonClass(generateAdapter = true)
 data class SellerMenuCategory(
-    val id: String,
-    val name: String,
+    val id: String = "",
+    val name: String = "",
     val description: String? = null,
     @Json(name = "sort_order") val sortOrder: Int = 0,
     val items: List<MenuItem> = emptyList(),
@@ -349,8 +349,8 @@ data class ModifierOptionRequest(
 
 @JsonClass(generateAdapter = true)
 data class PresignResponse(
-    @Json(name = "upload_url") val uploadUrl: String,
-    @Json(name = "public_url") val publicUrl: String,
+    @Json(name = "upload_url") val uploadUrl: String = "",
+    @Json(name = "public_url") val publicUrl: String = "",
     val key: String = "",
     @Json(name = "expires_in") val expiresIn: Int = 0,
 )
@@ -359,16 +359,16 @@ data class PresignResponse(
 
 @JsonClass(generateAdapter = true)
 data class POSIntegration(
-    val id: String,
-    val provider: String,
-    @Json(name = "merchant_id") val merchantId: String,
-    @Json(name = "is_active") val isActive: Boolean,
-    @Json(name = "created_at") val createdAt: String,
+    val id: String = "",
+    val provider: String = "",
+    @Json(name = "merchant_id") val merchantId: String = "",
+    @Json(name = "is_active") val isActive: Boolean = false,
+    @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "last_used_at") val lastUsedAt: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
 data class CloverConnectURLResponse(
-    @Json(name = "connect_url") val connectUrl: String,
+    @Json(name = "connect_url") val connectUrl: String = "",
 )
 

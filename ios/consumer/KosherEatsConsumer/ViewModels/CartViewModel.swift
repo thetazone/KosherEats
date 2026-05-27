@@ -2,6 +2,9 @@ import Foundation
 
 @MainActor
 class CartViewModel: ObservableObject {
+    /// Half-second debounce after an add-to-cart error before reloading the cart.
+    private static let cartDebounceNanos: UInt64 = 500_000_000
+
     @Published var cart: Cart?
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -39,6 +42,19 @@ class CartViewModel: ObservableObject {
 
     func removeDeal() {
         appliedDeal = nil
+    }
+
+    // MARK: - Stale cart
+
+    /// Reloads the cart from the server and drops it if the restaurant's menu
+    /// has changed (e.g. items removed or prices updated). Callers should
+    /// invoke this when navigating back to the cart after a period of
+    /// inactivity, or when the menu screen detects a version/etag change.
+    /// For local (guest) carts there is no server-side validation; the only
+    /// remedy is to clear and re-add items.
+    func revalidateCart() async {
+        guard api.isAuthenticated else { return }
+        await loadCart()
     }
 
     // MARK: - Load
@@ -103,7 +119,7 @@ class CartViewModel: ObservableObject {
             let msg = error.localizedDescription
             errorMessage = msg
             Haptics.error()
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            try? await Task.sleep(nanoseconds: Self.cartDebounceNanos)
             await loadCart()
             isLoading = false
             return msg

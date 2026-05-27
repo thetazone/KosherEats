@@ -50,6 +50,10 @@ class MenuViewModel @Inject constructor(
         loadMenuItems()
         viewModelScope.launch {
             NetworkModule.restaurantChanged.collect {
+                // Cancel any in-flight menu fetch so its response (carrying items from the
+                // previous restaurant) cannot land into the freshly-cleared state.
+                loadJob?.cancel()
+                loadJob = null
                 _state.value = MenuState()
                 loadMenuItems()
             }

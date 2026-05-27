@@ -68,7 +68,8 @@ class ChatViewModel @Inject constructor(
     fun updateInput(text: String) = _state.update { it.copy(input = text) }
 
     fun send() {
-        val text = _state.value.input.trim()
+        // Cap defensively in case the input field's limit was bypassed (e.g. paste).
+        val text = _state.value.input.trim().take(2000)
         if (text.isEmpty() || _state.value.isSending) return
 
         val clientId = UUID.randomUUID().toString()
@@ -183,11 +184,10 @@ class ChatViewModel @Inject constructor(
                         // server echoes them back. Server copy wins for any shared ID.
                         val merged = (current.messages.associateBy { it.id } + serverMessages.associateBy { it.id })
                             .values
-                            .sortedBy { msg ->
-                                // Empty createdAt (e.g. server hasn't stamped yet) goes to
-                                // the tail instead of the head of the conversation.
-                                msg.createdAt.ifEmpty { "9999-99-99T99:99:99Z" }
-                            }
+                            .sortedWith(compareBy(
+                                { it.createdAt.ifEmpty { "9999-99-99T99:99:99Z" } },
+                                { it.id },
+                            ))
                         current.copy(messages = merged, error = null, scrollToBottom = false)
                     }
                 } else {

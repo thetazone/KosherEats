@@ -31,6 +31,10 @@ struct RestaurantPickerSheet: View {
                     List {
                         ForEach(restaurants) { rest in
                             Button {
+                                guard currentID != rest.id else {
+                                    isPresented = false
+                                    return
+                                }
                                 SelectedRestaurant.shared.set(rest.id, name: rest.name)
                                 currentID = rest.id
                                 Haptics.impact(.light)
@@ -39,6 +43,8 @@ struct RestaurantPickerSheet: View {
                             } label: {
                                 row(for: rest)
                             }
+                            .accessibilityLabel("\(rest.name), \(rest.isOpen ? "open" : "closed")\(currentID == rest.id ? ", selected" : "")")
+                            .accessibilityAddTraits(currentID == rest.id ? .isSelected : [])
                             .listRowBackground(Color.keCard)
                         }
                     }

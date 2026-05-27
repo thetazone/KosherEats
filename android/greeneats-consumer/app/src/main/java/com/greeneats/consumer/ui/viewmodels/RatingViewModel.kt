@@ -25,6 +25,10 @@ class RatingViewModel @Inject constructor(
     private val api: ApiService,
 ) : ViewModel() {
 
+    companion object {
+        const val ERROR_EMPTY_ORDER_ID = "Order ID is required."
+    }
+
     private val _uiState = MutableStateFlow(RatingUiState())
     val uiState: StateFlow<RatingUiState> = _uiState.asStateFlow()
 
@@ -32,6 +36,10 @@ class RatingViewModel @Inject constructor(
     fun setComment(value: String) = _uiState.update { it.copy(comment = value) }
 
     fun submit(orderId: String) {
+        if (orderId.isBlank()) {
+            _uiState.update { it.copy(error = ERROR_EMPTY_ORDER_ID) }
+            return
+        }
         val state = _uiState.value
         if (state.isSubmitting || state.submitted) return
         _uiState.update { it.copy(isSubmitting = true, error = null) }

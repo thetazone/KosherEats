@@ -109,12 +109,11 @@ class DealsViewModel @Inject constructor(
                     )
                     loadDeals()
                 } else {
-                    val errorBody = response.errorBody()?.string()
                     val serverMsg = try {
-                        errorBody?.let {
+                        response.errorBody()?.string()?.let { errorBody ->
                             com.squareup.moshi.Moshi.Builder().build()
                                 .adapter(Map::class.java)
-                                .fromJson(it)?.get("error") as? String
+                                .fromJson(errorBody)?.get("error") as? String
                         }
                     } catch (_: Exception) { null }
                     _state.value = _state.value.copy(

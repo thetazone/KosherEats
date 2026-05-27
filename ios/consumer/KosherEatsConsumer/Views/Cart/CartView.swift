@@ -222,17 +222,18 @@ struct CartItemRow: View {
                 Button {
                     Haptics.impact(.light)
                     Task {
-                        await cartVM.updateQuantity(itemID: item.id, quantity: item.quantity - 1)
+                        let newQty = max(0, item.quantity - 1)
+                        await cartVM.updateQuantity(itemID: item.id, quantity: newQty)
                     }
                 } label: {
-                    Image(systemName: item.quantity == 1 ? "trash" : "minus")
+                    Image(systemName: item.quantity <= 1 ? "trash" : "minus")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(item.quantity == 1 ? .keError : .keTextPrimary)
+                        .foregroundColor(item.quantity <= 1 ? .keError : .keTextPrimary)
                         .frame(width: 30, height: 30)
                         .background(Color.keCardHover)
                         .cornerRadius(8)
                 }
-                .accessibilityLabel(item.quantity == 1 ? "Remove item" : "Decrease quantity")
+                .accessibilityLabel(item.quantity <= 1 ? "Remove item" : "Decrease quantity")
 
                 Text("\(item.quantity)")
                     .font(.system(size: 16, weight: .bold))

@@ -16,6 +16,11 @@ import UIKit
 @MainActor
 final class CheckoutViewModel: NSObject, ObservableObject {
 
+    /// Apple Pay merchant identifier from the entitlements file.
+    private static let merchantIdentifier = "merchant.com.koshereats.consumer"
+    /// URL scheme the Stripe SDK redirects back to after 3DS / bank auth.
+    private static let stripeReturnURL = "koshereats://stripe-redirect"
+
     /// Maximum custom tip in cents ($500). Matches the backend cap in
     /// orders.go / payments.go (tip <= subtotal).
     static let maxTipCents = 50_000
@@ -24,17 +29,18 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
     enum TipChoice: Equatable, Hashable {
         case none
-        case percent(Double)
+        /// Tip percentage stored as basis points (e.g. 1500 = 15%).
+        case percent(Int)
         case custom
 
-        static let presets: [TipChoice] = [.none, .percent(0.15), .percent(0.18), .percent(0.20), .custom]
+        static let presets: [TipChoice] = [.none, .percent(1500), .percent(1800), .percent(2000), .custom]
 
         func label(for subtotal: Int) -> String {
             switch self {
             case .none: return "None"
-            case .percent(let p):
-                let cents = Int(Double(subtotal) * p)
-                return "\(Int(p * 100))%\n$\(String(format: "%.2f", Double(cents) / 100))"
+            case .percent(let bps):
+                let cents = (subtotal * bps) / 10_000
+                return "\(bps / 100)%\n$\(String(format: "%.2f", Double(cents) / 100))"
             case .custom: return "Custom"
             }
         }
@@ -42,7 +48,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
     @Published var addresses: [Address] = []
     @Published var selectedAddress: Address?
-    @Published var tipSelection: TipChoice = .percent(0.18)
+    @Published var tipSelection: TipChoice = .percent(1800)
     @Published var customTipText: String = ""
 
     /// nil = ASAP. Any future Date triggers backend's 'scheduled' status.
@@ -79,6 +85,17 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     private var applePayContext: STPApplePayContext?
     private var applePayContinuation: CheckedContinuation<Void, Error>?
 
+    deinit {
+        // Resume any pending continuations so their Tasks don't leak.
+        // The VM can be deallocated while PaymentSheet or Apple Pay is
+        // still presented (e.g. parent view dismissed); an un-resumed
+        // CheckedContinuation is a fatal error in debug builds.
+        sheetContinuation?.resume(throwing: CancellationError())
+        sheetContinuation = nil
+        applePayContinuation?.resume(throwing: CancellationError())
+        applePayContinuation = nil
+    }
+
     // MARK: - Addresses
 
     func loadAddresses() async {
@@ -98,13 +115,23 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         if choice != .custom { customTipText = "" }
     }
 
+    /// Validates and stores a custom tip value. Negative values are
+    /// clamped to "" so the user can't enter a negative tip.
+    func updateCustomTip(_ text: String) {
+        if let value = Double(text), value < 0 {
+            customTipText = ""
+            return
+        }
+        customTipText = text
+    }
+
     /// Converts the current tip selection into a cents value using the
     /// subtotal from the most recent bundle (or 0 if we haven't loaded yet).
     private func currentTipCents() -> Int {
         let subtotal = bundle?.subtotal ?? 0
         switch tipSelection {
         case .none: return 0
-        case .percent(let p): return Int(Double(subtotal) * p)
+        case .percent(let bps): return (subtotal * bps) / 10_000
         case .custom:
             let dollars = max(0, Double(customTipText) ?? 0)
             return min(Int(dollars * 100), Self.maxTipCents)
@@ -161,14 +188,14 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         // only shows the "Apple Pay" button when this is wired. Merchant id is
         // registered under the team's App Store Connect account.
         config.applePay = .init(
-            merchantId: "merchant.com.koshereats.consumer",
+            merchantId: Self.merchantIdentifier,
             merchantCountryCode: "US",
         )
         // Saved card support needs allowsDelayedPaymentMethods = false; keeping
         // delayed methods off also matches the backend restriction to card only
         // (no ACH/bank debits).
         config.allowsDelayedPaymentMethods = false
-        config.returnURL = "koshereats://stripe-redirect"
+        config.returnURL = Self.stripeReturnURL
 
         let sheet = PaymentSheet(paymentIntentClientSecret: bundle.paymentIntentSecret, configuration: config)
 
@@ -236,7 +263,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         StripeAPI.defaultPublishableKey = bundle.publishableKey
 
         let request = StripeAPI.paymentRequest(
-            withMerchantIdentifier: "merchant.com.koshereats.consumer",
+            withMerchantIdentifier: Self.merchantIdentifier,
             country: "US",
             currency: "USD",
         )
@@ -345,7 +372,8 @@ final class CheckoutViewModel: NSObject, ObservableObject {
                 } catch {
                     lastError = error
                     if attempt < 2 {
-                        try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
+                        let delaySec = min(pow(2.0, Double(attempt)), 30)
+                        try? await Task.sleep(nanoseconds: UInt64(delaySec) * 1_000_000_000)
                     }
                 }
             }
@@ -363,8 +391,15 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// PaymentIntent client secrets are `pi_xxxxxx_secret_yyyy`. We only
     /// want the `pi_xxxxxx` portion for our DB.
     private func extractIntentId(from clientSecret: String) throws -> String {
+        guard clientSecret.hasPrefix("pi_"), clientSecret.contains("_secret_") else {
+            throw NSError(
+                domain: "Checkout",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Malformed payment intent secret — expected pi_<id>_secret_<key> format"]
+            )
+        }
         let parts = clientSecret.components(separatedBy: "_secret_")
-        guard parts.count == 2 else {
+        guard parts.count == 2, !parts[0].isEmpty else {
             throw NSError(
                 domain: "Checkout",
                 code: -2,

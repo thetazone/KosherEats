@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,6 +44,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -57,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,6 +89,7 @@ fun SavedAddressesScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddForm by remember { mutableStateOf(false) }
+    var deleteConfirmId by remember { mutableStateOf<String?>(null) }
 
     // Add form fields
     var newStreet by remember { mutableStateOf("") }
@@ -334,11 +339,17 @@ fun SavedAddressesScreen(
                     state.addresses.forEach { address ->
                         val isSelected = state.selectedAddress?.id == address.id
                         val isDefault = address.isDefault
+                        val addressLabel = address.label.ifBlank { "Address" }
+                        val fullAddress = "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}"
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp)
-                                .clickable { viewModel.selectAddress(address) },
+                                .clickable { viewModel.selectAddress(address) }
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = "$addressLabel: $fullAddress" +
+                                        if (isDefault) ", default address" else ""
+                                },
                             shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(
                                 containerColor = if (isSelected) Orange.copy(alpha = 0.08f) else SurfaceDark,
@@ -359,7 +370,7 @@ fun SavedAddressesScreen(
                                 ) {
                                     Icon(
                                         imageVector = iconForLabel(address.label),
-                                        contentDescription = null,
+                                        contentDescription = addressLabel,
                                         tint = if (isDefault) Orange else TextMuted,
                                         modifier = Modifier.size(20.dp),
                                     )
@@ -368,7 +379,7 @@ fun SavedAddressesScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
-                                            text = address.label.ifBlank { "Address" },
+                                            text = addressLabel,
                                             color = TextWhite,
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
@@ -384,7 +395,7 @@ fun SavedAddressesScreen(
                                         }
                                     }
                                     Text(
-                                        text = "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
+                                        text = fullAddress,
                                         color = TextTertiary,
                                         fontSize = 13.sp,
                                         maxLines = 2,
@@ -398,17 +409,17 @@ fun SavedAddressesScreen(
                                 ) {
                                     Icon(
                                         if (isDefault) Icons.Filled.Star else Icons.Filled.StarBorder,
-                                        contentDescription = if (isDefault) "Unset default" else "Make default",
+                                        contentDescription = if (isDefault) "Unset default address" else "Set as default address",
                                         tint = if (isDefault) Orange else TextMuted,
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
                                 IconButton(
-                                    onClick = { viewModel.deleteAddress(address.id) },
+                                    onClick = { deleteConfirmId = address.id },
                                 ) {
                                     Icon(
                                         Icons.Filled.Delete,
-                                        contentDescription = "Delete",
+                                        contentDescription = "Delete address",
                                         tint = TextMuted,
                                         modifier = Modifier.size(20.dp),
                                     )
@@ -421,6 +432,39 @@ fun SavedAddressesScreen(
                 }
             }
         }
+    }
+
+    // Delete confirmation dialog
+    deleteConfirmId?.let { id ->
+        val address = state.addresses.find { it.id == id }
+        AlertDialog(
+            onDismissRequest = { deleteConfirmId = null },
+            containerColor = SurfaceDark,
+            title = { Text("Delete address?", color = TextWhite) },
+            text = {
+                Text(
+                    if (address != null) {
+                        "Are you sure you want to delete \"${address.label.ifBlank { address.streetAddress }}\"?"
+                    } else {
+                        "Are you sure you want to delete this address?"
+                    },
+                    color = TextTertiary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteAddress(id)
+                    deleteConfirmId = null
+                }) {
+                    Text("Delete", color = ErrorRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteConfirmId = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+        )
     }
 }
 

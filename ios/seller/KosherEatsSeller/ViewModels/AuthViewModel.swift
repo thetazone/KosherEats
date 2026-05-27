@@ -162,7 +162,11 @@ class AuthViewModel: ObservableObject {
     }
 
     func silentResendOTP(phone: String) async {
-        try? await APIService.shared.startPhoneLogin(phone: phone)
+        do {
+            try await APIService.shared.startPhoneLogin(phone: phone)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// Verifies the SMS code. Mirrors `login` — same role gate, same token
@@ -270,6 +274,10 @@ class AuthViewModel: ObservableObject {
                 }
                 return
             }
+            // givenName / familyName can be nil even on a first sign-in
+            // (e.g. business accounts, incomplete Google profiles). Default
+            // to empty strings so socialLogin always has non-optional values;
+            // the backend stores whatever it receives on first insert.
             let firstName = result?.user.profile?.givenName ?? ""
             let lastName = result?.user.profile?.familyName ?? ""
             Task {

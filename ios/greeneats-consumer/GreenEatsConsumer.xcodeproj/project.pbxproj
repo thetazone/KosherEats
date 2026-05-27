@@ -1,0 +1,909 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0159D037492E7BD8AAA6D75B /* OrderTrackingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E718F5A92A472441FB8A275C /* OrderTrackingView.swift */; };
+		0579F4498E9E89366BB59F66 /* CountryCodePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAB2B3B1E3686C3B1BEA6002 /* CountryCodePickerSheet.swift */; };
+		06F82C51081081F037633791 /* NotificationPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4036CA457E64594BDF489187 /* NotificationPreferencesView.swift */; };
+		08D6EA743CBBCA5AB4986CAC /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 29CBF41598701031161504CA /* AuthenticationServices.framework */; };
+		0BAB942FB913DDA933887EAA /* EmailAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BF35C148883AD775388AC94 /* EmailAuthView.swift */; };
+		1029A89DB6B7BF9D52BC8448 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7DD42D12563E24EB2D97A5 /* LocationManager.swift */; };
+		1136B94C2C1EC00090F1640C /* ConnectedAccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C633171282A17E5FDBF467A1 /* ConnectedAccountsView.swift */; };
+		12AF41BD34DB2B7B21EB547E /* RemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6190B1AD4594DF77717421E /* RemoteImage.swift */; };
+		13EBAA96E44C66643D6F42EC /* LegalURLs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D66D7A4372521BDF7326A37 /* LegalURLs.swift */; };
+		15B4D6B1B91DB30AF9CE98D1 /* OrderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA022969426D33A743BC152 /* OrderViewModel.swift */; };
+		16978F6F97A5B7B81007C64C /* StripePaymentSheet in Frameworks */ = {isa = PBXBuildFile; productRef = 5A5C1C26138C58A269BBF4B2 /* StripePaymentSheet */; };
+		19DF5D436A4E0D408C4A7E50 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE1D9BADC14051EF821E5720 /* PushNotifications.swift */; };
+		22503460B2C4BB264A967E83 /* MenuItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA04374FF220D5BA42DC0E9F /* MenuItemView.swift */; };
+		250D50737B8AD7C796C8E03D /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C64E0603C1BF0185B159C5 /* Colors.swift */; };
+		2776DEC43192912EE0CACA97 /* ConsumerPhoneOTPView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B7D1E0B1ADB2E0DEFD4CBE3 /* ConsumerPhoneOTPView.swift */; };
+		287DB55DA306399FCF161B5E /* CheckoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 414F976FB91D382F28E7574C /* CheckoutViewModel.swift */; };
+		2BCC81B8BE252B7B181B86E4 /* NearbyMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 448D338ECA7671273571B944 /* NearbyMapView.swift */; };
+		2FFB6867FA5A1BA7F40AB485 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FF72B15C5D862E7F19F58AA /* Haptics.swift */; };
+		34EFD8B62734B6DFF352C7C6 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A67A30EEDACD3405B6397BA /* Theme.swift */; };
+		3C15C5E7752B655C290CB7EB /* DeliveryActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 996DEEB8921599C8B1F19F06 /* DeliveryActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		3D5373F154FEB40674F1EC17 /* RestaurantCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FEEA3EE4383B009B93DFE62 /* RestaurantCardView.swift */; };
+		3DCAF7B05A494853540034AB /* ProfileCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F7CC6E6CE8683BA81A64899 /* ProfileCompletionSheet.swift */; };
+		3FBE420DE6CEEFD9A307D4F8 /* CartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E280263D753A4705C1140918 /* CartView.swift */; };
+		4325F9B04634A2608029D3A8 /* OrderDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E81A34A16E57968C9AC6F1C3 /* OrderDetailView.swift */; };
+		4548496BE30787ECA3DA38C8 /* Country.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C1D16AF6886A0EAC0E8623 /* Country.swift */; };
+		544FBB0137D424F04ED16446 /* AppleSignInHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D3FA3F02D040301BBD6CEA /* AppleSignInHelper.swift */; };
+		5669322F66946E608FA4EF55 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = 5A11E2397F39705D413A25CB /* StripeApplePay */; };
+		600AA8DEC5ACE90D9F10E7ED /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CAD463B04FE71F0FE0523FAB /* Localizable.xcstrings */; };
+		600C5B1DE95779EECDCBD44A /* DeliveryActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = F888EEBB5F994272E66954F5 /* DeliveryActivityWidget.swift */; };
+		6196348D63B16AAD609D65AB /* CartViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A95022EAEE717FA294AA7205 /* CartViewModel.swift */; };
+		660E8D4657CF16870A2A5649 /* RestaurantViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 736F0DAC1CC21FC952461B66 /* RestaurantViewModel.swift */; };
+		6A4462873CACF6D3518781A4 /* AddressPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C917E5C083720C85199EAA /* AddressPickerSheet.swift */; };
+		6F75485C2B6DB000F2BFC1AC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1B4F5F2BE5303628DC765082 /* Assets.xcassets */; };
+		71062162A9C8CC02CFCFCD6F /* ErrorStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF7ECC64426EC4578256D31 /* ErrorStateView.swift */; };
+		71DD7A030367196AB4090DDE /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE6855C7761E92B03CB693E /* LoginView.swift */; };
+		76C982FDC758195302306DC0 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A876B78BAB72E81954AB062 /* APIService.swift */; };
+		7BE9945179D487A5D39A0D8A /* KosherCertificateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EF20FCADD8576DDD9B0D6B7 /* KosherCertificateSheet.swift */; };
+		833C25BDDEF7CE631E3935F3 /* SavedAddressesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 202192A1ECF5C3C0E8B08A52 /* SavedAddressesView.swift */; };
+		8ABE0D494DD2A30C7ADD606B /* OrderChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDC20C54EB3C334D5A6E4A5 /* OrderChatViewModel.swift */; };
+		8B2D17D84B7EF8EA1EC0EB27 /* SkeletonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653BF75D08967B6E035EEE6D /* SkeletonViews.swift */; };
+		8C3D7DEEB1C811BA8DFEDD18 /* KosherFilterSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852BFA393FE6E9DA70F59B3F /* KosherFilterSheet.swift */; };
+		8E66EA4729AAF6DD2D192E18 /* OrderTrackingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2152D99FDE54C085AACA962 /* OrderTrackingViewModel.swift */; };
+		8FD517068032E48FB4E0D0FE /* DeliveryActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 547A6E45504369665161ED94 /* DeliveryActivityBundle.swift */; };
+		9CDFB49169A0E9F1097C4C4B /* DeliveryActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59FC69730E992497A716FAD9 /* DeliveryActivityManager.swift */; };
+		9E8A6B099A99252F0382EC1C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 16DC27E6F64FD328B02BE9FC /* PrivacyInfo.xcprivacy */; };
+		A1CC81CB6B504BB72FAC4031 /* RestaurantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A6D43CDB1875ABD60D5C85E /* RestaurantStore.swift */; };
+		A924DF6DDEB727285E68467C /* OrderChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B478E632A1C847BB9BA7489 /* OrderChatView.swift */; };
+		AA8A9CA64A09420DCE25AB31 /* CheckoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3AB2870D31C64DABC8E0D44 /* CheckoutView.swift */; };
+		AE99025B27BDECB7773D3A19 /* DealsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64FCEE89EFA19BCB26E1D815 /* DealsView.swift */; };
+		B534518B45321EA4105F9051 /* ProfileOrdersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CB1B94FCB282FB267A96D2C /* ProfileOrdersView.swift */; };
+		BB6BB90A4FABF3EB589DC231 /* PaymentMethodsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AA25B06436065C12ED2564 /* PaymentMethodsView.swift */; };
+		C177B6EA08897084D61D3059 /* RestaurantDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F7A9465E3348F44E6B6618 /* RestaurantDetailView.swift */; };
+		C42636AD2D9BDD01BC21BA03 /* KosherBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01893179E323D5F51F781AD /* KosherBadge.swift */; };
+		C63B32943DCD270F51F99D76 /* PushEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118A8EA0B421669F5B2C2B25 /* PushEvents.swift */; };
+		C77E31037523FB8C23CD16FC /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C75C6A0D22F1296C62C9D10 /* RegisterView.swift */; };
+		CB8AE9F69485DDE493685737 /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D07677D023ACB386589C06C /* ChatMessage.swift */; };
+		CEEF0A2E17DA5F10775F4032 /* GreenEatsConsumerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FAB563DCBA5D5F434E33B0 /* GreenEatsConsumerApp.swift */; };
+		D62335AECBC8E9B23E640CC7 /* CourierRatingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652BEC7361466CA1BA7C1F1E /* CourierRatingSheet.swift */; };
+		D682463457CF268C61B06FC1 /* OrdersListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02F4B632280233B54A845014 /* OrdersListView.swift */; };
+		D8FEA03978916217A4BCE95B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1318406506BD184E807C8761 /* HomeView.swift */; };
+		DAD557463A7FAF97C5B205A6 /* DeliveryAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59A5D438035B93A60368E204 /* DeliveryAttributes.swift */; };
+		DEE807E258F4162662ECF2F3 /* PassKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 673BC029EA8139C456CE07DD /* PassKit.framework */; };
+		E181309809D35F9C803EA924 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08A1DBFFA1E87B271321C72 /* AppDelegate.swift */; };
+		E31CDF94323FB7A17D1484A6 /* OrderConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA7931BB065229625F54968 /* OrderConfirmationView.swift */; };
+		E5C853B3F5C5D56BD61347EB /* DeliveryAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59A5D438035B93A60368E204 /* DeliveryAttributes.swift */; };
+		F106C87382BA47152644D930 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F33786574C63DBA6DA1803C0 /* AuthViewModel.swift */; };
+		F18212AE8668936B52921A22 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 1AF6F56075EC8899F7E9C1E1 /* GoogleSignIn */; };
+		F23557121AA4D300F3A9E96F /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89B13FE878AD4CB9AC0E734B /* AppRouter.swift */; };
+		F65B862C82F3CE072B96D2F9 /* AddressFormSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F529E62E5F5A28A03768D2A /* AddressFormSheet.swift */; };
+		F8904CB5685DD87C340142B9 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E55E922E6CBAFF101584341 /* KeychainHelper.swift */; };
+		F8C34E6397DBB8E58F56848E /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98D29B99137721206CB9586 /* Models.swift */; };
+		F9BB643E58033880A0620491 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FD8318F95C6A436299423C5 /* ProfileView.swift */; };
+		FE08B92FBA1A50394F185E08 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83738B88A4EC459B7925B8C /* MainTabView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AE27C004E82BF60245D4290B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2D84231F001188FBDF54FDFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 57E090352899D8365893CD0E;
+			remoteInfo = DeliveryActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		88204146A6EAB31B5727DBE3 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3C15C5E7752B655C290CB7EB /* DeliveryActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		02F4B632280233B54A845014 /* OrdersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrdersListView.swift; sourceTree = "<group>"; };
+		0FF7ECC64426EC4578256D31 /* ErrorStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorStateView.swift; sourceTree = "<group>"; };
+		10FAB563DCBA5D5F434E33B0 /* GreenEatsConsumerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenEatsConsumerApp.swift; sourceTree = "<group>"; };
+		118A8EA0B421669F5B2C2B25 /* PushEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEvents.swift; sourceTree = "<group>"; };
+		1318406506BD184E807C8761 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		16DC27E6F64FD328B02BE9FC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		19D3FA3F02D040301BBD6CEA /* AppleSignInHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInHelper.swift; sourceTree = "<group>"; };
+		1B4F5F2BE5303628DC765082 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1C75C6A0D22F1296C62C9D10 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
+		1EF20FCADD8576DDD9B0D6B7 /* KosherCertificateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherCertificateSheet.swift; sourceTree = "<group>"; };
+		1FD8318F95C6A436299423C5 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		202192A1ECF5C3C0E8B08A52 /* SavedAddressesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedAddressesView.swift; sourceTree = "<group>"; };
+		20F7A9465E3348F44E6B6618 /* RestaurantDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantDetailView.swift; sourceTree = "<group>"; };
+		22C1D16AF6886A0EAC0E8623 /* Country.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Country.swift; sourceTree = "<group>"; };
+		29CBF41598701031161504CA /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		2A67A30EEDACD3405B6397BA /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		3E55E922E6CBAFF101584341 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
+		4036CA457E64594BDF489187 /* NotificationPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesView.swift; sourceTree = "<group>"; };
+		414F976FB91D382F28E7574C /* CheckoutViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutViewModel.swift; sourceTree = "<group>"; };
+		42C917E5C083720C85199EAA /* AddressPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressPickerSheet.swift; sourceTree = "<group>"; };
+		448D338ECA7671273571B944 /* NearbyMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyMapView.swift; sourceTree = "<group>"; };
+		4EA7931BB065229625F54968 /* OrderConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderConfirmationView.swift; sourceTree = "<group>"; };
+		4F7CC6E6CE8683BA81A64899 /* ProfileCompletionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileCompletionSheet.swift; sourceTree = "<group>"; };
+		4FEEA3EE4383B009B93DFE62 /* RestaurantCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantCardView.swift; sourceTree = "<group>"; };
+		547A6E45504369665161ED94 /* DeliveryActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityBundle.swift; sourceTree = "<group>"; };
+		56C64E0603C1BF0185B159C5 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		59A5D438035B93A60368E204 /* DeliveryAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryAttributes.swift; sourceTree = "<group>"; };
+		59FC69730E992497A716FAD9 /* DeliveryActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityManager.swift; sourceTree = "<group>"; };
+		5B7D1E0B1ADB2E0DEFD4CBE3 /* ConsumerPhoneOTPView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsumerPhoneOTPView.swift; sourceTree = "<group>"; };
+		5BF35C148883AD775388AC94 /* EmailAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAuthView.swift; sourceTree = "<group>"; };
+		60B39D6BE2465020DD1300FA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		64FCEE89EFA19BCB26E1D815 /* DealsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DealsView.swift; sourceTree = "<group>"; };
+		652BEC7361466CA1BA7C1F1E /* CourierRatingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourierRatingSheet.swift; sourceTree = "<group>"; };
+		653BF75D08967B6E035EEE6D /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
+		673BC029EA8139C456CE07DD /* PassKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PassKit.framework; path = System/Library/Frameworks/PassKit.framework; sourceTree = SDKROOT; };
+		6CB1B94FCB282FB267A96D2C /* ProfileOrdersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileOrdersView.swift; sourceTree = "<group>"; };
+		6D07677D023ACB386589C06C /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
+		72517789755DBFD2E681C316 /* GreenEatsConsumer.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = GreenEatsConsumer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		736F0DAC1CC21FC952461B66 /* RestaurantViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantViewModel.swift; sourceTree = "<group>"; };
+		77A03E8C4FAADCFBD05E1511 /* GreenEatsConsumer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GreenEatsConsumer.entitlements; sourceTree = "<group>"; };
+		7A6D43CDB1875ABD60D5C85E /* RestaurantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestaurantStore.swift; sourceTree = "<group>"; };
+		7A876B78BAB72E81954AB062 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		7BE6855C7761E92B03CB693E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		7D66D7A4372521BDF7326A37 /* LegalURLs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalURLs.swift; sourceTree = "<group>"; };
+		852BFA393FE6E9DA70F59B3F /* KosherFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherFilterSheet.swift; sourceTree = "<group>"; };
+		89B13FE878AD4CB9AC0E734B /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
+		996DEEB8921599C8B1F19F06 /* DeliveryActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = DeliveryActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B478E632A1C847BB9BA7489 /* OrderChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderChatView.swift; sourceTree = "<group>"; };
+		9F529E62E5F5A28A03768D2A /* AddressFormSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressFormSheet.swift; sourceTree = "<group>"; };
+		9FF72B15C5D862E7F19F58AA /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		A95022EAEE717FA294AA7205 /* CartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartViewModel.swift; sourceTree = "<group>"; };
+		B3AB2870D31C64DABC8E0D44 /* CheckoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckoutView.swift; sourceTree = "<group>"; };
+		BA04374FF220D5BA42DC0E9F /* MenuItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItemView.swift; sourceTree = "<group>"; };
+		C08A1DBFFA1E87B271321C72 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C2152D99FDE54C085AACA962 /* OrderTrackingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderTrackingViewModel.swift; sourceTree = "<group>"; };
+		C633171282A17E5FDBF467A1 /* ConnectedAccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAccountsView.swift; sourceTree = "<group>"; };
+		CAD463B04FE71F0FE0523FAB /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		CCDC20C54EB3C334D5A6E4A5 /* OrderChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderChatViewModel.swift; sourceTree = "<group>"; };
+		CF7DD42D12563E24EB2D97A5 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		D01893179E323D5F51F781AD /* KosherBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KosherBadge.swift; sourceTree = "<group>"; };
+		D6190B1AD4594DF77717421E /* RemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImage.swift; sourceTree = "<group>"; };
+		D6AA25B06436065C12ED2564 /* PaymentMethodsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentMethodsView.swift; sourceTree = "<group>"; };
+		D83738B88A4EC459B7925B8C /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		D98D29B99137721206CB9586 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		DAB2B3B1E3686C3B1BEA6002 /* CountryCodePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCodePickerSheet.swift; sourceTree = "<group>"; };
+		DE1D9BADC14051EF821E5720 /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
+		E280263D753A4705C1140918 /* CartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartView.swift; sourceTree = "<group>"; };
+		E718F5A92A472441FB8A275C /* OrderTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderTrackingView.swift; sourceTree = "<group>"; };
+		E81A34A16E57968C9AC6F1C3 /* OrderDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderDetailView.swift; sourceTree = "<group>"; };
+		F33786574C63DBA6DA1803C0 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		F888EEBB5F994272E66954F5 /* DeliveryActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryActivityWidget.swift; sourceTree = "<group>"; };
+		FDA022969426D33A743BC152 /* OrderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderViewModel.swift; sourceTree = "<group>"; };
+		FDE1B69726B663C01ACEEAA2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		36995D6F2092359C59EE6A23 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F18212AE8668936B52921A22 /* GoogleSignIn in Frameworks */,
+				16978F6F97A5B7B81007C64C /* StripePaymentSheet in Frameworks */,
+				5669322F66946E608FA4EF55 /* StripeApplePay in Frameworks */,
+				08D6EA743CBBCA5AB4986CAC /* AuthenticationServices.framework in Frameworks */,
+				DEE807E258F4162662ECF2F3 /* PassKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		01531E3F3A1527FD2CFBC9B8 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				56C64E0603C1BF0185B159C5 /* Colors.swift */,
+				7D66D7A4372521BDF7326A37 /* LegalURLs.swift */,
+				2A67A30EEDACD3405B6397BA /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		116092F506ED0CBF41EE99AE /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				0FF7ECC64426EC4578256D31 /* ErrorStateView.swift */,
+				D01893179E323D5F51F781AD /* KosherBadge.swift */,
+				D6190B1AD4594DF77717421E /* RemoteImage.swift */,
+				653BF75D08967B6E035EEE6D /* SkeletonViews.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		13C3D953F860C105C60BC9FF /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				6D07677D023ACB386589C06C /* ChatMessage.swift */,
+				22C1D16AF6886A0EAC0E8623 /* Country.swift */,
+				59A5D438035B93A60368E204 /* DeliveryAttributes.swift */,
+				D98D29B99137721206CB9586 /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		20BF544F9408148D3A6CF05C /* Orders */ = {
+			isa = PBXGroup;
+			children = (
+				652BEC7361466CA1BA7C1F1E /* CourierRatingSheet.swift */,
+				4EA7931BB065229625F54968 /* OrderConfirmationView.swift */,
+				E81A34A16E57968C9AC6F1C3 /* OrderDetailView.swift */,
+				02F4B632280233B54A845014 /* OrdersListView.swift */,
+				E718F5A92A472441FB8A275C /* OrderTrackingView.swift */,
+			);
+			path = Orders;
+			sourceTree = "<group>";
+		};
+		21878835A4D95E175726B9F3 /* GreenEatsConsumer */ = {
+			isa = PBXGroup;
+			children = (
+				C08A1DBFFA1E87B271321C72 /* AppDelegate.swift */,
+				1B4F5F2BE5303628DC765082 /* Assets.xcassets */,
+				77A03E8C4FAADCFBD05E1511 /* GreenEatsConsumer.entitlements */,
+				10FAB563DCBA5D5F434E33B0 /* GreenEatsConsumerApp.swift */,
+				60B39D6BE2465020DD1300FA /* Info.plist */,
+				16DC27E6F64FD328B02BE9FC /* PrivacyInfo.xcprivacy */,
+				13C3D953F860C105C60BC9FF /* Models */,
+				A348CBEF64E700A834FFEAE1 /* Resources */,
+				7272DF04F2532A7C906C9372 /* Services */,
+				01531E3F3A1527FD2CFBC9B8 /* Theme */,
+				DB590CE4CFF7411BB071ACD8 /* ViewModels */,
+				B5EFDBC302FB19D75B8F9A1E /* Views */,
+			);
+			path = GreenEatsConsumer;
+			sourceTree = "<group>";
+		};
+		2A4C04DA73BCF3655BC8305A /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				1318406506BD184E807C8761 /* HomeView.swift */,
+				852BFA393FE6E9DA70F59B3F /* KosherFilterSheet.swift */,
+				4FEEA3EE4383B009B93DFE62 /* RestaurantCardView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		32838BA2ECEF41698AD9CA7D = {
+			isa = PBXGroup;
+			children = (
+				3C9242FD9E88264C10561DC5 /* DeliveryActivity */,
+				21878835A4D95E175726B9F3 /* GreenEatsConsumer */,
+				937F2D9044626A4E3A405A4A /* Frameworks */,
+				6FEAAE62C3F6EA0474BD15E0 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3C9242FD9E88264C10561DC5 /* DeliveryActivity */ = {
+			isa = PBXGroup;
+			children = (
+				547A6E45504369665161ED94 /* DeliveryActivityBundle.swift */,
+				F888EEBB5F994272E66954F5 /* DeliveryActivityWidget.swift */,
+				FDE1B69726B663C01ACEEAA2 /* Info.plist */,
+			);
+			path = DeliveryActivity;
+			sourceTree = "<group>";
+		};
+		5987F0C6DD664623CB511A0F /* Cart */ = {
+			isa = PBXGroup;
+			children = (
+				42C917E5C083720C85199EAA /* AddressPickerSheet.swift */,
+				E280263D753A4705C1140918 /* CartView.swift */,
+				B3AB2870D31C64DABC8E0D44 /* CheckoutView.swift */,
+			);
+			path = Cart;
+			sourceTree = "<group>";
+		};
+		6FEAAE62C3F6EA0474BD15E0 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				996DEEB8921599C8B1F19F06 /* DeliveryActivity.appex */,
+				72517789755DBFD2E681C316 /* GreenEatsConsumer.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7272DF04F2532A7C906C9372 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7A876B78BAB72E81954AB062 /* APIService.swift */,
+				19D3FA3F02D040301BBD6CEA /* AppleSignInHelper.swift */,
+				89B13FE878AD4CB9AC0E734B /* AppRouter.swift */,
+				59FC69730E992497A716FAD9 /* DeliveryActivityManager.swift */,
+				9FF72B15C5D862E7F19F58AA /* Haptics.swift */,
+				3E55E922E6CBAFF101584341 /* KeychainHelper.swift */,
+				CF7DD42D12563E24EB2D97A5 /* LocationManager.swift */,
+				118A8EA0B421669F5B2C2B25 /* PushEvents.swift */,
+				DE1D9BADC14051EF821E5720 /* PushNotifications.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		937F2D9044626A4E3A405A4A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				29CBF41598701031161504CA /* AuthenticationServices.framework */,
+				673BC029EA8139C456CE07DD /* PassKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		9D1E86AA0172FFCD0112666F /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				5B7D1E0B1ADB2E0DEFD4CBE3 /* ConsumerPhoneOTPView.swift */,
+				DAB2B3B1E3686C3B1BEA6002 /* CountryCodePickerSheet.swift */,
+				5BF35C148883AD775388AC94 /* EmailAuthView.swift */,
+				7BE6855C7761E92B03CB693E /* LoginView.swift */,
+				4F7CC6E6CE8683BA81A64899 /* ProfileCompletionSheet.swift */,
+				1C75C6A0D22F1296C62C9D10 /* RegisterView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		A348CBEF64E700A834FFEAE1 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				CAD463B04FE71F0FE0523FAB /* Localizable.xcstrings */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		B26531C9D2255F17AF877ED2 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				9F529E62E5F5A28A03768D2A /* AddressFormSheet.swift */,
+				C633171282A17E5FDBF467A1 /* ConnectedAccountsView.swift */,
+				4036CA457E64594BDF489187 /* NotificationPreferencesView.swift */,
+				D6AA25B06436065C12ED2564 /* PaymentMethodsView.swift */,
+				6CB1B94FCB282FB267A96D2C /* ProfileOrdersView.swift */,
+				1FD8318F95C6A436299423C5 /* ProfileView.swift */,
+				202192A1ECF5C3C0E8B08A52 /* SavedAddressesView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		B5EFDBC302FB19D75B8F9A1E /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D83738B88A4EC459B7925B8C /* MainTabView.swift */,
+				9D1E86AA0172FFCD0112666F /* Auth */,
+				5987F0C6DD664623CB511A0F /* Cart */,
+				D0CBC9514BCC3A9B9DA21AED /* Chat */,
+				116092F506ED0CBF41EE99AE /* Components */,
+				DA9B0C417C59FEB8F1E2E6BD /* Deals */,
+				2A4C04DA73BCF3655BC8305A /* Home */,
+				EBD799C78A609FABE8568D03 /* Map */,
+				20BF544F9408148D3A6CF05C /* Orders */,
+				B26531C9D2255F17AF877ED2 /* Profile */,
+				BF27DD3F8870D5AD83AC23E8 /* Restaurant */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		BF27DD3F8870D5AD83AC23E8 /* Restaurant */ = {
+			isa = PBXGroup;
+			children = (
+				1EF20FCADD8576DDD9B0D6B7 /* KosherCertificateSheet.swift */,
+				BA04374FF220D5BA42DC0E9F /* MenuItemView.swift */,
+				20F7A9465E3348F44E6B6618 /* RestaurantDetailView.swift */,
+			);
+			path = Restaurant;
+			sourceTree = "<group>";
+		};
+		D0CBC9514BCC3A9B9DA21AED /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				9B478E632A1C847BB9BA7489 /* OrderChatView.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		DA9B0C417C59FEB8F1E2E6BD /* Deals */ = {
+			isa = PBXGroup;
+			children = (
+				64FCEE89EFA19BCB26E1D815 /* DealsView.swift */,
+			);
+			path = Deals;
+			sourceTree = "<group>";
+		};
+		DB590CE4CFF7411BB071ACD8 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				F33786574C63DBA6DA1803C0 /* AuthViewModel.swift */,
+				A95022EAEE717FA294AA7205 /* CartViewModel.swift */,
+				414F976FB91D382F28E7574C /* CheckoutViewModel.swift */,
+				CCDC20C54EB3C334D5A6E4A5 /* OrderChatViewModel.swift */,
+				C2152D99FDE54C085AACA962 /* OrderTrackingViewModel.swift */,
+				FDA022969426D33A743BC152 /* OrderViewModel.swift */,
+				7A6D43CDB1875ABD60D5C85E /* RestaurantStore.swift */,
+				736F0DAC1CC21FC952461B66 /* RestaurantViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		EBD799C78A609FABE8568D03 /* Map */ = {
+			isa = PBXGroup;
+			children = (
+				448D338ECA7671273571B944 /* NearbyMapView.swift */,
+			);
+			path = Map;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3BC682FAF7D93409036A0F03 /* GreenEatsConsumer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C2E0BE515366C01E701BFD2 /* Build configuration list for PBXNativeTarget "GreenEatsConsumer" */;
+			buildPhases = (
+				0BC4E2F89FC026F08DAB8082 /* Sources */,
+				935E0857CBD2D5798A76611F /* Resources */,
+				36995D6F2092359C59EE6A23 /* Frameworks */,
+				88204146A6EAB31B5727DBE3 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E04E1EA4F2F233B18A28FE27 /* PBXTargetDependency */,
+			);
+			name = GreenEatsConsumer;
+			packageProductDependencies = (
+				1AF6F56075EC8899F7E9C1E1 /* GoogleSignIn */,
+				5A5C1C26138C58A269BBF4B2 /* StripePaymentSheet */,
+				5A11E2397F39705D413A25CB /* StripeApplePay */,
+			);
+			productName = GreenEatsConsumer;
+			productReference = 72517789755DBFD2E681C316 /* GreenEatsConsumer.app */;
+			productType = "com.apple.product-type.application";
+		};
+		57E090352899D8365893CD0E /* DeliveryActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 099D172B1543BAF307023AD4 /* Build configuration list for PBXNativeTarget "DeliveryActivity" */;
+			buildPhases = (
+				0D53E5FE4D3725F394E86508 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeliveryActivity;
+			packageProductDependencies = (
+			);
+			productName = DeliveryActivity;
+			productReference = 996DEEB8921599C8B1F19F06 /* DeliveryActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2D84231F001188FBDF54FDFC /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					3BC682FAF7D93409036A0F03 = {
+						DevelopmentTeam = 4RSM8W4755;
+					};
+					57E090352899D8365893CD0E = {
+						DevelopmentTeam = 4RSM8W4755;
+					};
+				};
+			};
+			buildConfigurationList = 784AA630D1D9F2E2451BDFD8 /* Build configuration list for PBXProject "GreenEatsConsumer" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				he,
+				yi,
+			);
+			mainGroup = 32838BA2ECEF41698AD9CA7D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				427A4F788E5903F82818D43B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				4CCC2297A717B61560BA2B19 /* XCRemoteSwiftPackageReference "stripe-ios" */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				57E090352899D8365893CD0E /* DeliveryActivity */,
+				3BC682FAF7D93409036A0F03 /* GreenEatsConsumer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		935E0857CBD2D5798A76611F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6F75485C2B6DB000F2BFC1AC /* Assets.xcassets in Resources */,
+				600AA8DEC5ACE90D9F10E7ED /* Localizable.xcstrings in Resources */,
+				9E8A6B099A99252F0382EC1C /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0BC4E2F89FC026F08DAB8082 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				76C982FDC758195302306DC0 /* APIService.swift in Sources */,
+				F65B862C82F3CE072B96D2F9 /* AddressFormSheet.swift in Sources */,
+				6A4462873CACF6D3518781A4 /* AddressPickerSheet.swift in Sources */,
+				E181309809D35F9C803EA924 /* AppDelegate.swift in Sources */,
+				F23557121AA4D300F3A9E96F /* AppRouter.swift in Sources */,
+				544FBB0137D424F04ED16446 /* AppleSignInHelper.swift in Sources */,
+				F106C87382BA47152644D930 /* AuthViewModel.swift in Sources */,
+				3FBE420DE6CEEFD9A307D4F8 /* CartView.swift in Sources */,
+				6196348D63B16AAD609D65AB /* CartViewModel.swift in Sources */,
+				CB8AE9F69485DDE493685737 /* ChatMessage.swift in Sources */,
+				AA8A9CA64A09420DCE25AB31 /* CheckoutView.swift in Sources */,
+				287DB55DA306399FCF161B5E /* CheckoutViewModel.swift in Sources */,
+				250D50737B8AD7C796C8E03D /* Colors.swift in Sources */,
+				1136B94C2C1EC00090F1640C /* ConnectedAccountsView.swift in Sources */,
+				2776DEC43192912EE0CACA97 /* ConsumerPhoneOTPView.swift in Sources */,
+				4548496BE30787ECA3DA38C8 /* Country.swift in Sources */,
+				0579F4498E9E89366BB59F66 /* CountryCodePickerSheet.swift in Sources */,
+				D62335AECBC8E9B23E640CC7 /* CourierRatingSheet.swift in Sources */,
+				AE99025B27BDECB7773D3A19 /* DealsView.swift in Sources */,
+				9CDFB49169A0E9F1097C4C4B /* DeliveryActivityManager.swift in Sources */,
+				E5C853B3F5C5D56BD61347EB /* DeliveryAttributes.swift in Sources */,
+				0BAB942FB913DDA933887EAA /* EmailAuthView.swift in Sources */,
+				71062162A9C8CC02CFCFCD6F /* ErrorStateView.swift in Sources */,
+				CEEF0A2E17DA5F10775F4032 /* GreenEatsConsumerApp.swift in Sources */,
+				2FFB6867FA5A1BA7F40AB485 /* Haptics.swift in Sources */,
+				D8FEA03978916217A4BCE95B /* HomeView.swift in Sources */,
+				F8904CB5685DD87C340142B9 /* KeychainHelper.swift in Sources */,
+				C42636AD2D9BDD01BC21BA03 /* KosherBadge.swift in Sources */,
+				7BE9945179D487A5D39A0D8A /* KosherCertificateSheet.swift in Sources */,
+				8C3D7DEEB1C811BA8DFEDD18 /* KosherFilterSheet.swift in Sources */,
+				13EBAA96E44C66643D6F42EC /* LegalURLs.swift in Sources */,
+				1029A89DB6B7BF9D52BC8448 /* LocationManager.swift in Sources */,
+				71DD7A030367196AB4090DDE /* LoginView.swift in Sources */,
+				FE08B92FBA1A50394F185E08 /* MainTabView.swift in Sources */,
+				22503460B2C4BB264A967E83 /* MenuItemView.swift in Sources */,
+				F8C34E6397DBB8E58F56848E /* Models.swift in Sources */,
+				2BCC81B8BE252B7B181B86E4 /* NearbyMapView.swift in Sources */,
+				06F82C51081081F037633791 /* NotificationPreferencesView.swift in Sources */,
+				A924DF6DDEB727285E68467C /* OrderChatView.swift in Sources */,
+				8ABE0D494DD2A30C7ADD606B /* OrderChatViewModel.swift in Sources */,
+				E31CDF94323FB7A17D1484A6 /* OrderConfirmationView.swift in Sources */,
+				4325F9B04634A2608029D3A8 /* OrderDetailView.swift in Sources */,
+				0159D037492E7BD8AAA6D75B /* OrderTrackingView.swift in Sources */,
+				8E66EA4729AAF6DD2D192E18 /* OrderTrackingViewModel.swift in Sources */,
+				15B4D6B1B91DB30AF9CE98D1 /* OrderViewModel.swift in Sources */,
+				D682463457CF268C61B06FC1 /* OrdersListView.swift in Sources */,
+				BB6BB90A4FABF3EB589DC231 /* PaymentMethodsView.swift in Sources */,
+				3DCAF7B05A494853540034AB /* ProfileCompletionSheet.swift in Sources */,
+				B534518B45321EA4105F9051 /* ProfileOrdersView.swift in Sources */,
+				F9BB643E58033880A0620491 /* ProfileView.swift in Sources */,
+				C63B32943DCD270F51F99D76 /* PushEvents.swift in Sources */,
+				19DF5D436A4E0D408C4A7E50 /* PushNotifications.swift in Sources */,
+				C77E31037523FB8C23CD16FC /* RegisterView.swift in Sources */,
+				12AF41BD34DB2B7B21EB547E /* RemoteImage.swift in Sources */,
+				3D5373F154FEB40674F1EC17 /* RestaurantCardView.swift in Sources */,
+				C177B6EA08897084D61D3059 /* RestaurantDetailView.swift in Sources */,
+				A1CC81CB6B504BB72FAC4031 /* RestaurantStore.swift in Sources */,
+				660E8D4657CF16870A2A5649 /* RestaurantViewModel.swift in Sources */,
+				833C25BDDEF7CE631E3935F3 /* SavedAddressesView.swift in Sources */,
+				8B2D17D84B7EF8EA1EC0EB27 /* SkeletonViews.swift in Sources */,
+				34EFD8B62734B6DFF352C7C6 /* Theme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0D53E5FE4D3725F394E86508 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8FD517068032E48FB4E0D0FE /* DeliveryActivityBundle.swift in Sources */,
+				600C5B1DE95779EECDCBD44A /* DeliveryActivityWidget.swift in Sources */,
+				DAD557463A7FAF97C5B205A6 /* DeliveryAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E04E1EA4F2F233B18A28FE27 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 57E090352899D8365893CD0E /* DeliveryActivity */;
+			targetProxy = AE27C004E82BF60245D4290B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		7176743EBB669F33A53648AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GreenEatsConsumer/GreenEatsConsumer.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GreenEatsConsumer/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GreenEats needs your location to find nearby vegan restaurants";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.consumer;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A2003F2593D9620AF557018B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = DeliveryActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.consumer.DeliveryActivity;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D732A9694D589AED30DE028B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = GreenEatsConsumer/GreenEatsConsumer.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = GreenEatsConsumer/Info.plist;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "GreenEats needs your location to find nearby vegan restaurants";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.consumer;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DDC3B7B4DE4C396EE685B3C2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4RSM8W4755;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		EBD8571ED691B6B2014AE524 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = DeliveryActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greeneats.consumer.DeliveryActivity;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FBB0E43FCC76F98D68904F32 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4RSM8W4755;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		099D172B1543BAF307023AD4 /* Build configuration list for PBXNativeTarget "DeliveryActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EBD8571ED691B6B2014AE524 /* Debug */,
+				A2003F2593D9620AF557018B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3C2E0BE515366C01E701BFD2 /* Build configuration list for PBXNativeTarget "GreenEatsConsumer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7176743EBB669F33A53648AB /* Debug */,
+				D732A9694D589AED30DE028B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		784AA630D1D9F2E2451BDFD8 /* Build configuration list for PBXProject "GreenEatsConsumer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DDC3B7B4DE4C396EE685B3C2 /* Debug */,
+				FBB0E43FCC76F98D68904F32 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		427A4F788E5903F82818D43B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+		4CCC2297A717B61560BA2B19 /* XCRemoteSwiftPackageReference "stripe-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stripe/stripe-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 25.11.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1AF6F56075EC8899F7E9C1E1 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 427A4F788E5903F82818D43B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		5A11E2397F39705D413A25CB /* StripeApplePay */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4CCC2297A717B61560BA2B19 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripeApplePay;
+		};
+		5A5C1C26138C58A269BBF4B2 /* StripePaymentSheet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4CCC2297A717B61560BA2B19 /* XCRemoteSwiftPackageReference "stripe-ios" */;
+			productName = StripePaymentSheet;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 2D84231F001188FBDF54FDFC /* Project object */;
+}

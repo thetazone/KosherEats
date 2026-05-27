@@ -134,6 +134,7 @@ private struct DealCard: View {
         .padding()
         .background(Color.keCard)
         .cornerRadius(12)
+        .opacity(deal.isActive ? 1.0 : 0.55)
         .confirmationDialog("Deactivate this deal?", isPresented: $showConfirm) {
             Button("Deactivate", role: .destructive, action: onDeactivate)
         }

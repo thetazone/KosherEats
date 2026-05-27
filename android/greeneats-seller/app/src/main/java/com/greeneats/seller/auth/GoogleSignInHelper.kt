@@ -11,6 +11,8 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.greeneats.seller.BuildConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeout
 
 data class GoogleSignInResult(
     val idToken: String,
@@ -20,6 +22,8 @@ data class GoogleSignInResult(
 
 object GoogleSignInHelper {
     private const val TAG = "GoogleSignIn"
+    private const val SIGN_IN_TIMEOUT_MS = 60_000L
+
     suspend fun signIn(context: Context): Result<GoogleSignInResult> {
         val webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
         if (webClientId.isBlank()) {
@@ -41,7 +45,11 @@ object GoogleSignInHelper {
 
         Log.d(TAG, "getCredential starting (SignInWithGoogleOption), context=${context.javaClass.name}")
         return try {
-            parseCredential(credentialManager.getCredential(context, request))
+            withTimeout(SIGN_IN_TIMEOUT_MS) {
+                parseCredential(credentialManager.getCredential(context, request))
+            }
+        } catch (e: CancellationException) {
+            throw e // never swallow coroutine cancellation
         } catch (e: GetCredentialException) {
             Log.w(TAG, "SignInWithGoogleOption failed (${e.type}), retrying with GoogleIdOption")
             try {
@@ -54,9 +62,16 @@ object GoogleSignInHelper {
                             .build()
                     )
                     .build()
-                parseCredential(credentialManager.getCredential(context, fallback))
+                withTimeout(SIGN_IN_TIMEOUT_MS) {
+                    parseCredential(credentialManager.getCredential(context, fallback))
+                }
+            } catch (ce: CancellationException) {
+                throw ce
             } catch (e2: GetCredentialException) {
                 Log.e(TAG, "GoogleIdOption fallback also failed: ${e2.type} — ${e2.message}", e2)
+                Result.failure(e2)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Fallback unexpected exception: ${e2.javaClass.name} — ${e2.message}", e2)
                 Result.failure(e2)
             }
         } catch (e: GoogleIdTokenParsingException) {
@@ -73,19 +88,29 @@ object GoogleSignInHelper {
     ): Result<GoogleSignInResult> {
         val credential = result.credential
         Log.d(TAG, "credential type=${credential.type}")
-        if (credential is CustomCredential &&
-            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-        ) {
-            val token = GoogleIdTokenCredential.createFrom(credential.data)
-            Log.d(TAG, "Google sign-in success, name=${token.givenName}")
+
+        // GetSignInWithGoogleOption may return GoogleIdTokenCredential
+        // directly, while GetGoogleIdOption wraps it in CustomCredential.
+        // Handle both paths.
+        val googleToken: GoogleIdTokenCredential? = when {
+            credential is GoogleIdTokenCredential -> credential
+            credential is CustomCredential &&
+                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
+                GoogleIdTokenCredential.createFrom(credential.data)
+            else -> null
+        }
+
+        if (googleToken != null) {
+            Log.d(TAG, "Google sign-in success")
             return Result.success(
                 GoogleSignInResult(
-                    idToken = token.idToken,
-                    firstName = token.givenName.orEmpty(),
-                    lastName = token.familyName.orEmpty(),
+                    idToken = googleToken.idToken,
+                    firstName = googleToken.givenName.orEmpty(),
+                    lastName = googleToken.familyName.orEmpty(),
                 )
             )
         }
+
         Log.e(TAG, "Unexpected credential type: ${credential.type}")
         return Result.failure(IllegalStateException("Unexpected credential type: ${credential.type}"))
     }

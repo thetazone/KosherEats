@@ -2,7 +2,9 @@ package com.greeneats.seller.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.greeneats.seller.data.api.ApiService
+import kotlinx.coroutines.CancellationException
 import com.greeneats.seller.data.models.DashboardStats
 import com.greeneats.seller.data.models.Order
 import com.greeneats.seller.data.models.OrderStatus
@@ -69,6 +71,8 @@ class DashboardViewModel @Inject constructor(
                     isLoading = false,
                 )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e("DashboardVM", "loadDashboard failed", e)
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = "Failed to load dashboard: ${e.localizedMessage}",
@@ -103,6 +107,8 @@ class DashboardViewModel @Inject constructor(
                     isRefreshing = false,
                 )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Log.e("DashboardVM", "refresh failed", e)
                 _state.value = _state.value.copy(
                     isRefreshing = false,
                     error = "Failed to refresh dashboard: ${e.localizedMessage}",

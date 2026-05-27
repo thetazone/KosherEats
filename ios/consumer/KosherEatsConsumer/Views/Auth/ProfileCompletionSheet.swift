@@ -18,9 +18,11 @@ struct ProfileCompletionSheet: View {
     @State private var localError: String?
 
     private var canSubmit: Bool {
-        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
+        let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        return !firstName.trimmingCharacters(in: .whitespaces).isEmpty
             && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-            && !email.trimmingCharacters(in: .whitespaces).isEmpty
+            && trimmedEmail.contains("@") && trimmedEmail.contains(".")
+            && trimmedEmail.count >= 5
     }
 
     private var isRelayEmail: Bool {
@@ -32,7 +34,7 @@ struct ProfileCompletionSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingLG) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Finish setting up your account")
+                        Text(String(localized: "Finish setting up your account"))
                             .font(.system(size: 26, weight: .bold))
                             .foregroundColor(.keTextPrimary)
                         Text("We just need a few details so deliveries and receipts reach the right person.")
@@ -46,6 +48,7 @@ struct ProfileCompletionSheet: View {
                                 .textContentType(.givenName)
                                 .textInputAutocapitalization(.words)
                                 .keTextFieldStyle()
+                                .accessibilityLabel("First name")
                         }
 
                         labeledField("Last name") {
@@ -53,6 +56,7 @@ struct ProfileCompletionSheet: View {
                                 .textContentType(.familyName)
                                 .textInputAutocapitalization(.words)
                                 .keTextFieldStyle()
+                                .accessibilityLabel("Last name")
                         }
 
                         labeledField("Email") {
@@ -62,6 +66,7 @@ struct ProfileCompletionSheet: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keTextFieldStyle()
+                                .accessibilityLabel("Email address")
                             if isRelayEmail {
                                 Text("Apple gave us a forwarding address. You can replace it with the one you'd like receipts sent to.")
                                     .font(.caption)
@@ -69,7 +74,7 @@ struct ProfileCompletionSheet: View {
                             }
                         }
 
-                        labeledField("Mobile number (optional)") {
+                        labeledField(String(localized: "Mobile number (optional)")) {
                             HStack(spacing: 10) {
                                 Button {
                                     showCountryPicker = true
@@ -88,10 +93,11 @@ struct ProfileCompletionSheet: View {
                                     .cornerRadius(12)
                                 }
 
-                                TextField("Mobile number", text: $phoneDigits)
+                                TextField(String(localized: "Mobile number"), text: $phoneDigits)
                                     .keyboardType(.numberPad)
                                     .textContentType(.telephoneNumber)
                                     .keTextFieldStyle()
+                                    .accessibilityLabel("Mobile phone number")
                                     .onChange(of: phoneDigits) { _, newValue in
                                         let digits = newValue.filter(\.isNumber)
                                         if digits != newValue { phoneDigits = digits }
@@ -126,6 +132,8 @@ struct ProfileCompletionSheet: View {
                         .cornerRadius(12)
                     }
                     .disabled(!canSubmit || authVM.isLoading)
+                    .accessibilityLabel("Continue")
+                    .accessibilityHint(authVM.isLoading ? "Loading" : "Save your profile information")
 
                     // Consumer app is allowed to skip profile completion — we
                     // don't need their real name/email until checkout. Seller

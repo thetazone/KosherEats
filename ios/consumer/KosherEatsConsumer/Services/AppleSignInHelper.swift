@@ -46,13 +46,6 @@ enum AppleSignInNonce {
 
 class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
 
-    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
-    }
-
     private let rawNonce: String
     private let onSuccess: (_ token: String, _ firstName: String, _ lastName: String, _ rawNonce: String) -> Void
     private let onError: (String) -> Void
@@ -67,6 +60,17 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthor
         self.onError = onError
     }
 
+    // MARK: - ASAuthorizationControllerPresentationContextProviding
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    }
+
+    // MARK: - ASAuthorizationControllerDelegate
+
     func authorizationController(
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
@@ -76,6 +80,13 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthor
               let identityTokenString = String(data: identityTokenData, encoding: .utf8)
         else {
             onError("Failed to get Apple ID credentials")
+            return
+        }
+
+        // Validate the identity token is not empty (Apple can return a
+        // zero-length Data in rare edge cases on jailbroken devices).
+        guard !identityTokenString.isEmpty else {
+            onError("Apple returned an empty identity token")
             return
         }
 
@@ -89,6 +100,13 @@ class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, ASAuthor
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
+        // ASAuthorizationError.canceled means the user dismissed the sheet;
+        // surface a friendlier message instead of the system's generic text.
+        if let authError = error as? ASAuthorizationError,
+           authError.code == .canceled {
+            onError("Sign in was cancelled")
+            return
+        }
         onError(error.localizedDescription)
     }
 }

@@ -32,7 +32,10 @@ struct AddressFormSheet: View {
     @State private var suppressSuggestions = false
 
     private var formValid: Bool {
-        !street.isEmpty && !city.isEmpty && !state.isEmpty && !zip.isEmpty
+        !street.trimmingCharacters(in: .whitespaces).isEmpty
+            && !city.trimmingCharacters(in: .whitespaces).isEmpty
+            && state.count == 2
+            && zip.count == 5
             && (lat != 0 && lng != 0)
     }
 
@@ -43,9 +46,12 @@ struct AddressFormSheet: View {
                 ScrollView {
                     VStack(spacing: Theme.spacingMD) {
                         field("Label (e.g. Home, Work)", text: $label)
+                            .accessibilityLabel("Address label")
+                            .accessibilityHint("For example, Home or Work")
 
                         VStack(alignment: .leading, spacing: 0) {
                             field("Street address", text: $street)
+                                .accessibilityLabel("Street address")
                                 .onChange(of: street) { _, newValue in
                                     if suppressSuggestions {
                                         suppressSuggestions = false
@@ -59,29 +65,44 @@ struct AddressFormSheet: View {
                         }
 
                         field("Apt / Suite (optional)", text: $apt)
+                            .accessibilityLabel("Apartment or suite number, optional")
                         field("City", text: $city)
+                            .accessibilityLabel("City")
                         HStack(spacing: 12) {
                             field("State", text: $state)
                                 .frame(maxWidth: 100)
                                 .textInputAutocapitalization(.characters)
+                                .accessibilityLabel("State abbreviation")
+                                .accessibilityHint("Two letter state code")
                                 .onChange(of: state) { _, val in
                                     state = String(val.filter(\.isLetter).prefix(2))
                                 }
                             field("Zip", text: $zip)
                                 .keyboardType(.numberPad)
+                                .accessibilityLabel("Zip code")
+                                .accessibilityHint("Five digit zip code")
                                 .onChange(of: zip) { _, val in
                                     zip = String(val.filter(\.isNumber).prefix(5))
                                 }
                         }
 
+                        if lat == 0 && lng == 0 && !street.isEmpty {
+                            Text("Select a suggestion above or enter the full address so we can verify your location.")
+                                .font(.caption)
+                                .foregroundColor(.keWarning)
+                                .accessibilityLabel("Location not verified. Select a suggestion or enter full address.")
+                        }
+
                         Toggle("Make this my default", isOn: $isDefault)
                             .tint(.kePrimary)
                             .foregroundColor(.keTextPrimary)
+                            .accessibilityLabel("Make this my default address")
 
                         if let err = errorMessage {
                             Text(err)
                                 .font(.caption)
                                 .foregroundColor(.keError)
+                                .accessibilityLabel("Error: \(err)")
                         }
 
                         Button { Task { await save() } } label: {
@@ -89,6 +110,8 @@ struct AddressFormSheet: View {
                         }
                         .buttonStyle(KEPrimaryButtonStyle(isEnabled: formValid && !isSaving))
                         .disabled(!formValid || isSaving)
+                        .accessibilityLabel("Save address")
+                        .accessibilityHint(formValid ? "Double tap to save" : "Fill in all required fields first")
                         .padding(.top, 8)
                     }
                     .padding()
@@ -165,6 +188,12 @@ struct AddressFormSheet: View {
         } catch {
             // Typeahead resolution failing shouldn't block manual entry —
             // the user can keep typing the remaining fields themselves.
+            // But surface the issue so the user knows coordinates weren't
+            // captured, which will keep formValid false until they retry.
+            await MainActor.run {
+                errorMessage = "Couldn't verify that address. Please select another suggestion or enter your full address manually."
+                autocomplete.clear()
+            }
         }
     }
 

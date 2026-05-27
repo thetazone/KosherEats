@@ -11,7 +11,7 @@ struct CreateDealView: View {
     @State private var discountType: DiscountType = .percentage
     @State private var discountValue = ""
     @State private var minOrderAmount = ""
-    @State private var expiresAt = Date()
+    @State private var expiresAt = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var imageUrl = ""
@@ -56,9 +56,12 @@ struct CreateDealView: View {
                         }
 
                         formSection("Expiration") {
-                            DatePicker("Expires", selection: $expiresAt, in: Date()..., displayedComponents: .date)
+                            DatePicker("Expires", selection: $expiresAt, in: Date()..., displayedComponents: [.date, .hourAndMinute])
                                 .foregroundColor(.keTextPrimary)
                                 .tint(.kePrimary)
+                            Text("Set the date and time when this deal stops being available.")
+                                .font(.caption)
+                                .foregroundColor(.keTextMuted)
                         }
 
                         formSection("Image (optional)") {
@@ -154,7 +157,16 @@ struct CreateDealView: View {
                 localError = "Enter a valid discount value"
                 return
             }
+            if discountType == .percentage && v > 100 {
+                localError = "Percentage discount cannot exceed 100%"
+                return
+            }
             value = v
+        }
+
+        guard expiresAt > Date() else {
+            localError = "Expiration must be in the future"
+            return
         }
 
         if let selectedImage {

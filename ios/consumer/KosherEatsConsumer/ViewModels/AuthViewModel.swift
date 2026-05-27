@@ -5,6 +5,11 @@ import GoogleSignIn
 
 @MainActor
 class AuthViewModel: ObservableObject {
+    /// Apple's private-relay email domain — real address hidden from the app.
+    private static let appleRelayDomain = "@privaterelay.appleid.com"
+    /// Synthetic email domain the backend assigns to phone-OTP signups.
+    private static let phoneLocalDomain = "@phone.koshereats.local"
+
     @Published var user: User?
     @Published var isAuthenticated = false
     @Published var isLoading = false
@@ -216,6 +221,8 @@ class AuthViewModel: ObservableObject {
         api.logout()
         user = nil
         isAuthenticated = false
+        isLoading = false
+        errorMessage = nil
         PushNotifications.shared.pendingToken = nil
         AppRouter.shared.clearPendingRoutes()
     }
@@ -274,8 +281,8 @@ class AuthViewModel: ObservableObject {
         let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if email.hasSuffix("@privaterelay.appleid.com") { return true }
-        if email.hasSuffix("@phone.koshereats.local") { return true }
+        if email.hasSuffix(Self.appleRelayDomain) { return true }
+        if email.hasSuffix(Self.phoneLocalDomain) { return true }
         return false
     }
 

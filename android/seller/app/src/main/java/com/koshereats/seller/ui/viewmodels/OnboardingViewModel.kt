@@ -76,11 +76,11 @@ class OnboardingViewModel @Inject constructor(
         email: String,
     ) {
         _state.value = _state.value.copy(
-            restaurantName = name,
-            description = description,
+            restaurantName = name.take(200),
+            description = description.take(2000),
             pictureUrl = pictureUrl,
             logoUrl = logoUrl,
-            phone = phone,
+            phone = phone.take(20),
             email = email,
         )
     }
@@ -157,8 +157,21 @@ class OnboardingViewModel @Inject constructor(
     fun submit() {
         val s = _state.value
         if (s.isSubmitting) return
+        if (s.restaurantName.isBlank()) {
+            _state.value = s.copy(error = "Restaurant name is required", step = OnboardingStep.BASICS)
+            return
+        }
         if (s.pictureUrl.isBlank()) {
             _state.value = s.copy(error = "Restaurant picture is required", step = OnboardingStep.BASICS)
+            return
+        }
+        if (s.email.trim().isNotEmpty() &&
+            !android.util.Patterns.EMAIL_ADDRESS.matcher(s.email.trim()).matches()) {
+            _state.value = s.copy(error = "Please enter a valid restaurant email address", step = OnboardingStep.BASICS)
+            return
+        }
+        if (s.phone.trim().isNotEmpty() && s.phone.trim().filter { it.isDigit() }.length !in 7..15) {
+            _state.value = s.copy(error = "Please enter a valid restaurant phone number", step = OnboardingStep.BASICS)
             return
         }
         if (s.kosherCertificateUrl.isBlank()) {
@@ -202,7 +215,11 @@ class OnboardingViewModel @Inject constructor(
                 // the backend's undefined "first restaurant" ordering.
                 restResponse.body()?.id?.let { NetworkModule.cachedRestaurantId = it }
 
-                val grouped = s.menuItems.groupBy { it.category.name.lowercase().replace('_', ' ').replaceFirstChar { c -> c.uppercase() } }
+                val grouped = s.menuItems.groupBy {
+                    it.category.name.lowercase().replace('_', ' ')
+                        .split(' ')
+                        .joinToString(" ") { word -> word.replaceFirstChar { c -> c.uppercase() } }
+                }
                 var createdCount = 0
                 var failedCount = 0
                 for ((categoryName, categoryItems) in grouped) {

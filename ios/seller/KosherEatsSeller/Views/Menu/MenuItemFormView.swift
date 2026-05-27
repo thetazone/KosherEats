@@ -56,8 +56,20 @@ struct MenuItemFormView: View {
                                     TextField("0.00", text: $priceText)
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
+                                        .accessibilityLabel("Price in dollars")
                                         .onChange(of: priceText) { _, newValue in
-                                            let filtered = newValue.filter { $0.isNumber || $0 == "." }
+                                            var filtered = newValue.filter { $0.isNumber || $0 == "." }
+                                            // Prevent multiple decimal points — keep only the first "."
+                                            if filtered.filter({ $0 == "." }).count > 1 {
+                                                var seenDot = false
+                                                filtered = String(filtered.filter { ch in
+                                                    if ch == "." {
+                                                        if seenDot { return false }
+                                                        seenDot = true
+                                                    }
+                                                    return true
+                                                })
+                                            }
                                             if filtered != newValue { priceText = filtered }
                                         }
                                 }
@@ -79,6 +91,7 @@ struct MenuItemFormView: View {
                                         ForEach(categories) { cat in
                                             Button {
                                                 selectedCategoryId = cat.id
+                                                Haptics.selection()
                                             } label: {
                                                 Text(cat.name)
                                                     .font(.subheadline)
@@ -92,6 +105,8 @@ struct MenuItemFormView: View {
                                                     )
                                                     .cornerRadius(10)
                                             }
+                                            .accessibilityLabel("\(cat.name) category")
+                                            .accessibilityAddTraits(selectedCategoryId == cat.id ? .isSelected : [])
                                         }
                                     }
                                 }
@@ -229,6 +244,7 @@ struct MenuItemFormView: View {
                 .padding()
                 .background(Color.keCard)
                 .cornerRadius(12)
+                .accessibilityLabel(label)
         }
     }
 
@@ -266,6 +282,8 @@ struct MenuItemFormView: View {
                     .stroke(isOn.wrappedValue ? color.opacity(0.3) : Color.clear, lineWidth: 1)
             )
         }
+        .accessibilityLabel("\(label) kosher classification")
+        .accessibilityAddTraits(isOn.wrappedValue ? .isSelected : [])
     }
 
     private var canSave: Bool {
@@ -325,6 +343,8 @@ struct MenuItemFormView: View {
                 .frame(maxWidth: .infinity)
             }
             .disabled(isUploading)
+            .accessibilityLabel(pickedUIImage != nil ? "Change item photo" : "Add item photo")
+            .accessibilityHint("Opens the photo picker")
 
             if let err = uploadError {
                 Text(err).font(.caption2).foregroundColor(.keError)
@@ -349,8 +369,10 @@ struct MenuItemFormView: View {
             pickedUIImage = uiImage
             let publicURL = try await UploadService.shared.uploadImage(uiImage, kind: .menuItem)
             imageUrl = publicURL
+            Haptics.success()
         } catch {
             uploadError = error.localizedDescription
+            Haptics.error()
         }
     }
 }

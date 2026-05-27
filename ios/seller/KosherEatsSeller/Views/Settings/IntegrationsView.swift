@@ -20,6 +20,9 @@ struct IntegrationsView: View {
 
     @State private var testingID: String?
     @State private var testResultByID: [String: String] = [:]
+    @State private var disconnectTarget: APIService.POSIntegration?
+    @State private var showDisconnectConfirm = false
+    @State private var isConnecting = false
 
     var body: some View {
         ZStack {
@@ -30,7 +33,28 @@ struct IntegrationsView: View {
                     header
 
                     if isLoading {
-                        ProgressView().tint(.kePrimary).padding(.top, 32)
+                        ProgressView("Loading integrations...")
+                            .tint(.kePrimary)
+                            .padding(.top, 32)
+                    } else if let errorMessage, integrations.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 32))
+                                .foregroundColor(.keError)
+                                .accessibilityHidden(true)
+                            Text(errorMessage)
+                                .font(.subheadline)
+                                .foregroundColor(.keError)
+                                .multilineTextAlignment(.center)
+                            Button("Retry") {
+                                Task { await load() }
+                            }
+                            .font(.subheadline.bold())
+                            .foregroundColor(.kePrimary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .accessibilityElement(children: .combine)
                     } else if integrations.isEmpty {
                         emptyState
                     } else {
@@ -41,15 +65,21 @@ struct IntegrationsView: View {
 
                     Button(action: connectClover) {
                         HStack(spacing: 10) {
-                            Image(systemName: "plus.circle.fill")
+                            if isConnecting {
+                                ProgressView().controlSize(.small).tint(.white)
+                            } else {
+                                Image(systemName: "plus.circle.fill")
+                            }
                             Text("Connect Clover")
                         }
                         .font(.subheadline.bold())
                         .foregroundColor(.keTextOnAccent)
                         .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.kePrimary)
+                        .background(isConnecting ? Color.kePrimary.opacity(0.4) : Color.kePrimary)
                         .cornerRadius(12)
                     }
+                    .disabled(isConnecting)
+                    .accessibilityLabel("Connect Clover POS")
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -74,6 +104,20 @@ struct IntegrationsView: View {
             if let safariURL {
                 SafariView(url: safariURL).ignoresSafeArea()
             }
+        }
+        .confirmationDialog(
+            "Disconnect \(disconnectTarget?.provider.capitalized ?? "integration")?",
+            isPresented: $showDisconnectConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect", role: .destructive) {
+                if let target = disconnectTarget {
+                    Task { await disconnect(target) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Orders will no longer auto-print to this POS. You can reconnect later.")
         }
     }
 
@@ -141,7 +185,8 @@ struct IntegrationsView: View {
                 .disabled(testingID == integ.id)
 
                 Button(role: .destructive) {
-                    Task { await disconnect(integ) }
+                    disconnectTarget = integ
+                    showDisconnectConfirm = true
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "xmark.circle")
@@ -174,6 +219,7 @@ struct IntegrationsView: View {
             .padding(.vertical, 4)
             .background(integ.isActive ? Color.kePrimary : Color.keSurface)
             .cornerRadius(6)
+            .accessibilityLabel("Status: \(integ.isActive ? "Active" : "Disconnected")")
     }
 
     // MARK: - Actions
@@ -191,6 +237,8 @@ struct IntegrationsView: View {
 
     private func connectClover() {
         Task {
+            isConnecting = true
+            defer { isConnecting = false }
             do {
                 let urlString = try await APIService.shared.cloverConnectURL()
                 guard let url = URL(string: urlString) else {

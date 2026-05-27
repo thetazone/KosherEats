@@ -214,7 +214,7 @@ private fun ScheduledTimePickerDialog(
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = {
-                                val date = pickedDate!!
+                                val date = pickedDate ?: return@Button
                                 val combined = LocalDateTime.of(
                                     date,
                                     java.time.LocalTime.of(timeState.hour, timeState.minute),

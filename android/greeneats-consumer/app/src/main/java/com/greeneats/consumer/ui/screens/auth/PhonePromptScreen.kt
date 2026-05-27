@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -97,7 +99,8 @@ fun PhonePromptScreen(
                     .clip(RoundedCornerShape(12.dp))
                     .background(SurfaceDark)
                     .border(1.dp, SurfaceDarkBorder, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 12.dp)
+                    .semantics { contentDescription = "Country code: United States $countryCode" },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -110,7 +113,7 @@ fun PhonePromptScreen(
                 )
                 Icon(
                     Icons.Filled.KeyboardArrowDown,
-                    contentDescription = null,
+                    contentDescription = "Change country code",
                     tint = TextMuted,
                     modifier = Modifier.size(18.dp),
                 )

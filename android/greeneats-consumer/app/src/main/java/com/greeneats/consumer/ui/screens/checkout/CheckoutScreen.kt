@@ -73,6 +73,31 @@ import com.stripe.android.paymentsheet.rememberPaymentSheet
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+private object CheckoutStrings {
+    const val TITLE = "Checkout"
+    const val BACK = "Back"
+    const val MERCHANT_NAME = "GreenEats"
+    const val PAY_PREFIX = "Pay "
+    const val DELIVERY = "Delivery"
+    const val PICKUP = "Pickup"
+    const val DELIVER_TO = "Deliver to"
+    const val CHANGE = "Change"
+    const val SET_DELIVERY_ADDRESS = "Set up delivery address"
+    const val DELIVERY_TIME = "Delivery Time"
+    const val ASAP = "ASAP"
+    const val SCHEDULE = "Schedule"
+    const val ADD_A_TIP = "Add a Tip"
+    const val CUSTOM_TIP_LABEL = "Custom amount ($)"
+    const val SUBTOTAL = "Subtotal"
+    const val DEAL_DISCOUNT = "Deal discount"
+    const val DELIVERY_FEE = "Delivery fee"
+    const val SERVICE_FEE = "Service fee"
+    const val TAX = "Tax"
+    const val TIP = "Tip"
+    const val TOTAL = "Total"
+    const val TOTAL_PLACEHOLDER = "--"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckoutScreen(
@@ -108,7 +133,7 @@ fun CheckoutScreen(
                     is CheckoutEvent.PresentPaymentSheet -> {
                         PaymentConfiguration.init(context, event.bundle.publishableKey)
                         val config = PaymentSheet.Configuration(
-                            merchantDisplayName = "GreenEats",
+                            merchantDisplayName = CheckoutStrings.MERCHANT_NAME,
                             customer = PaymentSheet.CustomerConfiguration(
                                 id = event.bundle.customerId,
                                 ephemeralKeySecret = event.bundle.ephemeralKeySecret,
@@ -141,14 +166,14 @@ fun CheckoutScreen(
         TopAppBar(
             title = {
                 Text(
-                    "Checkout", 
+                    CheckoutStrings.TITLE,
                     style = MaterialTheme.typography.headlineLarge,
                     color = TextWhite
                 )
             },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
+                    Icon(Icons.Filled.ArrowBack, contentDescription = CheckoutStrings.BACK, tint = TextWhite)
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
@@ -213,7 +238,7 @@ fun CheckoutScreen(
         val canPay = ui.bundle != null &&
             (ui.fulfillmentType == "pickup" || ui.selectedAddress != null) &&
             !ui.isProcessing
-        val totalLabel = ui.bundle?.let { it.total.formatPrice() } ?: "--"
+        val totalLabel = ui.bundle?.let { it.total.formatPrice() } ?: CheckoutStrings.TOTAL_PLACEHOLDER
         Button(
             onClick = { vm.onPayTapped() },
             modifier = Modifier
@@ -229,7 +254,7 @@ fun CheckoutScreen(
                 CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
             } else {
                 Text(
-                    text = "Pay $totalLabel",
+                    text = "${CheckoutStrings.PAY_PREFIX}$totalLabel",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextWhite,
                     fontWeight = FontWeight.Bold,
@@ -279,13 +304,13 @@ private fun FulfillmentToggle(selected: String, onSelect: (String) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         FulfillmentTile(
-            label = "Delivery",
+            label = CheckoutStrings.DELIVERY,
             selected = selected == "delivery",
             onClick = { onSelect("delivery") },
             modifier = Modifier.weight(1f),
         )
         FulfillmentTile(
-            label = "Pickup",
+            label = CheckoutStrings.PICKUP,
             selected = selected == "pickup",
             onClick = { onSelect("pickup") },
             modifier = Modifier.weight(1f),
@@ -342,14 +367,14 @@ private fun AddressCard(address: String?, onChangeClick: () -> Unit) {
                 Icon(Icons.Filled.LocationOn, contentDescription = null, tint = Orange, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Deliver to",
+                    CheckoutStrings.DELIVER_TO,
                     style = MaterialTheme.typography.labelMedium,
                     color = TextTertiary,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = "Change",
+                    text = CheckoutStrings.CHANGE,
                     style = MaterialTheme.typography.labelLarge,
                     color = Orange,
                     fontWeight = FontWeight.Bold,
@@ -357,7 +382,7 @@ private fun AddressCard(address: String?, onChangeClick: () -> Unit) {
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                text = address ?: "Set up delivery address",
+                text = address ?: CheckoutStrings.SET_DELIVERY_ADDRESS,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (address != null) TextWhite else TextMuted,
                 fontWeight = FontWeight.Medium,
@@ -384,7 +409,7 @@ private fun DeliveryTimeCard(
                 Icon(Icons.Filled.Schedule, contentDescription = null, tint = Orange, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Delivery Time", 
+                    CheckoutStrings.DELIVERY_TIME,
                     style = MaterialTheme.typography.labelMedium,
                     color = TextTertiary, 
                     fontWeight = FontWeight.Bold
@@ -393,13 +418,13 @@ private fun DeliveryTimeCard(
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 TimeChip(
-                    text = "ASAP",
+                    text = CheckoutStrings.ASAP,
                     selected = scheduledFor == null,
                     onClick = onAsapClick,
                     modifier = Modifier.weight(1f),
                 )
                 TimeChip(
-                    text = scheduledFor?.format(fmt) ?: "Schedule",
+                    text = scheduledFor?.format(fmt) ?: CheckoutStrings.SCHEDULE,
                     selected = scheduledFor != null,
                     onClick = onScheduleClick,
                     modifier = Modifier.weight(1f),
@@ -450,7 +475,7 @@ private fun TipSelectorCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                "Add a Tip", 
+                CheckoutStrings.ADD_A_TIP,
                 style = MaterialTheme.typography.labelMedium,
                 color = TextTertiary, 
                 fontWeight = FontWeight.Bold
@@ -459,7 +484,7 @@ private fun TipSelectorCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TipChoice.presets.forEach { preset ->
                     val selected = when {
-                        tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.fraction == preset.fraction
+                        tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.basisPoints == preset.basisPoints
                         else -> tipChoice == preset
                     }
                     Box(
@@ -487,7 +512,7 @@ private fun TipSelectorCard(
                 OutlinedTextField(
                     value = customTipText,
                     onValueChange = onCustomChange,
-                    label = { Text("Custom amount ($)", color = TextTertiary) },
+                    label = { Text(CheckoutStrings.CUSTOM_TIP_LABEL, color = TextTertiary) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -513,20 +538,20 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            TotalRow("Subtotal", bundle.subtotal)
+            TotalRow(CheckoutStrings.SUBTOTAL, bundle.subtotal)
             if (bundle.discount > 0) {
                 Spacer(Modifier.height(8.dp))
-                TotalRow("Deal discount", -bundle.discount, accent = true)
+                TotalRow(CheckoutStrings.DEAL_DISCOUNT, -bundle.discount, accent = true)
             }
             Spacer(Modifier.height(8.dp))
-            TotalRow("Delivery fee", bundle.deliveryFee)
+            TotalRow(CheckoutStrings.DELIVERY_FEE, bundle.deliveryFee)
             Spacer(Modifier.height(8.dp))
-            TotalRow("Service fee", bundle.serviceFee)
+            TotalRow(CheckoutStrings.SERVICE_FEE, bundle.serviceFee)
             Spacer(Modifier.height(8.dp))
-            TotalRow("Tax", bundle.tax)
+            TotalRow(CheckoutStrings.TAX, bundle.tax)
             if (bundle.tip > 0) {
                 Spacer(Modifier.height(8.dp))
-                TotalRow("Tip", bundle.tip)
+                TotalRow(CheckoutStrings.TIP, bundle.tip)
             }
             Spacer(Modifier.height(16.dp))
             HorizontalDivider(color = SurfaceDarkBorder)
@@ -536,7 +561,7 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    "Total", 
+                    CheckoutStrings.TOTAL,
                     style = MaterialTheme.typography.titleLarge,
                     color = TextWhite, 
                     fontWeight = FontWeight.Bold

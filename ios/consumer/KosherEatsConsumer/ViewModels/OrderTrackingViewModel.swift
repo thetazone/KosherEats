@@ -85,6 +85,10 @@ final class OrderTrackingViewModel: ObservableObject {
         pollTask = nil
         locationStreamTask?.cancel()
         locationStreamTask = nil
+        if let pushObserver {
+            NotificationCenter.default.removeObserver(pushObserver)
+            self.pushObserver = nil
+        }
     }
 
     func markCourierRatingSubmitted(stars: Int) {
@@ -155,7 +159,7 @@ final class OrderTrackingViewModel: ObservableObject {
                 if sawAuthFailure {
                     delaySeconds = 2
                 } else {
-                    delaySeconds = min(3 * pow(2, Double(consecutiveFailures - 1)), 60)
+                    delaySeconds = min(3 * pow(2, Double(consecutiveFailures - 1)), 15)
                 }
                 try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
             }

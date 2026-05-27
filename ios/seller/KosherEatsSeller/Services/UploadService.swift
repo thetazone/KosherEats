@@ -8,6 +8,10 @@ import UIKit
 final class UploadService {
     static let shared = UploadService()
 
+    /// JPEG compression quality used for all uploaded images (0.0–1.0).
+    /// Balances file size vs. visual quality for menu/restaurant photos.
+    private static let jpegCompressionQuality: CGFloat = 0.85
+
     enum Kind: String {
         case menuItem = "menu_item"
         case restaurantCover = "restaurant/cover"
@@ -23,7 +27,7 @@ final class UploadService {
     }()
 
     func uploadImage(_ image: UIImage, kind: Kind) async throws -> String {
-        guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
+        guard let jpeg = image.jpegData(compressionQuality: Self.jpegCompressionQuality) else {
             throw NSError(domain: "upload", code: 1, userInfo: [NSLocalizedDescriptionKey: "failed to encode image"])
         }
 

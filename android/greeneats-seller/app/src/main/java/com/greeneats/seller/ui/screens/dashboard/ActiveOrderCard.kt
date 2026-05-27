@@ -86,10 +86,12 @@ fun ActiveOrderCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Items summary
+            val count = order.items.size
+            val itemLabel = if (count == 1) "item" else "items"
+            val preview = order.items.take(2).joinToString(", ") { "${it.quantity}x ${it.menuItemName}" }
+            val suffix = if (count > 2) "..." else ""
             Text(
-                text = "${order.items.size} item${if (order.items.size != 1) "s" else ""} " +
-                    order.items.take(2).joinToString(", ") { "${it.quantity}x ${it.menuItemName}" } +
-                    if (order.items.size > 2) "..." else "",
+                text = "$count $itemLabel $preview$suffix",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted,
                 maxLines = 1,
@@ -119,18 +121,14 @@ fun OrderStatusBadge(
     status: OrderStatus,
     modifier: Modifier = Modifier,
 ) {
-    val (color, label) = when (status) {
-        OrderStatus.SCHEDULED -> StatusPending to "Scheduled"
-        OrderStatus.PENDING -> StatusPending to "Pending"
-        OrderStatus.ACCEPTED -> StatusAccepted to "Accepted"
-        OrderStatus.PREPARING -> StatusPreparing to "Preparing"
-        OrderStatus.READY -> StatusReady to "Ready"
-        OrderStatus.PICKED_UP -> StatusReady to "Picked Up"
-        OrderStatus.DELIVERED -> StatusReady to "Delivered"
-        OrderStatus.COMPLETED -> StatusReady to "Completed"
-        OrderStatus.CANCELLED -> StatusCancelled to "Cancelled"
-        OrderStatus.REJECTED -> StatusCancelled to "Rejected"
+    val color = when (status) {
+        OrderStatus.SCHEDULED, OrderStatus.PENDING -> StatusPending
+        OrderStatus.ACCEPTED -> StatusAccepted
+        OrderStatus.PREPARING -> StatusPreparing
+        OrderStatus.READY, OrderStatus.PICKED_UP, OrderStatus.DELIVERED, OrderStatus.COMPLETED -> StatusReady
+        OrderStatus.CANCELLED, OrderStatus.REJECTED -> StatusCancelled
     }
+    val label = status.displayName
 
     Row(
         modifier = modifier

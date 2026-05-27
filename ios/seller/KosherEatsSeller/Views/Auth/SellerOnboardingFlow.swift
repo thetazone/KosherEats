@@ -225,12 +225,15 @@ struct SellerOnboardingFlow: View {
                         .foregroundColor(.keTextPrimary)
                         .frame(width: 40, height: 40)
                 }
+                .accessibilityLabel("Go back")
+                .accessibilityHint("Returns to the previous step")
             } else {
                 Spacer().frame(width: 40)
             }
             Text(vm.step.title)
                 .font(.title3.bold())
                 .foregroundColor(.keTextPrimary)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             Button {
                 showSignOutConfirm = true
@@ -256,10 +259,14 @@ struct SellerOnboardingFlow: View {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Color.kePrimary)
                     .frame(width: geo.size.width * progressFraction, height: 4)
+                    .animation(.easeInOut(duration: 0.25), value: progressFraction)
             }
         }
         .frame(height: 4)
         .padding(.horizontal, 20)
+        .accessibilityElement()
+        .accessibilityLabel("Progress")
+        .accessibilityValue("Step \(vm.step.rawValue + 1) of \(OnboardingStep.allCases.count)")
     }
 
     private var progressFraction: CGFloat {
@@ -485,8 +492,16 @@ private struct AddressStepView: View {
                 }
 
                 continueButton {
-                    if vm.street.isEmpty || vm.city.isEmpty || vm.stateField.isEmpty || vm.zipCode.isEmpty {
+                    if vm.street.trimmingCharacters(in: .whitespaces).isEmpty ||
+                       vm.city.trimmingCharacters(in: .whitespaces).isEmpty ||
+                       vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty ||
+                       vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
                         vm.errorMessage = "All address fields are required"
+                        return
+                    }
+                    let digits = vm.zipCode.filter { $0.isNumber }
+                    if digits.count != 5 {
+                        vm.errorMessage = "ZIP code must be 5 digits"
                         return
                     }
                     vm.nextStep()

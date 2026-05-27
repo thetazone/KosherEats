@@ -57,6 +57,17 @@ class DashboardViewModel @Inject constructor(
 
     init {
         loadDashboard()
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                // Cancel any in-flight dashboard load so it cannot apply the previous
+                // restaurant's stats to the freshly-cleared state.
+                loadJob?.cancel()
+                loadJob = null
+                _state.value = _state.value.copy(stats = DashboardStats(), activeOrders = emptyList())
+                lastSuccessfulFetchMs = 0L
+                loadDashboard()
+            }
+        }
     }
 
     // Called by the screen composable via DisposableEffect so polling (and FCM-triggered
@@ -155,25 +166,27 @@ class DashboardViewModel @Inject constructor(
                 _state.update { it.copy(isLoading = true, error = null) }
             }
             try {
-                coroutineScope {
-                    val statsDeferred = async { apiService.getDashboardStats() }
-                    val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
-                    val statsResponse = statsDeferred.await()
-                    val ordersResponse = ordersDeferred.await()
+                kotlinx.coroutines.withTimeout(45_000L) {
+                    coroutineScope {
+                        val statsDeferred = async { apiService.getDashboardStats() }
+                        val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
+                        val statsResponse = statsDeferred.await()
+                        val ordersResponse = ordersDeferred.await()
 
-                    val statsOk = statsResponse.isSuccessful
-                    val ordersOk = ordersResponse.isSuccessful
-                    if (statsOk || ordersOk) {
-                        lastSuccessfulFetchMs = System.currentTimeMillis()
-                        lastFetchedRestaurantId = currentRestaurantId
-                    }
-                    _state.update { s ->
-                        s.copy(
-                            stats = if (statsOk) statsResponse.body() ?: DashboardStats() else s.stats,
-                            activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive } else s.activeOrders,
-                            isLoading = false,
-                            error = if (!statsOk && !ordersOk) "Failed to load dashboard (HTTP ${statsResponse.code()})" else null,
-                        )
+                        val statsOk = statsResponse.isSuccessful
+                        val ordersOk = ordersResponse.isSuccessful
+                        if (statsOk || ordersOk) {
+                            lastSuccessfulFetchMs = System.currentTimeMillis()
+                            lastFetchedRestaurantId = currentRestaurantId
+                        }
+                        _state.update { s ->
+                            s.copy(
+                                stats = if (statsOk) statsResponse.body() ?: DashboardStats() else s.stats,
+                                activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive } else s.activeOrders,
+                                isLoading = false,
+                                error = if (!statsOk && !ordersOk) "Failed to load dashboard (HTTP ${statsResponse.code()})" else null,
+                            )
+                        }
                     }
                 }
             } catch (e: Exception) {

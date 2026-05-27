@@ -24,6 +24,8 @@ data class ChatUiState(
     val isSending: Boolean = false,
     val error: String? = null,
     val scrollToBottom: Boolean = false,
+    /** Text of the last message that failed to send, for retry. */
+    val lastFailedText: String? = null,
 )
 
 /**
@@ -65,7 +67,7 @@ class ChatViewModel @Inject constructor(
         val text = _state.value.input.trim()
         if (text.isEmpty() || _state.value.isSending) return
         viewModelScope.launch {
-            _state.update { it.copy(isSending = true) }
+            _state.update { it.copy(isSending = true, lastFailedText = null) }
             try {
                 val response = apiService.sendChatMessage(orderId, SendChatMessageRequest(text))
                 val newMessage = response.body()
@@ -76,16 +78,24 @@ class ChatViewModel @Inject constructor(
                             input = "",
                             isSending = false,
                             error = null,
+                            lastFailedText = null,
                             scrollToBottom = true,
                         )
                     }
                 } else {
-                    _state.update { it.copy(isSending = false, error = "Couldn't send message") }
+                    _state.update { it.copy(isSending = false, error = ERR_SEND_MESSAGE, lastFailedText = text) }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(isSending = false, error = e.localizedMessage ?: "Network error") }
+                _state.update { it.copy(isSending = false, error = e.localizedMessage ?: "Network error", lastFailedText = text) }
             }
         }
+    }
+
+    /** Retry the last failed message send. Restores the text to the input field and re-sends. */
+    fun retryLastMessage() {
+        val failedText = _state.value.lastFailedText ?: return
+        _state.update { it.copy(input = failedText, lastFailedText = null, error = null) }
+        send()
     }
 
     private fun fetch() {
@@ -106,7 +116,7 @@ class ChatViewModel @Inject constructor(
                     if (response.code() in listOf(401, 403, 404)) {
                         pollJob?.cancel()
                     }
-                    _state.update { it.copy(error = "Couldn't refresh chat") }
+                    _state.update { it.copy(error = ERR_REFRESH_CHAT) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.localizedMessage ?: "Network error") }
@@ -127,5 +137,10 @@ class ChatViewModel @Inject constructor(
     override fun onCleared() {
         pollJob?.cancel()
         super.onCleared()
+    }
+
+    companion object {
+        internal const val ERR_SEND_MESSAGE = "Couldn't send message"
+        internal const val ERR_REFRESH_CHAT = "Couldn't refresh chat"
     }
 }

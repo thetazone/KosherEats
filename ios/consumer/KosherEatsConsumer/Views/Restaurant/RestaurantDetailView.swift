@@ -32,7 +32,7 @@ struct RestaurantDetailView: View {
                 }
             } else if let restaurant = vm.restaurant {
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                         // Hero Section
                         heroSection(restaurant)
 
@@ -72,6 +72,7 @@ struct RestaurantDetailView: View {
             RemoteImage(url: restaurant.coverImageURL ?? restaurant.imageURL)
                 .frame(maxWidth: .infinity)
                 .frame(height: 240)
+                .accessibilityLabel("\(restaurant.name) cover photo")
 
             // Dark gradient at the bottom so text is readable even on bright photos.
             LinearGradient(
@@ -80,16 +81,18 @@ struct RestaurantDetailView: View {
                 endPoint: .bottom,
             )
             .frame(height: 120)
+            .accessibilityHidden(true)
 
             if !restaurant.isOpen {
                 Color.black.opacity(0.55)
                     .frame(maxWidth: .infinity)
                     .frame(height: 240)
                     .overlay(
-                        Text("Currently Closed")
+                        Text(String(localized: "Currently Closed"))
                             .font(.title2.bold())
                             .foregroundColor(.keTextOnAccent),
                     )
+                    .accessibilityLabel(String(localized: "Restaurant is currently closed"))
             }
         }
         .frame(height: 240)
@@ -124,7 +127,7 @@ struct RestaurantDetailView: View {
             }
 
             if restaurant.minOrder > 0 {
-                Text("Min. order: \(restaurant.minOrderFormatted)")
+                Text(String(localized: "Min. order: \(restaurant.minOrderFormatted)"))
                     .font(.system(size: 13))
                     .foregroundColor(.keTextMuted)
             }
@@ -143,7 +146,7 @@ struct RestaurantDetailView: View {
 
     private func kashrusSection(_ restaurant: Restaurant) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Kashrus Information")
+            Text(String(localized: "Kashrus Information"))
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.keTextPrimary)
 
@@ -174,7 +177,7 @@ struct RestaurantDetailView: View {
                     Image(systemName: "building.2")
                         .font(.system(size: 13))
                         .foregroundColor(.keTextMuted)
-                    Text("Certifying Agency: \(restaurant.certifyingAgency)")
+                    Text(String(localized: "Certifying Agency: \(restaurant.certifyingAgency)"))
                         .font(.system(size: 13))
                         .foregroundColor(.keTextSecondary)
                 }
@@ -186,7 +189,7 @@ struct RestaurantDetailView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text.magnifyingglass")
-                        Text("View Kosher Certificate")
+                        Text(String(localized: "View Kosher Certificate"))
                     }
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.kePrimary)
@@ -195,6 +198,7 @@ struct RestaurantDetailView: View {
                     .background(Color.kePrimary.opacity(0.1))
                     .cornerRadius(10)
                 }
+                .accessibilityLabel(String(localized: "View kosher certificate for \(restaurant.name)"))
                 .sheet(isPresented: $showCertificate) {
                     KosherCertificateSheet(url: certUrl, restaurantName: restaurant.name)
                 }
@@ -210,7 +214,7 @@ struct RestaurantDetailView: View {
 
     private var dealsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Deals")
+            Text(String(localized: "Deals"))
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.keTextPrimary)
                 .padding(.horizontal)
@@ -235,11 +239,12 @@ struct RestaurantDetailView: View {
     // MARK: - Menu
 
     private var menuSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Menu")
+        Group {
+            Text(String(localized: "Menu"))
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.keTextPrimary)
                 .padding(.horizontal)
+                .padding(.top, 16)
 
             if vm.menuCategories.isEmpty {
                 VStack(spacing: Theme.spacingMD) {
@@ -256,12 +261,7 @@ struct RestaurantDetailView: View {
                 .frame(maxWidth: .infinity, minHeight: 100)
             } else {
                 ForEach(vm.menuCategories) { category in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(category.name)
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.kePrimary)
-                            .padding(.horizontal)
-
+                    Section {
                         if let items = category.items {
                             ForEach(items) { item in
                                 MenuItemView(
@@ -271,8 +271,15 @@ struct RestaurantDetailView: View {
                                 .padding(.horizontal)
                             }
                         }
+                    } header: {
+                        Text(category.name)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.kePrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.vertical, 10)
+                            .background(Color.keBackground)
                     }
-                    .padding(.bottom, 8)
                 }
             }
         }
@@ -291,10 +298,12 @@ struct StatPill: View {
             Image(systemName: icon)
                 .font(.system(size: 12))
                 .foregroundColor(color)
+                .accessibilityHidden(true)
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(color)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -324,5 +333,7 @@ struct KashrusInfoChip: View {
         .padding(.vertical, 8)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusSmall)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title) \(subtitle)")
     }
 }

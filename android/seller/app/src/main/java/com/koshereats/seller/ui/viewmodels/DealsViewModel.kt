@@ -12,6 +12,7 @@ import com.koshereats.seller.data.models.PresignResponse
 import com.koshereats.seller.data.models.SellerMenuCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,10 +36,14 @@ class DealsViewModel @Inject constructor(
     private val _state = MutableStateFlow(DealsState())
     val state: StateFlow<DealsState> = _state.asStateFlow()
 
+    private var loadJob: Job? = null
+
     init {
         loadDeals()
         viewModelScope.launch {
             NetworkModule.restaurantChanged.collect {
+                loadJob?.cancel()
+                loadJob = null
                 _state.value = DealsState()
                 loadDeals()
             }
@@ -46,7 +51,8 @@ class DealsViewModel @Inject constructor(
     }
 
     fun loadDeals() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val response = apiService.getDeals()
@@ -79,8 +85,12 @@ class DealsViewModel @Inject constructor(
                     _state.value = _state.value.copy(
                         menuItems = response.body().orEmpty().flatMap { it.items },
                     )
+                } else {
+                    android.util.Log.w("DealsViewModel", "getSellerMenu failed: HTTP ${response.code()}")
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.w("DealsViewModel", "getSellerMenu threw", e)
+            }
         }
     }
 

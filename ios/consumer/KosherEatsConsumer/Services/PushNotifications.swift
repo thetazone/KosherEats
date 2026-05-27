@@ -6,7 +6,10 @@ import UserNotifications
 @MainActor
 final class PushNotifications: NSObject, ObservableObject {
     static let shared = PushNotifications()
-    private let app = "consumer"
+    /// App identifier sent to /devices/register so the backend routes pushes
+    /// to the correct APNs topic (consumer vs seller vs courier).
+    private static let appIdentifier = "consumer"
+    private let app = Self.appIdentifier
 
     var pendingToken: Data?
 

@@ -36,9 +36,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +80,23 @@ fun OrderTrackingScreen(
 ) {
     val state by vm.uiState.collectAsState()
     LaunchedEffect(orderId) { vm.start(orderId) }
+
+    // Cancel polling and SSE when the screen goes to background (ON_STOP)
+    // and resume when it comes back (ON_START) to avoid battery drain.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, vm) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> vm.stop()
+                Lifecycle.Event.ON_START -> vm.resume()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -229,39 +250,48 @@ private fun StatusHeader(status: OrderStatus) {
 
 @Composable
 private fun ProgressBar(status: OrderStatus) {
+    // 6 segments matching iOS: Ordered(0) -> Accepted(1) -> Preparing(2) -> Ready(3) -> En route(4) -> Delivered(5)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        repeat(5) { index ->
+        repeat(6) { index ->
             Box(
                 modifier = Modifier
                     .height(4.dp)
                     .weight(1f)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (index <= status.stepIndex) Orange else SurfaceDark),
+                    .background(if (status.stepIndex >= 0 && index <= status.stepIndex) Orange else SurfaceDark),
             )
         }
     }
 }
 
 private fun phaseText(status: OrderStatus): String = when (status) {
+    OrderStatus.SCHEDULED -> "Scheduled for later"
     OrderStatus.PENDING -> "Waiting for the restaurant"
+    OrderStatus.ACCEPTED -> "Restaurant accepted your order"
     OrderStatus.CONFIRMED -> "Restaurant accepted your order"
     OrderStatus.PREPARING -> "Your food is being prepared"
     OrderStatus.READY -> "Waiting for a courier"
     OrderStatus.PICKED_UP -> "Your order is on the way"
     OrderStatus.DELIVERED -> "Delivered \u2014 enjoy!"
     OrderStatus.COMPLETED -> "Order complete"
-    OrderStatus.CANCELLED -> "Order was ${status.displayName.lowercase()}"
+    OrderStatus.CANCELLED -> "Order was cancelled"
+    OrderStatus.REJECTED -> "Order was rejected"
+    OrderStatus.UNKNOWN -> "Processing your order"
 }
 
 private fun phaseSubtext(status: OrderStatus): String = when (status) {
+    OrderStatus.SCHEDULED -> "Your order is queued and will move into the kitchen closer to the scheduled time."
     OrderStatus.PENDING -> "We've sent your order to the restaurant."
+    OrderStatus.ACCEPTED -> "They'll start cooking any moment."
     OrderStatus.CONFIRMED -> "They'll start cooking any moment."
     OrderStatus.PREPARING -> "Arriving soon."
     OrderStatus.READY -> "A courier will claim your order shortly."
     OrderStatus.PICKED_UP -> "Your courier is heading to you."
+    OrderStatus.REJECTED -> "The restaurant could not accept this order."
+    OrderStatus.CANCELLED -> "The order will not be fulfilled."
     else -> ""
 }
 

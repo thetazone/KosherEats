@@ -64,7 +64,8 @@ struct OrdersListView: View {
                                             onReorder: order.status == .delivered ? {
                                                 guard !cartVM.isReordering else { return }
                                                 reorderTask?.cancel()
-                                                reorderTask = Task {
+                                                let task = Task {
+                                                    guard !Task.isCancelled else { return }
                                                     let error = await cartVM.reorder(
                                                         items: order.items,
                                                         restaurantID: order.restaurantID
@@ -80,6 +81,7 @@ struct OrdersListView: View {
                                                     showReorderToast = false
                                                     reorderError = nil
                                                 }
+                                                reorderTask = task
                                             } : nil
                                         )
                                     }

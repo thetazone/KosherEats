@@ -149,7 +149,10 @@ class OnboardingViewModel @Inject constructor(
         return try {
             val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
             if (response.isSuccessful) response.body() else null
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            null
+        }
     }
 
     fun submit() {

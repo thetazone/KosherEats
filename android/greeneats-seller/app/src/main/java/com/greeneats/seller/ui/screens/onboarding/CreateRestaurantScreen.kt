@@ -56,6 +56,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -323,7 +328,12 @@ fun CreateRestaurantScreen(
                                     shape = RoundedCornerShape(18.dp),
                                 )
                                 .clickable { viewModel.updateKosherCertification(cert) }
-                                .padding(horizontal = 16.dp),
+                                .padding(horizontal = 16.dp)
+                                .semantics {
+                                    role = Role.RadioButton
+                                    contentDescription = cert.displayName
+                                    stateDescription = if (selected) "Selected" else "Not selected"
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
@@ -429,6 +439,13 @@ fun CreateRestaurantScreen(
                             )
                             .clickable(enabled = !state.isUploadingCertificate) {
                                 certificatePicker.launch("image/*")
+                            }
+                            .semantics {
+                                contentDescription = if (state.isUploadingCertificate) {
+                                    "Uploading kosher certificate photo"
+                                } else {
+                                    "Tap to upload kosher certificate photo. Required."
+                                }
                             },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -521,6 +538,18 @@ fun CreateRestaurantScreen(
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 4.dp),
                 )
+            }
+
+            // ---- Validation hint ----
+            if (!state.isFormValid && !state.isSubmitting) {
+                state.validationError?.let { hint ->
+                    Text(
+                        text = hint,
+                        color = TextMuted,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
             }
 
             // ---- Submit Button ----
@@ -629,7 +658,10 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$label: ${if (checked) "enabled" else "disabled"}"
+            },
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {

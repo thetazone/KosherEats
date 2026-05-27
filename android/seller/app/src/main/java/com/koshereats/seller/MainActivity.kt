@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
         // Only read on a fresh start; config-change recreations restore nav state themselves.
         if (savedInstanceState == null) {
             pendingOrderId = intent.getStringExtra("order_id")
+            intent.removeExtra("order_id")
         }
 
         setContent {
@@ -61,6 +62,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        pendingOrderId = intent.getStringExtra("order_id")
+        val newOrderId = intent.getStringExtra("order_id")
+        if (newOrderId != null) {
+            pendingOrderId = newOrderId
+            // Clear so a config change after consumption can't re-fire navigation.
+            intent.removeExtra("order_id")
+        }
     }
 }

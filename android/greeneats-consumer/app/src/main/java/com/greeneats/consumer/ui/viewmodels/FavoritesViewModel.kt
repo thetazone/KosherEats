@@ -24,6 +24,10 @@ class FavoritesViewModel @Inject constructor(
     private val api: ApiService,
 ) : ViewModel() {
 
+    companion object {
+        const val ERROR_LOAD_FAVORITES = "Couldn't load favorites"
+    }
+
     private val _uiState = MutableStateFlow(FavoritesUiState())
     val uiState: StateFlow<FavoritesUiState> = _uiState.asStateFlow()
 
@@ -46,7 +50,7 @@ class FavoritesViewModel @Inject constructor(
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load favorites") }
+                    _uiState.update { it.copy(isLoading = false, error = ERROR_LOAD_FAVORITES) }
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }

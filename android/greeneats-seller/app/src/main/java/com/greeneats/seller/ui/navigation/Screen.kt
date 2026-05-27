@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
+import java.net.URLEncoder
 
 sealed class Screen(
     val route: String,
@@ -51,16 +52,18 @@ sealed class Screen(
         unselectedIcon = Icons.Outlined.Settings,
     )
 
-    // Onboarding
-    data object CreateRestaurant : Screen("onboarding/create-restaurant", "Create Restaurant")
-
     // Detail screens
     data object OrderDetail : Screen("orders/{orderId}", "Order Detail") {
-        fun createRoute(orderId: String) = "orders/$orderId"
+        fun createRoute(orderId: String): String {
+            require(orderId.isNotBlank()) { "orderId must not be blank" }
+            return "orders/${URLEncoder.encode(orderId, "UTF-8")}"
+        }
     }
     data object MenuItemForm : Screen("menu/form?itemId={itemId}", "Menu Item") {
-        fun createRoute(itemId: String? = null) =
-            if (itemId != null) "menu/form?itemId=$itemId" else "menu/form"
+        fun createRoute(itemId: String? = null): String {
+            if (itemId.isNullOrBlank()) return "menu/form"
+            return "menu/form?itemId=${URLEncoder.encode(itemId, "UTF-8")}"
+        }
     }
     data object CreateDeal : Screen("deals/create", "Create Deal")
     data object Integrations : Screen("settings/integrations", "Integrations")

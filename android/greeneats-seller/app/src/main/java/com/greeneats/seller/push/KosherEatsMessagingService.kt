@@ -14,6 +14,7 @@ import com.greeneats.seller.R
 import com.greeneats.seller.data.api.ApiService
 import com.greeneats.seller.data.models.RegisterDeviceRequest
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +46,8 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val title = message.notification?.title ?: message.data["title"] ?: "GreenEats"
         val body = message.notification?.body ?: message.data["body"] ?: ""
-        showNotification(this, title, body)
+        val orderId = message.data["order_id"]
+        showNotification(this, title, body, orderId)
         val type = message.data["type"]
         if (type == "new_order" || type == "courier_assigned" ||
             type == "order_status_changed" || type == "order_cancelled" || type == "payment_update") {
@@ -55,6 +57,7 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
 
     companion object {
         const val CHANNEL_ID = "greeneats_seller_default"
+        private val notifId = AtomicInteger(0)
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -69,11 +72,12 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
             nm.createNotificationChannel(channel)
         }
 
-        private fun showNotification(context: Context, title: String, body: String) {
+        private fun showNotification(context: Context, title: String, body: String, orderId: String? = null) {
             ensureChannel(context)
 
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                if (!orderId.isNullOrBlank()) putExtra("order_id", orderId)
             }
             val pi = PendingIntent.getActivity(
                 context, 0, intent,
@@ -90,7 +94,7 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
                 .build()
 
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(System.currentTimeMillis().toInt(), notification)
+            nm.notify(notifId.incrementAndGet(), notification)
         }
     }
 }

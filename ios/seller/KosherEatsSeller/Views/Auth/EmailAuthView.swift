@@ -184,7 +184,17 @@ struct EmailAuthView: View {
 
     private var isEmailShapedValid: Bool {
         let e = email.trimmingCharacters(in: .whitespaces)
-        return e.contains("@") && e.contains(".") && e.count >= 5
+        // Split on "@" and require exactly one "@" with non-empty local part
+        // and a domain part that contains at least one dot.
+        let parts = e.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return false }
+        let local = parts[0]
+        let domain = parts[1]
+        guard !local.isEmpty, domain.contains(".") else { return false }
+        // Domain must not start or end with a dot, and must have text after
+        // the last dot (the TLD).
+        let domainParts = domain.split(separator: ".", omittingEmptySubsequences: false)
+        return domainParts.count >= 2 && domainParts.allSatisfy({ !$0.isEmpty })
     }
 
     private func reset() {

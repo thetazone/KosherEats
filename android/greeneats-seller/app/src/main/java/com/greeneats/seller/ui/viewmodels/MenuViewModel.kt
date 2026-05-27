@@ -36,6 +36,25 @@ class MenuViewModel @Inject constructor(
     private val apiService: ApiService,
 ) : ViewModel() {
 
+    companion object {
+        private const val ERR_LOAD_MENU = "Failed to load menu items"
+        private const val ERR_LOAD_ITEM = "Failed to load item"
+        private const val ERR_RESOLVE_CATEGORY = "Failed to resolve category"
+        private const val ERR_CREATE_ITEM = "Failed to create menu item"
+        private const val ERR_UPDATE_ITEM = "Failed to update menu item"
+        private const val ERR_DELETE_ITEM = "Failed to delete item"
+        private const val ERR_TOGGLE_AVAILABILITY = "Failed to update availability"
+        private const val ERR_ADD_MODIFIER = "Failed to add modifier group"
+        private const val ERR_UPDATE_MODIFIER = "Failed to update modifier group"
+        private const val ERR_DELETE_MODIFIER = "Failed to delete modifier group"
+        private const val ERR_CONNECTION = "Connection error"
+        private const val MSG_ITEM_CREATED = "Menu item created successfully"
+        private const val MSG_ITEM_UPDATED = "Menu item updated successfully"
+        private const val MSG_MODIFIER_ADDED = "Modifier group added"
+        private const val MSG_MODIFIER_UPDATED = "Modifier group updated"
+        private const val MSG_MODIFIER_DELETED = "Modifier group deleted"
+    }
+
     private val _state = MutableStateFlow(MenuState())
     val state: StateFlow<MenuState> = _state.asStateFlow()
 
@@ -70,14 +89,14 @@ class MenuViewModel @Inject constructor(
                 } else {
                     _state.update { it.copy(
                         isLoading = false,
-                        error = "Failed to load menu items",
+                        error = ERR_LOAD_MENU,
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
                     isLoading = false,
-                    error = "Connection error: ${e.localizedMessage}",
+                    error = "$ERR_CONNECTION: ${e.localizedMessage}",
                 ) }
             }
         }
@@ -108,7 +127,7 @@ class MenuViewModel @Inject constructor(
                             },
                             selectedItem = selectedItem,
                             isLoading = false,
-                            error = if (selectedItem == null) "Failed to load item" else null,
+                            error = if (selectedItem == null) ERR_LOAD_ITEM else null,
                         ) }
                         return@launch
                     }
@@ -116,13 +135,13 @@ class MenuViewModel @Inject constructor(
                 _state.update { it.copy(
                     selectedItem = selectedItem,
                     isLoading = false,
-                    error = if (selectedItem == null) "Failed to load item" else null,
+                    error = if (selectedItem == null) ERR_LOAD_ITEM else null,
                 ) }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
                     isLoading = false,
-                    error = "Failed to load item",
+                    error = ERR_LOAD_ITEM,
                 ) }
             }
         }
@@ -149,7 +168,7 @@ class MenuViewModel @Inject constructor(
                 }
 
                 if (categoryId == null) {
-                    _state.update { it.copy(isSaving = false, error = "Failed to resolve category") }
+                    _state.update { it.copy(isSaving = false, error = ERR_RESOLVE_CATEGORY) }
                     return@launch
                 }
 
@@ -167,20 +186,20 @@ class MenuViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         isSaving = false,
-                        saveSuccess = "Menu item created successfully",
+                        saveSuccess = MSG_ITEM_CREATED,
                     ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
                     _state.update { it.copy(
                         isSaving = false,
-                        error = "Failed to create menu item",
+                        error = ERR_CREATE_ITEM,
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
                     isSaving = false,
-                    error = "Connection error: ${e.localizedMessage}",
+                    error = "$ERR_CONNECTION: ${e.localizedMessage}",
                 ) }
             }
         }
@@ -194,20 +213,20 @@ class MenuViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         isSaving = false,
-                        saveSuccess = "Menu item updated successfully",
+                        saveSuccess = MSG_ITEM_UPDATED,
                     ) }
                     loadMenuItems(_state.value.selectedCategory)
                 } else {
                     _state.update { it.copy(
                         isSaving = false,
-                        error = "Failed to update menu item",
+                        error = ERR_UPDATE_ITEM,
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
                     isSaving = false,
-                    error = "Connection error: ${e.localizedMessage}",
+                    error = "$ERR_CONNECTION: ${e.localizedMessage}",
                 ) }
             }
         }
@@ -227,14 +246,14 @@ class MenuViewModel @Inject constructor(
                 } else {
                     _state.update { it.copy(
                         isLoading = false,
-                        error = "Failed to delete item",
+                        error = ERR_DELETE_ITEM,
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
                     isLoading = false,
-                    error = "Failed to delete item",
+                    error = ERR_DELETE_ITEM,
                 ) }
             }
         }
@@ -269,7 +288,7 @@ class MenuViewModel @Inject constructor(
                             if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
                         },
                         pendingItemIds = it.pendingItemIds - item.id,
-                        error = "Failed to update availability",
+                        error = ERR_TOGGLE_AVAILABILITY,
                     ) }
                 }
             } catch (e: Exception) {
@@ -279,7 +298,7 @@ class MenuViewModel @Inject constructor(
                         if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
                     },
                     pendingItemIds = it.pendingItemIds - item.id,
-                    error = "Failed to update availability",
+                    error = ERR_TOGGLE_AVAILABILITY,
                 ) }
             }
         }
@@ -288,8 +307,15 @@ class MenuViewModel @Inject constructor(
     suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
         return try {
             val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
-            if (response.isSuccessful) response.body() else null
-        } catch (_: Exception) {
+            if (response.isSuccessful) {
+                response.body()
+            } else {
+                _state.update { it.copy(error = "$ERR_CONNECTION: presign failed (${response.code()})") }
+                null
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            _state.update { it.copy(error = "$ERR_CONNECTION: ${e.localizedMessage}") }
             null
         }
     }
@@ -301,13 +327,13 @@ class MenuViewModel @Inject constructor(
                 val response = apiService.createModifierGroup(itemId, request)
                 if (response.isSuccessful) {
                     loadMenuItem(itemId)
-                    _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group added") }
+                    _state.update { it.copy(isSaving = false, saveSuccess = MSG_MODIFIER_ADDED) }
                 } else {
-                    _state.update { it.copy(isSaving = false, error = "Failed to add modifier group") }
+                    _state.update { it.copy(isSaving = false, error = ERR_ADD_MODIFIER) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _state.update { it.copy(isSaving = false, error = "Connection error") }
+                _state.update { it.copy(isSaving = false, error = "$ERR_CONNECTION: ${e.localizedMessage}") }
             }
         }
     }
@@ -319,13 +345,13 @@ class MenuViewModel @Inject constructor(
                 val response = apiService.updateModifierGroup(groupId, request)
                 if (response.isSuccessful) {
                     loadMenuItem(itemId)
-                    _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group updated") }
+                    _state.update { it.copy(isSaving = false, saveSuccess = MSG_MODIFIER_UPDATED) }
                 } else {
-                    _state.update { it.copy(isSaving = false, error = "Failed to update modifier group") }
+                    _state.update { it.copy(isSaving = false, error = ERR_UPDATE_MODIFIER) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _state.update { it.copy(isSaving = false, error = "Connection error") }
+                _state.update { it.copy(isSaving = false, error = "$ERR_CONNECTION: ${e.localizedMessage}") }
             }
         }
     }
@@ -337,13 +363,13 @@ class MenuViewModel @Inject constructor(
                 val response = apiService.deleteModifierGroup(groupId)
                 if (response.isSuccessful) {
                     loadMenuItem(itemId)
-                    _state.update { it.copy(isSaving = false, saveSuccess = "Modifier group deleted") }
+                    _state.update { it.copy(isSaving = false, saveSuccess = MSG_MODIFIER_DELETED) }
                 } else {
-                    _state.update { it.copy(isSaving = false, error = "Failed to delete modifier group") }
+                    _state.update { it.copy(isSaving = false, error = ERR_DELETE_MODIFIER) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _state.update { it.copy(isSaving = false, error = "Connection error") }
+                _state.update { it.copy(isSaving = false, error = "$ERR_CONNECTION: ${e.localizedMessage}") }
             }
         }
     }

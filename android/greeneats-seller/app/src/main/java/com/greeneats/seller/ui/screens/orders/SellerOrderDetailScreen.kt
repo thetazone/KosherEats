@@ -35,14 +35,26 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -73,6 +85,45 @@ fun SellerOrderDetailScreen(
     val state by viewModel.state.collectAsState()
     val order = state.selectedOrder
     val context = LocalContext.current
+    var pendingAction by remember { mutableStateOf<Pair<OrderStatus, () -> Unit>?>(null) }
+
+    // Confirmation dialog for cancel/reject actions
+    pendingAction?.let { (targetStatus, action) ->
+        val title = when (targetStatus) {
+            OrderStatus.CANCELLED -> "Cancel Order"
+            else -> "Confirm Status Change"
+        }
+        val message = when (targetStatus) {
+            OrderStatus.CANCELLED -> "Are you sure you want to cancel this order? This cannot be undone."
+            OrderStatus.ACCEPTED -> "Accept this order? The customer will be notified."
+            OrderStatus.PREPARING -> "Start preparing this order?"
+            OrderStatus.READY -> "Mark this order as ready for pickup?"
+            OrderStatus.COMPLETED -> "Mark this order as completed?"
+            else -> "Change order status to ${targetStatus.displayName}?"
+        }
+        AlertDialog(
+            onDismissRequest = { pendingAction = null },
+            title = { Text(title, color = TextWhite) },
+            text = { Text(message, color = TextMuted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    action()
+                    pendingAction = null
+                }) {
+                    Text(
+                        if (targetStatus == OrderStatus.CANCELLED) "Cancel Order" else "Confirm",
+                        color = if (targetStatus == OrderStatus.CANCELLED) ErrorRed else Orange,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingAction = null }) {
+                    Text("Go Back", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
+    }
 
     LaunchedEffect(orderId) {
         viewModel.loadOrderDetail(orderId)
@@ -96,6 +147,15 @@ fun SellerOrderDetailScreen(
                     text = if (order != null) "Order #${order.id.take(8)}" else "Order Detail",
                     style = MaterialTheme.typography.titleLarge,
                     color = TextWhite,
+                    modifier = if (order != null) {
+                        Modifier.clickable {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Order ID", order.id))
+                            Toast.makeText(context, "Order ID copied", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Modifier
+                    },
                 )
             },
             navigationIcon = {
@@ -106,7 +166,7 @@ fun SellerOrderDetailScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (state.isLoading || order == null) {
+        if (state.isDetailLoading || order == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -129,7 +189,11 @@ fun SellerOrderDetailScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics {
+                                    contentDescription = "Order status: ${order.status.displayName}"
+                                },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -184,6 +248,7 @@ fun SellerOrderDetailScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = TextWhite,
+                            modifier = Modifier.semantics { heading() },
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -206,7 +271,7 @@ fun SellerOrderDetailScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = TextWhite,
                                         )
-                                        if (item.specialInstructions.isNotBlank()) {
+                                        if (!item.specialInstructions.isNullOrBlank()) {
                                             Text(
                                                 text = item.specialInstructions,
                                                 style = MaterialTheme.typography.bodySmall,
@@ -268,7 +333,9 @@ fun SellerOrderDetailScreen(
                     status = order.status,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
-                        viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED)
+                        pendingAction = OrderStatus.ACCEPTED to {
+                            viewModel.updateOrderStatus(orderId, OrderStatus.ACCEPTED)
+                        }
                     },
                     onStartPreparing = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.PREPARING)
@@ -280,7 +347,9 @@ fun SellerOrderDetailScreen(
                         viewModel.updateOrderStatus(orderId, OrderStatus.COMPLETED)
                     },
                     onCancel = {
-                        viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
+                        pendingAction = OrderStatus.CANCELLED to {
+                            viewModel.updateOrderStatus(orderId, OrderStatus.CANCELLED)
+                        }
                     },
                 )
             }
@@ -309,6 +378,17 @@ private fun PriceRow(label: String, amount: Int) {
     }
 }
 
+private object OrderDetailStrings {
+    const val ACCEPT_ORDER = "Accept Order"
+    const val REJECT_ORDER = "Reject Order"
+    const val START_PREPARING = "Start Preparing"
+    const val CANCEL_ORDER = "Cancel Order"
+    const val MARK_READY = "Mark as Ready"
+    const val COMPLETE_ORDER = "Complete Order"
+    const val MARK_COMPLETED = "Mark as Completed"
+    const val UPDATING_ORDER = "Updating order status"
+}
+
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
@@ -333,11 +413,16 @@ private fun OrderActionButtons(
                     colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
                 ) {
                     if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(
+                            color = TextWhite, strokeWidth = 2.dp,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = OrderDetailStrings.UPDATING_ORDER },
+                        )
                     } else {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Accept Order", fontWeight = FontWeight.SemiBold)
+                        Text(OrderDetailStrings.ACCEPT_ORDER, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 OutlinedButton(
@@ -352,7 +437,7 @@ private fun OrderActionButtons(
                 ) {
                     Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reject Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                    Text(OrderDetailStrings.REJECT_ORDER, fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.ACCEPTED -> {
@@ -364,11 +449,16 @@ private fun OrderActionButtons(
                     colors = ButtonDefaults.buttonColors(containerColor = StatusPreparing),
                 ) {
                     if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(
+                            color = TextWhite, strokeWidth = 2.dp,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = OrderDetailStrings.UPDATING_ORDER },
+                        )
                     } else {
                         Icon(Icons.Filled.Restaurant, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Start Preparing", fontWeight = FontWeight.SemiBold)
+                        Text(OrderDetailStrings.START_PREPARING, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 OutlinedButton(
@@ -381,7 +471,7 @@ private fun OrderActionButtons(
                 ) {
                     Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
+                    Text(OrderDetailStrings.CANCEL_ORDER, fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.PREPARING -> {
@@ -393,11 +483,16 @@ private fun OrderActionButtons(
                     colors = ButtonDefaults.buttonColors(containerColor = StatusReady),
                 ) {
                     if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(
+                            color = TextWhite, strokeWidth = 2.dp,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = OrderDetailStrings.UPDATING_ORDER },
+                        )
                     } else {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
+                        Text(OrderDetailStrings.MARK_READY, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -410,11 +505,16 @@ private fun OrderActionButtons(
                     colors = ButtonDefaults.buttonColors(containerColor = StatusAccepted),
                 ) {
                     if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(
+                            color = TextWhite, strokeWidth = 2.dp,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = OrderDetailStrings.UPDATING_ORDER },
+                        )
                     } else {
                         Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Complete Order", fontWeight = FontWeight.SemiBold)
+                        Text(OrderDetailStrings.COMPLETE_ORDER, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -427,11 +527,16 @@ private fun OrderActionButtons(
                     colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
                 ) {
                     if (isUpdating) {
-                        CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        CircularProgressIndicator(
+                            color = TextWhite, strokeWidth = 2.dp,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = OrderDetailStrings.UPDATING_ORDER },
+                        )
                     } else {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Mark as Completed", fontWeight = FontWeight.SemiBold)
+                        Text(OrderDetailStrings.MARK_COMPLETED, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

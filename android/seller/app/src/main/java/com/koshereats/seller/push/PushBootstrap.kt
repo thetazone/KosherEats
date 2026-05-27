@@ -58,12 +58,25 @@ object PushBootstrap {
     fun registerCurrentToken(api: ApiService) {
         if (!initialized) return
         scope.launch {
-            try {
-                val token = FirebaseMessaging.getInstance().token.await()
-                api.registerDevice(RegisterDeviceRequest(token = token))
-                Log.i(TAG, "FCM token registered")
+            val token = try {
+                FirebaseMessaging.getInstance().token.await()
             } catch (t: Throwable) {
-                Log.w(TAG, "FCM token registration failed: ${t.message}")
+                Log.w(TAG, "FCM token fetch failed: ${t.message}")
+                return@launch
+            }
+            // Retry once on transient network failure so a flaky network on login doesn't
+            // permanently disable push for this seller until next app restart.
+            var attempt = 0
+            while (attempt < 2) {
+                try {
+                    api.registerDevice(RegisterDeviceRequest(token = token))
+                    Log.i(TAG, "FCM token registered (attempt=${attempt + 1})")
+                    return@launch
+                } catch (t: Throwable) {
+                    Log.w(TAG, "FCM token registration failed (attempt=${attempt + 1}): ${t.message}")
+                    attempt++
+                    if (attempt < 2) kotlinx.coroutines.delay(2_000)
+                }
             }
         }
     }

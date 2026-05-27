@@ -97,11 +97,10 @@ class OrderViewModel: ObservableObject {
             await self?.loadOrder(id: orderID)
             while !Task.isCancelled {
                 guard let self else { break }
-                guard self.pollGeneration == gen else { break }
+                guard !Task.isCancelled, self.pollGeneration == gen else { break }
                 if let order = self.currentOrder, !order.status.isActive { break }
                 try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s
-                guard !Task.isCancelled else { break }
-                guard self.pollGeneration == gen else { break }
+                guard !Task.isCancelled, self.pollGeneration == gen else { break }
                 await self.loadOrder(id: orderID)
             }
         }

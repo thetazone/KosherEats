@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -55,7 +56,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.R
 import com.koshereats.consumer.ui.theme.*
@@ -75,6 +78,7 @@ fun LoginScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     var showCountryPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.sessionState, state.needsPhone) {
@@ -173,7 +177,10 @@ fun LoginScreen(
             }
             OutlinedTextField(
                 value = state.phoneNumber,
-                onValueChange = { viewModel.updatePhoneNumber(it) },
+                onValueChange = {
+                    viewModel.updatePhoneNumber(it)
+                    if (state.error != null) viewModel.clearError()
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -182,7 +189,13 @@ fun LoginScreen(
                 textStyle = MaterialTheme.typography.titleMedium,
                 placeholder = { Text(stringResource(R.string.auth_mobile_number), color = TextMuted) },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (state.phoneNumber.length >= 7 && !state.phoneIsSending) {
+                        focusManager.clearFocus()
+                        viewModel.startPhoneLogin()
+                    }
+                }),
             )
         }
 

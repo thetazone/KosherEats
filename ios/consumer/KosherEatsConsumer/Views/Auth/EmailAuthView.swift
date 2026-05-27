@@ -37,6 +37,7 @@ struct EmailAuthView: View {
                                 .autocorrectionDisabled()
                                 .focused($focusedField, equals: .email)
                                 .keTextField()
+                                .accessibilityLabel("Email address")
                                 .onChange(of: email) { _, _ in
                                     // Any edit invalidates the prior check —
                                     // the user may have corrected a typo and
@@ -54,6 +55,7 @@ struct EmailAuthView: View {
                                     .textInputAutocapitalization(.words)
                                     .focused($focusedField, equals: .first)
                                     .keTextField()
+                                    .accessibilityLabel("First name")
                             }
                             field("Last name") {
                                 TextField("Last name", text: $lastName)
@@ -61,6 +63,7 @@ struct EmailAuthView: View {
                                     .textInputAutocapitalization(.words)
                                     .focused($focusedField, equals: .last)
                                     .keTextField()
+                                    .accessibilityLabel("Last name")
                             }
                         }
 
@@ -72,6 +75,8 @@ struct EmailAuthView: View {
                                     .submitLabel(.go)
                                     .onSubmit { Task { await primary() } }
                                     .keTextField()
+                                    .accessibilityLabel("Password")
+                                    .accessibilityHint(mode == .new ? "Minimum 6 characters" : "")
                             }
                         }
                     }
@@ -98,6 +103,8 @@ struct EmailAuthView: View {
                         .cornerRadius(Theme.cornerRadiusMedium)
                     }
                     .disabled(!canSubmit || isChecking || authVM.isLoading)
+                    .accessibilityLabel(primaryLabel)
+                    .accessibilityHint(isChecking || authVM.isLoading ? "Loading" : "")
 
                     if mode != .initial {
                         Button("Use a different email") { reset() }

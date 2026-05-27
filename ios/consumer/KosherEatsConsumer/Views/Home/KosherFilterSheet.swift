@@ -145,7 +145,7 @@ struct KosherFilterSheet: View {
                 isPresented = false
             } label: {
                 HStack {
-                    Text(previewCount == 0 ? "No matches" : "Show \(previewCount) result\(previewCount == 1 ? "" : "s")")
+                    Text(previewCount == 0 ? String(localized: "No matches") : String(localized: "Show \(previewCount) result\(previewCount == 1 ? "" : "s")"))
                     if draft.activeCount > 0 {
                         Spacer()
                         Text("\(draft.activeCount) filter\(draft.activeCount == 1 ? "" : "s")")
@@ -200,6 +200,8 @@ struct KosherFilterSheet: View {
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(.kePrimary)
+                .accessibilityLabel(title)
+                .accessibilityHint(subtitle)
         }
         .padding()
         .background(Color.keCard)
@@ -219,6 +221,7 @@ private struct CertChip: View {
             HStack(spacing: 8) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundColor(isSelected ? .kePrimary : .keTextMuted)
+                    .accessibilityHidden(true)
                 Text(cert.displayName)
                     .font(.subheadline.bold())
                     .foregroundColor(isSelected ? .keTextPrimary : .keTextSecondary)
@@ -235,5 +238,7 @@ private struct CertChip: View {
                     ),
             )
         }
+        .accessibilityLabel("\(cert.displayName) certification")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

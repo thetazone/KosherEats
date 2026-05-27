@@ -1,0 +1,89 @@
+name: GreenEatsConsumer
+options:
+  bundleIdPrefix: com.greeneats
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "7.0.0"
+  StripePaymentSheet:
+    url: https://github.com/stripe/stripe-ios
+    from: "25.11.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: "4RSM8W4755"
+
+targets:
+  GreenEatsConsumer:
+    type: application
+    platform: iOS
+    sources:
+      - GreenEatsConsumer
+    settings:
+      base:
+        INFOPLIST_FILE: GreenEatsConsumer/Info.plist
+        CODE_SIGN_ENTITLEMENTS: GreenEatsConsumer/GreenEatsConsumer.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.greeneats.consumer
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "GreenEats needs your location to find nearby vegan restaurants"
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
+    dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: StripePaymentSheet
+        product: StripePaymentSheet
+      - package: StripePaymentSheet
+        product: StripeApplePay
+      - sdk: AuthenticationServices.framework
+      - sdk: PassKit.framework
+      - target: DeliveryActivity
+
+  DeliveryActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - DeliveryActivity
+      - path: GreenEatsConsumer/Models/DeliveryAttributes.swift
+    info:
+      path: DeliveryActivity/Info.plist
+      properties:
+        CFBundleDisplayName: DeliveryActivity
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.greeneats.consumer.DeliveryActivity
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+
+schemes:
+  GreenEatsConsumer:
+    build:
+      targets:
+        GreenEatsConsumer: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

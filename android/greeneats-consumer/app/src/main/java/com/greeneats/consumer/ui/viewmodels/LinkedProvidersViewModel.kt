@@ -16,6 +16,7 @@ import javax.inject.Inject
 data class LinkedProvidersUiState(
     val providers: List<LinkedProvider> = emptyList(),
     val isLoading: Boolean = true,
+    val isUnlinking: Boolean = false,
     val error: String? = null,
 )
 
@@ -23,6 +24,13 @@ data class LinkedProvidersUiState(
 class LinkedProvidersViewModel @Inject constructor(
     private val api: ApiService,
 ) : ViewModel() {
+
+    companion object {
+        const val ERROR_LOAD_PROVIDERS = "Couldn't load"
+        const val ERROR_LINK_PROVIDER = "Couldn't link"
+        const val ERROR_UNLINK_PROVIDER = "Couldn't unlink"
+        const val ERROR_NETWORK = "Network error"
+    }
 
     private val _uiState = MutableStateFlow(LinkedProvidersUiState())
     val uiState: StateFlow<LinkedProvidersUiState> = _uiState.asStateFlow()
@@ -39,10 +47,10 @@ class LinkedProvidersViewModel @Inject constructor(
                         it.copy(providers = resp.body().orEmpty(), isLoading = false)
                     }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load (${resp.code()})") }
+                    _uiState.update { it.copy(isLoading = false, error = "$ERROR_LOAD_PROVIDERS (${resp.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERROR_NETWORK) }
             }
         }
     }
@@ -52,21 +60,26 @@ class LinkedProvidersViewModel @Inject constructor(
             try {
                 val resp = api.linkProvider(LinkProviderRequest(provider = provider, token = token, nonce = nonce))
                 if (resp.isSuccessful) load()
-                else _uiState.update { it.copy(error = "Couldn't link $provider (${resp.code()})") }
+                else _uiState.update { it.copy(error = "$ERROR_LINK_PROVIDER $provider (${resp.code()})") }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(error = e.localizedMessage ?: ERROR_NETWORK) }
             }
         }
     }
 
     fun unlinkProvider(provider: String) {
         viewModelScope.launch {
+            _uiState.update { it.copy(isUnlinking = true, error = null) }
             try {
                 val resp = api.unlinkProvider(provider)
-                if (resp.isSuccessful) load()
-                else _uiState.update { it.copy(error = "Couldn't unlink (${resp.code()})") }
+                if (resp.isSuccessful) {
+                    _uiState.update { it.copy(isUnlinking = false) }
+                    load()
+                } else {
+                    _uiState.update { it.copy(isUnlinking = false, error = "$ERROR_UNLINK_PROVIDER (${resp.code()})") }
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isUnlinking = false, error = e.localizedMessage ?: ERROR_NETWORK) }
             }
         }
     }

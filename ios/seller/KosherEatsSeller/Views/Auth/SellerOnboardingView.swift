@@ -28,12 +28,14 @@ struct SellerOnboardingView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.kePrimary)
                 }
+                .accessibilityHidden(true)
 
                 VStack(spacing: 10) {
                     Text("This account isn't a seller")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.keTextPrimary)
                         .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
 
                     Text("Sign out and sign back in to create a seller account on this number, or use a different account.")
                         .font(.body)
@@ -53,6 +55,7 @@ struct SellerOnboardingView: View {
                         .cornerRadius(12)
                 }
                 .padding(.horizontal, 24)
+                .accessibilityHint("Signs out so you can create a seller account")
 
                 Spacer()
             }

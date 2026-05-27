@@ -2,6 +2,9 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
+private let deliveryStepCount = 5
+private let deliveryMaxStepIndex = 4
+
 struct DeliveryActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: DeliveryAttributes.self) { context in
@@ -129,7 +132,7 @@ struct DeliveryActivityWidget: Widget {
     private func progressDots(for status: String) -> some View {
         let step = stepIndex(for: status)
         return HStack(spacing: 4) {
-            ForEach(0..<5, id: \.self) { i in
+            ForEach(0..<deliveryStepCount, id: \.self) { i in
                 Circle()
                     .fill(i <= step ? Color.orange : Color.gray.opacity(0.4))
                     .frame(width: 8, height: 8)
@@ -139,7 +142,7 @@ struct DeliveryActivityWidget: Widget {
 
     private func progressBar(for status: String) -> some View {
         let step = stepIndex(for: status)
-        let progress = Double(step) / 4.0
+        let progress = min(max(Double(step) / Double(deliveryMaxStepIndex), 0), 1)
         return GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3)
