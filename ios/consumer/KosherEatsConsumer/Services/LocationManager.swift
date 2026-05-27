@@ -36,7 +36,6 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             // CLLocationManager doesn't expose an "isUpdating" flag, so we
             // track it ourselves. If nobody called startUpdatingLocation we
             // don't need to stop anything.
-            self.wasUpdatingBeforeBackground = true
             self.manager.stopUpdatingLocation()
         }
         foregroundObserver = NotificationCenter.default.addObserver(
@@ -72,11 +71,13 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func startUpdatingLocation() {
         let status = manager.authorizationStatus
         if status == .authorizedWhenInUse || status == .authorizedAlways {
+            wasUpdatingBeforeBackground = true
             manager.startUpdatingLocation()
         }
     }
 
     func stopUpdatingLocation() {
+        wasUpdatingBeforeBackground = false
         manager.stopUpdatingLocation()
     }
 

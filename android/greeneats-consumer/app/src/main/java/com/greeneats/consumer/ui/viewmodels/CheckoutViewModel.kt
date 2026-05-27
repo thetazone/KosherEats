@@ -41,7 +41,7 @@ sealed interface TipChoice {
     fun label(subtotalCents: Int): String = when (this) {
         None -> "None"
         is Percent -> {
-            val cents = (subtotalCents * basisPoints) / 10_000
+            val cents = (subtotalCents.toLong() * basisPoints / 10_000).toInt()
             "${basisPoints / 100}%\n${cents.formatPrice()}"
         }
         Custom -> "Custom"
@@ -273,7 +273,7 @@ class CheckoutViewModel @Inject constructor(
         val subtotal = state.bundle?.subtotal ?: 0
         return when (val choice = state.tipChoice) {
             TipChoice.None -> 0
-            is TipChoice.Percent -> (subtotal * choice.basisPoints) / 10_000
+            is TipChoice.Percent -> (subtotal.toLong() * choice.basisPoints / 10_000).toInt()
             TipChoice.Custom -> {
                 val dollars = (state.customTipText.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
                 (dollars * 100).toInt().coerceAtMost(MAX_TIP_CENTS)

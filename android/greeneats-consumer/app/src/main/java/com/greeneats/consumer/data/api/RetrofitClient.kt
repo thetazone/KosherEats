@@ -214,6 +214,8 @@ private class TokenAuthenticator(
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
     override fun authenticate(route: Route?, response: okhttp3.Response): okhttp3.Request? {

@@ -24,17 +24,33 @@ enum APIError: LocalizedError {
 class APIService: ObservableObject {
     static let shared = APIService()
 
-    nonisolated(unsafe) private static let iso8601Fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+    private final class LockedFormatter: @unchecked Sendable {
+        private let lock = NSLock()
+        private let formatter: ISO8601DateFormatter
+        init(_ formatter: ISO8601DateFormatter) { self.formatter = formatter }
+        func date(from string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.date(from: string)
+        }
+        func string(from date: Date) -> String {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.string(from: date)
+        }
+    }
 
-    nonisolated(unsafe) private static let iso8601Plain: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
+    private static let iso8601Fractional = LockedFormatter({
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }())
+
+    private static let iso8601Plain = LockedFormatter({
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }())
 
     // Pointing DEBUG at prod Fly temporarily so the simulator builds round-trip
     // through the same backend the seller/courier apps use (and the same Stripe

@@ -99,7 +99,7 @@ enum OrderStatus: String, Codable {
 
     var isActive: Bool {
         switch self {
-        case .scheduled, .pending, .accepted, .preparing, .ready, .pickedUp, .unknown:
+        case .scheduled, .pending, .accepted, .preparing, .ready, .pickedUp:
             return true
         default:
             return false

@@ -165,7 +165,9 @@ class AuthViewModel: ObservableObject {
         do {
             try await APIService.shared.startPhoneLogin(phone: phone)
         } catch {
-            errorMessage = error.localizedDescription
+            #if DEBUG
+            print("[AuthVM] silentResendOTP failed: \(error.localizedDescription)")
+            #endif
         }
     }
 

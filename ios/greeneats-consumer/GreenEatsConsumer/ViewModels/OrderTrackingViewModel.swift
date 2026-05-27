@@ -85,6 +85,10 @@ final class OrderTrackingViewModel: ObservableObject {
         pollTask = nil
         locationStreamTask?.cancel()
         locationStreamTask = nil
+        if let pushObserver {
+            NotificationCenter.default.removeObserver(pushObserver)
+            self.pushObserver = nil
+        }
     }
 
     func markCourierRatingSubmitted(stars: Int) {

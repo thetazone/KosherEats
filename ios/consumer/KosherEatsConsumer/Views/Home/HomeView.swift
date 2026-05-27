@@ -3,14 +3,16 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var vm: RestaurantStore
     @EnvironmentObject var cartVM: CartViewModel
+    @EnvironmentObject var router: AppRouter
     @State private var showKosherFilter = false
     @State private var searchText = ""
     @State private var selectedCuisine: String?
     @State private var kosherFilters = KosherFilters()
     @State private var isFilterTransitioning = false
+    @State private var deepLinkPath: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $deepLinkPath) {
             ZStack {
                 Color.keBackground.ignoresSafeArea()
 
@@ -51,6 +53,15 @@ struct HomeView: View {
                 .safeAreaPadding(.top, Theme.spacingSM)
             }
             .navigationBarHidden(true)
+            .navigationDestination(for: String.self) { id in
+                RestaurantDetailView(restaurantID: id)
+            }
+            .onChange(of: router.pendingRestaurantId) { _, id in
+                if let id {
+                    deepLinkPath = [id]
+                    router.pendingRestaurantId = nil
+                }
+            }
             .task {
                 await vm.ensureRestaurantsLoaded()
                 await cartVM.loadCart()

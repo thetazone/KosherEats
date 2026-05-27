@@ -51,7 +51,7 @@ enum class OrderStatus(val displayName: String) {
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, CANCELLED, COMPLETED, REJECTED -> false
+            DELIVERED, CANCELLED, COMPLETED, REJECTED, UNKNOWN -> false
             else -> true
         }
 }

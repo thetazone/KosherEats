@@ -324,6 +324,12 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
     func placeOrder(address: Address?, bundle: APIService.PaymentSheetBundle) async -> Order? {
         guard !isProcessing else { return nil }
+
+        if let scheduled = scheduledFor, scheduled < Date() {
+            errorMessage = "Your scheduled time has passed. Please select a new time."
+            return nil
+        }
+
         isProcessing = true
         defer { isProcessing = false }
 

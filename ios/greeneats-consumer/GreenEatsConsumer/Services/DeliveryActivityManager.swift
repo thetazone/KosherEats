@@ -57,6 +57,7 @@ final class DeliveryActivityManager {
 
     func endTracking(order: Order) {
         guard let activity = currentActivity else { return }
+        currentActivity = nil
 
         let finalState = DeliveryAttributes.ContentState(
             status: order.status.rawValue,
@@ -68,7 +69,6 @@ final class DeliveryActivityManager {
 
         Task {
             await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .after(.now + 300))
-            currentActivity = nil
         }
     }
 

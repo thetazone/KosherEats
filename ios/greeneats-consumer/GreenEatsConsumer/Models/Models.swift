@@ -55,6 +55,13 @@ enum OrderStatus: String, Codable {
     case completed
     case cancelled
     case rejected
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = OrderStatus(rawValue: raw) ?? .unknown
+    }
 
     var displayName: String {
         switch self {
@@ -68,6 +75,7 @@ enum OrderStatus: String, Codable {
         case .completed: return "Completed"
         case .cancelled: return "Cancelled"
         case .rejected: return "Rejected"
+        case .unknown: return "Processing"
         }
     }
 
@@ -82,6 +90,7 @@ enum OrderStatus: String, Codable {
         case .delivered, .completed: return "house.fill"
         case .cancelled: return "xmark.circle.fill"
         case .rejected: return "exclamationmark.circle.fill"
+        case .unknown: return "questionmark.circle"
         }
     }
 
@@ -104,6 +113,7 @@ enum OrderStatus: String, Codable {
         case .pickedUp: return 4
         case .delivered, .completed: return 5
         case .cancelled, .rejected: return -1
+        case .unknown: return 0
         }
     }
 }

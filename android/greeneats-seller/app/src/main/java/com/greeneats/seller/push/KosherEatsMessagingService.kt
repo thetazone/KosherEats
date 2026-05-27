@@ -80,7 +80,7 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
                 if (!orderId.isNullOrBlank()) putExtra("order_id", orderId)
             }
             val pi = PendingIntent.getActivity(
-                context, 0, intent,
+                context, notifId.incrementAndGet(), intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 

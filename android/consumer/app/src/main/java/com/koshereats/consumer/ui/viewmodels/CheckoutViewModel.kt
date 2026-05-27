@@ -21,6 +21,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -181,23 +184,27 @@ class CheckoutViewModel @Inject constructor(
         if (localCart.isEmpty()) return
         try {
             api.clearServerCart()
-            for (item in localCart) {
-                val modifierIds = item.selectedCustomizations
-                    .flatMap { it.selectedOptions }
-                    .map { it.id }
-                    .filter { it.isNotEmpty() }
-                val resp = api.addToCart(
-                    AddToCartRequest(
-                        menuItemId = item.menuItem.id,
-                        restaurantId = restaurantId,
-                        quantity = item.quantity,
-                        notes = item.specialInstructions.orEmpty(),
-                        modifierIds = modifierIds,
-                    ),
-                )
-                if (!resp.isSuccessful) {
-                    throw Exception("Failed to add item to cart: ${resp.code()} ${resp.message()}")
-                }
+            coroutineScope {
+                localCart.map { item ->
+                    async {
+                        val modifierIds = item.selectedCustomizations
+                            .flatMap { it.selectedOptions }
+                            .map { it.id }
+                            .filter { it.isNotEmpty() }
+                        val resp = api.addToCart(
+                            AddToCartRequest(
+                                menuItemId = item.menuItem.id,
+                                restaurantId = restaurantId,
+                                quantity = item.quantity,
+                                notes = item.specialInstructions.orEmpty(),
+                                modifierIds = modifierIds,
+                            ),
+                        )
+                        if (!resp.isSuccessful) {
+                            throw Exception("Failed to add item to cart: ${resp.code()} ${resp.message()}")
+                        }
+                    }
+                }.awaitAll()
             }
         } catch (e: Exception) {
             // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
@@ -257,7 +264,7 @@ class CheckoutViewModel @Inject constructor(
         // Local guard: a blank street/city/state/zip combo would fail server-side with a
         // generic 422; surface the issue immediately instead of doing a round-trip.
         if (address.streetAddress.isBlank() || address.city.isBlank() ||
-            address.state.length != 2 || address.zipCode.length != 5) {
+            address.state.length != 2 || address.zipCode.length !in 5..10) {
             _uiState.update { it.copy(errorMessage = "Please complete all address fields") }
             return
         }
@@ -315,11 +322,11 @@ class CheckoutViewModel @Inject constructor(
     }
 
     fun updateScheduledFor(value: LocalDateTime?) {
-        // Guard against schedule-for-past values that would silently land on the server.
-        // Require at least 5 minutes from now so the user doesn't pick "in 30 seconds"
-        // and have the backend reject it as too-near.
-        val sanitized = value?.takeIf { it.isAfter(LocalDateTime.now().plusMinutes(5)) }
-        _uiState.update { it.copy(scheduledFor = sanitized) }
+        if (value != null && !value.isAfter(LocalDateTime.now().plusMinutes(5))) {
+            _uiState.update { it.copy(errorMessage = "Please select a time at least 5 minutes from now") }
+            return
+        }
+        _uiState.update { it.copy(scheduledFor = value, errorMessage = null) }
     }
 
     private fun currentTipCents(): Int {
