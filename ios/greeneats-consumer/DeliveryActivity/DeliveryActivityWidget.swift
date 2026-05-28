@@ -22,14 +22,16 @@ struct DeliveryActivityWidget: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(context.state.eta, style: .timer)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.orange)
-                            .monospacedDigit()
-                        Text("ETA")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                    if let eta = context.state.eta {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(eta, style: .timer)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.orange)
+                                .monospacedDigit()
+                            Text("ETA")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
 
@@ -56,10 +58,12 @@ struct DeliveryActivityWidget: Widget {
                 Image(systemName: "fork.knife")
                     .foregroundColor(.orange)
             } compactTrailing: {
-                Text(context.state.eta, style: .timer)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.orange)
-                    .monospacedDigit()
+                if let eta = context.state.eta {
+                    Text(eta, style: .timer)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.orange)
+                        .monospacedDigit()
+                }
             } minimal: {
                 Image(systemName: "fork.knife")
                     .foregroundColor(.orange)
@@ -82,14 +86,16 @@ struct DeliveryActivityWidget: Widget {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(context.state.eta, style: .timer)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.orange)
-                        .monospacedDigit()
-                    Text("ETA")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                if let eta = context.state.eta {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(eta, style: .timer)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.orange)
+                            .monospacedDigit()
+                        Text("ETA")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
 
