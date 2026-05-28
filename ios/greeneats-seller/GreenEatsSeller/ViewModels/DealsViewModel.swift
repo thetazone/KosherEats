@@ -24,7 +24,9 @@ class DealsViewModel: ObservableObject {
         do {
             let categories = try await APIService.shared.getMenu()
             menuItems = categories.flatMap { $0.items ?? [] }
-        } catch {}
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func createDeal(_ request: CreateDealRequest) async {

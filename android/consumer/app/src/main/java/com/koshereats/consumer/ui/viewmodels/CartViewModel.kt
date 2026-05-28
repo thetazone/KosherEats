@@ -253,7 +253,15 @@ class CartViewModel @Inject constructor(
     fun clearCartForRestaurant(restaurantId: String) {
         _uiState.update { state ->
             val newActiveId = state.activeRestaurantId?.takeIf { it != restaurantId }
-            state.copy(carts = state.carts - restaurantId, activeRestaurantId = newActiveId)
+            // Reset tip and scheduled time when the active cart is removed so stale
+            // checkout context from this restaurant doesn't bleed into the next one.
+            val resetCheckout = state.activeRestaurantId == restaurantId
+            state.copy(
+                carts = state.carts - restaurantId,
+                activeRestaurantId = newActiveId,
+                tip = if (resetCheckout) 0 else state.tip,
+                scheduledFor = if (resetCheckout) null else state.scheduledFor,
+            )
         }
         persistSnapshot()
     }

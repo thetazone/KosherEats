@@ -151,6 +151,7 @@ class APIService: ObservableObject {
 
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = 15
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         if authenticated, let token = token {

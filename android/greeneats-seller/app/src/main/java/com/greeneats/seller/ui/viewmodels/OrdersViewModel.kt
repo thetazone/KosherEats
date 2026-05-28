@@ -90,10 +90,9 @@ class OrdersViewModel @Inject constructor(
                         isLoading = false,
                     ) }
                 } else {
-                    val errorBody = response.errorBody()?.string()?.take(500)
                     _state.update { it.copy(
                         isLoading = false,
-                        error = errorBody ?: "Failed to load orders (HTTP ${response.code()})",
+                        error = "Failed to load orders. Please try again.",
                     ) }
                 }
             } catch (e: Exception) {
@@ -117,10 +116,9 @@ class OrdersViewModel @Inject constructor(
                         isDetailLoading = false,
                     ) }
                 } else {
-                    val errorBody = response.errorBody()?.string()?.take(500)
                     _state.update { it.copy(
                         isDetailLoading = false,
-                        error = errorBody ?: "Failed to load order details (HTTP ${response.code()})",
+                        error = "Failed to load order details. Please try again.",
                     ) }
                 }
             } catch (e: Exception) {
@@ -196,11 +194,10 @@ class OrdersViewModel @Inject constructor(
                         updateSuccess = "Order updated to ${newStatus.name.lowercase().replace('_', ' ')}",
                     ) }
                 } else {
-                    val errorBody = response.errorBody()?.string()?.take(500)
                     _state.update { it.copy(
                         selectedOrder = if (it.selectedOrder == snapshotOrder) snapshotOrder else it.selectedOrder,
                         pendingOrderIds = it.pendingOrderIds - orderId,
-                        error = errorBody ?: "Failed to update order status (HTTP ${response.code()})",
+                        error = "Failed to update order status. Please try again.",
                     ) }
                 }
             } catch (e: Exception) {
@@ -212,6 +209,10 @@ class OrdersViewModel @Inject constructor(
                 ) }
             }
         }
+    }
+
+    fun clearSelectedOrder() {
+        _state.update { it.copy(selectedOrder = null) }
     }
 
     fun clearMessages() {

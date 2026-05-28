@@ -284,7 +284,7 @@ fun MenuItemSheet(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = specialInstructions,
-                onValueChange = { specialInstructions = it },
+                onValueChange = { specialInstructions = it.take(500) },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("e.g. extra napkins, allergies...", color = TextMuted) },
                 shape = RoundedCornerShape(12.dp),

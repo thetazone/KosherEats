@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import android.util.Log
@@ -60,6 +61,7 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load addresses") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage) }
             }
         }
@@ -87,6 +89,7 @@ class AddressViewModel @Inject constructor(
                     dataStore.edit { it[SELECTED_ADDRESS_ID] = saved.id }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Failed to add address", e)
                 _uiState.update { it.copy(error = "Couldn't add address") }
             }
@@ -109,6 +112,7 @@ class AddressViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Failed to delete address", e)
                 _uiState.update { it.copy(error = "Couldn't delete address") }
             }
@@ -126,6 +130,7 @@ class AddressViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Failed to set default address", e)
                 _uiState.update { it.copy(error = "Couldn't set default address") }
             }
@@ -145,6 +150,7 @@ class AddressViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Failed to clear default address", e)
                 _uiState.update { it.copy(error = "Couldn't update address") }
             }

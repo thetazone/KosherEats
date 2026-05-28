@@ -187,7 +187,9 @@ struct DashboardView: View {
                 emptyActiveOrders
             } else {
                 ForEach(vm.activeOrders) { order in
-                    NavigationLink(destination: SellerOrderDetailView(vm: vm.sharedOrdersVM, order: order)) {
+                    NavigationLink(destination: SellerOrderDetailView(vm: vm.sharedOrdersVM, order: order)
+                        .onDisappear { Task { await vm.load() } }
+                    ) {
                         ActiveOrderCard(order: order)
                     }
                     .buttonStyle(.plain)

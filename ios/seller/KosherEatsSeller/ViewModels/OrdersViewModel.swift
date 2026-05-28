@@ -175,7 +175,9 @@ class OrdersViewModel: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.knownPendingIDs = []
+                    self.inFlightOrderIDs = []
                     self.pollHealthError = nil
+                    await self.load()
                 }
             }
     }

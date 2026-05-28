@@ -12,7 +12,7 @@ struct DeliveryAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var status: String           // "pending", "accepted", "preparing", "ready", "picked_up", "delivered"
         var statusText: String       // "Your food is being prepared"
-        var eta: Date
+        var eta: Date?
         var courierName: String?
         var courierPhone: String?    // used to surface a call-courier action on the Lock Screen
         var courierVehicle: String?  // "Silver Toyota Camry"

@@ -100,12 +100,6 @@ struct SellerOrdersView: View {
             .task(id: selectedRestaurant.id) {
                 await vm.loadAndAutoRefresh()
             }
-            .onReceive(PushNotifications.shared.$shouldRefreshOrders) { should in
-                if should {
-                    Task { await vm.load() }
-                    PushNotifications.shared.shouldRefreshOrders = false
-                }
-            }
         }
     }
 
@@ -266,13 +260,7 @@ struct OrderRowView: View {
     }
 
     private var statusColor: Color {
-        switch order.status.color {
-        case "primary": return .kePrimary
-        case "success": return .keSuccess
-        case "warning": return .keWarning
-        case "error": return .keError
-        default: return .keTextSecondary
-        }
+        order.status.resolvedColor
     }
 
     /// For orders still in the kitchen's lane (pending → ready), show a

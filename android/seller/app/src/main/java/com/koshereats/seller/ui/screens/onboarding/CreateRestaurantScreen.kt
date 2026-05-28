@@ -47,7 +47,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -90,7 +90,7 @@ fun CreateRestaurantScreen(
     onCreated: () -> Unit,
     viewModel: CreateRestaurantViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -596,6 +596,12 @@ private fun SectionCard(content: @Composable () -> Unit) {
     }
 }
 
+private val certUploadClient = OkHttpClient.Builder()
+    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+    .build()
+
 private suspend fun uploadCertificate(
     context: android.content.Context,
     uri: Uri,
@@ -609,7 +615,7 @@ private suspend fun uploadCertificate(
         val contentLength = context.contentResolver.openFileDescriptor(uri, "r")
             ?.use { it.statSize } ?: -1L
 
-        val client = OkHttpClient()
+        val client = certUploadClient
         val requestBody = object : RequestBody() {
             override fun contentType() = contentType.toMediaType()
             override fun contentLength() = contentLength

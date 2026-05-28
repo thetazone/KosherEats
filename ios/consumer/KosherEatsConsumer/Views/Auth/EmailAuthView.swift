@@ -76,7 +76,7 @@ struct EmailAuthView: View {
                                     .onSubmit { Task { await primary() } }
                                     .keTextField()
                                     .accessibilityLabel("Password")
-                                    .accessibilityHint(mode == .new ? "Minimum 6 characters" : "")
+                                    .accessibilityHint(mode == .new ? "Minimum 8 characters" : "")
                             }
                         }
                     }
@@ -176,7 +176,7 @@ struct EmailAuthView: View {
         case .existing:
             return !password.isEmpty
         case .new:
-            return !password.isEmpty && password.count >= 6
+            return !password.isEmpty && password.count >= 8
                 && !firstName.trimmingCharacters(in: .whitespaces).isEmpty
                 && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
         }

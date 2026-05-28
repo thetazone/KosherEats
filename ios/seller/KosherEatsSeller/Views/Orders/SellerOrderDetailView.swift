@@ -297,14 +297,16 @@ struct SellerOrderDetailView: View {
                     }
                 }
                 Spacer()
-                if let phone, !phone.isEmpty,
-                   let url = URL(string: "tel:\(phone)") {
-                    Link(destination: url) {
-                        Image(systemName: "phone.fill")
-                            .foregroundColor(.kePrimary)
-                            .padding(10)
-                            .background(Color.keBorder)
-                            .clipShape(Circle())
+                if let phone, !phone.isEmpty {
+                    let cleaned = phone.filter { $0.isNumber || $0 == "+" }
+                    if let url = URL(string: "tel:\(cleaned)") {
+                        Link(destination: url) {
+                            Image(systemName: "phone.fill")
+                                .foregroundColor(.kePrimary)
+                                .padding(10)
+                                .background(Color.keBorder)
+                                .clipShape(Circle())
+                        }
                     }
                 }
             }
@@ -362,9 +364,6 @@ struct SellerOrderDetailView: View {
                         vm.errorMessage = nil
                         await vm.acceptOrder(id: order.id)
                         await syncOrderFromVM()
-                        if vm.errorMessage == nil {
-                            Haptics.success()
-                        }
                         isActing = false
                     }
                 }
@@ -384,9 +383,6 @@ struct SellerOrderDetailView: View {
                     vm.errorMessage = nil
                     await vm.markPreparing(id: order.id)
                     await syncOrderFromVM()
-                    if vm.errorMessage == nil {
-                        Haptics.impact(.medium)
-                    }
                     isActing = false
                 }
             }
@@ -400,9 +396,6 @@ struct SellerOrderDetailView: View {
                     vm.errorMessage = nil
                     await vm.markReady(id: order.id)
                     await syncOrderFromVM()
-                    if vm.errorMessage == nil {
-                        Haptics.success()
-                    }
                     isActing = false
                 }
             }
@@ -420,7 +413,7 @@ struct SellerOrderDetailView: View {
                 courierStatusCard(order)
             }
 
-        case .delivered, .cancelled, .rejected, .scheduled:
+        case .delivered, .cancelled, .rejected, .scheduled, .unknown:
             HStack(spacing: 12) {
                 Image(systemName: order.status.icon)
                     .font(.title3)
@@ -471,9 +464,6 @@ struct SellerOrderDetailView: View {
                     vm.errorMessage = nil
                     await vm.markCompleted(id: order.id)
                     await syncOrderFromVM()
-                    if vm.errorMessage == nil {
-                        Haptics.success()
-                    }
                     isActing = false
                 }
             }
@@ -519,7 +509,8 @@ struct SellerOrderDetailView: View {
                             .foregroundColor(.keTextMuted)
                     }
                     Spacer()
-                    if let url = URL(string: "tel:\(courier.phone)") {
+                    let cleanedCourierPhone = courier.phone.filter { $0.isNumber || $0 == "+" }
+                    if let url = URL(string: "tel:\(cleanedCourierPhone)") {
                         Link(destination: url) {
                             Image(systemName: "phone.fill")
                                 .foregroundColor(.kePrimary)
@@ -607,12 +598,6 @@ struct SellerOrderDetailView: View {
     }
 
     private func statusColor(for order: Order) -> Color {
-        switch order.status.color {
-        case "primary": return .kePrimary
-        case "success": return .keSuccess
-        case "warning": return .keWarning
-        case "error": return .keError
-        default: return .keTextSecondary
-        }
+        order.status.resolvedColor
     }
 }

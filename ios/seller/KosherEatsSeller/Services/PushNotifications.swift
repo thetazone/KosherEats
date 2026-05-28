@@ -4,18 +4,16 @@ import UserNotifications
 
 // See ios/courier for the pattern. Only the `app` value differs.
 @MainActor
-final class PushNotifications: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+final class PushNotifications: NSObject, ObservableObject {
     static let shared = PushNotifications()
     private let app = "seller"
-
-    /// Fires when a push arrives and the app should force-refresh orders.
-    @Published var shouldRefreshOrders = false
 
     var pendingToken: Data?
 
     func requestAuthorization() async {
         let center = UNUserNotificationCenter.current()
-        center.delegate = self
+        // AppDelegate is the sole UNUserNotificationCenterDelegate —
+        // it handles PushEvents.postIfOrderEvent() fanout. Don't steal it here.
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             if granted {
@@ -67,22 +65,4 @@ final class PushNotifications: NSObject, ObservableObject, UNUserNotificationCen
         Task { await registerPendingTokenIfPossible() }
     }
 
-    // MARK: - UNUserNotificationCenterDelegate
-
-    /// Show push banners even when the app is in the foreground.
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        Task { @MainActor in shouldRefreshOrders = true }
-        return [.banner, .sound, .badge]
-    }
-
-    /// Handle taps on push notifications.
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        Task { @MainActor in shouldRefreshOrders = true }
-    }
 }

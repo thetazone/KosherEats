@@ -14,12 +14,14 @@ enum class KosherCertification(val displayName: String, val abbreviation: String
     @SerializedName("CHABAD") CHABAD("Chabad", "CH"),
     @SerializedName("LOCAL") LOCAL("Local Rabbinical", "LR"),
     @SerializedName("OTHER") OTHER("Other", "K"),
+    @SerializedName("unknown") UNKNOWN("Unknown", ""),
 }
 
 enum class DietaryType(val displayName: String) {
     @SerializedName(value = "meat", alternate = ["Meat"]) MEAT("Meat"),
     @SerializedName(value = "dairy", alternate = ["Dairy"]) DAIRY("Dairy"),
     @SerializedName(value = "pareve", alternate = ["Pareve"]) PAREVE("Pareve"),
+    @SerializedName("unknown") UNKNOWN("Unknown"),
 }
 
 enum class OrderStatus(val displayName: String) {
@@ -76,6 +78,7 @@ enum class CuisineType(val displayName: String) {
     @SerializedName(value = "comfort", alternate = ["Comfort"]) COMFORT("Comfort"),
     @SerializedName(value = "mediterranean", alternate = ["Mediterranean"]) MEDITERRANEAN("Mediterranean"),
     @SerializedName(value = "other", alternate = ["Other"]) OTHER("Other"),
+    UNKNOWN("Unknown"),
 }
 
 // ── User ──────────────────────────────────────────────────
@@ -313,6 +316,7 @@ private fun computeDiscount(deal: Deal, subtotal: Int, items: List<CartItem>): I
             val totalQty = items.sumOf { it.quantity }
             if (totalQty < 2) 0 else items.minOfOrNull { it.menuItem.price } ?: 0
         }
+        DiscountType.UNKNOWN -> 0
     }
 }
 
@@ -583,6 +587,7 @@ enum class DiscountType(val displayName: String) {
     @SerializedName("percentage") PERCENTAGE("% Off"),
     @SerializedName("fixed") FIXED("Off"),
     @SerializedName("bogo") BOGO("BOGO"),
+    @SerializedName("unknown") UNKNOWN(""),
 }
 
 data class Deal(
@@ -618,5 +623,6 @@ data class Deal(
             DiscountType.PERCENTAGE -> "$discountValue% Off"
             DiscountType.FIXED -> "$${discountValue / 100} Off"
             DiscountType.BOGO -> "BOGO"
+            DiscountType.UNKNOWN -> ""
         }
 }

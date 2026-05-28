@@ -17,6 +17,7 @@ class CartViewModel: ObservableObject {
 
     var discount: Int {
         guard let deal = appliedDeal, let cart = cart, cart.subtotal > 0 else { return 0 }
+        guard deal.restaurantId == cart.restaurantID else { return 0 }
         if let min = deal.minOrderAmount, cart.subtotal < min { return 0 }
         switch deal.discountType {
         case .percentage:
@@ -24,7 +25,7 @@ class CartViewModel: ObservableObject {
         case .fixed:
             return min(deal.discountValue, cart.subtotal)
         case .bogo:
-            guard cart.items.count >= 2 else { return 0 }
+            guard cart.itemCount >= 2 else { return 0 }
             return cart.items.map(\.price).min() ?? 0
         }
     }
@@ -39,6 +40,19 @@ class CartViewModel: ObservableObject {
 
     func removeDeal() {
         appliedDeal = nil
+    }
+
+    // MARK: - Stale cart
+
+    /// Reloads the cart from the server and drops it if the restaurant's menu
+    /// has changed (e.g. items removed or prices updated). Callers should
+    /// invoke this when navigating back to the cart after a period of
+    /// inactivity, or when the menu screen detects a version/etag change.
+    /// For local (guest) carts there is no server-side validation; the only
+    /// remedy is to clear and re-add items.
+    func revalidateCart() async {
+        guard api.isAuthenticated else { return }
+        await loadCart()
     }
 
     // MARK: - Load
@@ -233,6 +247,7 @@ class CartViewModel: ObservableObject {
             }
         } else {
             // Different restaurant or no cart — start fresh
+            appliedDeal = nil
             let newItem = CartItem(
                 id: UUID().uuidString,
                 cartID: "local-cart",

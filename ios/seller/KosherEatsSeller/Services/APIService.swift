@@ -124,7 +124,8 @@ actor APIService {
         _ method: String,
         path: String,
         body: Encodable? = nil,
-        headers: [String: String]? = nil
+        headers: [String: String]? = nil,
+        retried: Bool = false
     ) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -176,10 +177,10 @@ actor APIService {
                 // bare 401 here would otherwise log the seller out whenever
                 // the JWT quietly expired between calls, even though the
                 // refresh token is still valid.
-                if refreshToken != nil {
+                if !retried, refreshToken != nil {
                     let refreshed = await performTokenRefresh()
                     if refreshed {
-                        return try await request(method, path: path, body: body)
+                        return try await request(method, path: path, body: body, retried: true)
                     }
                 }
                 throw APIError.unauthorized
@@ -248,7 +249,8 @@ actor APIService {
     private func requestVoid(
         _ method: String,
         path: String,
-        body: Encodable? = nil
+        body: Encodable? = nil,
+        retried: Bool = false
     ) async throws {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -290,10 +292,10 @@ actor APIService {
             }
 
             if httpResponse.statusCode == 401 {
-                if refreshToken != nil {
+                if !retried, refreshToken != nil {
                     let refreshed = await performTokenRefresh()
                     if refreshed {
-                        try await requestVoid(method, path: path, body: body)
+                        try await requestVoid(method, path: path, body: body, retried: true)
                         return
                     }
                 }
@@ -615,7 +617,10 @@ actor APIService {
 
     func getOrders(status: String? = nil) async throws -> [Order] {
         var path = "/seller/orders"
-        if let s = status { path += "?status=\(s)" }
+        if let s = status,
+           let encoded = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "?status=\(encoded)"
+        }
         return try await request("GET", path: await sellerPath(path))
     }
 

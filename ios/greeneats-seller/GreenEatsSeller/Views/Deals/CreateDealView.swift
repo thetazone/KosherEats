@@ -11,12 +11,20 @@ struct CreateDealView: View {
     @State private var discountType: DiscountType = .percentage
     @State private var discountValue = ""
     @State private var minOrderAmount = ""
-    @State private var expiresAt = Date()
+    @State private var expiresAt = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     @State private var imageUrl = ""
     @State private var isUploading = false
     @State private var localError: String?
+
+    private var canSubmit: Bool {
+        guard !title.isEmpty, title.count <= 100 else { return false }
+        if discountType == .bogo { return expiresAt > Date() }
+        guard let v = Double(discountValue), v > 0 else { return false }
+        if discountType == .percentage, v > 100 { return false }
+        return expiresAt > Date()
+    }
 
     var body: some View {
         NavigationStack {
@@ -45,10 +53,10 @@ struct CreateDealView: View {
 
                             if discountType != .bogo {
                                 formField(
-                                    discountType == .percentage ? "Percentage" : "Amount (cents)",
+                                    discountType == .percentage ? "Percentage" : "Amount ($)",
                                     text: $discountValue,
-                                    placeholder: discountType == .percentage ? "e.g. 20" : "e.g. 500",
-                                    keyboard: .numberPad
+                                    placeholder: discountType == .percentage ? "e.g. 20" : "e.g. 5.00",
+                                    keyboard: discountType == .percentage ? .numberPad : .decimalPad
                                 )
                             }
 
@@ -56,7 +64,7 @@ struct CreateDealView: View {
                         }
 
                         formSection("Expiration") {
-                            DatePicker("Expires", selection: $expiresAt, in: Date()..., displayedComponents: .date)
+                            DatePicker("Expires", selection: $expiresAt, in: Date()..., displayedComponents: [.date, .hourAndMinute])
                                 .foregroundColor(.keTextPrimary)
                                 .tint(.kePrimary)
                         }
@@ -108,7 +116,8 @@ struct CreateDealView: View {
                             .background(Color.kePrimary)
                             .cornerRadius(12)
                         }
-                        .disabled(vm.isCreating || isUploading)
+                        .disabled(!canSubmit || vm.isCreating || isUploading)
+                        .opacity(canSubmit ? 1 : 0.4)
                     }
                     .padding()
                 }
@@ -119,6 +128,9 @@ struct CreateDealView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+            }
+            .onChange(of: title) { _, _ in
+                if title.count > 100 { title = String(title.prefix(100)) }
             }
             .onChange(of: selectedItem) { _, newItem in
                 Task {
@@ -149,12 +161,23 @@ struct CreateDealView: View {
         let value: Int
         if discountType == .bogo {
             value = 0
-        } else {
+        } else if discountType == .percentage {
             guard let v = Int(discountValue), v > 0 else {
                 localError = "Enter a valid discount value"
                 return
             }
+            if v > 100 {
+                localError = "Percentage cannot exceed 100"
+                return
+            }
             value = v
+        } else {
+            // Fixed amount: user enters dollars, convert to cents for the backend
+            guard let dollars = Double(discountValue), dollars > 0 else {
+                localError = "Enter a valid discount value"
+                return
+            }
+            value = Int(round(dollars * 100))
         }
 
         if let selectedImage {

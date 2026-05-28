@@ -28,6 +28,8 @@ data class ChatUiState(
     val scrollToBottom: Boolean = false,
     /** IDs of optimistically-inserted messages that failed to send. */
     val failedMessageIds: Set<String> = emptySet(),
+    /** IDs of messages currently in-flight (send or retry). */
+    val inFlightMessageIds: Set<String> = emptySet(),
     /** True after a 401/403/404 — polling must not restart. */
     val terminalError: Boolean = false,
 )
@@ -127,13 +129,16 @@ class ChatViewModel @Inject constructor(
 
     fun retrySend(clientId: String) {
         val msg = _state.value.messages.find { it.id == clientId } ?: return
+        if (clientId in _state.value.inFlightMessageIds) return   // already retrying
         val text = msg.text
         // Keep the same clientId so the message stays in its original chronological
         // position instead of jumping to the tail as a newly-appended message would.
+        // Use per-message inFlightMessageIds instead of the global isSending flag so
+        // a retry does not block the user from sending new messages concurrently.
         _state.update { current ->
             current.copy(
                 failedMessageIds = current.failedMessageIds - clientId,
-                isSending = true,
+                inFlightMessageIds = current.inFlightMessageIds + clientId,
                 error = null,
             )
         }
@@ -147,14 +152,14 @@ class ChatViewModel @Inject constructor(
                     _state.update { current ->
                         current.copy(
                             messages = current.messages.map { if (it.id == clientId) serverMsg else it },
-                            isSending = false,
+                            inFlightMessageIds = current.inFlightMessageIds - clientId,
                             error = null,
                         )
                     }
                 } else {
                     _state.update { current ->
                         current.copy(
-                            isSending = false,
+                            inFlightMessageIds = current.inFlightMessageIds - clientId,
                             failedMessageIds = current.failedMessageIds + clientId,
                             error = if (response == null) "Message timed out — tap to retry"
                                     else "Couldn't send message",
@@ -164,7 +169,7 @@ class ChatViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.update { current ->
                     current.copy(
-                        isSending = false,
+                        inFlightMessageIds = current.inFlightMessageIds - clientId,
                         failedMessageIds = current.failedMessageIds + clientId,
                         error = e.localizedMessage ?: "Network error",
                     )
@@ -223,8 +228,25 @@ class ChatViewModel @Inject constructor(
             while (isActive) {
                 delay(3_000)
                 fetch()
+                // Stop polling once the order reaches a terminal state — there will
+                // be no new messages after delivery/completion/cancellation.
+                if (checkOrderTerminal()) break
             }
         }
+    }
+
+    /**
+     * Returns true when the order's status is terminal (delivered/completed/cancelled).
+     * Swallows errors so a transient failure doesn't kill the poll loop.
+     */
+    private suspend fun checkOrderTerminal(): Boolean = try {
+        val resp = apiService.getOrder(orderId)
+        if (resp.isSuccessful) {
+            val status = resp.body()?.status
+            status != null && !status.isActive
+        } else false
+    } catch (_: Exception) {
+        false
     }
 
     override fun onCleared() {

@@ -100,7 +100,6 @@ object NetworkModule {
                 token?.let {
                     addHeader("Authorization", "Bearer $it")
                 }
-                addHeader("Content-Type", "application/json")
                 addHeader("Accept", "application/json")
             }.build()
 
@@ -132,7 +131,7 @@ object NetworkModule {
             redactHeader("Cookie")
             redactHeader("Set-Cookie")
             level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.HEADERS
+                HttpLoggingInterceptor.Level.BASIC
             } else {
                 HttpLoggingInterceptor.Level.NONE
             }

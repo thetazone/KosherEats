@@ -102,12 +102,12 @@ final class RestaurantStore: ObservableObject {
 
     func toggleFavorite(_ restaurantID: String) async {}
 
-    func searchRestaurants(query: String) async throws -> [Restaurant] {
+    func searchRestaurants(query: String, kosherFilters: KosherFilters = KosherFilters()) async throws -> [Restaurant] {
         let results = try await api.searchRestaurants(query: query)
         return filteredRestaurants(
             searchText: query,
             selectedCuisine: nil,
-            kosherFilters: KosherFilters(),
+            kosherFilters: kosherFilters,
             source: results
         )
     }

@@ -21,32 +21,38 @@ enum class DietaryType(val displayName: String) {
     @SerializedName(value = "meat", alternate = ["Meat"]) MEAT("Meat"),
     @SerializedName(value = "dairy", alternate = ["Dairy"]) DAIRY("Dairy"),
     @SerializedName(value = "pareve", alternate = ["Pareve"]) PAREVE("Pareve"),
+    @SerializedName("unknown") UNKNOWN("Unknown"),
 }
 
 enum class OrderStatus(val displayName: String) {
+    @SerializedName("scheduled") SCHEDULED("Scheduled"),
     @SerializedName("pending") PENDING("Pending"),
-    @SerializedName("confirmed") CONFIRMED("Confirmed"),
+    @SerializedName("accepted") ACCEPTED("Accepted"),
     @SerializedName("preparing") PREPARING("Preparing"),
     @SerializedName("ready") READY("Ready for Pickup"),
     @SerializedName("picked_up") PICKED_UP("Out for Delivery"),
     @SerializedName("delivered") DELIVERED("Delivered"),
     @SerializedName("cancelled") CANCELLED("Cancelled"),
-    @SerializedName("completed") COMPLETED("Completed");
+    @SerializedName("completed") COMPLETED("Completed"),
+    @SerializedName("rejected") REJECTED("Rejected"),
+    @SerializedName("unknown") UNKNOWN("Unknown");
 
     val stepIndex: Int
         get() = when (this) {
+            SCHEDULED -> -2
             PENDING -> 0
-            CONFIRMED -> 1
+            ACCEPTED -> 1
             PREPARING -> 2
             READY -> 3
             PICKED_UP -> 4
             DELIVERED, COMPLETED -> 5
-            CANCELLED -> -1
+            CANCELLED, REJECTED -> -1
+            UNKNOWN -> -1
         }
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, CANCELLED, COMPLETED -> false
+            DELIVERED, CANCELLED, COMPLETED, REJECTED, UNKNOWN -> false
             else -> true
         }
 }
@@ -296,12 +302,13 @@ private fun computeDiscount(deal: Deal, subtotal: Int, items: List<CartItem>): I
     val minOrder = deal.minOrderAmount ?: 0
     if (subtotal < minOrder) return 0
     return when (deal.discountType) {
-        DiscountType.PERCENTAGE -> (subtotal * deal.discountValue / 100).coerceAtMost(subtotal)
+        DiscountType.PERCENTAGE -> (subtotal.toLong() * deal.discountValue / 100).toInt().coerceAtMost(subtotal)
         DiscountType.FIXED -> deal.discountValue.coerceAtMost(subtotal)
         DiscountType.BOGO -> {
             val totalQty = items.sumOf { it.quantity }
             if (totalQty < 2) 0 else items.minOfOrNull { it.menuItem.price } ?: 0
         }
+        DiscountType.UNKNOWN -> 0
     }
 }
 
@@ -358,6 +365,8 @@ data class Order(
     @SerializedName("claimed_at") val claimedAt: String? = null,
     @SerializedName("picked_up_at") val pickedUpAt: String? = null,
     @SerializedName("delivered_at") val deliveredAt: String? = null,
+    @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
+    @SerializedName("scheduled_for") val scheduledFor: String? = null,
 )
 
 data class OrderItem(
@@ -564,6 +573,7 @@ enum class DiscountType(val displayName: String) {
     @SerializedName("percentage") PERCENTAGE("% Off"),
     @SerializedName("fixed") FIXED("Off"),
     @SerializedName("bogo") BOGO("BOGO"),
+    @SerializedName("unknown") UNKNOWN("Unknown"),
 }
 
 data class Deal(
@@ -599,5 +609,6 @@ data class Deal(
             DiscountType.PERCENTAGE -> "$discountValue% Off"
             DiscountType.FIXED -> "$${"%.2f".format(discountValue / 100.0)} Off"
             DiscountType.BOGO -> "BOGO"
+            DiscountType.UNKNOWN -> ""
         }
 }

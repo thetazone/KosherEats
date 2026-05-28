@@ -593,6 +593,10 @@ fun MenuItemFormScreen(
             // Save button
             Button(
                 onClick = {
+                    if (name.isBlank()) {
+                        viewModel.setError("Item name is required")
+                        return@Button
+                    }
                     val dollars = price.toDoubleOrNull() ?: 0.0
                     if (!isPareve && !isDairy && !isMeat) {
                         viewModel.setError("Select a Kosher type (Meat, Dairy, or Pareve)")

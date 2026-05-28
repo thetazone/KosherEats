@@ -51,7 +51,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -108,7 +108,7 @@ fun CreateDealScreen(
     onCreated: () -> Unit,
     viewModel: DealsViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -418,6 +418,7 @@ fun CreateDealScreen(
                                 DiscountType.PERCENTAGE -> "% Off"
                                 DiscountType.FIXED -> "$ Off"
                                 DiscountType.BOGO -> "BOGO"
+                                DiscountType.UNKNOWN -> "Other"
                             },
                             color = if (selected) Orange else TextSecondary,
                             fontSize = 13.sp,
@@ -609,7 +610,7 @@ fun CreateDealScreen(
                     val discountValueCents = when (discountType) {
                         DiscountType.PERCENTAGE -> discountValue.toIntOrNull() ?: 0
                         DiscountType.FIXED -> dollarsToCents(discountValue)
-                        DiscountType.BOGO -> 0
+                        DiscountType.BOGO, DiscountType.UNKNOWN -> 0
                     }
 
                     val minOrderCents = dollarsToCents(minOrderAmount).let {

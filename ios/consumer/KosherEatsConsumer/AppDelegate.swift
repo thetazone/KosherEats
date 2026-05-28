@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             // "courier_assigned", "picked_up" → open live tracking map.
             // "delivered" → open order detail (no more tracking to do).
             // Default → detail.
-            let trackingTypes: Set<String> = ["courier_assigned", "picked_up"]
+            let trackingTypes: Set<String> = ["courier_assigned", "picked_up", "order_preparing", "order_ready"]
             let route: AppRoute =
                 trackingTypes.contains(type) ? .tracking(orderID: orderId) : .detail(orderID: orderId)
 

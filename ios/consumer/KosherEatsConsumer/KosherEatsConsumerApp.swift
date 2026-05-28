@@ -30,6 +30,7 @@ struct KosherEatsConsumerApp: App {
                 }
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
+                    AppRouter.shared.handleDeepLink(url)
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {

@@ -295,14 +295,16 @@ struct SellerOrderDetailView: View {
                     }
                 }
                 Spacer()
-                if let phone, !phone.isEmpty,
-                   let url = URL(string: "tel:\(phone)") {
-                    Link(destination: url) {
-                        Image(systemName: "phone.fill")
-                            .foregroundColor(.kePrimary)
-                            .padding(10)
-                            .background(Color.keBorder)
-                            .clipShape(Circle())
+                if let phone, !phone.isEmpty {
+                    let cleaned = phone.filter { $0.isNumber || $0 == "+" }
+                    if let url = URL(string: "tel:\(cleaned)") {
+                        Link(destination: url) {
+                            Image(systemName: "phone.fill")
+                                .foregroundColor(.kePrimary)
+                                .padding(10)
+                                .background(Color.keBorder)
+                                .clipShape(Circle())
+                        }
                     }
                 }
             }
@@ -418,7 +420,7 @@ struct SellerOrderDetailView: View {
                 courierStatusCard(order)
             }
 
-        case .delivered, .cancelled, .rejected, .scheduled:
+        case .delivered, .cancelled, .rejected, .scheduled, .unknown:
             HStack(spacing: 12) {
                 Image(systemName: order.status.icon)
                     .font(.title3)
@@ -517,7 +519,8 @@ struct SellerOrderDetailView: View {
                             .foregroundColor(.keTextMuted)
                     }
                     Spacer()
-                    if let url = URL(string: "tel:\(courier.phone)") {
+                    let cleanedCourierPhone = courier.phone.filter { $0.isNumber || $0 == "+" }
+                    if let url = URL(string: "tel:\(cleanedCourierPhone)") {
                         Link(destination: url) {
                             Image(systemName: "phone.fill")
                                 .foregroundColor(.kePrimary)

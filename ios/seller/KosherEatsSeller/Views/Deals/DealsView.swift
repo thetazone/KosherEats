@@ -75,6 +75,24 @@ private struct DealCard: View {
     let onDeactivate: () -> Void
     @State private var showConfirm = false
 
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoFormatterPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let displayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -141,11 +159,14 @@ private struct DealCard: View {
     }
 
     private func formattedDate(_ iso: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: iso) else { return iso }
-        let display = DateFormatter()
-        display.dateStyle = .medium
-        return display.string(from: date)
+        let date: Date
+        if let d = Self.isoFormatter.date(from: iso) {
+            date = d
+        } else if let d = Self.isoFormatterPlain.date(from: iso) {
+            date = d
+        } else {
+            return iso
+        }
+        return Self.displayFormatter.string(from: date)
     }
 }

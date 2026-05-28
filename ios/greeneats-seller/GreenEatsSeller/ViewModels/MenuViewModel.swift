@@ -16,6 +16,7 @@ class MenuViewModel: ObservableObject {
     /// restaurant's items until they relaunch.
     private var restaurantSubscription: AnyCancellable?
     private var isReloading = false
+    private var pendingReload = false
 
     func startObservingRestaurant() {
         guard restaurantSubscription == nil else { return }
@@ -30,9 +31,20 @@ class MenuViewModel: ObservableObject {
     }
 
     func load() async {
-        guard !isReloading else { return }
+        guard !isReloading else {
+            pendingReload = true
+            return
+        }
         isReloading = true
-        defer { isReloading = false }
+        defer {
+            isReloading = false
+            if pendingReload {
+                pendingReload = false
+                Task { @MainActor [weak self] in
+                    await self?.load()
+                }
+            }
+        }
         isLoading = true
         errorMessage = nil
 
@@ -60,6 +72,15 @@ class MenuViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Item name cannot be empty."
+            return false
+        }
+        guard name.count <= 100 else {
+            errorMessage = "Item name must be 100 characters or less."
+            return false
+        }
 
         let request = CreateMenuItemRequest(
             categoryId: categoryId,
@@ -100,6 +121,15 @@ class MenuViewModel: ObservableObject {
         defer { isLoading = false }
         errorMessage = nil
 
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Item name cannot be empty."
+            return false
+        }
+        guard name.count <= 100 else {
+            errorMessage = "Item name must be 100 characters or less."
+            return false
+        }
+
         let request = CreateMenuItemRequest(
             categoryId: categoryId,
             name: name,
@@ -124,6 +154,7 @@ class MenuViewModel: ObservableObject {
     }
 
     func deleteItem(id: String) async {
+        errorMessage = nil
         do {
             try await APIService.shared.deleteMenuItem(id: id)
             flash("Item deleted")
@@ -179,6 +210,7 @@ class MenuViewModel: ObservableObject {
     }
 
     func createCategory(name: String) async {
+        errorMessage = nil
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             errorMessage = "Category name cannot be empty."
@@ -194,6 +226,7 @@ class MenuViewModel: ObservableObject {
         }
         do {
             _ = try await APIService.shared.createCategory(trimmed)
+            flash("Category created")
             await load()
         } catch {
             errorMessage = error.localizedDescription
@@ -201,8 +234,10 @@ class MenuViewModel: ObservableObject {
     }
 
     func deleteCategory(id: String) async {
+        errorMessage = nil
         do {
             try await APIService.shared.deleteCategory(id: id)
+            flash("Category deleted")
             await load()
         } catch {
             errorMessage = error.localizedDescription

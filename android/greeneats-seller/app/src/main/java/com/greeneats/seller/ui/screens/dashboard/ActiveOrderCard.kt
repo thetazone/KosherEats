@@ -126,7 +126,7 @@ fun OrderStatusBadge(
         OrderStatus.ACCEPTED -> StatusAccepted
         OrderStatus.PREPARING -> StatusPreparing
         OrderStatus.READY, OrderStatus.PICKED_UP, OrderStatus.DELIVERED, OrderStatus.COMPLETED -> StatusReady
-        OrderStatus.CANCELLED, OrderStatus.REJECTED -> StatusCancelled
+        OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.UNKNOWN -> StatusCancelled
     }
     val label = status.displayName
 

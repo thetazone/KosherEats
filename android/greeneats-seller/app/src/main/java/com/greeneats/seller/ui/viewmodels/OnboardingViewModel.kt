@@ -9,6 +9,7 @@ import com.greeneats.seller.data.models.KosherCertification
 import com.greeneats.seller.data.models.MenuCategory
 import com.greeneats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -224,6 +225,7 @@ class OnboardingViewModel @Inject constructor(
 
                 _state.value = _state.value.copy(isSubmitting = false, isComplete = true)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isSubmitting = false,
                     error = "Connection error: ${e.message}",

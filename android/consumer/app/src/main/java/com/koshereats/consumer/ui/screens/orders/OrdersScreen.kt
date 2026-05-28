@@ -242,8 +242,8 @@ private fun OrderCard(
                 )
             }
 
-            // Reorder button for delivered orders
-            if (order.status == OrderStatus.DELIVERED) {
+            // Reorder button for delivered / completed orders
+            if (order.status == OrderStatus.DELIVERED || order.status == OrderStatus.COMPLETED) {
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(
                     onClick = onReorder,
@@ -268,14 +268,17 @@ private fun OrderCard(
 @Composable
 private fun OrderStatusBadge(status: OrderStatus) {
     val (color, icon) = when (status) {
+        OrderStatus.SCHEDULED -> Orange to Icons.Filled.Schedule
         OrderStatus.PENDING -> Orange to Icons.Filled.Pending
-        OrderStatus.CONFIRMED -> InfoBlue to Icons.Filled.CheckCircle
+        OrderStatus.ACCEPTED -> InfoBlue to Icons.Filled.CheckCircle
         OrderStatus.PREPARING -> WarningYellow to Icons.Filled.Restaurant
         OrderStatus.READY -> SuccessGreen to Icons.Filled.CheckCircle
         OrderStatus.PICKED_UP -> InfoBlue to Icons.Filled.DeliveryDining
         OrderStatus.DELIVERED -> SuccessGreen to Icons.Filled.CheckCircle
         OrderStatus.COMPLETED -> SuccessGreen to Icons.Filled.CheckCircle
         OrderStatus.CANCELLED -> ErrorRed to Icons.Filled.Pending
+        OrderStatus.REJECTED -> ErrorRed to Icons.Filled.Pending
+        OrderStatus.UNKNOWN -> ErrorRed to Icons.Filled.Pending
     }
 
     Row(

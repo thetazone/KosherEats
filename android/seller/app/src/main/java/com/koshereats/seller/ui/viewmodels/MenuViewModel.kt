@@ -165,6 +165,14 @@ class MenuViewModel @Inject constructor(
             _state.update { it.copy(error = "Please select a category") }
             return
         }
+        if (request.name.isNullOrBlank()) {
+            _state.update { it.copy(error = "Menu item name is required") }
+            return
+        }
+        if ((request.price ?: 0) <= 0) {
+            _state.update { it.copy(error = "Price must be greater than zero") }
+            return
+        }
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, error = null, saveSuccess = null) }
             try {
@@ -331,7 +339,8 @@ class MenuViewModel @Inject constructor(
         return try {
             val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
             if (response.isSuccessful) response.body() else null
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             null
         }
     }

@@ -1,7 +1,13 @@
 package com.greeneats.seller.data.models
 
 import com.squareup.moshi.Json
+import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import java.lang.reflect.Type
 
 // --- Enums ---
 
@@ -15,11 +21,12 @@ enum class OrderStatus(val displayName: String) {
     @Json(name = "delivered") DELIVERED("Delivered"),
     @Json(name = "completed") COMPLETED("Completed"),
     @Json(name = "cancelled") CANCELLED("Cancelled"),
-    @Json(name = "rejected") REJECTED("Rejected");
+    @Json(name = "rejected") REJECTED("Rejected"),
+    UNKNOWN("Unknown");
 
     val isActive: Boolean
         get() = when (this) {
-            DELIVERED, COMPLETED, CANCELLED, REJECTED -> false
+            DELIVERED, COMPLETED, CANCELLED, REJECTED, UNKNOWN -> false
             else -> true
         }
 }
@@ -33,6 +40,7 @@ enum class KosherCertification(val displayName: String) {
     @Json(name = "Badatz") BADATZ("Badatz"),
     @Json(name = "Chof-K") CHOF_K("Chof-K"),
     @Json(name = "other") OTHER("Other"),
+    UNKNOWN("Unknown"),
 }
 
 enum class MenuCategory {
@@ -45,6 +53,39 @@ enum class MenuCategory {
     @Json(name = "drinks") DRINKS,
     @Json(name = "shabbat_specials") SHABBAT_SPECIALS,
     @Json(name = "holiday_specials") HOLIDAY_SPECIALS,
+    UNKNOWN,
+}
+
+/**
+ * Moshi adapter factory that returns UNKNOWN (if it exists) instead of throwing
+ * JsonDataException when the JSON contains an unrecognised enum value. Only activates
+ * for enums that declare an UNKNOWN constant; all other enums are delegated normally.
+ */
+class UnknownFallbackEnumAdapterFactory : JsonAdapter.Factory {
+    override fun create(type: Type, annotations: Set<Annotation>, moshi: Moshi): JsonAdapter<*>? {
+        val rawType = Types.getRawType(type)
+        if (!rawType.isEnum || annotations.isNotEmpty()) return null
+        @Suppress("UNCHECKED_CAST")
+        val constants = (rawType as Class<Enum<*>>).enumConstants ?: return null
+        val fallback = constants.firstOrNull { it.name == "UNKNOWN" } ?: return null
+        val nameToConstant: Map<String, Enum<*>> = constants.associate { constant ->
+            val jsonName = runCatching {
+                rawType.getField(constant.name).getAnnotation(Json::class.java)?.name
+            }.getOrNull()?.takeIf { it.isNotEmpty() } ?: constant.name
+            jsonName to constant
+        }
+        val constantToName: Map<Enum<*>, String> = nameToConstant.entries.associate { (k, v) -> v to k }
+        return object : JsonAdapter<Enum<*>>() {
+            override fun fromJson(reader: JsonReader): Enum<*> {
+                if (reader.peek() == JsonReader.Token.NULL) { reader.nextNull<Unit>(); return fallback }
+                return nameToConstant[reader.nextString()] ?: fallback
+            }
+            override fun toJson(writer: JsonWriter, value: Enum<*>?) {
+                if (value == null) { writer.nullValue(); return }
+                writer.value(constantToName[value] ?: value.name)
+            }
+        }
+    }
 }
 
 // --- Data Classes ---
@@ -118,9 +159,15 @@ data class Order(
     @Json(name = "courier_tip") val courierTip: Int = 0,
     val total: Int = 0,
     val status: OrderStatus = OrderStatus.PENDING,
+    @Json(name = "fulfillment_type") val fulfillmentType: String = "",
+    @Json(name = "customer_name") val customerName: String = "",
+    @Json(name = "customer_phone") val customerPhone: String = "",
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
-)
+    @Json(name = "scheduled_for") val scheduledFor: String? = null,
+) {
+    val isPickup: Boolean get() = fulfillmentType.equals("pickup", ignoreCase = true)
+}
 
 // --- Auth ---
 
@@ -216,13 +263,15 @@ data class UpdateMenuItemRequest(
 enum class DiscountType {
     @Json(name = "percentage") PERCENTAGE,
     @Json(name = "fixed") FIXED,
-    @Json(name = "bogo") BOGO;
+    @Json(name = "bogo") BOGO,
+    UNKNOWN;
 
     val displayName: String
         get() = when (this) {
             PERCENTAGE -> "Percentage Off"
             FIXED -> "Fixed Amount Off"
             BOGO -> "Buy One Get One"
+            UNKNOWN -> "Special Offer"
         }
 }
 
@@ -248,6 +297,7 @@ data class Deal(
             DiscountType.PERCENTAGE -> "$discountValue% Off"
             DiscountType.FIXED -> "${discountValue.formatPrice()} Off"
             DiscountType.BOGO -> "BOGO"
+            DiscountType.UNKNOWN -> title.ifBlank { "Special Offer" }
         }
 }
 

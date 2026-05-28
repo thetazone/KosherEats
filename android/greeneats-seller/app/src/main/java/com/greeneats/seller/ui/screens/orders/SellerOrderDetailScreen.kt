@@ -44,7 +44,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,7 +82,7 @@ fun SellerOrderDetailScreen(
     onBack: () -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val order = state.selectedOrder
     val context = LocalContext.current
     var pendingAction by remember { mutableStateOf<Pair<OrderStatus, () -> Unit>?>(null) }

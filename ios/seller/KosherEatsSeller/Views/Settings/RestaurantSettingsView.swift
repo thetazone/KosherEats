@@ -76,7 +76,16 @@ struct RestaurantSettingsView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: deliveryFee) { _, val in
-                                            deliveryFee = val.filter { $0.isNumber || $0 == "." }
+                                            var filtered = val.filter { $0.isNumber || $0 == "." }
+                                            // Keep only the first decimal point
+                                            if let first = filtered.firstIndex(of: ".") {
+                                                let afterDot = filtered.index(after: first)
+                                                if afterDot < filtered.endIndex {
+                                                    let tail = filtered[afterDot...].filter { $0 != "." }
+                                                    filtered = String(filtered[...first]) + tail
+                                                }
+                                            }
+                                            deliveryFee = filtered
                                         }
                                 }
                                 .padding()
@@ -95,7 +104,16 @@ struct RestaurantSettingsView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: minOrder) { _, val in
-                                            minOrder = val.filter { $0.isNumber || $0 == "." }
+                                            var filtered = val.filter { $0.isNumber || $0 == "." }
+                                            // Keep only the first decimal point
+                                            if let first = filtered.firstIndex(of: ".") {
+                                                let afterDot = filtered.index(after: first)
+                                                if afterDot < filtered.endIndex {
+                                                    let tail = filtered[afterDot...].filter { $0 != "." }
+                                                    filtered = String(filtered[...first]) + tail
+                                                }
+                                            }
+                                            minOrder = filtered
                                         }
                                 }
                                 .padding()
@@ -519,17 +537,29 @@ struct RestaurantSettingsView: View {
     private func save() async {
         guard var restaurant = dashVM.restaurant else { return }
 
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        let trimmedState = state.trimmingCharacters(in: .whitespaces)
+
         // Validate required fields before sending to the server.
-        if name.trimmingCharacters(in: .whitespaces).isEmpty {
+        if trimmedName.isEmpty {
             errorMessage = "Restaurant name is required."
+            return
+        }
+        if trimmedName.count > 200 {
+            errorMessage = "Restaurant name must be 200 characters or fewer."
             return
         }
         if phone.trimmingCharacters(in: .whitespaces).isEmpty {
             errorMessage = "Phone number is required."
             return
         }
-        if email.trimmingCharacters(in: .whitespaces).isEmpty || !email.contains("@") {
+        if trimmedEmail.isEmpty || !trimmedEmail.contains("@") || !trimmedEmail.contains(".") {
             errorMessage = "A valid email address is required."
+            return
+        }
+        if !trimmedState.isEmpty && trimmedState.count != 2 {
+            errorMessage = "State abbreviation must be exactly 2 characters (e.g. NY)."
             return
         }
         if zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -556,8 +586,18 @@ struct RestaurantSettingsView: View {
         // backend contract (delivery_fee / min_order are INTEGER cents).
         restaurant.deliveryFee = Int(((Double(deliveryFee) ?? 0) * 100).rounded())
         restaurant.minOrder = Int(((Double(minOrder) ?? 0) * 100).rounded())
-        restaurant.estDeliveryMin = Int(estDeliveryMin) ?? 20
-        restaurant.estDeliveryMax = Int(estDeliveryMax) ?? 45
+        guard let parsedMin = Int(estDeliveryMin), parsedMin > 0 else {
+            errorMessage = "Estimated minimum delivery time must be a number."
+            isSaving = false
+            return
+        }
+        guard let parsedMax = Int(estDeliveryMax), parsedMax > 0 else {
+            errorMessage = "Estimated maximum delivery time must be a number."
+            isSaving = false
+            return
+        }
+        restaurant.estDeliveryMin = parsedMin
+        restaurant.estDeliveryMax = parsedMax
         restaurant.kosherCertification = kosherCert
         restaurant.certifyingAgency = certifyingAgency
         restaurant.isCholovYisroel = isCholovYisroel

@@ -44,7 +44,7 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
-        val title = message.notification?.title ?: data["title"] ?: "KosherEats"
+        val title = message.notification?.title ?: data["title"] ?: "GreenEats"
         val body = message.notification?.body ?: data["body"] ?: ""
         val type = data["type"]  // e.g. "order_update", "chat", "promo"
         val orderId = data["order_id"]

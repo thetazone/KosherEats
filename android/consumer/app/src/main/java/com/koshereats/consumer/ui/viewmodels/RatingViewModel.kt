@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.RateOrderRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,9 +30,13 @@ class RatingViewModel @Inject constructor(
     val uiState: StateFlow<RatingUiState> = _uiState.asStateFlow()
 
     fun setStars(value: Int) = _uiState.update { it.copy(stars = value.coerceIn(1, 5)) }
-    fun setComment(value: String) = _uiState.update { it.copy(comment = value) }
+    fun setComment(value: String) = _uiState.update { it.copy(comment = value.take(500)) }
 
     fun submit(orderId: String) {
+        if (orderId.isBlank()) {
+            _uiState.update { it.copy(error = "Order ID is required.") }
+            return
+        }
         val state = _uiState.value
         if (state.isSubmitting || state.submitted) return
         _uiState.update { it.copy(isSubmitting = true, error = null) }
@@ -52,6 +57,7 @@ class RatingViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isSubmitting = false, error = e.localizedMessage ?: "Network error") }
             }
         }

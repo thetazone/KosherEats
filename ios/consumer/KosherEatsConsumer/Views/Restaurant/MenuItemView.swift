@@ -377,6 +377,7 @@ private struct ModifierGroupSection: View {
     }
 
     private func toggle(_ mod: Modifier) {
+        guard mod.isAvailable else { return }
         if group.isSingleSelect {
             selected = [mod.id]
             return
@@ -406,7 +407,11 @@ private struct ModifierRow: View {
                 Text(modifier.name)
                     .foregroundColor(.keTextPrimary)
                 Spacer()
-                if !modifier.priceDeltaFormatted.isEmpty {
+                if !modifier.isAvailable {
+                    Text("Unavailable")
+                        .font(.caption)
+                        .foregroundColor(.keError)
+                } else if !modifier.priceDeltaFormatted.isEmpty {
                     Text(modifier.priceDeltaFormatted)
                         .font(.subheadline)
                         .foregroundColor(.keTextSecondary)
@@ -417,6 +422,8 @@ private struct ModifierRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!modifier.isAvailable)
+        .opacity(modifier.isAvailable ? 1.0 : 0.5)
     }
 
     private var indicator: some View {

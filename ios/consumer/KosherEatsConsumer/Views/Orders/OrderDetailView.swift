@@ -59,8 +59,10 @@ struct OrderDetailView: View {
                         // Items
                         itemsSection(order: order)
 
-                        // Delivery address
-                        deliverySection(order: order)
+                        // Delivery address (hidden for pickup orders)
+                        if order.fulfillmentType != "pickup" {
+                            deliverySection(order: order)
+                        }
 
                         // Price breakdown
                         priceBreakdown(order: order)
@@ -119,14 +121,14 @@ struct OrderDetailView: View {
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.keTextPrimary)
 
-            if order.status.isActive {
+            if order.status.isActive && order.status != .cancelled && order.status != .rejected {
                 Text("Estimated delivery: \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))")
                     .font(.system(size: 14))
                     .foregroundColor(.keTextSecondary)
             }
 
             // Progress steps
-            if order.status.isActive {
+            if order.status.isActive && order.status != .cancelled && order.status != .rejected {
                 progressSteps(currentStep: order.status.stepIndex)
             }
         }
@@ -297,6 +299,9 @@ struct OrderDetailView: View {
             SummaryRow(label: "Delivery Fee", value: order.deliveryFeeFormatted)
             SummaryRow(label: "Service Fee", value: order.serviceFeeFormatted)
             SummaryRow(label: "Tax", value: order.taxFormatted)
+            if let tip = order.courierTip, tip > 0 {
+                SummaryRow(label: "Driver Tip", value: "$\(String(format: "%.2f", Double(tip) / 100))")
+            }
 
             Divider().background(Color.keDivider)
 

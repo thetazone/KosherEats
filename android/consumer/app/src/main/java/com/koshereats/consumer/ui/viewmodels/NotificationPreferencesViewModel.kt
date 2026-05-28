@@ -28,6 +28,9 @@ class NotificationPreferencesViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(NotificationPreferencesUiState())
     val uiState: StateFlow<NotificationPreferencesUiState> = _uiState.asStateFlow()
 
+    /** Last server-confirmed preferences, used as the rollback target on save failure. */
+    private var lastConfirmedPrefs: NotificationPreferences = NotificationPreferences()
+
     init { load() }
 
     private fun load() {
@@ -35,9 +38,11 @@ class NotificationPreferencesViewModel @Inject constructor(
             try {
                 val resp = api.getNotificationPreferences()
                 if (resp.isSuccessful) {
+                    val loaded = resp.body() ?: NotificationPreferences()
+                    lastConfirmedPrefs = loaded
                     _uiState.update {
                         it.copy(
-                            prefs = resp.body() ?: NotificationPreferences(),
+                            prefs = loaded,
                             isLoading = false,
                         )
                     }
@@ -57,8 +62,7 @@ class NotificationPreferencesViewModel @Inject constructor(
     private var saveJob: Job? = null
 
     private fun save(prefs: NotificationPreferences) {
-        // Capture rollback point before applying the optimistic update.
-        val previous = _uiState.value.prefs
+        // Apply the optimistic update immediately for responsive UI.
         _uiState.update { it.copy(prefs = prefs) }
         // Cancel the in-flight save so its rollback can't clobber subsequent toggles.
         // The new request carries all pending changes (prefs already reflects them).
@@ -66,12 +70,14 @@ class NotificationPreferencesViewModel @Inject constructor(
         saveJob = viewModelScope.launch {
             try {
                 val resp = api.updateNotificationPreferences(prefs)
-                if (!resp.isSuccessful) {
-                    _uiState.update { it.copy(prefs = previous, error = "Couldn't save (${resp.code()})") }
+                if (resp.isSuccessful) {
+                    lastConfirmedPrefs = prefs
+                } else {
+                    _uiState.update { it.copy(prefs = lastConfirmedPrefs, error = "Couldn't save (${resp.code()})") }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.update { it.copy(prefs = previous, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(prefs = lastConfirmedPrefs, error = e.localizedMessage ?: "Network error") }
             }
         }
     }

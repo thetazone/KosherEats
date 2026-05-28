@@ -107,6 +107,7 @@ class OrderViewModel: ObservableObject {
     }
 
     func stopPolling() {
+        pollGeneration &+= 1
         pollTask?.cancel()
         pollTask = nil
     }

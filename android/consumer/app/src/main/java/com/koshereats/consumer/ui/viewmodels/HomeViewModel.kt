@@ -48,6 +48,7 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     // Emitting a new value here cancels any in-flight getRestaurants call via flatMapLatest.
     private data class LoadTrigger(
@@ -128,14 +129,17 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadMore() {
+        if (loadMoreJob?.isActive == true) return
         val state = _uiState.value
         if (state.isLoading || !state.hasMore) return
         // Defensive cap: even if the server keeps reporting hasMore, stop after 100 pages
         // (≈2000 restaurants) to avoid runaway pagination on a buggy/recursive response.
         if (state.currentPage >= 100) return
         val nextPage = state.currentPage + 1
-        _uiState.update { it.copy(isLoading = true) }
-        loadTrigger.value = loadTrigger.value.copy(page = nextPage)
+        loadMoreJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            loadTrigger.value = loadTrigger.value.copy(page = nextPage)
+        }
     }
 
     fun search(query: String) {

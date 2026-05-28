@@ -485,7 +485,7 @@ private struct AddressStepView: View {
                 }
 
                 continueButton {
-                    if vm.street.isEmpty || vm.city.isEmpty || vm.stateField.isEmpty || vm.zipCode.isEmpty {
+                    if vm.street.trimmingCharacters(in: .whitespaces).isEmpty || vm.city.trimmingCharacters(in: .whitespaces).isEmpty || vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty || vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
                         vm.errorMessage = "All address fields are required"
                         return
                     }

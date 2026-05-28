@@ -100,7 +100,10 @@ struct IntegrationsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load() }
-        .sheet(isPresented: $showSafari) {
+        .sheet(isPresented: $showSafari, onDismiss: {
+            isConnecting = false
+            Task { await load() }
+        }) {
             if let safariURL {
                 SafariView(url: safariURL).ignoresSafeArea()
             }
@@ -238,17 +241,20 @@ struct IntegrationsView: View {
     private func connectClover() {
         Task {
             isConnecting = true
-            defer { isConnecting = false }
             do {
                 let urlString = try await APIService.shared.cloverConnectURL()
                 guard let url = URL(string: urlString) else {
                     errorMessage = "Bad connect URL from server."
+                    isConnecting = false
                     return
                 }
                 safariURL = url
                 showSafari = true
+                // isConnecting stays true while the OAuth sheet is open;
+                // cleared in the sheet's onDismiss handler.
             } catch {
                 errorMessage = "Couldn't start Clover connect: \(error.localizedDescription)"
+                isConnecting = false
             }
         }
     }

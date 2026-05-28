@@ -148,11 +148,11 @@ struct RegisterView: View {
                     Button {
                         Task {
                             await authVM.register(
-                                email: email,
+                                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                                 password: password,
-                                firstName: firstName,
-                                lastName: lastName,
-                                phone: phone
+                                firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                phone: phone.trimmingCharacters(in: .whitespacesAndNewlines)
                             )
                         }
                     } label: {

@@ -103,7 +103,9 @@ class DashboardViewModel @Inject constructor(
             while (true) {
                 val succeeded = pollSilently()
                 consecutiveFailures = if (succeeded) 0 else consecutiveFailures + 1
-                delay(BACKOFF_DELAYS[consecutiveFailures.coerceAtMost(BACKOFF_DELAYS.lastIndex)])
+                val baseDelay = BACKOFF_DELAYS[consecutiveFailures.coerceAtMost(BACKOFF_DELAYS.lastIndex)]
+                val jitter = (baseDelay * (kotlin.random.Random.nextDouble() * 0.4 - 0.2)).toLong()
+                delay(baseDelay + jitter)
             }
         }
     }
@@ -204,11 +206,13 @@ class DashboardViewModel @Inject constructor(
     private suspend fun pollSilently(): Boolean {
         if (!pollMutex.tryLock()) return true
         return try {
+            val restaurantAtStart = NetworkModule.cachedRestaurantId
             coroutineScope {
                 val statsDeferred = async { apiService.getDashboardStats() }
                 val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
                 val statsResponse = statsDeferred.await()
                 val ordersResponse = ordersDeferred.await()
+                if (NetworkModule.cachedRestaurantId != restaurantAtStart) return@coroutineScope false
                 val statsOk = statsResponse.isSuccessful
                 val ordersOk = ordersResponse.isSuccessful
                 if (statsOk || ordersOk) {
@@ -257,6 +261,8 @@ class DashboardViewModel @Inject constructor(
                     isRefreshing = false,
                     error = "Failed to refresh dashboard: ${e.localizedMessage}",
                 ) }
+            } finally {
+                _state.update { if (it.isRefreshing) it.copy(isRefreshing = false) else it }
             }
         }
     }

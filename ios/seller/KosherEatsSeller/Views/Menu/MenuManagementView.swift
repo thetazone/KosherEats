@@ -242,6 +242,16 @@ struct MenuManagementView: View {
                 Text("\(items.count) items")
                     .font(.caption)
                     .foregroundColor(.keTextMuted)
+
+                if items.isEmpty {
+                    Button(role: .destructive) {
+                        Task { await vm.deleteCategory(id: category.id) }
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundColor(.keError)
+                    }
+                }
             }
 
             if items.isEmpty {

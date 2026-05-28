@@ -1,7 +1,6 @@
 package com.koshereats.consumer.data.session
 
 import com.koshereats.consumer.data.api.ApplicationScope
-import com.koshereats.consumer.push.PushBootstrap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -18,7 +17,9 @@ class SessionManager @Inject constructor(
     val logoutEvent: SharedFlow<Unit> = _logoutEvent.asSharedFlow()
 
     fun signalLogout() {
-        appScope.launch { PushBootstrap.deleteToken() }
+        // Push token deletion is handled by the caller (AuthViewModel.logout /
+        // deleteAccount) — doing it here as well creates a double-delete race
+        // where two coroutines concurrently hit FirebaseMessaging.deleteToken().
         appScope.launch { _logoutEvent.emit(Unit) }
     }
 }

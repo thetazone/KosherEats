@@ -54,7 +54,7 @@ class OrdersViewModel @Inject constructor(
     private var pollingJob: Job? = null
     private var eventJob: Job? = null
     private val pollMutex = Mutex()
-    private var pollerRefCount = 0
+    private val pollerRefCount = java.util.concurrent.atomic.AtomicInteger(0)
     private var loadJob: Job? = null
     private var loadMoreJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -80,7 +80,7 @@ class OrdersViewModel @Inject constructor(
     // SellerOrderDetailScreen and SellerOrdersScreen can each hold a ref without
     // one's disposal cancelling the other's poll.
     fun startPolling() {
-        pollerRefCount++
+        pollerRefCount.incrementAndGet()
         if (pollingJob?.isActive == true) return
         isPollingActive = true
         launchPollingJob()
@@ -149,8 +149,8 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun stopPolling() {
-        pollerRefCount = (pollerRefCount - 1).coerceAtLeast(0)
-        if (pollerRefCount == 0) {
+        pollerRefCount.updateAndGet { (it - 1).coerceAtLeast(0) }
+        if (pollerRefCount.get() == 0) {
             isPollingActive = false
             unregisterNetworkCallback()
             pollingJob?.cancel()
@@ -185,6 +185,7 @@ class OrdersViewModel @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             android.util.Log.w("OrdersViewModel", "refreshSingleOrder($orderId) failed", e)
         } finally {
             pollMutex.unlock()

@@ -68,6 +68,10 @@ class LinkedProvidersViewModel @Inject constructor(
     }
 
     fun unlinkProvider(provider: String) {
+        if (_uiState.value.providers.size <= 1) {
+            _uiState.update { it.copy(error = "Cannot remove your only sign-in method") }
+            return
+        }
         viewModelScope.launch {
             _uiState.update { it.copy(isUnlinking = true, error = null) }
             try {

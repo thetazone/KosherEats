@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.greeneats.consumer.BuildConfig
 import com.greeneats.consumer.data.api.ApiService
+import com.greeneats.consumer.data.api.TokenProvider
 import com.greeneats.consumer.data.models.CourierLocationEvent
 import com.greeneats.consumer.data.models.Order
 import com.greeneats.consumer.data.session.SessionManager
@@ -37,6 +38,7 @@ class OrderTrackingViewModel @Inject constructor(
     private val api: ApiService,
     private val okHttpClient: OkHttpClient,
     private val sessionManager: SessionManager,
+    private val tokenProvider: TokenProvider,
 ) : ViewModel() {
 
     companion object {
@@ -52,12 +54,24 @@ class OrderTrackingViewModel @Inject constructor(
     private var pollJob: Job? = null
     private var streamJob: Job? = null
     private var currentOrderId: String? = null
-    private var completedNormally = false
+    @Volatile private var completedNormally = false
+    @Volatile private var consecutiveSseUnauthorized = 0
     private val gson = Gson()
+    private val sseClient: OkHttpClient by lazy {
+        okHttpClient.newBuilder()
+            .readTimeout(60, TimeUnit.SECONDS)
+            .pingInterval(30, TimeUnit.SECONDS)
+            .build()
+    }
 
     fun start(orderId: String) {
+        if (orderId.isBlank()) {
+            _uiState.update { it.copy(isLoading = false, errorMessage = "Invalid order ID") }
+            return
+        }
         if (currentOrderId == orderId && (pollJob?.isActive == true || completedNormally)) return
         completedNormally = false
+        consecutiveSseUnauthorized = 0
         currentOrderId = orderId
         stopInternal()
 
@@ -122,6 +136,7 @@ class OrderTrackingViewModel @Inject constructor(
 
     fun retryStream() {
         val id = currentOrderId ?: return
+        consecutiveSseUnauthorized = 0
         streamJob?.cancel()
         streamJob = launchLocationStream(id)
     }
@@ -131,22 +146,35 @@ class OrderTrackingViewModel @Inject constructor(
     // Reconnects with exponential backoff (3s..30s) on any error.
     private fun launchLocationStream(orderId: String): Job = viewModelScope.launch(Dispatchers.IO) {
         val url = BuildConfig.BASE_URL.trimEnd('/') + "/orders/$orderId/location/stream"
-        val sseClient = okHttpClient.newBuilder()
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .build()
         var backoffMs = 3_000L
+
+        // Ensure the encrypted-prefs load has finished before opening the SSE
+        // connection. AuthInterceptor now does the same via runBlocking, so this
+        // suspends rather than polling with a deadline.
+        var currentToken = tokenProvider.awaitToken()
 
         while (isActive) {
             try {
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url(url)
                     .header("Accept", "text/event-stream")
-                    .build()
+                // Set Authorization explicitly so the first SSE connection doesn't
+                // rely solely on the interceptor (which may race with token refresh).
+                currentToken?.let { requestBuilder.header("Authorization", "Bearer $it") }
+                val request = requestBuilder.build()
                 sseClient.newCall(request).execute().use { response ->
                     if (response.code == 401) {
-                        sessionManager.signalLogout()
-                        return@launch
+                        consecutiveSseUnauthorized++
+                        if (consecutiveSseUnauthorized >= 2) {
+                            pollJob?.cancel(); pollJob = null
+                            streamJob = null
+                            _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
+                            sessionManager.signalLogout()
+                            return@launch
+                        }
+                        throw RuntimeException("SSE 401 — will retry after backoff")
                     }
+                    consecutiveSseUnauthorized = 0
                     if (!response.isSuccessful) throw RuntimeException("$ERROR_SSE_STATUS ${response.code}")
                     val source = response.body?.source() ?: throw RuntimeException("no SSE body")
                     _uiState.update { it.copy(errorMessage = null) }
@@ -161,6 +189,7 @@ class OrderTrackingViewModel @Inject constructor(
                                 handleLocationEvent(json)
                             }
                         } else if (line.startsWith("data:")) {
+                            if (dataBuf.length > 65536) dataBuf.clear()
                             dataBuf.append(line.removePrefix("data:").trimStart())
                         }
                     }
@@ -173,6 +202,14 @@ class OrderTrackingViewModel @Inject constructor(
             if (status != null && !status.isActive) break
             delay(backoffMs)
             backoffMs = (backoffMs * 2).coerceAtMost(30_000L)
+            // After backoff, refresh the token so the next SSE attempt carries a
+            // valid credential. If the refresh succeeds, reset the 401 counter so a
+            // transient token-rotation 401 doesn't snowball into a forced logout.
+            val refreshed = tokenProvider.awaitToken()
+            if (refreshed != null) {
+                currentToken = refreshed
+                consecutiveSseUnauthorized = 0
+            }
         }
     }
 

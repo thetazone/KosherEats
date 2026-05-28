@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -53,6 +54,7 @@ class EditProfileViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = ERR_LOAD_PROFILE) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -85,6 +87,7 @@ class EditProfileViewModel @Inject constructor(
                     _uiState.update { it.copy(isSaving = false, error = ERR_SAVE_PROFILE) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isSaving = false, error = e.localizedMessage ?: "Network error") }
             }
         }

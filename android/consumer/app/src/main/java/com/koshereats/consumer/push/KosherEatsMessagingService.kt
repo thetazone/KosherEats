@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * FCM receiver for the consumer app. Hilt-injects ApiService so onNewToken
@@ -82,6 +83,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
     companion object {
         const val CHANNEL_ID = "koshereats_consumer_default"
         private val recentMessageIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+        private val notificationIdCounter = AtomicInteger(1000)
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -105,8 +107,13 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
                     putExtra("order_id", it)
                 }
             }
+            val requestCode = if (orderId != null) {
+                orderId.hashCode() * 31 + System.currentTimeMillis().toInt()
+            } else {
+                System.currentTimeMillis().toInt()
+            }
             val pi = PendingIntent.getActivity(
-                context, orderId?.hashCode() ?: System.currentTimeMillis().toInt(), intent,
+                context, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
@@ -129,10 +136,11 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
             }
 
             val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            val notifId = notificationIdCounter.getAndIncrement()
             if (orderId != null) {
-                nm.notify(orderId, 0, notification)
+                nm.notify(orderId, notifId, notification)
             } else {
-                nm.notify(System.currentTimeMillis().toInt(), notification)
+                nm.notify(notifId, notification)
             }
         }
     }

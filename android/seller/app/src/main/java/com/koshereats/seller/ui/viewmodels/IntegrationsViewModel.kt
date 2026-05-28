@@ -26,6 +26,9 @@ class IntegrationsViewModel @Inject constructor(
     private val _state = MutableStateFlow(IntegrationsState())
     val state: StateFlow<IntegrationsState> = _state.asStateFlow()
 
+    /** IDs currently being disconnected — prevents concurrent disconnect calls for the same integration. */
+    private val pendingDisconnectIds = mutableSetOf<String>()
+
     fun load() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
@@ -72,6 +75,7 @@ class IntegrationsViewModel @Inject constructor(
     }
 
     fun disconnect(id: String) {
+        if (!pendingDisconnectIds.add(id)) return // already in-flight
         viewModelScope.launch {
             try {
                 val response = apiService.disconnectIntegration(id)
@@ -83,6 +87,8 @@ class IntegrationsViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.value = _state.value.copy(error = "Disconnect failed: ${e.message}")
+            } finally {
+                pendingDisconnectIds.remove(id)
             }
         }
     }

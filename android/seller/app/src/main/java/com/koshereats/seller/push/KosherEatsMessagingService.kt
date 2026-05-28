@@ -58,13 +58,15 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val msgId = message.messageId
-        if (msgId != null && !recentMessageIds.add(msgId)) {
-            android.util.Log.d("KosherEatsMessagingService", "duplicate FCM message_id=$msgId — ignoring")
-            return
-        }
-        if (recentMessageIds.size > 64) {
-            recentMessageIds.clear()
-            msgId?.let { recentMessageIds.add(it) }
+        synchronized(recentMessageIds) {
+            if (msgId != null && !recentMessageIds.add(msgId)) {
+                android.util.Log.d("KosherEatsMessagingService", "duplicate FCM message_id=$msgId — ignoring")
+                return
+            }
+            if (recentMessageIds.size > 64) {
+                recentMessageIds.clear()
+                msgId?.let { recentMessageIds.add(it) }
+            }
         }
         val title = message.notification?.title ?: message.data["title"] ?: "KosherEats"
         val body = message.notification?.body ?: message.data["body"] ?: ""
@@ -133,6 +135,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
             val isNewOrder = type == "new_order"
             val channelId = if (isNewOrder) NEW_ORDER_CHANNEL_ID else CHANNEL_ID
             // Stable ID per order key — re-pushes for the same order overwrite; distinct orders don't collide.
+            if (notifIdMap.size > 200) notifIdMap.clear()
             val key = orderId ?: type ?: CHANNEL_ID
             val notifId = notifIdMap.getOrPut(key) { notifIdCounter.getAndIncrement() }
 

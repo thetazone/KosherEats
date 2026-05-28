@@ -59,7 +59,11 @@ class EditProfileViewModel @Inject constructor(
 
     fun updateFirstName(value: String) = _uiState.update { it.copy(firstName = value.take(100), saved = false) }
     fun updateLastName(value: String) = _uiState.update { it.copy(lastName = value.take(100), saved = false) }
-    fun updatePhone(value: String) = _uiState.update { it.copy(phone = value.filter { c -> c.isDigit() || c == '+' }.take(20), saved = false) }
+    fun updatePhone(value: String) {
+        val digitsOnly = value.filter { c -> c.isDigit() }
+        val formatted = if (value.startsWith("+")) "+$digitsOnly" else digitsOnly
+        _uiState.update { it.copy(phone = formatted.take(20), saved = false) }
+    }
 
     fun saveProfile() {
         val state = _uiState.value

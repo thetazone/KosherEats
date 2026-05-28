@@ -36,7 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,7 +45,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,7 +94,7 @@ fun RestaurantSettingsScreen(
     onIntegrations: () -> Unit = {},
     authViewModel: AuthViewModel = hiltViewModel(),
 ) {
-    val authState by authViewModel.state.collectAsState()
+    val authState by authViewModel.state.collectAsStateWithLifecycle()
     val restaurant = authState.restaurant
     val isApproved = restaurant?.approvalStatus?.equals("approved", ignoreCase = true) == true
     val context = LocalContext.current
@@ -118,6 +118,8 @@ fun RestaurantSettingsScreen(
             val url = uploadCertificateSettings(context, uri, authViewModel)
             if (url != null) {
                 authViewModel.updateRestaurantField("kosher_certificate_url", url)
+            } else {
+                Toast.makeText(context, "Certificate upload failed. Please try again.", Toast.LENGTH_SHORT).show()
             }
             isUploadingCertificate = false
         }
@@ -215,7 +217,7 @@ fun RestaurantSettingsScreen(
 
                 if (restaurant != null) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = DividerColor, thickness = 0.5.dp)
+                    HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Rating
@@ -568,6 +570,6 @@ private fun SettingsRow(
 @Composable
 private fun SettingsDivider() {
     Spacer(modifier = Modifier.height(12.dp))
-    Divider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp, modifier = Modifier.padding(start = 32.dp))
+    HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp, modifier = Modifier.padding(start = 32.dp))
     Spacer(modifier = Modifier.height(12.dp))
 }

@@ -77,8 +77,11 @@ class DashboardViewModel: ObservableObject {
     func stopAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
         restaurantSubscription?.cancel()
-        restaurantSubscription = nil
     }
 
     @Published var isTogglingOpen = false
@@ -106,6 +109,9 @@ class DashboardViewModel: ObservableObject {
             let filtered = orders.filter { $0.status.isActive }
                 .sorted { $0.createdAt > $1.createdAt }
             self.activeOrders = filtered
+            // Keep the shared VM in sync so Dashboard→OrderDetail
+            // navigations can find the order via syncOrderFromVM().
+            sharedOrdersVM.orders = orders
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription

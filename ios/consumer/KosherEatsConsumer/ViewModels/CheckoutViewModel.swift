@@ -118,11 +118,15 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// Validates and stores a custom tip value. Negative values are
     /// clamped to "" so the user can't enter a negative tip.
     func updateCustomTip(_ text: String) {
-        if let value = Double(text), value < 0 {
-            customTipText = ""
+        if text.isEmpty { customTipText = text; return }
+        let filtered = text.filter { $0.isNumber || $0 == "." }
+        if filtered.components(separatedBy: ".").count > 2 { return }
+        if let value = Double(filtered), value > Double(Self.maxTipCents) / 100.0 {
+            errorMessage = "Maximum tip is $\(Self.maxTipCents / 100)"
             return
         }
-        customTipText = text
+        errorMessage = nil
+        customTipText = filtered
     }
 
     /// Converts the current tip selection into a cents value using the

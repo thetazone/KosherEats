@@ -263,6 +263,9 @@ struct OrderConfirmationView: View {
             priceRow("Delivery fee", order.deliveryFeeFormatted)
             priceRow("Service fee", order.serviceFeeFormatted)
             priceRow("Tax", order.taxFormatted)
+            if let tip = order.courierTip, tip > 0 {
+                priceRow("Driver Tip", "$\(String(format: "%.2f", Double(tip) / 100))")
+            }
 
             Divider().background(Color.keDivider)
 
@@ -319,9 +322,16 @@ struct OrderConfirmationView: View {
     // MARK: - Helpers
 
     private var etaText: String {
+        // Guard against epoch-zero or otherwise unreasonable ETAs.
+        let now = Date()
+        let eta = order.estDeliveryTime
+        guard eta.timeIntervalSince1970 > 1,
+              eta > now.addingTimeInterval(-24 * 3600) else {
+            return "Ready soon"
+        }
         let formatter = DateFormatter()
         formatter.dateStyle = .none
         formatter.timeStyle = .short
-        return formatter.string(from: order.estDeliveryTime)
+        return formatter.string(from: eta)
     }
 }

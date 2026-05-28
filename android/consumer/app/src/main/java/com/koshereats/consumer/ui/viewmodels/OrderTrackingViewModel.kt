@@ -135,14 +135,17 @@ class OrderTrackingViewModel @Inject constructor(
         // Ensure the encrypted-prefs load has finished before opening the SSE
         // connection. AuthInterceptor now does the same via runBlocking, so this
         // suspends rather than polling with a deadline.
-        tokenProvider.awaitToken()
+        var currentToken = tokenProvider.awaitToken()
 
         while (isActive) {
             try {
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url(url)
                     .header("Accept", "text/event-stream")
-                    .build()
+                // Set Authorization explicitly so the first SSE connection doesn't
+                // rely solely on the interceptor (which may race with token refresh).
+                currentToken?.let { requestBuilder.header("Authorization", "Bearer $it") }
+                val request = requestBuilder.build()
                 sseClient.newCall(request).execute().use { response ->
                     if (response.code == 401) {
                         consecutiveSseUnauthorized++
@@ -197,6 +200,14 @@ class OrderTrackingViewModel @Inject constructor(
             val jitter = (backoffMs * (kotlin.random.Random.nextDouble() * 0.4 - 0.2)).toLong()
             delay(backoffMs + jitter)
             backoffMs = (backoffMs * 2).coerceAtMost(30_000L)
+            // After backoff, refresh the token so the next SSE attempt carries a
+            // valid credential. If the refresh succeeds, reset the 401 counter so a
+            // transient token-rotation 401 doesn't snowball into a forced logout.
+            val refreshed = tokenProvider.awaitToken()
+            if (refreshed != null) {
+                currentToken = refreshed
+                consecutiveSseUnauthorized = 0
+            }
         }
     }
 

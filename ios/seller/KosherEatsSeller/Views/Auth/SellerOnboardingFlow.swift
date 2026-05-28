@@ -137,16 +137,18 @@ final class SellerOnboardingViewModel: ObservableObject {
 
             // Persist drafted menu items grouped by category, same shape as
             // Android's OnboardingViewModel.submit().
+            var failedItemCount = 0
             let grouped = Dictionary(grouping: menuItems) { $0.categoryName }
             for (categoryName, drafts) in grouped {
                 let category: MenuCategory
                 do {
                     category = try await APIService.shared.createCategory(categoryName)
                 } catch {
+                    failedItemCount += drafts.count
                     continue
                 }
                 for draft in drafts {
-                    let cents = Int((Double(draft.priceDollars) ?? 0) * 100)
+                    let cents = Int(round((Double(draft.priceDollars) ?? 0) * 100))
                     guard cents > 0, !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
                     let req = CreateMenuItemRequest(
                         categoryId: category.id,
@@ -159,11 +161,18 @@ final class SellerOnboardingViewModel: ObservableObject {
                         isPareve: draft.isPareve,
                         isAvailable: true
                     )
-                    _ = try? await APIService.shared.createMenuItem(req)
+                    do {
+                        _ = try await APIService.shared.createMenuItem(req)
+                    } catch {
+                        failedItemCount += 1
+                    }
                 }
             }
 
             isSubmitting = false
+            if failedItemCount > 0 {
+                errorMessage = "\(failedItemCount) menu item\(failedItemCount == 1 ? "" : "s") couldn't be saved. You can re-add them from the Menu tab."
+            }
             onComplete(created)
         } catch {
             isSubmitting = false
@@ -454,9 +463,22 @@ private struct BasicsStepView: View {
         onError: (String) -> Void,
         setUploading: (Bool) -> Void
     ) async {
-        guard let item,
-              let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else { return }
+        guard let item else { return }
+        let data: Data
+        do {
+            guard let loaded = try await item.loadTransferable(type: Data.self) else {
+                onError("Couldn't read the selected photo.")
+                return
+            }
+            data = loaded
+        } catch {
+            onError("Photo load failed: \(error.localizedDescription)")
+            return
+        }
+        guard let image = UIImage(data: data) else {
+            onError("Couldn't decode the selected image.")
+            return
+        }
         setUploading(true)
         do {
             let url = try await UploadService.shared.uploadImage(image, kind: kind)
@@ -637,9 +659,22 @@ private struct KosherStepView: View {
     }
 
     private func handleCert(_ item: PhotosPickerItem?) async {
-        guard let item,
-              let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else { return }
+        guard let item else { return }
+        let data: Data
+        do {
+            guard let loaded = try await item.loadTransferable(type: Data.self) else {
+                certError = "Couldn't read the selected photo."
+                return
+            }
+            data = loaded
+        } catch {
+            certError = "Photo load failed: \(error.localizedDescription)"
+            return
+        }
+        guard let image = UIImage(data: data) else {
+            certError = "Couldn't decode the selected image."
+            return
+        }
         certImage = image
         certError = nil
         isUploadingCert = true
@@ -805,9 +840,22 @@ private struct AddMenuItemForm: View {
             }
             .onChange(of: imageItem) { _, newItem in
                 Task {
-                    guard let newItem,
-                          let data = try? await newItem.loadTransferable(type: Data.self),
-                          let image = UIImage(data: data) else { return }
+                    guard let newItem else { return }
+                    let data: Data
+                    do {
+                        guard let loaded = try await newItem.loadTransferable(type: Data.self) else {
+                            self.error = "Couldn't read the selected photo."
+                            return
+                        }
+                        data = loaded
+                    } catch {
+                        self.error = "Photo load failed: \(error.localizedDescription)"
+                        return
+                    }
+                    guard let image = UIImage(data: data) else {
+                        self.error = "Couldn't decode the selected image."
+                        return
+                    }
                     imagePreview = image
                     isUploadingImage = true
                     do {

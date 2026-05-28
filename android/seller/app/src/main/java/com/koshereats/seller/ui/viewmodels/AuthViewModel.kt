@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.koshereats.seller.BuildConfig
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.api.PrefsKeys
@@ -109,6 +110,12 @@ class AuthViewModel @Inject constructor(
             }
         } catch (_: java.io.IOException) {
             // Network error — unblock navigation if still pending.
+            if (_state.value.hasRestaurants == null) {
+                _state.value = _state.value.copy(hasRestaurants = true)
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            // Non-IO error — unblock navigation if still pending.
             if (_state.value.hasRestaurants == null) {
                 _state.value = _state.value.copy(hasRestaurants = true)
             }
@@ -239,11 +246,13 @@ class AuthViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
-                android.util.Log.e(
-                    "SellerAuth",
-                    "socialLogin threw: ${e.javaClass.simpleName} — ${e.message}",
-                    e,
-                )
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.e(
+                        "SellerAuth",
+                        "socialLogin threw: ${e.javaClass.simpleName} — ${e.message}",
+                        e,
+                    )
+                }
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = friendlyNetworkError(e),
@@ -254,17 +263,17 @@ class AuthViewModel @Inject constructor(
 
     fun signInWithGoogle(activityContext: android.content.Context) {
         viewModelScope.launch {
-            android.util.Log.d("GoogleSignIn", "signInWithGoogle called")
+            if (BuildConfig.DEBUG) android.util.Log.d("GoogleSignIn", "signInWithGoogle called")
             _state.value = _state.value.copy(isLoading = true, error = null)
             val result = GoogleSignInHelper.signIn(activityContext)
-            android.util.Log.d("GoogleSignIn", "signIn returned: isSuccess=${result.isSuccess}")
+            if (BuildConfig.DEBUG) android.util.Log.d("GoogleSignIn", "signIn returned: isSuccess=${result.isSuccess}")
             result.fold(
                 onSuccess = { googleResult ->
-                    android.util.Log.d("GoogleSignIn", "success, calling socialLogin")
+                    if (BuildConfig.DEBUG) android.util.Log.d("GoogleSignIn", "success, calling socialLogin")
                     socialLogin("google", googleResult.idToken, googleResult.firstName, googleResult.lastName)
                 },
                 onFailure = { e ->
-                    android.util.Log.e("GoogleSignIn", "failure: ${e.javaClass.name} — ${e.message}")
+                    if (BuildConfig.DEBUG) android.util.Log.e("GoogleSignIn", "failure: ${e.javaClass.name} — ${e.message}")
                     val raw = e.message.orEmpty()
                     // Suppress the user-initiated cancel — backing out of the picker shouldn't
                     // surface as a red error string.
@@ -308,10 +317,15 @@ class AuthViewModel @Inject constructor(
     }
 
     suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
-        val response = apiService.presignUpload(
-            mapOf("kind" to kind, "content_type" to contentType),
-        )
-        return if (response.isSuccessful) response.body() else null
+        return try {
+            val response = apiService.presignUpload(
+                mapOf("kind" to kind, "content_type" to contentType),
+            )
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            null
+        }
     }
 
     fun toggleOpen(targetIsOpen: Boolean) {
@@ -326,10 +340,16 @@ class AuthViewModel @Inject constructor(
                         isTogglingOpen = false,
                     )
                 } else {
-                    _state.value = _state.value.copy(isTogglingOpen = false)
+                    _state.value = _state.value.copy(
+                        isTogglingOpen = false,
+                        error = "Failed to update restaurant status",
+                    )
                 }
-            } catch (_: Exception) {
-                _state.value = _state.value.copy(isTogglingOpen = false)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isTogglingOpen = false,
+                    error = e.localizedMessage ?: "Network error",
+                )
             }
         }
     }

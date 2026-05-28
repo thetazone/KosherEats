@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -43,6 +44,7 @@ class NotificationPreferencesViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load preferences") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -62,6 +64,7 @@ class NotificationPreferencesViewModel @Inject constructor(
                     _uiState.update { it.copy(prefs = previous, error = "Couldn't save (${resp.code()})") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(prefs = previous, error = e.localizedMessage ?: "Network error") }
             }
         }

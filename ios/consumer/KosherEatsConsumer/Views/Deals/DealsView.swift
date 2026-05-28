@@ -10,6 +10,11 @@ struct DealsView: View {
 
             if vm.isLoading && vm.deals.isEmpty {
                 ProgressView().tint(.kePrimary)
+            } else if let error = vm.errorMessage, vm.deals.isEmpty {
+                ErrorStateView(
+                    message: error,
+                    onRetry: { Task { await vm.load() } }
+                )
             } else if vm.deals.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "tag.slash")

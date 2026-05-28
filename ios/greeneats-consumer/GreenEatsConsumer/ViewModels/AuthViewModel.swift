@@ -213,6 +213,7 @@ class AuthViewModel: ObservableObject {
 
     func logout() {
         GIDSignIn.sharedInstance.signOut()
+        DeliveryActivityManager.shared.endTracking(finalStatus: "logged_out", displayText: "Session ended")
         api.logout()
         user = nil
         isAuthenticated = false

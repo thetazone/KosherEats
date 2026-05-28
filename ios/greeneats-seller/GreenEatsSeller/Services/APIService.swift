@@ -21,6 +21,37 @@ enum APIError: LocalizedError {
 actor APIService {
     static let shared = APIService()
 
+    // ISO8601DateFormatter is not Sendable, so wrap each instance in a
+    // lock-protected box to avoid a data-race if the custom dateDecodingStrategy
+    // closure is ever invoked off the main actor.
+    private static let iso8601Fractional: LockedFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return LockedFormatter(formatter)
+    }()
+
+    private static let iso8601Plain: LockedFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return LockedFormatter(formatter)
+    }()
+
+    /// Thread-safe wrapper around ISO8601DateFormatter (which is not Sendable).
+    private final class LockedFormatter: @unchecked Sendable {
+        private let formatter: ISO8601DateFormatter
+        private let lock = NSLock()
+
+        init(_ formatter: ISO8601DateFormatter) {
+            self.formatter = formatter
+        }
+
+        func date(from string: String) -> Date? {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.date(from: string)
+        }
+    }
+
     private let baseURL: String
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -44,6 +75,16 @@ actor APIService {
         self.refreshToken = KeychainHelper.load(forKey: "ke_seller_refresh_token")
 
         self.decoder = JSONDecoder()
+        self.decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = APIService.iso8601Fractional.date(from: value) { return date }
+            if let date = APIService.iso8601Plain.date(from: value) { return date }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO8601 date: \(value)"
+            )
+        }
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase
     }
@@ -66,7 +107,8 @@ actor APIService {
         _ method: String,
         path: String,
         body: Encodable? = nil,
-        headers: [String: String]? = nil
+        headers: [String: String]? = nil,
+        retried: Bool = false
     ) async throws -> T {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -118,10 +160,10 @@ actor APIService {
                 // bare 401 here would otherwise log the seller out whenever
                 // the JWT quietly expired between calls, even though the
                 // refresh token is still valid.
-                if refreshToken != nil {
+                if !retried, refreshToken != nil {
                     let refreshed = await performTokenRefresh()
                     if refreshed {
-                        return try await request(method, path: path, body: body)
+                        return try await request(method, path: path, body: body, retried: true)
                     }
                 }
                 throw APIError.unauthorized
@@ -190,7 +232,8 @@ actor APIService {
     private func requestVoid(
         _ method: String,
         path: String,
-        body: Encodable? = nil
+        body: Encodable? = nil,
+        retried: Bool = false
     ) async throws {
         guard let url = URL(string: "\(baseURL)\(path)") else {
             throw APIError.invalidURL
@@ -232,10 +275,10 @@ actor APIService {
             }
 
             if httpResponse.statusCode == 401 {
-                if refreshToken != nil {
+                if !retried, refreshToken != nil {
                     let refreshed = await performTokenRefresh()
                     if refreshed {
-                        try await requestVoid(method, path: path, body: body)
+                        try await requestVoid(method, path: path, body: body, retried: true)
                         return
                     }
                 }

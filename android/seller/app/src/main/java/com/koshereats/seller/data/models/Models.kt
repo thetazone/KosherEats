@@ -40,6 +40,7 @@ enum class KosherCertification(val displayName: String) {
     @Json(name = "Badatz") BADATZ("Badatz"),
     @Json(name = "Chof-K") CHOF_K("Chof-K"),
     @Json(name = "other") OTHER("Other"),
+    UNKNOWN("Unknown"),
 }
 
 enum class MenuCategory {
@@ -156,6 +157,7 @@ data class Order(
     val subtotal: Int = 0,
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
     val tax: Int = 0,
+    @Json(name = "service_fee") val serviceFee: Int = 0,
     @Json(name = "courier_tip") val courierTip: Int = 0,
     val total: Int = 0,
     val status: OrderStatus = OrderStatus.PENDING,
@@ -269,13 +271,15 @@ data class UpdateMenuItemRequest(
 enum class DiscountType {
     @Json(name = "percentage") PERCENTAGE,
     @Json(name = "fixed") FIXED,
-    @Json(name = "bogo") BOGO;
+    @Json(name = "bogo") BOGO,
+    UNKNOWN;
 
     val displayName: String
         get() = when (this) {
             PERCENTAGE -> "Percentage Off"
             FIXED -> "Fixed Amount Off"
             BOGO -> "Buy One Get One"
+            UNKNOWN -> "Special Offer"
         }
 }
 
@@ -301,6 +305,7 @@ data class Deal(
             DiscountType.PERCENTAGE -> "$discountValue% Off"
             DiscountType.FIXED -> "${discountValue.formatPrice()} Off"
             DiscountType.BOGO -> "BOGO"
+            DiscountType.UNKNOWN -> title.ifBlank { "Special Offer" }
         }
 }
 

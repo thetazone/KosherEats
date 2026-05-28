@@ -22,6 +22,7 @@ data class DealsState(
     val menuItems: List<MenuItem> = emptyList(),
     val isLoading: Boolean = false,
     val isCreating: Boolean = false,
+    val deactivatingDealId: String? = null,
     val error: String? = null,
     val createSuccess: Boolean = false,
 )
@@ -55,6 +56,7 @@ class DealsViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = "Failed to load deals: ${e.localizedMessage}",
@@ -72,7 +74,9 @@ class DealsViewModel @Inject constructor(
                         menuItems = response.body().orEmpty().flatMap { it.items },
                     )
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
@@ -122,6 +126,7 @@ class DealsViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isCreating = false,
                     error = "Failed to create deal: ${e.localizedMessage}",
@@ -131,18 +136,24 @@ class DealsViewModel @Inject constructor(
     }
 
     fun deactivateDeal(dealId: String) {
+        if (_state.value.deactivatingDealId != null) return
+        _state.value = _state.value.copy(deactivatingDealId = dealId)
         viewModelScope.launch {
             try {
                 val response = apiService.deactivateDeal(dealId)
                 if (response.isSuccessful) {
+                    _state.value = _state.value.copy(deactivatingDealId = null)
                     loadDeals()
                 } else {
                     _state.value = _state.value.copy(
+                        deactivatingDealId = null,
                         error = "Failed to deactivate deal",
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
+                    deactivatingDealId = null,
                     error = "Failed to deactivate deal: ${e.localizedMessage}",
                 )
             }

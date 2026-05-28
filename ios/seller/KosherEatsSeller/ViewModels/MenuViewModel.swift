@@ -16,6 +16,7 @@ class MenuViewModel: ObservableObject {
     /// restaurant's items until they relaunch.
     private var restaurantSubscription: AnyCancellable?
     private var isReloading = false
+    private var pendingReload = false
 
     func startObservingRestaurant() {
         guard restaurantSubscription == nil else { return }
@@ -30,9 +31,20 @@ class MenuViewModel: ObservableObject {
     }
 
     func load() async {
-        guard !isReloading else { return }
+        guard !isReloading else {
+            pendingReload = true
+            return
+        }
         isReloading = true
-        defer { isReloading = false }
+        defer {
+            isReloading = false
+            if pendingReload {
+                pendingReload = false
+                Task { @MainActor [weak self] in
+                    await self?.load()
+                }
+            }
+        }
         isLoading = true
         errorMessage = nil
 
@@ -57,6 +69,14 @@ class MenuViewModel: ObservableObject {
         isDairy: Bool,
         isPareve: Bool
     ) async -> Bool {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Item name is required"
+            return false
+        }
+        guard name.count <= 100 else {
+            errorMessage = "Item name must be 100 characters or less"
+            return false
+        }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -96,6 +116,14 @@ class MenuViewModel: ObservableObject {
         isPareve: Bool,
         isAvailable: Bool
     ) async -> Bool {
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "Item name is required"
+            return false
+        }
+        guard name.count <= 100 else {
+            errorMessage = "Item name must be 100 characters or less"
+            return false
+        }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil

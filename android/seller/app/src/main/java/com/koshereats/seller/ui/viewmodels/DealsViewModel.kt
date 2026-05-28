@@ -24,6 +24,7 @@ data class DealsState(
     val menuItems: List<MenuItem> = emptyList(),
     val isLoading: Boolean = false,
     val isCreating: Boolean = false,
+    val deactivatingDealId: String? = null,
     val error: String? = null,
     val createSuccess: Boolean = false,
 )
@@ -89,6 +90,7 @@ class DealsViewModel @Inject constructor(
                     android.util.Log.w("DealsViewModel", "getSellerMenu failed: HTTP ${response.code()}")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 android.util.Log.w("DealsViewModel", "getSellerMenu threw", e)
             }
         }
@@ -151,19 +153,24 @@ class DealsViewModel @Inject constructor(
     }
 
     fun deactivateDeal(dealId: String) {
+        if (_state.value.deactivatingDealId != null) return
+        _state.value = _state.value.copy(deactivatingDealId = dealId)
         viewModelScope.launch {
             try {
                 val response = apiService.deactivateDeal(dealId)
                 if (response.isSuccessful) {
+                    _state.value = _state.value.copy(deactivatingDealId = null)
                     loadDeals()
                 } else {
                     _state.value = _state.value.copy(
+                        deactivatingDealId = null,
                         error = "Failed to deactivate deal",
                     )
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
+                    deactivatingDealId = null,
                     error = "Failed to deactivate deal: ${e.localizedMessage}",
                 )
             }

@@ -64,7 +64,8 @@ class ChatViewModel @Inject constructor(
     fun updateInput(text: String) = _state.update { it.copy(input = text) }
 
     fun send() {
-        val text = _state.value.input.trim()
+        // Cap defensively in case the input field's limit was bypassed (e.g. paste).
+        val text = _state.value.input.trim().take(2000)
         if (text.isEmpty() || _state.value.isSending) return
         viewModelScope.launch {
             _state.update { it.copy(isSending = true, lastFailedText = null) }
@@ -130,8 +131,25 @@ class ChatViewModel @Inject constructor(
             while (isActive) {
                 delay(3_000)
                 fetch()
+                // Stop polling once the order reaches a terminal state — there will
+                // be no new messages after delivery/completion/cancellation.
+                if (checkOrderTerminal()) break
             }
         }
+    }
+
+    /**
+     * Returns true when the order's status is terminal (delivered/completed/cancelled).
+     * Swallows errors so a transient failure doesn't kill the poll loop.
+     */
+    private suspend fun checkOrderTerminal(): Boolean = try {
+        val resp = apiService.getOrder(orderId)
+        if (resp.isSuccessful) {
+            val status = resp.body()?.status
+            status != null && !status.isActive
+        } else false
+    } catch (_: Exception) {
+        false
     }
 
     override fun onCleared() {

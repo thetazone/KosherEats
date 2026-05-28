@@ -189,7 +189,7 @@ fun NearbyMapScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "We need your location to show nearby kosher restaurants. Enable location in Settings to see what's around you.",
+                        text = "We need your location to show nearby restaurants. Enable location in Settings to see what's around you.",
                         color = TextTertiary,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
@@ -279,7 +279,7 @@ fun NearbyMapScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                text = "We couldn't find any kosher restaurants near your location. Try zooming out or check back later.",
+                                text = "We couldn't find any restaurants near your location. Try zooming out or check back later.",
                                 color = TextTertiary,
                                 fontSize = 14.sp,
                                 textAlign = TextAlign.Center,

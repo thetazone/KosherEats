@@ -106,7 +106,7 @@ struct ProfileView: View {
                         }
 
                         // App version
-                        Text("KosherEats v1.0.0")
+                        Text("KosherEats v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
                             .font(.system(size: 12))
                             .foregroundColor(.keTextMuted)
                             .padding(.bottom, Theme.spacingXL)
@@ -218,6 +218,11 @@ struct EditProfileView: View {
     @State private var lastName = ""
     @State private var phone = ""
 
+    private var formValid: Bool {
+        !firstName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !lastName.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -254,8 +259,9 @@ struct EditProfileView: View {
                             }
                         }
                     }
-                    .buttonStyle(KEPrimaryButtonStyle(isEnabled: !authVM.isLoading))
-                    .disabled(authVM.isLoading)
+                    .buttonStyle(KEPrimaryButtonStyle(isEnabled: formValid && !authVM.isLoading))
+                    .disabled(!formValid || authVM.isLoading)
+                    .opacity(formValid ? 1 : 0.4)
                     .padding(.horizontal)
 
                     Spacer()

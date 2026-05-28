@@ -46,20 +46,19 @@ class FavoritesViewModel @Inject constructor(
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load favorites") }
+                    _uiState.update { it.copy(isLoading = false, error = "Couldn't load favorites", restaurants = emptyList(), favoriteIds = emptySet()) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error", restaurants = emptyList(), favoriteIds = emptySet()) }
             }
         }
     }
 
     fun toggleFavorite(restaurantId: String) {
-        val current = _uiState.value.favoriteIds
-        val isFavorite = restaurantId in current
+        val isFavorite = restaurantId in _uiState.value.favoriteIds
         // Optimistic update
         _uiState.update {
-            it.copy(favoriteIds = if (isFavorite) current - restaurantId else current + restaurantId)
+            it.copy(favoriteIds = if (isFavorite) it.favoriteIds - restaurantId else it.favoriteIds + restaurantId)
         }
         viewModelScope.launch {
             var succeeded = false
@@ -68,12 +67,17 @@ class FavoritesViewModel @Inject constructor(
                 else api.addFavorite(restaurantId)
                 succeeded = resp.isSuccessful
                 if (!resp.isSuccessful) {
-                    // Roll back favoriteIds only — list mutations are gated on success.
-                    _uiState.update { it.copy(favoriteIds = current) }
+                    // Roll back this specific restaurant only (not the whole set) so
+                    // concurrent toggles on other restaurants are not clobbered.
+                    _uiState.update {
+                        it.copy(favoriteIds = if (isFavorite) it.favoriteIds + restaurantId else it.favoriteIds - restaurantId)
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.w("FavoritesViewModel", "toggleFavorite($restaurantId) failed", e)
-                _uiState.update { it.copy(favoriteIds = current) }
+                _uiState.update {
+                    it.copy(favoriteIds = if (isFavorite) it.favoriteIds + restaurantId else it.favoriteIds - restaurantId)
+                }
             }
             // Only mutate the visible list when the server agreed with the toggle.
             if (succeeded) {

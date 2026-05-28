@@ -66,6 +66,16 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
     case pending, accepted, preparing, ready
     case pickedUp = "picked_up"
     case delivered, completed, cancelled, rejected
+    /// Fallback for unrecognised status values the backend may introduce.
+    /// Prevents the entire orders list from failing to decode when a single
+    /// order carries a new status string.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = OrderStatus(rawValue: raw) ?? .unknown
+    }
 
     var id: String { rawValue }
 
@@ -80,6 +90,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .delivered, .completed: return "Delivered"
         case .cancelled: return "Cancelled"
         case .rejected: return "Rejected"
+        case .unknown: return "Processing"
         }
     }
 
@@ -94,6 +105,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .delivered, .completed: return "checkmark.seal.fill"
         case .cancelled: return "xmark.circle"
         case .rejected: return "xmark.octagon"
+        case .unknown: return "questionmark.circle"
         }
     }
 
@@ -105,6 +117,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .ready: return "success"
         case .pickedUp, .delivered, .completed: return "success"
         case .cancelled, .rejected: return "error"
+        case .unknown: return "warning"
         }
     }
 
@@ -485,12 +498,20 @@ struct Order: Codable, Identifiable {
     /// Parsed `createdAt` as a Date, or nil if the backend sent something
     /// we can't decode. Tries fractional-seconds ISO8601 first (Postgres
     /// TIMESTAMPTZ default) then falls back to plain ISO8601.
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoPlain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
     var createdAtDate: Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = formatter.date(from: createdAt) { return d }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: createdAt)
+        Self.isoFractional.date(from: createdAt) ?? Self.isoPlain.date(from: createdAt)
     }
 
     private static let displayFormatter: DateFormatter = {

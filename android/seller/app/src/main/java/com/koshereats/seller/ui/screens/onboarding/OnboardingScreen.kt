@@ -1135,7 +1135,7 @@ private fun AddMenuItemForm(
                         onDismissRequest = { catExpanded = false },
                         modifier = Modifier.background(SurfaceDark),
                     ) {
-                        MenuCategory.entries.forEach { cat ->
+                        MenuCategory.entries.filter { it != MenuCategory.UNKNOWN }.forEach { cat ->
                             DropdownMenuItem(
                                 text = {
                                     Text(
@@ -1453,6 +1453,12 @@ private fun SubmittedScreen(onContinue: () -> Unit) {
     }
 }
 
+private val onboardingUploadClient = OkHttpClient.Builder()
+    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+    .build()
+
 private fun formatItemPrice(dollars: String): String {
     val d = dollars.toDoubleOrNull() ?: return "$0.00"
     return String.format(Locale.US, "$%.2f", d)
@@ -1479,7 +1485,7 @@ private suspend fun uploadCertificate(
             return@withContext null
         }
         android.util.Log.d("CertUpload", "uploading ${bytes.size} bytes")
-        val client = OkHttpClient()
+        val client = onboardingUploadClient
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
             .put(bytes.toRequestBody(contentType.toMediaType()))
@@ -1510,7 +1516,7 @@ private suspend fun uploadRestaurantImage(
         val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
         val presignResponse = viewModel.presignUpload(kind, contentType) ?: return@withContext null
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-        val client = OkHttpClient()
+        val client = onboardingUploadClient
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
             .put(bytes.toRequestBody(contentType.toMediaType()))
@@ -1545,7 +1551,7 @@ private suspend fun uploadMenuItemImage(
             return@withContext null
         }
         android.util.Log.d("MenuItemUpload", "uploading ${bytes.size} bytes")
-        val client = OkHttpClient()
+        val client = onboardingUploadClient
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
             .put(bytes.toRequestBody(contentType.toMediaType()))

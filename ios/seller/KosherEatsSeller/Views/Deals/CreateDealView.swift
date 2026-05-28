@@ -6,6 +6,12 @@ struct CreateDealView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vm = DealsViewModel()
 
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
     @State private var title = ""
     @State private var description = ""
     @State private var discountType: DiscountType = .percentage
@@ -17,6 +23,19 @@ struct CreateDealView: View {
     @State private var imageUrl = ""
     @State private var isUploading = false
     @State private var localError: String?
+
+    private var canSubmit: Bool {
+        guard !title.isEmpty, title.count <= 100 else { return false }
+        if discountType != .bogo {
+            if discountType == .fixed {
+                guard let v = Double(discountValue), v > 0 else { return false }
+            } else {
+                guard let v = Int(discountValue), v > 0 else { return false }
+                if v > 100 { return false }
+            }
+        }
+        return expiresAt > Date()
+    }
 
     var body: some View {
         NavigationStack {
@@ -45,10 +64,10 @@ struct CreateDealView: View {
 
                             if discountType != .bogo {
                                 formField(
-                                    discountType == .percentage ? "Percentage" : "Amount (cents)",
+                                    discountType == .percentage ? "Percentage" : "Amount ($)",
                                     text: $discountValue,
-                                    placeholder: discountType == .percentage ? "e.g. 20" : "e.g. 500",
-                                    keyboard: .numberPad
+                                    placeholder: discountType == .percentage ? "e.g. 20" : "e.g. 5.00",
+                                    keyboard: discountType == .percentage ? .numberPad : .decimalPad
                                 )
                             }
 
@@ -108,10 +127,10 @@ struct CreateDealView: View {
                             .foregroundColor(.keTextOnAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
-                            .background(Color.kePrimary)
+                            .background(canSubmit ? Color.kePrimary : Color.kePrimary.opacity(0.4))
                             .cornerRadius(12)
                         }
-                        .disabled(vm.isCreating || isUploading)
+                        .disabled(!canSubmit || vm.isCreating || isUploading)
                     }
                     .padding()
                 }
@@ -122,6 +141,9 @@ struct CreateDealView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+            }
+            .onChange(of: title) { _, _ in
+                if title.count > 100 { title = String(title.prefix(100)) }
             }
             .onChange(of: selectedItem) { _, newItem in
                 Task {
@@ -152,12 +174,23 @@ struct CreateDealView: View {
         let value: Int
         if discountType == .bogo {
             value = 0
+        } else if discountType == .fixed {
+            guard let dollars = Double(discountValue), dollars > 0 else {
+                localError = "Enter a valid discount value"
+                return
+            }
+            let cents = Int(round(dollars * 100))
+            if cents > 99999 {
+                localError = "Fixed discount cannot exceed $999.99"
+                return
+            }
+            value = cents
         } else {
             guard let v = Int(discountValue), v > 0 else {
                 localError = "Enter a valid discount value"
                 return
             }
-            if discountType == .percentage && v > 100 {
+            if v > 100 {
                 localError = "Percentage discount cannot exceed 100%"
                 return
             }
@@ -181,9 +214,6 @@ struct CreateDealView: View {
             isUploading = false
         }
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-
         let request = CreateDealRequest(
             title: title,
             description: description,
@@ -193,7 +223,7 @@ struct CreateDealView: View {
             discountValue: value,
             minOrderAmount: Int(minOrderAmount),
             startsAt: nil,
-            expiresAt: formatter.string(from: expiresAt)
+            expiresAt: Self.isoFormatter.string(from: expiresAt)
         )
         await vm.createDeal(request)
     }

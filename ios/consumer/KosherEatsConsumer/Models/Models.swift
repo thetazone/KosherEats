@@ -499,6 +499,7 @@ struct Order: Codable, Identifiable {
     var courierRating: Int?
     var courierTip: Int?
     var fulfillmentType: String?
+    var scheduledFor: Date?
     var deliveryProofURL: String?
     var claimedAt: Date?
     var pickedUpAt: Date?
@@ -541,6 +542,7 @@ struct Order: Codable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case fulfillmentType = "fulfillment_type"
+        case scheduledFor = "scheduled_for"
         case courierRating = "courier_rating"
         case courierTip = "courier_tip"
         case deliveryProofURL = "delivery_proof_url"

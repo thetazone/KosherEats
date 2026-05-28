@@ -11,31 +11,44 @@ enum Haptics {
         UIAccessibility.isReduceMotionEnabled
     }
 
+    // Reuse generator instances so `prepare()` actually warms the Taptic
+    // Engine between calls instead of allocating + preparing + firing in
+    // the same runloop tick (which defeats the latency benefit).
+    private static let notificationGen = UINotificationFeedbackGenerator()
+    private static let selectionGen = UISelectionFeedbackGenerator()
+    private static let lightImpactGen = UIImpactFeedbackGenerator(style: .light)
+    private static let mediumImpactGen = UIImpactFeedbackGenerator(style: .medium)
+    private static let heavyImpactGen = UIImpactFeedbackGenerator(style: .heavy)
+
     /// Success / warning / error signals — used on key milestone moments
     /// like "order accepted", "item saved", "upload failed".
     static func notify(_ type: UINotificationFeedbackGenerator.FeedbackType) {
         guard !isSuppressed else { return }
-        let gen = UINotificationFeedbackGenerator()
-        gen.prepare()
-        gen.notificationOccurred(type)
+        notificationGen.notificationOccurred(type)
+        notificationGen.prepare()
     }
 
     /// Light / medium / heavy impact — used on casual actions like toggling
     /// availability, tapping a category chip, or opening a sheet.
     static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .light) {
         guard !isSuppressed else { return }
-        let gen = UIImpactFeedbackGenerator(style: style)
-        gen.prepare()
+        let gen: UIImpactFeedbackGenerator
+        switch style {
+        case .light:  gen = lightImpactGen
+        case .medium: gen = mediumImpactGen
+        case .heavy:  gen = heavyImpactGen
+        @unknown default: gen = lightImpactGen
+        }
         gen.impactOccurred()
+        gen.prepare()
     }
 
     /// Selection tick — the lightest haptic, used when the user changes a
     /// picker value or scrolls through a segmented control.
     static func selection() {
         guard !isSuppressed else { return }
-        let gen = UISelectionFeedbackGenerator()
-        gen.prepare()
-        gen.selectionChanged()
+        selectionGen.selectionChanged()
+        selectionGen.prepare()
     }
 
     /// Convenience selectors for the common cases the app cares about.

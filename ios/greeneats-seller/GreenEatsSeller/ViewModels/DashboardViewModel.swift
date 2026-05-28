@@ -26,6 +26,11 @@ class DashboardViewModel: ObservableObject {
     /// overwrite state after the seller switches to Restaurant B.
     private var loadGeneration = 0
 
+    deinit {
+        refreshTimer?.invalidate()
+        restaurantSubscription?.cancel()
+    }
+
     func load() async {
         loadGeneration &+= 1
         let gen = loadGeneration
@@ -46,6 +51,7 @@ class DashboardViewModel: ObservableObject {
     }
 
     func startAutoRefresh() {
+        stopAutoRefresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -95,7 +101,7 @@ class DashboardViewModel: ObservableObject {
             let orders = try await APIService.shared.getOrders()
             guard generation == loadGeneration else { return }
             let filtered = orders.filter { $0.status.isActive }
-                .sorted { $0.createdAt < $1.createdAt }
+                .sorted { $0.createdAt > $1.createdAt }
             self.activeOrders = filtered
         } catch {
             guard generation == loadGeneration else { return }

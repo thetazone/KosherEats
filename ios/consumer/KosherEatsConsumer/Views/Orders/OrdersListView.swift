@@ -61,7 +61,7 @@ struct OrdersListView: View {
                                     NavigationLink(destination: OrderDetailView(orderID: order.id)) {
                                         OrderRowView(
                                             order: order,
-                                            onReorder: order.status == .delivered ? {
+                                            onReorder: (order.status == .delivered || order.status == .completed) ? {
                                                 guard !cartVM.isReordering else { return }
                                                 reorderTask?.cancel()
                                                 let task = Task {
@@ -207,7 +207,7 @@ struct OrderRowView: View {
                 }
             }
 
-            if order.status == .delivered {
+            if order.status == .delivered || order.status == .completed {
                 Button {
                     onReorder?()
                 } label: {

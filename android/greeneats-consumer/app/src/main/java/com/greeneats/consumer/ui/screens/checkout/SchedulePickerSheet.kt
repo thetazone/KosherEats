@@ -50,7 +50,7 @@ fun SchedulePickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val zone = remember { ZoneId.systemDefault() }
-    val nowMillis = remember { Instant.now().toEpochMilli() }
+    val nowMillis = System.currentTimeMillis()
     val sevenDaysMillis = remember { nowMillis + 7 * 24 * 60 * 60 * 1000L }
     val startLocal = remember(current) { current ?: LocalDateTime.now().plusMinutes(45) }
 

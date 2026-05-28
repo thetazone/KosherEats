@@ -14,28 +14,33 @@ class RestaurantViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        do {
-            async let restTask = api.getRestaurant(id: restaurantID)
-            async let menuTask = api.getMenu(restaurantID: restaurantID)
-            async let dealsTask = api.getRestaurantDeals(restaurantID: restaurantID)
-
-            let rest = try await restTask
-            let menu = try await menuTask
-            let fetchedDeals: [Deal]
+        // Fetch deals separately so a failure doesn't cancel the
+        // restaurant + menu structured concurrency group.
+        let dealsTask = Task<[Deal], Never> {
             do {
-                fetchedDeals = try await dealsTask
+                return try await api.getRestaurantDeals(restaurantID: restaurantID)
             } catch {
                 #if DEBUG
                 print("[RestaurantViewModel] deals fetch failed for \(restaurantID): \(error.localizedDescription)")
                 #endif
-                fetchedDeals = []
+                return []
             }
+        }
+
+        do {
+            async let restTask = api.getRestaurant(id: restaurantID)
+            async let menuTask = api.getMenu(restaurantID: restaurantID)
+
+            let rest = try await restTask
+            let menu = try await menuTask
 
             restaurant = rest
             menuCategories = menu.sorted { $0.sortOrder < $1.sortOrder }
-            deals = fetchedDeals.filter { $0.isActive }
+            deals = await dealsTask.value.filter { $0.isActive }
         } catch {
             errorMessage = error.localizedDescription
+            // Still surface any deals that arrived despite the error.
+            deals = await dealsTask.value.filter { $0.isActive }
         }
 
         isLoading = false

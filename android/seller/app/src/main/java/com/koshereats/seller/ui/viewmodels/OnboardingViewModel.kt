@@ -11,6 +11,7 @@ import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,7 +152,10 @@ class OnboardingViewModel @Inject constructor(
         return try {
             val response = apiService.presignUpload(mapOf("kind" to kind, "content_type" to contentType))
             if (response.isSuccessful) response.body() else null
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
     }
 
     fun submit() {
@@ -257,6 +261,7 @@ class OnboardingViewModel @Inject constructor(
                 } else null
                 _state.value = _state.value.copy(isSubmitting = false, isComplete = true, error = partialError)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isSubmitting = false,
                     error = "Connection error: ${e.message}",

@@ -124,13 +124,7 @@ struct ActiveOrderCard: View {
     }
 
     private var statusColor: Color {
-        switch order.status.color {
-        case "primary": return .kePrimary
-        case "success": return .keSuccess
-        case "warning": return .keWarning
-        case "error": return .keError
-        default: return .keTextSecondary
-        }
+        order.status.resolvedColor
     }
 }
 

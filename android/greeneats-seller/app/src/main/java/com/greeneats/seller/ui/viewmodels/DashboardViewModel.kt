@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
 import com.greeneats.seller.data.api.ApiService
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
 import com.greeneats.seller.data.models.DashboardStats
 import com.greeneats.seller.data.models.Order
 import com.greeneats.seller.data.models.OrderStatus
@@ -50,8 +52,11 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val statsResponse = apiService.getDashboardStats()
-                val ordersResponse = apiService.getOrders()
+                val (statsResponse, ordersResponse) = coroutineScope {
+                    val statsDeferred = async { apiService.getDashboardStats() }
+                    val ordersDeferred = async { apiService.getOrders() }
+                    statsDeferred.await() to ordersDeferred.await()
+                }
 
                 if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
                     val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()
@@ -85,8 +90,11 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isRefreshing = true)
             try {
-                val statsResponse = apiService.getDashboardStats()
-                val ordersResponse = apiService.getOrders()
+                val (statsResponse, ordersResponse) = coroutineScope {
+                    val statsDeferred = async { apiService.getDashboardStats() }
+                    val ordersDeferred = async { apiService.getOrders() }
+                    statsDeferred.await() to ordersDeferred.await()
+                }
 
                 if (!statsResponse.isSuccessful || !ordersResponse.isSuccessful) {
                     val code = if (!statsResponse.isSuccessful) statsResponse.code() else ordersResponse.code()

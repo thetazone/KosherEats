@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.greeneats.seller.data.SelectedRestaurant
 import com.greeneats.seller.data.api.ApiService
 import com.greeneats.seller.data.api.NetworkModule
 import com.greeneats.seller.data.api.PrefsKeys
@@ -18,6 +19,7 @@ import com.greeneats.seller.push.PushBootstrap
 import com.greeneats.seller.auth.GoogleSignInHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -146,6 +148,7 @@ class AuthViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = "Connection error: ${e.message}",
@@ -189,6 +192,7 @@ class AuthViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 android.util.Log.e(
                     "SellerAuth",
                     "socialLogin threw: ${e.javaClass.simpleName} — ${e.message}",
@@ -228,6 +232,7 @@ class AuthViewModel @Inject constructor(
                     _state.value = _state.value.copy(restaurant = response.body())
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 android.util.Log.e("SellerAuth", "updateRestaurantField($key) failed", e)
             }
         }
@@ -254,7 +259,8 @@ class AuthViewModel @Inject constructor(
                 } else {
                     _state.value = _state.value.copy(isTogglingOpen = false)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(isTogglingOpen = false)
             }
         }
@@ -315,6 +321,7 @@ class AuthViewModel @Inject constructor(
                     _state.value = _state.value.copy(phoneIsSending = false, error = msg)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     phoneIsSending = false,
                     error = e.localizedMessage ?: "Network error",
@@ -333,7 +340,9 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 apiService.phoneStart(PhoneStartRequest(phone = current.phoneE164))
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
@@ -380,6 +389,7 @@ class AuthViewModel @Inject constructor(
                     _state.value = _state.value.copy(phoneIsVerifying = false, error = msg)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     phoneIsVerifying = false,
                     error = e.localizedMessage ?: "Network error",
@@ -398,6 +408,7 @@ class AuthViewModel @Inject constructor(
         PushBootstrap.deleteToken()
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
+        SelectedRestaurant.clear(context)
         context.dataStore.edit { it.clear() }
         _state.value = AuthState(isLoggedIn = false, isLoading = false)
     }

@@ -269,39 +269,50 @@ private fun StatusHeader(status: OrderStatus) {
 
 @Composable
 private fun ProgressBar(status: OrderStatus) {
+    val isCancelled = status == OrderStatus.CANCELLED || status == OrderStatus.REJECTED
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         repeat(6) { index ->
+            val color = when {
+                isCancelled -> ErrorRed
+                index <= status.stepIndex -> Orange
+                else -> SurfaceDark
+            }
             Box(
                 modifier = Modifier
                     .height(4.dp)
                     .weight(1f)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (index <= status.stepIndex) Orange else SurfaceDark),
+                    .background(color),
             )
         }
     }
 }
 
 private fun phaseText(status: OrderStatus): String = when (status) {
+    OrderStatus.SCHEDULED -> "Your order is scheduled"
     OrderStatus.PENDING -> "Waiting for the restaurant"
-    OrderStatus.CONFIRMED -> "Restaurant accepted your order"
+    OrderStatus.ACCEPTED -> "Restaurant accepted your order"
     OrderStatus.PREPARING -> "Your food is being prepared"
     OrderStatus.READY -> "Waiting for a courier"
     OrderStatus.PICKED_UP -> "Your order is on the way"
     OrderStatus.DELIVERED -> "Delivered \u2014 enjoy!"
     OrderStatus.COMPLETED -> "Order complete"
     OrderStatus.CANCELLED -> "Order was ${status.displayName.lowercase()}"
+    OrderStatus.REJECTED -> "Order was rejected"
+    OrderStatus.UNKNOWN -> "Order status unknown"
 }
 
 private fun phaseSubtext(status: OrderStatus): String = when (status) {
+    OrderStatus.SCHEDULED -> "We'll start preparing closer to your delivery time."
     OrderStatus.PENDING -> "We've sent your order to the restaurant."
-    OrderStatus.CONFIRMED -> "They'll start cooking any moment."
+    OrderStatus.ACCEPTED -> "They'll start cooking any moment."
     OrderStatus.PREPARING -> "Arriving soon."
     OrderStatus.READY -> "A courier will claim your order shortly."
     OrderStatus.PICKED_UP -> "Your courier is heading to you."
+    OrderStatus.REJECTED -> ""
     else -> ""
 }
 

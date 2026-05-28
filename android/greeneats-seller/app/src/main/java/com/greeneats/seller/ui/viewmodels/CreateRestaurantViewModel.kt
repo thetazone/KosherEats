@@ -8,6 +8,7 @@ import com.greeneats.seller.data.models.KosherCertification
 import com.greeneats.seller.data.models.Restaurant
 import com.greeneats.seller.data.models.PresignResponse
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -158,10 +159,15 @@ class CreateRestaurantViewModel @Inject constructor(
     }
 
     suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
-        val response = apiService.presignUpload(
-            mapOf("kind" to kind, "content_type" to contentType),
-        )
-        return if (response.isSuccessful) response.body() else null
+        return try {
+            val response = apiService.presignUpload(
+                mapOf("kind" to kind, "content_type" to contentType),
+            )
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
     }
 
     // --- Submission ---

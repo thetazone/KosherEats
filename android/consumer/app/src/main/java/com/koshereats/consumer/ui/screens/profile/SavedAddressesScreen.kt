@@ -98,12 +98,12 @@ fun SavedAddressesScreen(
     val context = LocalContext.current
 
     // Add form fields
-    var newStreet by remember { mutableStateOf("") }
-    var newApt by remember { mutableStateOf("") }
-    var newCity by remember { mutableStateOf("") }
-    var newState by remember { mutableStateOf("") }
-    var newZip by remember { mutableStateOf("") }
-    var newLabel by remember { mutableStateOf("") }
+    var newStreet by rememberSaveable { mutableStateOf("") }
+    var newApt by rememberSaveable { mutableStateOf("") }
+    var newCity by rememberSaveable { mutableStateOf("") }
+    var newState by rememberSaveable { mutableStateOf("") }
+    var newZip by rememberSaveable { mutableStateOf("") }
+    var newLabel by rememberSaveable { mutableStateOf("") }
 
     Column(
         modifier = Modifier

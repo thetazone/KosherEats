@@ -38,8 +38,8 @@ class OrdersViewModel @Inject constructor(
         loadOrders()
     }
 
-    fun loadOrders(page: Int = 1) {
-        loadJob?.cancel()
+    fun loadOrders(page: Int = 1, cancelExisting: Boolean = true) {
+        if (cancelExisting) loadJob?.cancel()
         loadJob = viewModelScope.launch {
             repository.getOrders(page = page).collect { result ->
                 when (result) {
@@ -72,9 +72,10 @@ class OrdersViewModel @Inject constructor(
     }
 
     fun loadMore() {
+        if (loadJob?.isActive == true) return
         val state = _uiState.value
         if (state.isLoading || !state.hasMore) return
         if (state.currentPage >= 100) return
-        loadOrders(page = state.currentPage + 1)
+        loadOrders(page = state.currentPage + 1, cancelExisting = false)
     }
 }

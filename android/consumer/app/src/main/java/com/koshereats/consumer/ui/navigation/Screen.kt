@@ -27,9 +27,6 @@ sealed class Screen(val route: String) {
         fun createRoute(orderId: String) = "order-confirmation/${Uri.encode(orderId)}"
     }
     data object Orders : Screen("orders")
-    data object OrderDetail : Screen("orders/{orderId}") {
-        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}"
-    }
     data object OrderTracking : Screen("orders/{orderId}/tracking") {
         fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/tracking"
     }

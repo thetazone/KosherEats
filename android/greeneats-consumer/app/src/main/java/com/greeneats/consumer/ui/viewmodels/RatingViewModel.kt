@@ -33,7 +33,7 @@ class RatingViewModel @Inject constructor(
     val uiState: StateFlow<RatingUiState> = _uiState.asStateFlow()
 
     fun setStars(value: Int) = _uiState.update { it.copy(stars = value.coerceIn(1, 5)) }
-    fun setComment(value: String) = _uiState.update { it.copy(comment = value) }
+    fun setComment(value: String) = _uiState.update { it.copy(comment = value.take(500)) }
 
     fun submit(orderId: String) {
         if (orderId.isBlank()) {

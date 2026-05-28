@@ -86,7 +86,7 @@ final class DeliveryActivityManager {
 
     // MARK: - Helpers
 
-    private func endTracking(finalStatus: String, displayText: String) {
+    func endTracking(finalStatus: String, displayText: String) {
         guard let activity = currentActivity else { return }
         currentActivity = nil
 

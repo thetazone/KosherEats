@@ -54,10 +54,25 @@ data class CreateRestaurantState(
         get() = name.isNotBlank() &&
             phone.isNotBlank() &&
             email.isNotBlank() &&
+            email.contains("@") &&
             street.isNotBlank() &&
             city.isNotBlank() &&
             state.isNotBlank() &&
             zipCode.isNotBlank()
+
+    /** Returns a user-facing validation error, or null if the form is valid. */
+    val validationError: String?
+        get() = when {
+            name.isBlank() -> "Restaurant name is required"
+            phone.isBlank() -> "Phone number is required"
+            email.isBlank() -> "Email is required"
+            !email.contains("@") -> "Enter a valid email address"
+            street.isBlank() -> "Street address is required"
+            city.isBlank() -> "City is required"
+            state.isBlank() -> "State is required"
+            zipCode.isBlank() -> "ZIP code is required"
+            else -> null
+        }
 }
 
 @HiltViewModel
@@ -141,17 +156,26 @@ class CreateRestaurantViewModel @Inject constructor(
     }
 
     suspend fun presignUpload(kind: String, contentType: String): PresignResponse? {
-        val response = apiService.presignUpload(
-            mapOf("kind" to kind, "content_type" to contentType),
-        )
-        return if (response.isSuccessful) response.body() else null
+        return try {
+            val response = apiService.presignUpload(
+                mapOf("kind" to kind, "content_type" to contentType),
+            )
+            if (response.isSuccessful) response.body() else null
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
     }
 
     // --- Submission ---
 
     fun submit() {
         val s = _state.value
-        if (!s.isFormValid || s.isSubmitting) return
+        if (s.isSubmitting) return
+        s.validationError?.let { error ->
+            _state.value = s.copy(error = error)
+            return
+        }
 
         val cuisineList = s.cuisineTags
             .split(",")

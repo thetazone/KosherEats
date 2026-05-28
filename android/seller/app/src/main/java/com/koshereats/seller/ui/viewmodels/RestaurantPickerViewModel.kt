@@ -68,6 +68,7 @@ class RestaurantPickerViewModel @Inject constructor(
                     isLoading = false,
                 )
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = e.localizedMessage ?: "Couldn't load restaurants",

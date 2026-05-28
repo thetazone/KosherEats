@@ -234,7 +234,6 @@ fun CheckoutScreen(
         // Sticky pay button
         val canPay = ui.bundle != null &&
             (ui.bundle?.subtotal ?: 0) > 0 &&
-            localCart.isNotEmpty() &&
             (ui.fulfillmentType == "pickup" || ui.selectedAddress != null) &&
             !ui.isProcessing &&
             !ui.isLoadingBundle

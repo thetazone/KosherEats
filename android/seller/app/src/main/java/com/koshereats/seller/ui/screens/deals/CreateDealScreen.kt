@@ -454,8 +454,15 @@ fun CreateDealScreen(
                         discountValue = if (discountType == DiscountType.FIXED) {
                             filterDollarCents(newVal)
                         } else {
-                            val digits = newVal.filter { c -> c.isDigit() }
-                            if ((digits.toIntOrNull() ?: 0) > 100) "100" else digits
+                            val filtered = newVal.filter { c -> c.isDigit() || c == '.' }
+                            // Allow at most one decimal point and two decimal places
+                            val parts = filtered.split('.')
+                            val cleaned = when {
+                                parts.size > 2 -> parts[0] + "." + parts[1].take(2)
+                                parts.size == 2 -> parts[0] + "." + parts[1].take(2)
+                                else -> filtered
+                            }
+                            if ((cleaned.toDoubleOrNull() ?: 0.0) > 100.0) "100" else cleaned
                         }
                     },
                     label = {
@@ -579,7 +586,7 @@ fun CreateDealScreen(
             }
 
             val hasDiscountValue = discountType == DiscountType.BOGO
-                    || (discountValue.toIntOrNull() ?: 0) > 0
+                    || (discountValue.toDoubleOrNull() ?: 0.0) > 0.0
             val canCreate = title.isNotBlank()
                     && hasDiscountValue
                     && isExpiryFuture
@@ -618,8 +625,8 @@ fun CreateDealScreen(
                     val discountValueCents = when (discountType) {
                         // Cap percentage at 99 to prevent free-deal mistakes; FIXED already
                         // capped by the input keyboard but coerce belt-and-braces.
-                        DiscountType.PERCENTAGE -> (discountValue.toIntOrNull() ?: 0).coerceIn(1, 99)
-                        DiscountType.FIXED -> dollarsToCents(discountValue).coerceAtLeast(0)
+                        DiscountType.PERCENTAGE -> (discountValue.toDoubleOrNull() ?: 0.0).coerceIn(1.0, 99.0).roundToInt()
+                        DiscountType.FIXED -> dollarsToCents(discountValue).coerceAtLeast(1)
                         DiscountType.BOGO -> 0
                     }
 

@@ -9,9 +9,11 @@ import com.greeneats.seller.data.models.MenuCategory
 import com.greeneats.seller.data.models.MenuItem
 import com.greeneats.seller.data.models.ModifierGroup
 import com.greeneats.seller.data.models.PresignResponse
+import com.greeneats.seller.data.models.SellerMenuCategory
 import com.greeneats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,7 @@ import javax.inject.Inject
 
 data class MenuState(
     val items: List<MenuItem> = emptyList(),
+    val categories: List<SellerMenuCategory> = emptyList(),
     val selectedItem: MenuItem? = null,
     val selectedCategory: MenuCategory? = null,
     val isLoading: Boolean = false,
@@ -29,6 +32,7 @@ data class MenuState(
     val saveSuccess: String? = null,
     val deleteSuccess: Boolean = false,
     val pendingItemIds: Set<String> = emptySet(),
+    val pendingDeleteIds: Set<String> = emptySet(),
 )
 
 @HiltViewModel
@@ -58,12 +62,15 @@ class MenuViewModel @Inject constructor(
     private val _state = MutableStateFlow(MenuState())
     val state: StateFlow<MenuState> = _state.asStateFlow()
 
+    private var loadJob: Job? = null
+
     init {
         loadMenuItems()
     }
 
     fun loadMenuItems(category: MenuCategory? = null) {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(
                 isLoading = true,
                 error = null,
@@ -72,7 +79,8 @@ class MenuViewModel @Inject constructor(
             try {
                 val response = apiService.getSellerMenu()
                 if (response.isSuccessful) {
-                    val items = response.body().orEmpty().let { categories ->
+                    val serverCategories = response.body().orEmpty()
+                    val items = serverCategories.let { categories ->
                         if (category == null) {
                             categories.flatMap { it.items }
                         } else {
@@ -84,6 +92,7 @@ class MenuViewModel @Inject constructor(
                     }
                     _state.update { it.copy(
                         items = items,
+                        categories = serverCategories,
                         isLoading = false,
                     ) }
                 } else {
@@ -233,26 +242,27 @@ class MenuViewModel @Inject constructor(
     }
 
     fun deleteMenuItem(itemId: String) {
+        if (_state.value.pendingDeleteIds.contains(itemId)) return
+        _state.update { it.copy(pendingDeleteIds = it.pendingDeleteIds + itemId, error = null) }
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = apiService.deleteMenuItem(itemId)
                 if (response.isSuccessful) {
                     _state.update { it.copy(
                         items = it.items.filter { it.id != itemId },
-                        isLoading = false,
+                        pendingDeleteIds = it.pendingDeleteIds - itemId,
                         deleteSuccess = true,
                     ) }
                 } else {
                     _state.update { it.copy(
-                        isLoading = false,
+                        pendingDeleteIds = it.pendingDeleteIds - itemId,
                         error = ERR_DELETE_ITEM,
                     ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    isLoading = false,
+                    pendingDeleteIds = it.pendingDeleteIds - itemId,
                     error = ERR_DELETE_ITEM,
                 ) }
             }
@@ -265,6 +275,11 @@ class MenuViewModel @Inject constructor(
         _state.update { it.copy(
             items = it.items.map {
                 if (it.id == item.id) it.copy(isAvailable = newAvailability) else it
+            },
+            categories = it.categories.map { cat ->
+                cat.copy(items = cat.items.map { catItem ->
+                    if (catItem.id == item.id) catItem.copy(isAvailable = newAvailability) else catItem
+                })
             },
             pendingItemIds = it.pendingItemIds + item.id,
         ) }
@@ -280,12 +295,22 @@ class MenuViewModel @Inject constructor(
                         items = if (updatedItem != null) it.items.map {
                             if (it.id == item.id) updatedItem else it
                         } else it.items,
+                        categories = if (updatedItem != null) it.categories.map { cat ->
+                            cat.copy(items = cat.items.map { catItem ->
+                                if (catItem.id == item.id) updatedItem else catItem
+                            })
+                        } else it.categories,
                         pendingItemIds = it.pendingItemIds - item.id,
                     ) }
                 } else {
                     _state.update { it.copy(
-                        items = it.items.map {
-                            if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
+                        items = it.items.map { existing ->
+                            if (existing.id == item.id) existing.copy(isAvailable = item.isAvailable) else existing
+                        },
+                        categories = it.categories.map { cat ->
+                            cat.copy(items = cat.items.map { catItem ->
+                                if (catItem.id == item.id) catItem.copy(isAvailable = item.isAvailable) else catItem
+                            })
                         },
                         pendingItemIds = it.pendingItemIds - item.id,
                         error = ERR_TOGGLE_AVAILABILITY,
@@ -294,8 +319,13 @@ class MenuViewModel @Inject constructor(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _state.update { it.copy(
-                    items = it.items.map {
-                        if (it.id == item.id && it.isAvailable == newAvailability) it.copy(isAvailable = item.isAvailable) else it
+                    items = it.items.map { existing ->
+                        if (existing.id == item.id) existing.copy(isAvailable = item.isAvailable) else existing
+                    },
+                    categories = it.categories.map { cat ->
+                        cat.copy(items = cat.items.map { catItem ->
+                            if (catItem.id == item.id) catItem.copy(isAvailable = item.isAvailable) else catItem
+                        })
                     },
                     pendingItemIds = it.pendingItemIds - item.id,
                     error = ERR_TOGGLE_AVAILABILITY,

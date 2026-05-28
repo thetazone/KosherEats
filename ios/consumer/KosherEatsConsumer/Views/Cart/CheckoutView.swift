@@ -105,7 +105,11 @@ struct CheckoutView: View {
         .onChange(of: vm.customTipText) { _, _ in
             if vm.tipSelection == .custom {
                 bundleRefreshTask?.cancel()
-                bundleRefreshTask = Task { await vm.refreshBundle() }
+                bundleRefreshTask = Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard !Task.isCancelled else { return }
+                    await vm.refreshBundle()
+                }
             }
         }
         .alert("Payment Received — Order Failed", isPresented: $vm.orderCreationFailed) {
@@ -414,11 +418,15 @@ private struct DeliveryTimeCard: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func formatted(_ date: Date) -> String {
+    private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .short
-        return f.string(from: date)
+        return f
+    }()
+
+    private func formatted(_ date: Date) -> String {
+        Self.dateFormatter.string(from: date)
     }
 }
 

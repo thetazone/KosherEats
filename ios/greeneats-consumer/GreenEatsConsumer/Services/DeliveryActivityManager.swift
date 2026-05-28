@@ -72,6 +72,28 @@ final class DeliveryActivityManager {
         }
     }
 
+    /// End tracking without an Order object — used by logout / session cleanup
+    /// paths where the full order isn't available.
+    func endTracking(finalStatus: String, displayText: String) {
+        guard let activity = currentActivity else { return }
+        currentActivity = nil
+
+        let state = DeliveryAttributes.ContentState(
+            status: finalStatus,
+            statusText: displayText,
+            eta: nil,
+            courierName: nil,
+            courierVehicle: nil
+        )
+
+        Task {
+            await activity.end(
+                .init(state: state, staleDate: nil),
+                dismissalPolicy: .immediate
+            )
+        }
+    }
+
     // MARK: - Helpers
 
     private func statusText(for status: OrderStatus) -> String {

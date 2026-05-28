@@ -495,30 +495,39 @@ struct Order: Codable, Identifiable {
     var courier: CourierPublic?
     var courierRating: Int?
     var courierTip: Int?
+    var scheduledFor: Date?
     var deliveryProofURL: String?
     var claimedAt: Date?
     var pickedUpAt: Date?
     var deliveredAt: Date?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(total) / 100))"
+        "$\(String(format: "%.2f", Double(max(total, 0)) / 100))"
     }
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(subtotal) / 100))"
+        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
     }
 
     var deliveryFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(deliveryFee) / 100))"
+        "$\(String(format: "%.2f", Double(max(deliveryFee, 0)) / 100))"
     }
 
     var serviceFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(serviceFee) / 100))"
+        "$\(String(format: "%.2f", Double(max(serviceFee, 0)) / 100))"
     }
 
     var taxFormatted: String {
-        "$\(String(format: "%.2f", Double(tax) / 100))"
+        "$\(String(format: "%.2f", Double(max(tax, 0)) / 100))"
     }
+
+    /// "delivery" (default) or "pickup". Drives UI branching for
+    /// pickup-shaped orders. Decoded from the backend's `fulfillment_type`
+    /// column (migration 021); defaults to "delivery" when older responses
+    /// omit it.
+    var fulfillmentType: String?
+
+    var isPickup: Bool { fulfillmentType == "pickup" }
 
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, total, courier
@@ -536,12 +545,14 @@ struct Order: Codable, Identifiable {
         case estDeliveryTime = "est_delivery_time"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case scheduledFor = "scheduled_for"
         case courierRating = "courier_rating"
         case courierTip = "courier_tip"
         case deliveryProofURL = "delivery_proof_url"
         case claimedAt = "claimed_at"
         case pickedUpAt = "picked_up_at"
         case deliveredAt = "delivered_at"
+        case fulfillmentType = "fulfillment_type"
     }
 }
 

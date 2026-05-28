@@ -424,7 +424,7 @@ fun ProfileScreen(
 
                 // App version
                 Text(
-                    text = "KosherEats v1.0.0",
+                    text = "KosherEats v${com.koshereats.consumer.BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     modifier = Modifier.align(Alignment.CenterHorizontally),

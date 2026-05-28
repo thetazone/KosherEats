@@ -101,9 +101,10 @@ final class OrderTrackingViewModel: ObservableObject {
         pollTask?.cancel()
         pollGeneration &+= 1
         let generation = pollGeneration
-        pollTask = Task { @MainActor in
+        pollTask = Task { [weak self] @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.pollIntervalNanos)
+                guard let self else { return }
                 if Task.isCancelled || self.pollGeneration != generation { break }
                 await self.refresh()
                 if !(self.order?.status.isActive ?? true) { break }
@@ -113,9 +114,10 @@ final class OrderTrackingViewModel: ObservableObject {
 
     private func startLocationStream() {
         locationStreamTask?.cancel()
-        locationStreamTask = Task { @MainActor in
+        locationStreamTask = Task { [weak self] @MainActor in
             var consecutiveFailures = 0
             while !Task.isCancelled {
+                guard let self else { return }
                 var sawAuthFailure = false
                 do {
                     let stream = self.api.streamOrderLocation(id: self.orderID)
@@ -141,6 +143,7 @@ final class OrderTrackingViewModel: ObservableObject {
                         }
                     }
                 } catch APIError.unauthorized {
+                    guard let self else { return }
                     sawAuthFailure = true
                     let refreshed = try? await self.api.performTokenRefresh()
                     if refreshed != true {
@@ -148,9 +151,11 @@ final class OrderTrackingViewModel: ObservableObject {
                         break
                     }
                 } catch {
+                    guard let self else { return }
                     self.errorMessage = error.localizedDescription
                 }
 
+                guard let self else { return }
                 if Task.isCancelled { break }
                 if !(self.order?.status.isActive ?? true) { break }
 
@@ -159,7 +164,7 @@ final class OrderTrackingViewModel: ObservableObject {
                 if sawAuthFailure {
                     delaySeconds = 2
                 } else {
-                    delaySeconds = min(3 * pow(2, Double(consecutiveFailures - 1)), 60)
+                    delaySeconds = min(3 * pow(2, Double(consecutiveFailures - 1)), 15)
                 }
                 try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
             }

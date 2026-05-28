@@ -78,7 +78,10 @@ class AuthViewModel @Inject constructor(
         checkAuthStatus()
         viewModelScope.launch {
             sessionManager.logoutEvent.collect {
-                clearAuth()
+                // clearAuth() is NOT called here — the caller that triggered
+                // signalLogout() (logout() / deleteAccount()) already cleared
+                // tokens before emitting. Calling it again would race with the
+                // first DataStore edit and double-clear preferences.
                 _uiState.update { AuthUiState(sessionState = SessionState.LoggedOut) }
             }
         }
@@ -166,7 +169,8 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
-                    android.util.Log.w("AuthViewModel", "login ${response.code()}: ${response.errorBody()?.string()}")
+                    val raw = response.errorBody()?.string().orEmpty()
+                    android.util.Log.w("AuthViewModel", "login failed: ${response.code()}, len=${raw.length}")
                     val msg = when (response.code()) {
                         401 -> "Incorrect email or password"
                         403 -> "Your account has been locked — please contact support"
@@ -238,7 +242,8 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
-                    android.util.Log.w("AuthViewModel", "register ${response.code()}: ${response.errorBody()?.string()}")
+                    val raw = response.errorBody()?.string().orEmpty()
+                    android.util.Log.w("AuthViewModel", "register failed: ${response.code()}, len=${raw.length}")
                     val msg = when (response.code()) {
                         409 -> "Email already in use — try signing in instead"
                         422 -> "Please check your details and try again"

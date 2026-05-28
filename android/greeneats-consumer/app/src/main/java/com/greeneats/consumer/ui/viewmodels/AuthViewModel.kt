@@ -231,11 +231,10 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
-                    val errorBody = response.errorBody()?.string() ?: "unknown error"
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "$ERR_SOCIAL_LOGIN_FAILED: $errorBody",
+                            error = "Social login failed. Please try again.",
                         )
                     }
                 }

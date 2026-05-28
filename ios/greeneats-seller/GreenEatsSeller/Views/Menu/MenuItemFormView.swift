@@ -57,7 +57,12 @@ struct MenuItemFormView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: priceText) { _, newValue in
-                                            let filtered = newValue.filter { $0.isNumber || $0 == "." }
+                                            var filtered = newValue.filter { $0.isNumber || $0 == "." }
+                                            // Keep only the first decimal point
+                                            if filtered.components(separatedBy: ".").count > 2 {
+                                                let parts = filtered.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+                                                filtered = parts.joined(separator: ".")
+                                            }
                                             if filtered != newValue { priceText = filtered }
                                         }
                                 }
@@ -270,7 +275,7 @@ struct MenuItemFormView: View {
 
     private var canSave: Bool {
         let priceCents = Int(round((Double(priceText) ?? 0) * 100))
-        return !name.isEmpty &&
+        return !name.trimmingCharacters(in: .whitespaces).isEmpty &&
             !selectedCategoryId.isEmpty &&
             priceCents > 0 && priceCents <= 999_999 &&
             (isMeat || isDairy || isPareve) &&

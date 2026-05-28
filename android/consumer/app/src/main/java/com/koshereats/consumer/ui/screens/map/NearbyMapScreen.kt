@@ -68,6 +68,9 @@ import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.NearbyViewModel
 
+private const val DEFAULT_LATITUDE = 40.7128
+private const val DEFAULT_LONGITUDE = -74.0060
+
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission")
 @Composable
@@ -84,7 +87,7 @@ fun NearbyMapScreen(
     val selected = restaurants.firstOrNull { it.id == selectedId }
 
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(LatLng(40.7128, -74.0060), 11f)
+        position = CameraPosition.fromLatLngZoom(LatLng(DEFAULT_LATITUDE, DEFAULT_LONGITUDE), 11f)
     }
 
     fun hasLocationPermission(): Boolean =
@@ -113,7 +116,7 @@ fun NearbyMapScreen(
                 viewModel.loadNearby(loc.latitude, loc.longitude)
             } else {
                 // lastLocation null on emulators/fresh installs — load with default viewport center
-                viewModel.loadNearby(40.7128, -74.0060)
+                viewModel.loadNearby(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
             }
         }
     }
@@ -127,7 +130,7 @@ fun NearbyMapScreen(
         if (granted) {
             centerOnUser()
         } else {
-            viewModel.loadNearby(40.7128, -74.0060)
+            viewModel.loadNearby(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
             val needsRationale =
                 activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == true ||
                 activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION) == true

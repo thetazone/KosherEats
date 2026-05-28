@@ -8,6 +8,7 @@ import com.greeneats.seller.data.api.ApiService
 import com.greeneats.seller.data.models.Restaurant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,6 +68,7 @@ class RestaurantPickerViewModel @Inject constructor(
                     isLoading = false,
                 )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.value = _state.value.copy(
                     isLoading = false,
                     error = e.localizedMessage ?: "Couldn't load restaurants",

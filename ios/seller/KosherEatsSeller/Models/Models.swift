@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 // MARK: - Currency Formatting
 
@@ -66,6 +67,16 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
     case pending, accepted, preparing, ready
     case pickedUp = "picked_up"
     case delivered, completed, cancelled, rejected
+    /// Fallback for unrecognised status values the backend may introduce.
+    /// Prevents the entire orders list from failing to decode when a single
+    /// order carries a new status string.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = OrderStatus(rawValue: raw) ?? .unknown
+    }
 
     var id: String { rawValue }
 
@@ -80,6 +91,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .delivered, .completed: return "Delivered"
         case .cancelled: return "Cancelled"
         case .rejected: return "Rejected"
+        case .unknown: return "Processing"
         }
     }
 
@@ -94,6 +106,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .delivered, .completed: return "checkmark.seal.fill"
         case .cancelled: return "xmark.circle"
         case .rejected: return "xmark.octagon"
+        case .unknown: return "questionmark.circle"
         }
     }
 
@@ -105,6 +118,19 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         case .ready: return "success"
         case .pickedUp, .delivered, .completed: return "success"
         case .cancelled, .rejected: return "error"
+        case .unknown: return "warning"
+        }
+    }
+
+    /// Resolved `Color` for this status, eliminating the string→Color switch
+    /// that was duplicated across `OrderRowView` and `SellerOrderDetailView`.
+    var resolvedColor: Color {
+        switch color {
+        case "primary": return .kePrimary
+        case "success": return .keSuccess
+        case "warning": return .keWarning
+        case "error":   return .keError
+        default:        return .keTextSecondary
         }
     }
 
@@ -496,12 +522,19 @@ struct Order: Codable, Identifiable {
     /// Returning `nil` when both fail is intentional: callers (e.g.
     /// `formattedDate`) fall back to displaying the raw string, which is
     /// better than crashing or showing a meaningless default date.
+    private static let iso8601Frac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso8601Plain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
     var createdAtDate: Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = formatter.date(from: createdAt) { return d }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: createdAt)
+        Self.iso8601Frac.date(from: createdAt) ?? Self.iso8601Plain.date(from: createdAt)
     }
 
     private static let displayFormatter: DateFormatter = {
@@ -547,12 +580,14 @@ struct OrderItem: Codable, Identifiable {
 /// JSONB shape so the seller can see "Large + Extra hummus" on each line.
 struct SelectedModifier: Codable, Hashable, Identifiable {
     let id: String
+    let groupId: String?
     let groupName: String
     let name: String
     let priceDelta: Int
 
     enum CodingKeys: String, CodingKey {
         case id, name
+        case groupId = "group_id"
         case groupName = "group_name"
         case priceDelta = "price_delta"
     }

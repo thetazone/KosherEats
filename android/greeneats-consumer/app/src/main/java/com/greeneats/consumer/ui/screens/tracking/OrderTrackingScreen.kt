@@ -38,7 +38,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -78,7 +78,7 @@ fun OrderTrackingScreen(
     onChat: (String) -> Unit,
     vm: OrderTrackingViewModel = hiltViewModel(),
 ) {
-    val state by vm.uiState.collectAsState()
+    val state by vm.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(orderId) { vm.start(orderId) }
 
     // Cancel polling and SSE when the screen goes to background (ON_STOP)

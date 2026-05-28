@@ -71,7 +71,7 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load addresses") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage) }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }
     }

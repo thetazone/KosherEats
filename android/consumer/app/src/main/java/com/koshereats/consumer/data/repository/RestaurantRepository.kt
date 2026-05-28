@@ -2,6 +2,7 @@ package com.koshereats.consumer.data.repository
 
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.io.IOException
@@ -53,6 +54,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -74,6 +76,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -93,6 +96,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -110,6 +114,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -127,6 +132,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -147,6 +153,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -164,6 +171,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }
@@ -181,6 +189,7 @@ class RestaurantRepository @Inject constructor(
         } catch (e: IOException) {
             emit(Resource.Error("Network error", null))
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             emit(Resource.Error(e.localizedMessage ?: "Unexpected error"))
         }
     }

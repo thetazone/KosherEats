@@ -230,7 +230,7 @@ struct OrderTrackingView: View {
                 .font(.caption)
                 .foregroundColor(.keTextSecondary)
 
-            if order.status == .pickedUp || order.status == .preparing || order.status == .ready {
+            if order.status.isActive && order.status != .pending {
                 let etaText = "ETA: \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))"
                 Text(etaText)
                     .font(.subheadline.bold())
@@ -340,7 +340,8 @@ struct OrderTrackingView: View {
                 }
                 .accessibilityLabel("Message \(courier.firstName)")
 
-                if let url = URL(string: "tel:\(courier.phone)") {
+                let cleaned = courier.phone.filter { $0.isNumber || $0 == "+" }
+                if let url = URL(string: "tel:\(cleaned)") {
                     Link(destination: url) {
                         Image(systemName: "phone.fill")
                             .foregroundColor(.kePrimary)

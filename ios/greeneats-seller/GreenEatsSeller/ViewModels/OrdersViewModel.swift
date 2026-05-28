@@ -36,6 +36,10 @@ class OrdersViewModel: ObservableObject {
     /// or system push arrives — closes the ~30s polling-only gap where the
     /// dashboard kept showing "Waiting for a courier..." after a claim.
     private var pushObserver: NSObjectProtocol?
+    /// Debounce guard so rapid-fire poll ticks can't stack multiple
+    /// simultaneous alert sounds (e.g. two polls returning a new order
+    /// within 2 seconds).
+    private var lastAlertTime: Date = .distantPast
 
     init() {
         pushObserver = NotificationCenter.default.addObserver(
@@ -55,6 +59,8 @@ class OrdersViewModel: ObservableObject {
 
     deinit {
         if let pushObserver { NotificationCenter.default.removeObserver(pushObserver) }
+        restaurantSubscription?.cancel()
+        restaurantSubscription = nil
     }
 
     /// Auto-dismisses `successMessage` after a short beat so the toast
@@ -133,7 +139,9 @@ class OrdersViewModel: ObservableObject {
                 guard gen == loadGeneration else { break }
                 let newPending = Set(fresh.filter { $0.status == .pending }.map(\.id))
                 let brandNew = newPending.subtracting(self.knownPendingIDs)
-                if !brandNew.isEmpty {
+                if !brandNew.isEmpty,
+                   Date().timeIntervalSince(self.lastAlertTime) > 2.0 {
+                    self.lastAlertTime = Date()
                     playNewOrderAlert()
                     Haptics.notify(.warning)
                 }
@@ -173,7 +181,9 @@ class OrdersViewModel: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.knownPendingIDs = []
+                    self.inFlightOrderIDs = []
                     self.pollHealthError = nil
+                    await self.load()
                 }
             }
     }
@@ -250,6 +260,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.acceptOrder(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Order accepted")
         } catch {
             errorMessage = error.localizedDescription
@@ -266,6 +277,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.rejectOrder(id: id, reason: reason)
             updateOrder(updated)
+            Haptics.success()
             flash("Order rejected")
         } catch {
             errorMessage = error.localizedDescription
@@ -282,6 +294,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.markOrderPreparing(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Started preparing")
         } catch {
             errorMessage = error.localizedDescription
@@ -298,6 +311,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.markOrderReady(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Order ready for courier pickup")
         } catch {
             errorMessage = error.localizedDescription
@@ -317,6 +331,7 @@ class OrdersViewModel: ObservableObject {
         do {
             let updated = try await APIService.shared.markOrderCompleted(id: id)
             updateOrder(updated)
+            Haptics.success()
             flash("Order picked up")
         } catch {
             errorMessage = error.localizedDescription

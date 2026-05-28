@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
 
 data class PaymentMethodsUiState(
@@ -47,7 +48,8 @@ class PaymentMethodsViewModel @Inject constructor(
     suspend fun fetchSetupIntentClientSecret(): String? = try {
         val resp = api.createSetupIntent()
         if (resp.isSuccessful) resp.body()?.clientSecret else null
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
         null
     }
 }

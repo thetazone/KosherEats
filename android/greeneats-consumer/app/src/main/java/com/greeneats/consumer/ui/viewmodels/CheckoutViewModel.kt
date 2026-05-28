@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -97,6 +100,10 @@ class CheckoutViewModel @Inject constructor(
     private var _restaurantId: String = ""
     private var _appliedDealId: String? = null
 
+    // Idempotency: track which payment intent IDs have already been finalized
+    // so a duplicate PaymentSheetResult.Completed cannot create a second order.
+    private val finalizedIntentIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
     fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
         if (_bootstrapped) return
         _bootstrapped = true
@@ -137,25 +144,35 @@ class CheckoutViewModel @Inject constructor(
         if (localCart.isEmpty()) return
         try {
             api.clearServerCart()
-            for (item in localCart) {
-                val modifierIds = item.selectedCustomizations
-                    .flatMap { it.selectedOptions }
-                    .map { it.id }
-                    .filter { it.isNotEmpty() }
-                val resp = api.addToCart(
-                    AddToCartRequest(
-                        menuItemId = item.menuItem.id,
-                        restaurantId = restaurantId,
-                        quantity = item.quantity,
-                        notes = item.specialInstructions.orEmpty(),
-                        modifierIds = modifierIds,
-                    ),
-                )
-                if (!resp.isSuccessful) {
-                    throw Exception("${ERR_CART_ADD_ITEM_FAILED}: ${resp.code()} ${resp.message()}")
-                }
+            coroutineScope {
+                localCart.map { item ->
+                    async {
+                        val modifierIds = item.selectedCustomizations
+                            .flatMap { it.selectedOptions }
+                            .map { it.id }
+                            .filter { it.isNotEmpty() }
+                        val resp = api.addToCart(
+                            AddToCartRequest(
+                                menuItemId = item.menuItem.id,
+                                restaurantId = restaurantId,
+                                quantity = item.quantity,
+                                notes = item.specialInstructions.orEmpty(),
+                                modifierIds = modifierIds,
+                            ),
+                        )
+                        if (!resp.isSuccessful) {
+                            throw Exception("${ERR_CART_ADD_ITEM_FAILED}: ${resp.code()} ${resp.message()}")
+                        }
+                    }
+                }.awaitAll()
             }
         } catch (e: Exception) {
+            // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
+            try {
+                api.clearServerCart()
+            } catch (rollbackErr: Exception) {
+                android.util.Log.w("CheckoutViewModel", "Server cart rollback failed after partial sync", rollbackErr)
+            }
             _uiState.update { it.copy(errorMessage = "$ERR_PREPARE_CART_FAILED: ${e.localizedMessage}") }
         }
     }
@@ -205,6 +222,13 @@ class CheckoutViewModel @Inject constructor(
     }
 
     fun addAddress(address: Address) {
+        // Local guard: a blank street/city/state/zip combo would fail server-side with a
+        // generic 422; surface the issue immediately instead of doing a round-trip.
+        if (address.streetAddress.isBlank() || address.city.isBlank() ||
+            address.state.length != 2 || address.zipCode.length !in 5..10) {
+            _uiState.update { it.copy(errorMessage = "Please complete all address fields") }
+            return
+        }
         viewModelScope.launch {
             try {
                 val resp = api.addAddress(address)
@@ -314,6 +338,7 @@ class CheckoutViewModel @Inject constructor(
      *  (via [events]) to present Stripe's PaymentSheet. If backend is in stub
      *  mode (no Stripe key), skip the sheet and finalize directly. */
     fun onPayTapped() {
+        if (_uiState.value.isProcessing) return
         val bundle = _uiState.value.bundle ?: return
         if (bundle.isStub) {
             finalizeOrder(paymentIntentId = "stub_intent")
@@ -339,6 +364,13 @@ class CheckoutViewModel @Inject constructor(
     }
 
     private fun finalizeOrder(paymentIntentId: String) {
+        // Idempotency guard: if Stripe (or our own retry) calls onPaymentResult twice with
+        // the same intent, only the first call may proceed to /orders.
+        if (!finalizedIntentIds.add(paymentIntentId)) {
+            android.util.Log.w("CheckoutViewModel", "finalizeOrder ignored duplicate intent=$paymentIntentId")
+            _uiState.update { it.copy(isProcessing = false) }
+            return
+        }
         val state = _uiState.value
         val isPickup = state.fulfillmentType == "pickup"
         val address = state.selectedAddress
