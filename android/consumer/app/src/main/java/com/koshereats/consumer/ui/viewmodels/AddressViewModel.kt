@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -41,7 +42,7 @@ class AddressViewModel @Inject constructor(
         viewModelScope.launch {
             sessionManager.logoutEvent.collect {
                 _uiState.value = AddressUiState()
-                try { dataStore.edit { it.remove(SELECTED_ADDRESS_ID) } } catch (_: Exception) { }
+                try { dataStore.edit { it.remove(SELECTED_ADDRESS_ID) } } catch (e: Exception) { if (e is CancellationException) throw e }
             }
         }
         // loadAddresses() is intentionally NOT called here — it fires before auth resolves
@@ -71,7 +72,8 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load addresses") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, error = "Network error. Please check your connection.") }
             }
         }
     }
@@ -100,7 +102,8 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(error = "Couldn't add address (${response.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(error = "Network error. Please check your connection.") }
             }
         }
     }
@@ -123,7 +126,8 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(error = "Couldn't delete address (${response.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(error = "Network error. Please check your connection.") }
             }
         }
     }
@@ -141,7 +145,8 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(error = "Couldn't set default address (${response.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(error = "Network error. Please check your connection.") }
             }
         }
     }
@@ -161,7 +166,8 @@ class AddressViewModel @Inject constructor(
                     _uiState.update { it.copy(error = "Couldn't update address (${response.code()})") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(error = "Network error. Please check your connection.") }
             }
         }
     }

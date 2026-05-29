@@ -7,7 +7,7 @@ import java.text.NumberFormat
  * Negative values are formatted normally (e.g. -500 -> "-$5.00")
  * which lets discounts display correctly.
  */
-fun Int.formatPrice(): String = NumberFormat.getCurrencyInstance().format(this / 100.0)
+fun Int.formatPrice(): String = NumberFormat.getCurrencyInstance(java.util.Locale.US).format(this / 100.0)
 
 /**
  * Formats cents as a whole-dollar currency string (e.g. 1299 -> "$13").
@@ -15,7 +15,7 @@ fun Int.formatPrice(): String = NumberFormat.getCurrencyInstance().format(this /
  * truncating to "$19".
  */
 fun Int.formatPriceWhole(): String {
-    val nf = NumberFormat.getCurrencyInstance()
+    val nf = NumberFormat.getCurrencyInstance(java.util.Locale.US)
     nf.maximumFractionDigits = 0
     nf.minimumFractionDigits = 0
     return nf.format(this / 100.0)

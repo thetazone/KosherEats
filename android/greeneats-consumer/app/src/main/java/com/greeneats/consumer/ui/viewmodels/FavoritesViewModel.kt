@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -53,6 +54,7 @@ class FavoritesViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = ERROR_LOAD_FAVORITES) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -66,20 +68,24 @@ class FavoritesViewModel @Inject constructor(
             it.copy(favoriteIds = if (isFavorite) current - restaurantId else current + restaurantId)
         }
         viewModelScope.launch {
+            var succeeded = false
             try {
                 val resp = if (isFavorite) api.removeFavorite(restaurantId)
                 else api.addFavorite(restaurantId)
-                if (!resp.isSuccessful) {
+                succeeded = resp.isSuccessful
+                if (!succeeded) {
                     // Roll back
                     _uiState.update { it.copy(favoriteIds = current) }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(favoriteIds = current) }
+                return@launch
             }
-            if (!isFavorite) {
+            if (!isFavorite && succeeded) {
                 // We just added — refresh the list view
                 load()
-            } else {
+            } else if (isFavorite && succeeded) {
                 _uiState.update { state ->
                     state.copy(restaurants = state.restaurants.filterNot { r -> r.id == restaurantId })
                 }

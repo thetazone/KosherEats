@@ -34,6 +34,13 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
+        // Persist locally FIRST so the token survives API-call failures and can
+        // be retried on next app launch via PushBootstrap.
+        getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putString("fcm_token", token)
+            .apply()
+
         scope.launch {
             try {
                 apiService.registerDevice(RegisterDeviceRequest(token = token))

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -84,6 +85,7 @@ class AuthViewModel @Inject constructor(
                         else -> _uiState.update { it.copy(isLoggedIn = true) }
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     // Network/IO error: transient, keep session alive.
                     _uiState.update { it.copy(isLoggedIn = true) }
                 }
@@ -139,6 +141,7 @@ class AuthViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
@@ -195,6 +198,7 @@ class AuthViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
@@ -239,6 +243,7 @@ class AuthViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
@@ -299,6 +304,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(phoneIsSending = false, error = msg) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(phoneIsSending = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
@@ -312,7 +318,9 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 apiService.phoneStart(PhoneStartRequest(phone = state.phoneE164))
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
     }
 
@@ -355,6 +363,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(phoneIsVerifying = false, error = msg) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(phoneIsVerifying = false, error = e.localizedMessage ?: ERR_NETWORK)
                 }
@@ -399,7 +408,10 @@ class AuthViewModel @Inject constructor(
                         val body = response.errorBody()?.string().orEmpty()
                         com.google.gson.JsonParser.parseString(body).asJsonObject
                             .get("error")?.asString
-                    } catch (_: Exception) { null }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        null
+                    }
                     val msg = when {
                         response.code() == 409 -> serverMsg ?: ERR_PHONE_DUPLICATE
                         else -> serverMsg ?: ERR_PHONE_SAVE_FAILED
@@ -407,6 +419,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK) }
             }
         }
@@ -448,6 +461,7 @@ class AuthViewModel @Inject constructor(
                     onComplete(false)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK) }
                 onComplete(false)
             }
@@ -455,18 +469,20 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun saveAuth(token: String, refreshToken: String, userId: String) {
+        // Auth tokens go to EncryptedSharedPreferences via TokenProvider
+        tokenProvider.persistNewTokens(token, refreshToken)
+        // User ID is not a secret — keep in DataStore
         dataStore.edit { prefs ->
-            prefs[PrefsKeys.AUTH_TOKEN] = token
-            prefs[PrefsKeys.REFRESH_TOKEN] = refreshToken
             prefs[PrefsKeys.USER_ID] = userId
         }
         sessionManager.markActive()
     }
 
     private suspend fun clearAuth() {
+        // Clear auth tokens from EncryptedSharedPreferences
+        tokenProvider.clearTokens()
+        // Clear non-secret prefs from DataStore
         dataStore.edit { prefs ->
-            prefs.remove(PrefsKeys.AUTH_TOKEN)
-            prefs.remove(PrefsKeys.REFRESH_TOKEN)
             prefs.remove(PrefsKeys.USER_ID)
         }
     }

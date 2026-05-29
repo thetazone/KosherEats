@@ -188,7 +188,7 @@ struct OrderConfirmationView: View {
             Spacer()
 
             // Call button
-            if let phoneURL = URL(string: "tel:\(courier.phone)") {
+            if let phoneURL = URL(string: "tel:\(courier.phone.filter { $0.isNumber || $0 == "+" })") {
                 Link(destination: phoneURL) {
                     Image(systemName: "phone.circle.fill")
                         .font(.system(size: 36))
@@ -254,6 +254,9 @@ struct OrderConfirmationView: View {
             priceRow("Delivery fee", order.deliveryFeeFormatted)
             priceRow("Service fee", order.serviceFeeFormatted)
             priceRow("Tax", order.taxFormatted)
+            if let tip = order.courierTip, tip > 0 {
+                priceRow("Driver Tip", "$\(String(format: "%.2f", Double(tip) / 100))")
+            }
 
             Divider().background(Color.keDivider)
 

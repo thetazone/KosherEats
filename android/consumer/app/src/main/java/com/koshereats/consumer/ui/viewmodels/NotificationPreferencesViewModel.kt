@@ -50,7 +50,8 @@ class NotificationPreferencesViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load preferences") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, error = "Network error. Please check your connection.") }
             }
         }
     }
@@ -77,7 +78,7 @@ class NotificationPreferencesViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.update { it.copy(prefs = lastConfirmedPrefs, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(prefs = lastConfirmedPrefs, error = "Network error. Please check your connection.") }
             }
         }
     }

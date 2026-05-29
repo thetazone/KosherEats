@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -84,19 +85,11 @@ func clientIP(r *http.Request) string {
 		}
 		return fwd
 	}
-	// r.RemoteAddr is "ip:port" (IPv4) or "[ipv6]:port". Strip the port.
-	addr := r.RemoteAddr
-	if i := lastIndex(addr, ':'); i >= 0 {
-		return addr[:i]
+	// r.RemoteAddr is "ip:port" (IPv4) or "[::1]:port" (IPv6).
+	// net.SplitHostPort handles both forms correctly.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr // no port, use as-is
 	}
-	return addr
-}
-
-func lastIndex(s string, b byte) int {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == b {
-			return i
-		}
-	}
-	return -1
+	return host
 }

@@ -7,7 +7,7 @@ import java.text.NumberFormat
  * Negative values are coerced to 0 to prevent displaying negative prices in the UI.
  */
 fun Int.formatPrice(): String =
-    NumberFormat.getCurrencyInstance().format(this.coerceAtLeast(0) / 100.0)
+    NumberFormat.getCurrencyInstance(java.util.Locale.US).format(this.coerceAtLeast(0) / 100.0)
 
 /**
  * Formats a price stored in cents as a whole-dollar currency string (e.g. "$13").
@@ -15,7 +15,7 @@ fun Int.formatPrice(): String =
  * truncation (e.g. 150 cents -> "$2" not "$1").
  */
 fun Int.formatPriceWhole(): String {
-    val nf = NumberFormat.getCurrencyInstance()
+    val nf = NumberFormat.getCurrencyInstance(java.util.Locale.US)
     nf.maximumFractionDigits = 0
     nf.minimumFractionDigits = 0
     return nf.format(this.coerceAtLeast(0) / 100.0)

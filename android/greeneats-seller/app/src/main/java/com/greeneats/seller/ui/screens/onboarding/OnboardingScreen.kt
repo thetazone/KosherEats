@@ -1,6 +1,7 @@
 package com.greeneats.seller.ui.screens.onboarding
 
 import android.net.Uri
+import com.greeneats.seller.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -61,7 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -194,7 +195,7 @@ fun OnboardingScreen(
     onSignOut: () -> Unit,
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     if (state.isComplete) {
         SubmittedScreen(onContinue = onComplete)
@@ -1575,20 +1576,20 @@ private suspend fun uploadCertificate(
 ): String? = withContext(Dispatchers.IO) {
     try {
         val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        android.util.Log.d("CertUpload", "presigning kind=restaurant/certificate ct=$contentType")
+        if (BuildConfig.DEBUG) android.util.Log.d("CertUpload", "presigning kind=restaurant/certificate ct=$contentType")
         val presignResponse = viewModel.presignUpload("restaurant/certificate", contentType)
         if (presignResponse == null) {
             android.util.Log.e("CertUpload", "presign returned null")
             return@withContext null
         }
-        android.util.Log.d("CertUpload", "uploadUrl=${presignResponse.uploadUrl}")
-        android.util.Log.d("CertUpload", "publicUrl=${presignResponse.publicUrl}")
+        if (BuildConfig.DEBUG) android.util.Log.d("CertUpload", "uploadUrl=${presignResponse.uploadUrl}")
+        if (BuildConfig.DEBUG) android.util.Log.d("CertUpload", "publicUrl=${presignResponse.publicUrl}")
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
         if (bytes == null) {
             android.util.Log.e("CertUpload", "failed to read bytes from uri")
             return@withContext null
         }
-        android.util.Log.d("CertUpload", "uploading ${bytes.size} bytes")
+        if (BuildConfig.DEBUG) android.util.Log.d("CertUpload", "uploading ${bytes.size} bytes")
         val client = OkHttpClient()
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
@@ -1597,7 +1598,7 @@ private suspend fun uploadCertificate(
         val response = client.newCall(request).execute()
         response.use {
             if (it.isSuccessful) {
-                android.util.Log.d("CertUpload", "upload OK, returning publicUrl")
+                if (BuildConfig.DEBUG) android.util.Log.d("CertUpload", "upload OK, returning publicUrl")
                 presignResponse.publicUrl
             } else {
                 android.util.Log.e("CertUpload", "upload failed: ${it.code} ${it.message}")
@@ -1641,20 +1642,20 @@ private suspend fun uploadMenuItemImage(
 ): String? = withContext(Dispatchers.IO) {
     try {
         val contentType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        android.util.Log.d("MenuItemUpload", "presigning kind=menu_item ct=$contentType")
+        if (BuildConfig.DEBUG) android.util.Log.d("MenuItemUpload", "presigning kind=menu_item ct=$contentType")
         val presignResponse = viewModel.presignUpload("menu_item", contentType)
         if (presignResponse == null) {
             android.util.Log.e("MenuItemUpload", "presign returned null")
             return@withContext null
         }
-        android.util.Log.d("MenuItemUpload", "uploadUrl=${presignResponse.uploadUrl}")
-        android.util.Log.d("MenuItemUpload", "publicUrl=${presignResponse.publicUrl}")
+        if (BuildConfig.DEBUG) android.util.Log.d("MenuItemUpload", "uploadUrl=${presignResponse.uploadUrl}")
+        if (BuildConfig.DEBUG) android.util.Log.d("MenuItemUpload", "publicUrl=${presignResponse.publicUrl}")
         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
         if (bytes == null) {
             android.util.Log.e("MenuItemUpload", "failed to read bytes from uri")
             return@withContext null
         }
-        android.util.Log.d("MenuItemUpload", "uploading ${bytes.size} bytes")
+        if (BuildConfig.DEBUG) android.util.Log.d("MenuItemUpload", "uploading ${bytes.size} bytes")
         val client = OkHttpClient()
         val request = Request.Builder()
             .url(presignResponse.uploadUrl)
@@ -1663,7 +1664,7 @@ private suspend fun uploadMenuItemImage(
         val response = client.newCall(request).execute()
         response.use {
             if (it.isSuccessful) {
-                android.util.Log.d("MenuItemUpload", "upload OK, returning publicUrl")
+                if (BuildConfig.DEBUG) android.util.Log.d("MenuItemUpload", "upload OK, returning publicUrl")
                 presignResponse.publicUrl
             } else {
                 android.util.Log.e("MenuItemUpload", "upload failed: ${it.code} ${it.message}")

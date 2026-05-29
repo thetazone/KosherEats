@@ -58,7 +58,7 @@ class RatingViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.update { it.copy(isSubmitting = false, error = e.localizedMessage ?: "Network error") }
+                _uiState.update { it.copy(isSubmitting = false, error = "Something went wrong. Please try again.") }
             }
         }
     }

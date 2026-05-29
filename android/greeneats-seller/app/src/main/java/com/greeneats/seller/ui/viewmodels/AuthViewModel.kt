@@ -23,7 +23,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -72,9 +71,10 @@ class AuthViewModel @Inject constructor(
 
     private fun checkAuthStatus() {
         viewModelScope.launch {
-            val prefs = context.dataStore.data.first()
-            val token = prefs[PrefsKeys.AUTH_TOKEN]
-            val refresh = prefs[PrefsKeys.REFRESH_TOKEN]
+            // Read auth tokens from EncryptedSharedPreferences
+            val tokenPrefs = NetworkModule.tokenPrefs
+            val token = tokenPrefs?.getString("auth_token", null)
+            val refresh = tokenPrefs?.getString("refresh_token", null)
             if (token != null) {
                 NetworkModule.cachedToken = token
                 NetworkModule.cachedRefreshToken = refresh
@@ -129,12 +129,13 @@ class AuthViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
-                    }
+                    // Persist auth tokens to EncryptedSharedPreferences
                     NetworkModule.cachedToken = body.token
                     NetworkModule.cachedRefreshToken = body.refreshToken
+                    NetworkModule.tokenPrefs?.edit()
+                        ?.putString("auth_token", body.token)
+                        ?.putString("refresh_token", body.refreshToken)
+                        ?.apply()
                     _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
@@ -173,12 +174,13 @@ class AuthViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
-                    }
+                    // Persist auth tokens to EncryptedSharedPreferences
                     NetworkModule.cachedToken = body.token
                     NetworkModule.cachedRefreshToken = body.refreshToken
+                    NetworkModule.tokenPrefs?.edit()
+                        ?.putString("auth_token", body.token)
+                        ?.putString("refresh_token", body.refreshToken)
+                        ?.apply()
                     _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
@@ -371,12 +373,13 @@ class AuthViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
-                    }
+                    // Persist auth tokens to EncryptedSharedPreferences
                     NetworkModule.cachedToken = body.token
                     NetworkModule.cachedRefreshToken = body.refreshToken
+                    NetworkModule.tokenPrefs?.edit()
+                        ?.putString("auth_token", body.token)
+                        ?.putString("refresh_token", body.refreshToken)
+                        ?.apply()
                     _state.value = AuthState(isLoggedIn = true, isLoading = false)
                     PushBootstrap.registerCurrentToken(apiService)
                     loadRestaurant()
@@ -408,8 +411,16 @@ class AuthViewModel @Inject constructor(
         PushBootstrap.deleteToken()
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
+        // Clear auth tokens from EncryptedSharedPreferences
+        NetworkModule.tokenPrefs?.edit()
+            ?.remove("auth_token")
+            ?.remove("refresh_token")
+            ?.apply()
         SelectedRestaurant.clear(context)
-        context.dataStore.edit { it.clear() }
+        // Clear non-secret prefs (restaurant_id) from DataStore
+        context.dataStore.edit { prefs ->
+            prefs.remove(PrefsKeys.RESTAURANT_ID)
+        }
         _state.value = AuthState(isLoggedIn = false, isLoading = false)
     }
 }

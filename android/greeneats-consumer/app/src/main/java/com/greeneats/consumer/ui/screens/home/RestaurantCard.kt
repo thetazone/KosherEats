@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.greeneats.consumer.data.models.KosherCertification
 import com.greeneats.consumer.data.models.Restaurant
@@ -80,6 +81,8 @@ fun RestaurantCard(
                 AsyncImage(
                     model = restaurant.imageUrl.ifBlank { null },
                     contentDescription = restaurant.name,
+                    placeholder = ColorPainter(SurfaceDark),
+                    error = ColorPainter(SurfaceDark),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(100.dp)
@@ -95,6 +98,8 @@ fun RestaurantCard(
                     AsyncImage(
                         model = restaurant.logoUrl,
                         contentDescription = "${restaurant.name} logo",
+                        placeholder = ColorPainter(SurfaceDark),
+                        error = ColorPainter(SurfaceDark),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .align(Alignment.BottomStart)

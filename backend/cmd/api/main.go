@@ -275,6 +275,7 @@ func main() {
 	// Deals (public, IP rate limited — consumer "Deals" tab)
 	r.Route("/api/v1/deals", func(r chi.Router) {
 		r.Use(apiLimiter.PerIP)
+		r.Use(h.OptionalAuthMiddleware)
 		r.Get("/nearby", h.ListNearbyDeals)
 	})
 

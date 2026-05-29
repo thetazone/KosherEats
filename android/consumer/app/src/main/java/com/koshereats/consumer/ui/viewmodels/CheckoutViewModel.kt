@@ -15,7 +15,9 @@ import com.koshereats.consumer.data.models.CreateOrderRequest
 import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.models.PaymentSheetBundle
 import com.koshereats.consumer.data.models.PaymentSheetRequest
+import com.koshereats.consumer.BuildConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -170,8 +172,9 @@ class CheckoutViewModel @Inject constructor(
                 _uiState.update { it.copy(errorMessage = "Could not load saved addresses (${resp.code()}) — you can still add one below") }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             Log.e("CheckoutViewModel", "loadAddresses exception", e)
-            _uiState.update { it.copy(errorMessage = e.localizedMessage) }
+            _uiState.update { it.copy(errorMessage = "Network error. Please check your connection.") }
         }
     }
 
@@ -207,13 +210,15 @@ class CheckoutViewModel @Inject constructor(
                 }.awaitAll()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
             try {
                 api.clearServerCart()
             } catch (rollbackErr: Exception) {
+                if (rollbackErr is CancellationException) throw rollbackErr
                 android.util.Log.w("CheckoutViewModel", "Server cart rollback failed after partial sync", rollbackErr)
             }
-            _uiState.update { it.copy(errorMessage = "Failed to prepare cart: ${e.localizedMessage}") }
+            _uiState.update { it.copy(errorMessage = "Failed to prepare cart. Please try again.") }
         }
     }
 
@@ -248,7 +253,8 @@ class CheckoutViewModel @Inject constructor(
                     )
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             // Preview is best-effort — bundle has authoritative fees.
         }
     }
@@ -286,7 +292,10 @@ class CheckoutViewModel @Inject constructor(
                         val body = resp.errorBody()?.string().orEmpty()
                         com.google.gson.JsonParser.parseString(body).asJsonObject
                             .get("error")?.asString
-                    } catch (_: Exception) { null }
+                    } catch (parseEx: Exception) {
+                        if (parseEx is CancellationException) throw parseEx
+                        null
+                    }
                     val msg = when {
                         resp.code() == 409 -> serverMsg ?: "That address already exists"
                         resp.code() == 422 -> serverMsg ?: "Invalid address — please check the details"
@@ -295,7 +304,8 @@ class CheckoutViewModel @Inject constructor(
                     _uiState.update { it.copy(errorMessage = msg) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(errorMessage = e.localizedMessage) }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(errorMessage = "Network error. Please check your connection.") }
             }
         }
     }
@@ -380,7 +390,8 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(isLoadingBundle = false) }
             throw e
         } catch (e: Exception) {
-            _uiState.update { it.copy(isLoadingBundle = false, errorMessage = e.localizedMessage) }
+            if (e is CancellationException) throw e
+            _uiState.update { it.copy(isLoadingBundle = false, errorMessage = "Network error. Please check your connection.") }
         }
     }
 
@@ -510,7 +521,8 @@ class CheckoutViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isProcessing = false, errorMessage = e.localizedMessage) }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isProcessing = false, errorMessage = "Network error. Please check your connection.") }
             }
         }
     }
@@ -519,6 +531,7 @@ class CheckoutViewModel @Inject constructor(
         val r = api.getOrders(page = 1)
         if (r.isSuccessful) r.body()?.firstOrNull() else null
     } catch (e: Exception) {
+        if (e is CancellationException) throw e
         Log.e("CheckoutViewModel", "fetchMostRecentOrder failed during 409 recovery", e)
         null
     }
@@ -533,18 +546,18 @@ class CheckoutViewModel @Inject constructor(
     // absent so callers can surface a clear error instead of posting a garbage ID.
     private fun extractIntentId(clientSecret: String): String? {
         if (!clientSecret.contains("_secret_")) {
-            Log.w("CheckoutViewModel", "extractIntentId: client_secret missing '_secret_' delimiter")
+            if (BuildConfig.DEBUG) Log.w("CheckoutViewModel", "extractIntentId: client_secret missing '_secret_' delimiter")
             return null
         }
         val candidate = clientSecret.substringBefore("_secret_")
         // Stripe PaymentIntent IDs start with "pi_" (or "seti_" for SetupIntents)
         // and are 20+ chars; guard against malformed/empty values.
         if (candidate.length < 5) {
-            Log.w("CheckoutViewModel", "extractIntentId: candidate '${candidate}' too short")
+            if (BuildConfig.DEBUG) Log.w("CheckoutViewModel", "extractIntentId: candidate '${candidate}' too short")
             return null
         }
         if (!candidate.startsWith("pi_") && !candidate.startsWith("seti_")) {
-            Log.w("CheckoutViewModel", "extractIntentId: candidate '${candidate}' has unexpected prefix")
+            if (BuildConfig.DEBUG) Log.w("CheckoutViewModel", "extractIntentId: candidate '${candidate}' has unexpected prefix")
             return null
         }
         return candidate

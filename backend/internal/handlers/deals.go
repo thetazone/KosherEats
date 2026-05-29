@@ -303,6 +303,8 @@ func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID 
 // doesn't appear back-to-back.
 // GET /deals/nearby
 func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
+	vertical := verticalFromRequest(r)
+
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT d.id, d.restaurant_id, d.title, d.description, d.image_url,
 		    d.menu_item_id, d.discount_type, d.discount_value, d.min_order_amount,
@@ -316,7 +318,8 @@ func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
 		   AND r.is_active = true
-		 ORDER BY d.expires_at ASC`)
+		   AND r.vertical = $1
+		 ORDER BY d.expires_at ASC`, vertical)
 	if err != nil {
 		slog.Error("ListNearbyDeals query failed", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "failed to list deals")
@@ -345,6 +348,7 @@ func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
 // GET /restaurants/{id}/deals
 func (h *Handler) ListRestaurantDeals(w http.ResponseWriter, r *http.Request) {
 	restaurantID := chi.URLParam(r, "id")
+	vertical := verticalFromRequest(r)
 
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT d.id, d.restaurant_id, d.title, d.description, d.image_url,
@@ -359,7 +363,8 @@ func (h *Handler) ListRestaurantDeals(w http.ResponseWriter, r *http.Request) {
 		   AND d.is_active = true
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
-		 ORDER BY d.expires_at ASC`, restaurantID)
+		   AND r.vertical = $2
+		 ORDER BY d.expires_at ASC`, restaurantID, vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list deals")
 		return

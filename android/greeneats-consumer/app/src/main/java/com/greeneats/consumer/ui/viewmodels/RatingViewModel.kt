@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -60,7 +61,8 @@ class RatingViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSubmitting = false, error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isSubmitting = false, error = "Something went wrong. Please try again.") }
             }
         }
     }

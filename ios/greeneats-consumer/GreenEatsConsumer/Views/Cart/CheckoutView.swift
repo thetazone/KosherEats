@@ -111,8 +111,8 @@ struct CheckoutView: View {
         .alert("Payment Received — Order Failed", isPresented: $vm.orderCreationFailed) {
             Button("Retry") {
                 Task {
-                    guard let bundle = vm.bundle, let addr = vm.selectedAddress else { return }
-                    if let order = await vm.placeOrder(address: addr, bundle: bundle) {
+                    guard let bundle = vm.bundle else { return }
+                    if let order = await vm.placeOrder(address: vm.selectedAddress, bundle: bundle) {
                         Haptics.success()
                         showAddressPicker = false
                         placedOrder = order

@@ -18,6 +18,7 @@ import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.push.PushBootstrap
 import com.koshereats.seller.auth.GoogleSignInHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlin.coroutines.cancellation.CancellationException
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -425,7 +426,7 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 apiService.phoneStart(PhoneStartRequest(phone = current.phoneE164))
-            } catch (_: Exception) {}
+            } catch (e: Exception) { if (e is CancellationException) throw e }
         }
     }
 

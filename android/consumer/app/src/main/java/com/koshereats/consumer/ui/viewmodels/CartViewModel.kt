@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -94,7 +95,7 @@ class CartViewModel @Inject constructor(
     private val logoutJob: Job = viewModelScope.launch {
         sessionManager.logoutEvent.collect {
             _uiState.value = CartUiState()
-            try { dataStore.edit { it.remove(KEY_CART_SNAPSHOT) } } catch (_: Exception) { }
+            try { dataStore.edit { it.remove(KEY_CART_SNAPSHOT) } } catch (e: Exception) { if (e is CancellationException) throw e }
         }
     }
 
@@ -106,6 +107,7 @@ class CartViewModel @Inject constructor(
                     val snap: CartSnapshot? = try {
                         gson.fromJson(json, snapshotType)
                     } catch (e: Exception) {
+                        if (e is CancellationException) throw e
                         Log.e("CartViewModel", "Failed to parse persisted cart snapshot", e)
                         null
                     }
@@ -125,7 +127,7 @@ class CartViewModel @Inject constructor(
                         }
                     }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { if (e is CancellationException) throw e }
         }
     }
 
@@ -142,7 +144,7 @@ class CartViewModel @Inject constructor(
                     val json = gson.toJson(CartSnapshot(cartsToSave, s.activeRestaurantId))
                     dataStore.edit { it[KEY_CART_SNAPSHOT] = json }
                 }
-            } catch (_: Exception) { }
+            } catch (e: Exception) { if (e is CancellationException) throw e }
         }
     }
 

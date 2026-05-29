@@ -151,6 +151,10 @@ func (h *Handler) AddAddress(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.Lat < -90 || req.Lat > 90 || req.Lng < -180 || req.Lng > 180 {
+		writeError(w, http.StatusBadRequest, "lat must be [-90,90] and lng must be [-180,180]")
+		return
+	}
 
 	var addr models.Address
 	err := h.db.Pool.QueryRow(r.Context(),

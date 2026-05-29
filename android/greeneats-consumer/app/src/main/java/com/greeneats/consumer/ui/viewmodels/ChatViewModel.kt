@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -58,7 +59,12 @@ class ChatViewModel @Inject constructor(
             }
         }
         fetch()
-        startPolling()
+        // Check terminal status once on load as a safety net — ongoing
+        // terminal detection is handled by FCM / SSE push, not polling.
+        viewModelScope.launch {
+            if (checkOrderTerminal()) return@launch
+            startPolling()
+        }
     }
 
     fun updateInput(text: String) = _state.update { it.copy(input = text) }
@@ -87,6 +93,7 @@ class ChatViewModel @Inject constructor(
                     _state.update { it.copy(isSending = false, error = ERR_SEND_MESSAGE, lastFailedText = text) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.update { it.copy(isSending = false, error = e.localizedMessage ?: "Network error", lastFailedText = text) }
             }
         }
@@ -120,6 +127,7 @@ class ChatViewModel @Inject constructor(
                     _state.update { it.copy(error = ERR_REFRESH_CHAT) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.update { it.copy(error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -131,9 +139,6 @@ class ChatViewModel @Inject constructor(
             while (isActive) {
                 delay(3_000)
                 fetch()
-                // Stop polling once the order reaches a terminal state — there will
-                // be no new messages after delivery/completion/cancellation.
-                if (checkOrderTerminal()) break
             }
         }
     }
@@ -148,7 +153,8 @@ class ChatViewModel @Inject constructor(
             val status = resp.body()?.status
             status != null && !status.isActive
         } else false
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
         false
     }
 

@@ -18,6 +18,7 @@ import com.koshereats.consumer.data.session.SessionManager
 import com.koshereats.consumer.auth.GoogleSignInHelper
 import com.koshereats.consumer.push.PushBootstrap
 import android.content.Context
+import kotlin.coroutines.cancellation.CancellationException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -112,6 +113,7 @@ class AuthViewModel @Inject constructor(
                         else -> _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = true) }
                     }
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     // Network/IO error: transient, keep session alive but mark stale
                     // so the UI can surface a retry banner via retryAuth().
                     _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = true) }
@@ -187,6 +189,7 @@ class AuthViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
                 }
@@ -259,6 +262,7 @@ class AuthViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
                 }
@@ -308,6 +312,7 @@ class AuthViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(isLoading = false, error = e.localizedMessage ?: "Network error")
                 }
@@ -368,6 +373,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(phoneIsSending = false, error = msg) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(phoneIsSending = false, error = e.localizedMessage ?: "Network error")
                 }
@@ -382,6 +388,7 @@ class AuthViewModel @Inject constructor(
             try {
                 apiService.phoneStart(PhoneStartRequest(phone = state.phoneE164))
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 android.util.Log.d("AuthViewModel", "silentResend failed (non-fatal): ${e.message}")
             }
         }
@@ -427,6 +434,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(phoneIsVerifying = false, error = msg) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update {
                     it.copy(phoneIsVerifying = false, error = e.localizedMessage ?: "Network error")
                 }
@@ -479,6 +487,7 @@ class AuthViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -517,6 +526,7 @@ class AuthViewModel @Inject constructor(
                     onComplete(false)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
                 onComplete(false)
             }
@@ -548,7 +558,7 @@ class AuthViewModel @Inject constructor(
                 if (response.isSuccessful) {
                     _uiState.update { it.copy(user = response.body()) }
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) { if (e is CancellationException) throw e }
         }
     }
 

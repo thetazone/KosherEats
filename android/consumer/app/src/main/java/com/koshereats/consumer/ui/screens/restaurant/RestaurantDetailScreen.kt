@@ -769,7 +769,11 @@ private fun RestaurantDealCard(
         val expiry = ZonedDateTime.parse(deal.expiresAt)
         val hours = ChronoUnit.HOURS.between(ZonedDateTime.now(), expiry)
         when {
-            hours < 1 -> "${ChronoUnit.MINUTES.between(ZonedDateTime.now(), expiry)}m left"
+            hours < 0 -> "Expired"
+            hours < 1 -> {
+                val mins = ChronoUnit.MINUTES.between(ZonedDateTime.now(), expiry)
+                if (mins < 0) "Expired" else "${mins}m left"
+            }
             hours < 24 -> "${hours}h left"
             hours < 48 -> "Ends tomorrow"
             else -> "${hours / 24}d left"

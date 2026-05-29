@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -121,6 +122,7 @@ class OrderTrackingViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Couldn't load order (${resp.code()})") }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             _uiState.update { it.copy(isLoading = false, errorMessage = e.localizedMessage) }
         }
     }
@@ -195,6 +197,7 @@ class OrderTrackingViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(errorMessage = ERROR_LIVE_TRACKING) }
             }
             if (!isActive) break

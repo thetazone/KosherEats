@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
 import com.greeneats.seller.data.api.ApiService
+import com.greeneats.seller.data.api.NetworkModule
 import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -45,6 +46,12 @@ class DashboardViewModel @Inject constructor(
         loadDashboard()
         viewModelScope.launch {
             orderEventBus.events.collect { loadDashboard() }
+        }
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                _state.value = _state.value.copy(stats = DashboardStats(), activeOrders = emptyList())
+                loadDashboard()
+            }
         }
     }
 

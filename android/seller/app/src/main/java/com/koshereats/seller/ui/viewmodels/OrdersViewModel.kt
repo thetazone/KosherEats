@@ -461,14 +461,14 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
-    fun rejectPending(orderId: String) {
+    fun rejectPending(orderId: String, reason: String? = null) {
         val order = _state.value.selectedOrder?.takeIf { it.id == orderId }
             ?: _state.value.orders.find { it.id == orderId }
         if (order?.status != OrderStatus.PENDING) {
             _state.update { it.copy(error = "Can only reject a pending order") }
             return
         }
-        doOrderApiCall(orderId) { apiService.rejectOrder(orderId) }
+        doOrderApiCall(orderId) { apiService.rejectOrder(orderId, mapOf("reason" to reason)) }
     }
 
     fun cancelInProgress(orderId: String) {

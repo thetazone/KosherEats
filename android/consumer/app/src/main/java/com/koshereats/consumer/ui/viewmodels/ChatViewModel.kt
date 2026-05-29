@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
@@ -64,7 +65,12 @@ class ChatViewModel @Inject constructor(
             }
         }
         fetch()
-        startPolling()
+        // Check terminal status once on load as a safety net — ongoing
+        // terminal detection is handled by FCM / SSE push, not polling.
+        viewModelScope.launch {
+            if (checkOrderTerminal()) return@launch
+            startPolling()
+        }
     }
 
     fun updateInput(text: String) = _state.update { it.copy(input = text) }
@@ -116,11 +122,12 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.update { current ->
                     current.copy(
                         isSending = false,
                         failedMessageIds = current.failedMessageIds + clientId,
-                        error = e.localizedMessage ?: "Network error",
+                        error = "Network error. Please check your connection.",
                     )
                 }
             }
@@ -167,11 +174,12 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _state.update { current ->
                     current.copy(
                         inFlightMessageIds = current.inFlightMessageIds - clientId,
                         failedMessageIds = current.failedMessageIds + clientId,
-                        error = e.localizedMessage ?: "Network error",
+                        error = "Network error. Please check your connection.",
                     )
                 }
             }
@@ -204,7 +212,8 @@ class ChatViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(error = e.localizedMessage ?: "Network error") }
+                if (e is CancellationException) throw e
+                _state.update { it.copy(error = "Network error. Please check your connection.") }
             }
         }
     }
@@ -228,9 +237,6 @@ class ChatViewModel @Inject constructor(
             while (isActive) {
                 delay(3_000)
                 fetch()
-                // Stop polling once the order reaches a terminal state — there will
-                // be no new messages after delivery/completion/cancellation.
-                if (checkOrderTerminal()) break
             }
         }
     }
@@ -245,7 +251,8 @@ class ChatViewModel @Inject constructor(
             val status = resp.body()?.status
             status != null && !status.isActive
         } else false
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
         false
     }
 

@@ -5,8 +5,8 @@ import Foundation
 // the same policy — update here when the canonical URLs land.
 enum LegalURLs {
     // swiftlint:disable force_unwrapping — compile-time constants, always valid
-    static let privacyPolicy = URL(string: "https://koshereats.com/privacy")!
-    static let termsOfService = URL(string: "https://koshereats.com/terms")!
-    static let supportEmail = URL(string: "mailto:sellers@koshereats.com")!
+    static let privacyPolicy = URL(string: "https://greeneats.com/privacy")!
+    static let termsOfService = URL(string: "https://greeneats.com/terms")!
+    static let supportEmail = URL(string: "mailto:sellers@greeneats.com")!
     // swiftlint:enable force_unwrapping
 }

@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -103,7 +104,8 @@ class OrderTrackingViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Couldn't load order (${resp.code()})") }
             }
         } catch (e: Exception) {
-            _uiState.update { it.copy(isLoading = false, errorMessage = e.localizedMessage) }
+            if (e is CancellationException) throw e
+            _uiState.update { it.copy(isLoading = false, errorMessage = "Network error. Please check your connection.") }
         }
     }
 
@@ -190,6 +192,7 @@ class OrderTrackingViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 android.util.Log.w("OrderTrackingViewModel", "SSE stream error \u2014 will retry after backoff: ${e.message}")
                 _uiState.update { it.copy(errorMessage = "Live tracking unavailable. Retrying...") }
             }
@@ -214,6 +217,8 @@ class OrderTrackingViewModel @Inject constructor(
     private suspend fun handleLocationEvent(json: String) = withContext(Dispatchers.Default) {
         val event = runCatching { gson.fromJson(json, CourierLocationEvent::class.java) }.getOrNull()
             ?: return@withContext
+        // Skip bogus 0,0 coordinates (null island) from incomplete SSE payloads
+        if (event.lat == 0.0 && event.lng == 0.0) return@withContext
         _uiState.update { state ->
             val current = state.order ?: return@update state
             val courier = current.courier?.copy(lat = event.lat, lng = event.lng) ?: return@update state

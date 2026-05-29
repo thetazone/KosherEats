@@ -40,6 +40,7 @@ class PaymentMethodsViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load Stripe customer (${resp.code()})") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }

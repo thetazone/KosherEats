@@ -136,6 +136,13 @@ fun SellerOrderDetailScreen(
         }
     }
 
+    LaunchedEffect(state.updateSuccess) {
+        if (state.updateSuccess != null) {
+            Toast.makeText(context, state.updateSuccess, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -166,12 +173,33 @@ fun SellerOrderDetailScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = BackgroundBlack),
         )
 
-        if (state.isDetailLoading || order == null) {
+        if (state.isDetailLoading) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(color = Orange)
+            }
+            return
+        }
+
+        if (order == null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Failed to load order details.",
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedButton(onClick = { viewModel.loadOrderDetail(orderId) }) {
+                        Text("Retry", color = Orange)
+                    }
+                }
             }
             return
         }
@@ -300,6 +328,8 @@ fun SellerOrderDetailScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Delivery Fee", order.deliveryFee)
                         Spacer(modifier = Modifier.height(4.dp))
+                        PriceRow("Service Fee", order.serviceFee)
+                        Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Tax", order.tax)
                         if (order.courierTip > 0) {
                             Spacer(modifier = Modifier.height(4.dp))
@@ -331,6 +361,7 @@ fun SellerOrderDetailScreen(
             item {
                 OrderActionButtons(
                     status = order.status,
+                    scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
                         pendingAction = OrderStatus.ACCEPTED to {
@@ -392,6 +423,7 @@ private object OrderDetailStrings {
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
+    scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
     onStartPreparing: () -> Unit,
@@ -404,6 +436,42 @@ private fun OrderActionButtons(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         when (status) {
+            OrderStatus.SCHEDULED -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Scheduled Order",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Orange,
+                        )
+                        if (scheduledFor != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val activatesAt = remember(scheduledFor) {
+                                runCatching {
+                                    java.time.ZonedDateTime.parse(scheduledFor)
+                                        .format(java.time.format.DateTimeFormatter.ofPattern("MMM d 'at' h:mm a"))
+                                }.getOrElse { scheduledFor }
+                            }
+                            Text(
+                                text = "Activates: $activatesAt",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "This order will auto-activate at its scheduled time. No action needed yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted,
+                        )
+                    }
+                }
+            }
             OrderStatus.PENDING -> {
                 Button(
                     onClick = onAccept,

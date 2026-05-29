@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -39,6 +40,7 @@ class PaymentMethodsViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "$ERR_LOAD_STRIPE_CUSTOMER (${resp.code()})") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: ERR_NETWORK) }
             }
         }
@@ -47,7 +49,8 @@ class PaymentMethodsViewModel @Inject constructor(
     suspend fun fetchSetupIntentClientSecret(): String? = try {
         val resp = api.createSetupIntent()
         if (resp.isSuccessful) resp.body()?.clientSecret else null
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
         null
     }
 

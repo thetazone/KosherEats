@@ -42,7 +42,7 @@ class OrderConfirmationViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.update { it.copy(isLoading = false, errorMessage = e.localizedMessage) }
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Something went wrong. Please try again.") }
             }
         }
     }

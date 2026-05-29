@@ -122,7 +122,7 @@ struct OrderDetailView: View {
                 .foregroundColor(.keTextPrimary)
 
             if order.status.isActive && order.status != .cancelled && order.status != .rejected {
-                Text("Estimated delivery: \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))")
+                Text("Estimated \(order.fulfillmentType == "pickup" ? "pickup" : "delivery"): \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))")
                     .font(.system(size: 14))
                     .foregroundColor(.keTextSecondary)
             }
@@ -142,7 +142,8 @@ struct OrderDetailView: View {
     }
 
     private func progressSteps(currentStep: Int) -> some View {
-        let steps = ["Placed", "Accepted", "Preparing", "Ready", "On the Way", "Delivered"]
+        let isPickup = order.fulfillmentType == "pickup"
+        let steps = ["Placed", "Accepted", "Preparing", "Ready", isPickup ? "Ready for Pickup" : "On the Way", isPickup ? "Picked Up" : "Delivered"]
 
         return HStack(spacing: 0) {
             ForEach(0..<steps.count, id: \.self) { index in
@@ -187,9 +188,9 @@ struct OrderDetailView: View {
         case .delivered: return .keSuccess
         case .cancelled, .rejected: return .keError
         case .completed:
-            fallthrough
-        default:
-            return .clear
+            return .keSuccess
+        @unknown default:
+            return .keTextSecondary
         }
     }
 

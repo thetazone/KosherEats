@@ -226,7 +226,10 @@ class CartViewModel: ObservableObject {
         let priceWithMods = unitPrice + modifierDelta
 
         if var existing = cart, existing.restaurantID == restaurantID {
-            if let idx = existing.items.firstIndex(where: { $0.menuItemID == menuItemID && $0.notes == notes }) {
+            if let idx = existing.items.firstIndex(where: {
+                $0.menuItemID == menuItemID && $0.notes == notes
+                && Set($0.selectedModifiers ?? []) == Set(selectedModifiers)
+            }) {
                 existing.items[idx].quantity += quantity
                 existing.subtotal = existing.items.reduce(0) { $0 + $1.price * $1.quantity }
                 cart = existing

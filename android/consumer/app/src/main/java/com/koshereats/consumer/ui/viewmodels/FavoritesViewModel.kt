@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
 
 data class FavoritesUiState(
@@ -49,6 +50,7 @@ class FavoritesViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load favorites", restaurants = emptyList(), favoriteIds = emptySet()) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error", restaurants = emptyList(), favoriteIds = emptySet()) }
             }
         }

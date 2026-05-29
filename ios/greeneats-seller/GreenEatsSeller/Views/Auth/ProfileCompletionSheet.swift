@@ -166,7 +166,7 @@ struct ProfileCompletionSheet: View {
             // placeholder the backend generates when no email was supplied.
             let lower = u.email.lowercased()
             if lower.hasSuffix("@privaterelay.appleid.com")
-                || lower.hasSuffix("@phone.koshereats.local") {
+                || lower.hasSuffix("@phone.greeneats.local") {
                 email = ""
             } else {
                 email = u.email

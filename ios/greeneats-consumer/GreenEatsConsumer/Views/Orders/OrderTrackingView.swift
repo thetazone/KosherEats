@@ -238,6 +238,8 @@ struct OrderTrackingView: View {
             return "Order was " + status.displayName.lowercased()
         case .completed:
             return "Order completed"
+        case .unknown:
+            return "Processing your order"
         }
     }
 
@@ -263,6 +265,8 @@ struct OrderTrackingView: View {
             return "The order will not be fulfilled."
         case .rejected:
             return "The restaurant could not accept this order."
+        case .unknown:
+            return "We're working on your order"
         }
     }
     /// 6-step timeline stepper: Ordered → Accepted → Preparing → Ready → En route → Delivered.
@@ -312,7 +316,7 @@ struct OrderTrackingView: View {
                         .clipShape(Circle())
                 }
 
-                if let url = URL(string: "tel:\(courier.phone)") {
+                if let url = URL(string: "tel:\(courier.phone.filter { $0.isNumber || $0 == "+" })") {
                     Link(destination: url) {
                         Image(systemName: "phone.fill")
                             .foregroundColor(.kePrimary)

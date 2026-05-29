@@ -243,7 +243,7 @@ struct OrderStatusBadge: View {
         case .delivered: return .keSuccess
         case .cancelled, .rejected: return .keError
         case .completed:
-            return .clear
+            return .keSuccess
         @unknown default:
             return .keTextSecondary
         }

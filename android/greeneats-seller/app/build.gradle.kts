@@ -144,8 +144,11 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
 
-    // DataStore for local prefs
+    // DataStore for local prefs (restaurant ID, non-secret settings)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Encrypted token storage (Android Keystore)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.1")

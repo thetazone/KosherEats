@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.greeneats.seller.data.SelectedRestaurant
 import com.greeneats.seller.data.api.ApiService
+import com.greeneats.seller.data.api.NetworkModule
 import com.greeneats.seller.data.models.Restaurant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -77,13 +78,26 @@ class RestaurantPickerViewModel @Inject constructor(
         }
     }
 
+    private var selectJob: kotlinx.coroutines.Job? = null
+
     fun select(restaurantId: String, onDone: () -> Unit) {
-        viewModelScope.launch {
+        // If a previous select is still running (rapid double-tap on two rows), cancel it
+        // so we don't race two restaurantChanged emissions for inconsistent IDs.
+        selectJob?.cancel()
+        selectJob = viewModelScope.launch {
+            android.util.Log.i("RestaurantPickerVM", "Switching active restaurant to id=$restaurantId")
             SelectedRestaurant.set(context, restaurantId)
             // Wait until the DataStore flow reflects the new ID so that any
             // runBlocking { flow.first() } on the OkHttp interceptor thread
             // sees the updated value before the dashboard reload fires.
             SelectedRestaurant.flow(context).first { it == restaurantId }
+            // Eagerly update the in-memory cache so the OkHttp interceptor
+            // sees the new id immediately when the dashboard reload fires,
+            // without depending on the DataStore collector coroutine ordering.
+            NetworkModule.cachedRestaurantId = restaurantId
+            // Notify OrdersViewModel/MenuViewModel/DealsViewModel to reset and reload
+            // before onDone() triggers the dashboard reload.
+            NetworkModule.restaurantChanged.emit(Unit)
             _state.value = _state.value.copy(selectedId = restaurantId)
             onDone()
         }

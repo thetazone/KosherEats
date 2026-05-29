@@ -350,6 +350,7 @@ class AuthViewModel: ObservableObject {
         }
         user = nil
         isAuthenticated = false
+        SelectedRestaurant.shared.set(nil)
         PushNotifications.shared.pendingToken = nil
     }
 

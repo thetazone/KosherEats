@@ -3,6 +3,7 @@ package com.greeneats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.greeneats.seller.data.api.ApiService
+import com.greeneats.seller.data.api.NetworkModule
 import com.greeneats.seller.data.models.Order
 import com.greeneats.seller.data.models.OrderStatus
 import com.greeneats.seller.push.OrderEventBus
@@ -42,6 +43,12 @@ class OrdersViewModel @Inject constructor(
             orderEventBus.events.collect {
                 _state.value.selectedOrder?.let { loadOrderDetail(it.id) }
                 loadOrders(status = _state.value.selectedFilter)
+            }
+        }
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                _state.value = OrdersState()
+                loadOrders()
             }
         }
     }
@@ -139,7 +146,7 @@ class OrdersViewModel @Inject constructor(
         OrderStatus.PICKED_UP to setOf(OrderStatus.COMPLETED),
     )
 
-    fun updateOrderStatus(orderId: String, newStatus: OrderStatus) {
+    fun updateOrderStatus(orderId: String, newStatus: OrderStatus, reason: String? = null) {
         if (_state.value.pendingOrderIds.contains(orderId)) return
 
         val currentOrder = _state.value.selectedOrder?.takeIf { it.id == orderId }
@@ -162,7 +169,7 @@ class OrdersViewModel @Inject constructor(
                     OrderStatus.PREPARING -> apiService.markOrderPreparing(orderId)
                     OrderStatus.READY -> apiService.markOrderReady(orderId)
                     OrderStatus.COMPLETED -> apiService.completeOrder(orderId)
-                    OrderStatus.CANCELLED -> apiService.rejectOrder(orderId)
+                    OrderStatus.CANCELLED -> apiService.rejectOrder(orderId, mapOf("reason" to reason))
                     else -> null
                 }
 

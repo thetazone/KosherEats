@@ -102,7 +102,7 @@ struct NearbyMapView: View {
             searchText: "",
             selectedCuisine: nil,
             kosherFilters: KosherFilters()
-        )
+        ).filter { $0.lat != 0 || $0.lng != 0 }
     }
 }
 

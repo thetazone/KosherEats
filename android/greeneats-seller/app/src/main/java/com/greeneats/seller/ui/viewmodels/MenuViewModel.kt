@@ -3,6 +3,7 @@ package com.greeneats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.greeneats.seller.data.api.ApiService
+import com.greeneats.seller.data.api.NetworkModule
 import com.greeneats.seller.data.models.CreateMenuItemBody
 import com.greeneats.seller.data.models.CreateModifierGroupRequest
 import com.greeneats.seller.data.models.MenuCategory
@@ -66,6 +67,16 @@ class MenuViewModel @Inject constructor(
 
     init {
         loadMenuItems()
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                // Cancel any in-flight menu fetch so its response (carrying items from the
+                // previous restaurant) cannot land into the freshly-cleared state.
+                loadJob?.cancel()
+                loadJob = null
+                _state.value = MenuState()
+                loadMenuItems()
+            }
+        }
     }
 
     fun loadMenuItems(category: MenuCategory? = null) {

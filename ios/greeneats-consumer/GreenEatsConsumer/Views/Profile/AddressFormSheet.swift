@@ -32,7 +32,12 @@ struct AddressFormSheet: View {
     @State private var suppressSuggestions = false
 
     private var formValid: Bool {
-        !street.isEmpty && !city.isEmpty && !state.isEmpty && !zip.isEmpty
+        !street.trimmingCharacters(in: .whitespaces).isEmpty
+            && !city.trimmingCharacters(in: .whitespaces).isEmpty
+            && !state.trimmingCharacters(in: .whitespaces).isEmpty
+            && state.count == 2
+            && !zip.trimmingCharacters(in: .whitespaces).isEmpty
+            && zip.count == 5
             && (lat != 0 && lng != 0)
     }
 

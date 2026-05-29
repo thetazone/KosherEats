@@ -3,6 +3,7 @@ package com.greeneats.seller.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.greeneats.seller.data.api.ApiService
+import com.greeneats.seller.data.api.NetworkModule
 import com.greeneats.seller.data.models.CreateDealRequest
 import com.greeneats.seller.data.models.Deal
 import com.greeneats.seller.data.models.DiscountType
@@ -11,6 +12,7 @@ import com.greeneats.seller.data.models.PresignResponse
 import com.greeneats.seller.data.models.SellerMenuCategory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,12 +37,23 @@ class DealsViewModel @Inject constructor(
     private val _state = MutableStateFlow(DealsState())
     val state: StateFlow<DealsState> = _state.asStateFlow()
 
+    private var loadJob: Job? = null
+
     init {
         loadDeals()
+        viewModelScope.launch {
+            NetworkModule.restaurantChanged.collect {
+                loadJob?.cancel()
+                loadJob = null
+                _state.value = DealsState()
+                loadDeals()
+            }
+        }
     }
 
     fun loadDeals() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
                 val response = apiService.getDeals()

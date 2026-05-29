@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
 
 data class LinkedProvidersUiState(
@@ -42,6 +43,7 @@ class LinkedProvidersViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, error = "Couldn't load (${resp.code()})") }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -54,6 +56,7 @@ class LinkedProvidersViewModel @Inject constructor(
                 if (resp.isSuccessful) load()
                 else _uiState.update { it.copy(error = "Couldn't link $provider (${resp.code()})") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
             }
         }
@@ -70,6 +73,7 @@ class LinkedProvidersViewModel @Inject constructor(
                 if (resp.isSuccessful) load()
                 else _uiState.update { it.copy(error = "Couldn't unlink (${resp.code()})") }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(error = e.localizedMessage ?: "Network error") }
             }
         }

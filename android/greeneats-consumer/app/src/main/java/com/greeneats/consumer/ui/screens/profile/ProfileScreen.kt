@@ -66,7 +66,7 @@ import com.greeneats.consumer.ui.viewmodels.AuthViewModel
 private object ProfileStrings {
     const val TITLE = "Profile"
     const val UNLOCK_TITLE = "Unlock your full experience"
-    const val UNLOCK_SUBTITLE = "Sign in to track orders, save addresses, and earn rewards on every kosher meal."
+    const val UNLOCK_SUBTITLE = "Sign in to track orders, save addresses, and earn rewards on every meal."
     const val TRACK_ORDERS = "Track your orders in real-time"
     const val SAVE_ADDRESSES = "Save multiple delivery addresses"
     const val SECURE_CHECKOUT = "Secure and fast checkout"

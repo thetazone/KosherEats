@@ -40,7 +40,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -81,7 +81,7 @@ fun IntegrationsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val state by viewModel.state.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val testResults: SnapshotStateMap<String, String> = remember { mutableStateMapOf() }
     var testingID by remember { mutableStateOf<String?>(null) }
 

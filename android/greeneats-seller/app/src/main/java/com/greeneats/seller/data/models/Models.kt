@@ -155,6 +155,7 @@ data class Order(
     val items: List<OrderItem> = emptyList(),
     val subtotal: Int = 0,
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
+    @Json(name = "service_fee") val serviceFee: Int = 0,
     val tax: Int = 0,
     @Json(name = "courier_tip") val courierTip: Int = 0,
     val total: Int = 0,

@@ -152,8 +152,10 @@ struct OrderTrackingView: View {
                 MapPin(symbol: "fork.knife", color: .kePrimary)
             }
         }
-        Annotation("Delivery", coordinate: .init(latitude: order.deliveryLat, longitude: order.deliveryLng)) {
-            MapPin(symbol: "house.fill", color: .keSuccess)
+        if order.deliveryLat != 0 || order.deliveryLng != 0 {
+            Annotation("Delivery", coordinate: .init(latitude: order.deliveryLat, longitude: order.deliveryLng)) {
+                MapPin(symbol: "house.fill", color: .keSuccess)
+            }
         }
         if let c = order.courier, c.lat != 0, c.lng != 0 {
             Annotation("Courier", coordinate: .init(latitude: c.lat, longitude: c.lng)) {

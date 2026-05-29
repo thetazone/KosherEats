@@ -76,6 +76,7 @@ interface ApiService {
     @PATCH("seller/orders/{orderId}/reject")
     suspend fun rejectOrder(
         @Path("orderId") orderId: String,
+        @Body body: Map<String, String?>,
     ): Response<Order>
 
     @PATCH("seller/orders/{orderId}/cancel")

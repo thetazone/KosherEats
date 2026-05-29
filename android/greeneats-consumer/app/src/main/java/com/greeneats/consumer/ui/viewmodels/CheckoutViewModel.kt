@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -131,6 +132,7 @@ class CheckoutViewModel @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             _uiState.update { it.copy(errorMessage = e.localizedMessage) }
         }
     }
@@ -167,10 +169,12 @@ class CheckoutViewModel @Inject constructor(
                 }.awaitAll()
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
             try {
                 api.clearServerCart()
             } catch (rollbackErr: Exception) {
+                if (rollbackErr is CancellationException) throw rollbackErr
                 android.util.Log.w("CheckoutViewModel", "Server cart rollback failed after partial sync", rollbackErr)
             }
             _uiState.update { it.copy(errorMessage = "$ERR_PREPARE_CART_FAILED: ${e.localizedMessage}") }
@@ -209,7 +213,8 @@ class CheckoutViewModel @Inject constructor(
                     )
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
             // Preview is best-effort — bundle has authoritative fees.
         }
     }
@@ -244,6 +249,7 @@ class CheckoutViewModel @Inject constructor(
                     _uiState.update { it.copy(errorMessage = ERR_SAVE_ADDRESS_FAILED) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(errorMessage = e.localizedMessage) }
             }
         }
@@ -330,6 +336,7 @@ class CheckoutViewModel @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             _uiState.update { it.copy(isLoadingBundle = false, errorMessage = e.localizedMessage) }
         }
     }
@@ -429,6 +436,7 @@ class CheckoutViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(isProcessing = false, errorMessage = e.localizedMessage) }
             }
         }
@@ -438,6 +446,7 @@ class CheckoutViewModel @Inject constructor(
         val r = api.getOrders(page = 1)
         if (r.isSuccessful) r.body()?.firstOrNull() else null
     } catch (e: Exception) {
+        if (e is CancellationException) throw e
         null
     }
 

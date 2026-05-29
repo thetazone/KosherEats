@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -47,9 +48,10 @@ class DealsViewModel @Inject constructor(
                     ) }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 _uiState.update { it.copy(
                     isLoading = false,
-                    error = e.localizedMessage ?: "Failed to load deals",
+                    error = "Failed to load deals",
                 ) }
             }
         }

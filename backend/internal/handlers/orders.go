@@ -633,7 +633,7 @@ func (h *Handler) RateOrder(w http.ResponseWriter, r *http.Request) {
 		Stars   int    `json:"stars"`
 		Comment string `json:"comment"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
@@ -1024,6 +1024,13 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the body once up front — r.Body is a one-shot io.ReadCloser, so
+	// any later readJSON call would see EOF.
+	var rejectBody struct {
+		Reason string `json:"reason,omitempty"`
+	}
+	_ = readJSON(r, &rejectBody) // body is optional
+
 	// Lock the row inside a transaction so concurrent AcceptOrder can't flip
 	// status between our SELECT and UPDATE (same pattern as CancelOrder).
 	tx, err := h.db.Pool.Begin(r.Context())
@@ -1079,12 +1086,7 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Notify the consumer that the seller manually rejected (and the refund
-	// was already issued above). We pull the optional rejection reason from
-	// the request body if present so the push body can include it.
-	var rejectBody struct {
-		Reason string `json:"reason,omitempty"`
-	}
-	_ = readJSON(r, &rejectBody) // body optional
+	// was already issued above).
 	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r, id)
 	if consumerID != "" && restaurantName != "" {
 		go h.notify.OrderRejected(context.Background(), id, consumerID, restaurantName, rejectBody.Reason)
@@ -1103,11 +1105,21 @@ func (h *Handler) SellerPickupOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lock the row inside a transaction so concurrent pickup requests can't
+	// race between the SELECT check and the UPDATE (same pattern as CancelOrder).
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot update order status")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
 	var deliveryMode string
-	err = h.db.Pool.QueryRow(r.Context(),
+	err = tx.QueryRow(r.Context(),
 		`SELECT rest.delivery_mode FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
-		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'ready'`,
+		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'ready'
+		  FOR UPDATE OF o`,
 		id, user["user_id"]).Scan(&deliveryMode)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "order not found or not ready")
@@ -1118,13 +1130,18 @@ func (h *Handler) SellerPickupOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.db.Pool.Exec(r.Context(),
+	result, err := tx.Exec(r.Context(),
 		`UPDATE orders SET status = 'picked_up', picked_up_at = NOW(), updated_at = NOW()
 		   FROM restaurants WHERE orders.restaurant_id = restaurants.id
 		   AND orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = 'ready'`,
 		id, user["user_id"])
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot update order status")
+		return
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot update order status")
 		return
 	}
 
@@ -1148,11 +1165,21 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lock the row inside a transaction so concurrent deliver requests can't
+	// race between the SELECT check and the UPDATE (same pattern as CancelOrder).
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot update order status")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
 	var deliveryMode string
-	err = h.db.Pool.QueryRow(r.Context(),
+	err = tx.QueryRow(r.Context(),
 		`SELECT rest.delivery_mode FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
-		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'picked_up'`,
+		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'picked_up'
+		  FOR UPDATE OF o`,
 		id, user["user_id"]).Scan(&deliveryMode)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "order not found or not picked up")
@@ -1163,13 +1190,18 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.db.Pool.Exec(r.Context(),
+	result, err := tx.Exec(r.Context(),
 		`UPDATE orders SET status = 'delivered', delivered_at = NOW(), updated_at = NOW()
 		   FROM restaurants WHERE orders.restaurant_id = restaurants.id
 		   AND orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = 'picked_up'`,
 		id, user["user_id"])
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot update order status")
+		return
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot update order status")
 		return
 	}
 

@@ -14,7 +14,7 @@ enum class KosherCertification(val displayName: String, val abbreviation: String
     @SerializedName("CHABAD") CHABAD("Chabad", "CH"),
     @SerializedName("LOCAL") LOCAL("Local Rabbinical", "LR"),
     @SerializedName("OTHER") OTHER("Other", "K"),
-    @SerializedName("unknown") UNKNOWN("Unknown", ""),
+    @SerializedName("unknown") UNKNOWN("Unknown", "?"),
 }
 
 enum class DietaryType(val displayName: String) {
@@ -106,6 +106,7 @@ data class Address(
     @SerializedName("lng") val longitude: Double = 0.0,
     @SerializedName("delivery_instructions") val deliveryInstructions: String? = null,
     @SerializedName("is_default") val isDefault: Boolean = false,
+    @SerializedName("is_geocoded") val isGeocoded: Boolean = false,
 )
 
 val Address.formatted: String get() = "$streetAddress, $city, $state $zipCode"
@@ -181,11 +182,9 @@ data class Restaurant(
     val phone: String = "",
     val rating: Double = 0.0,
     @SerializedName("review_count") val reviewCount: Int = 0,
-    // Element type is nullable: Gson deserializes any cuisine string not in
-    // the CuisineType @SerializedName set to null (e.g. "Japanese"), and
-    // those nulls land in the list at runtime regardless of Kotlin's
-    // declared type. UI sites must filter or null-safe access.
-    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<CuisineType?> = emptyList(),
+    // The CuisineType enum has an UNKNOWN fallback via its TypeAdapter, so
+    // unrecognised values deserialize to UNKNOWN rather than null.
+    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<CuisineType> = emptyList(),
     // Nullable because Gson does NOT honor Kotlin defaults — when the API
     // sends null or omits the field, this lands as null at runtime regardless
     // of the declared default. Call sites coalesce to OTHER.
@@ -375,6 +374,7 @@ data class Order(
     @SerializedName("delivered_at") val deliveredAt: String? = null,
     /** "delivery" or "pickup". Defaults to delivery when omitted by the backend. */
     @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
+    @SerializedName("scheduled_for") val scheduledFor: String? = null,
 ) {
     val isPickup: Boolean get() = fulfillmentType.equals("pickup", ignoreCase = true)
 }
@@ -621,7 +621,7 @@ data class Deal(
     val discountBadge: String
         get() = when (discountType) {
             DiscountType.PERCENTAGE -> "$discountValue% Off"
-            DiscountType.FIXED -> "$${discountValue / 100} Off"
+            DiscountType.FIXED -> "${"$"}${"%.2f".format(discountValue / 100.0)} Off"
             DiscountType.BOGO -> "BOGO"
             DiscountType.UNKNOWN -> ""
         }

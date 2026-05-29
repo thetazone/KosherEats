@@ -196,7 +196,7 @@ struct OrderConfirmationView: View {
             Spacer()
 
             // Call button
-            if let phoneURL = URL(string: "tel:\(courier.phone)") {
+            if let phoneURL = URL(string: "tel:\(courier.phone.filter { $0.isNumber || $0 == "+" })") {
                 Link(destination: phoneURL) {
                     Image(systemName: "phone.circle.fill")
                         .font(.system(size: 36))

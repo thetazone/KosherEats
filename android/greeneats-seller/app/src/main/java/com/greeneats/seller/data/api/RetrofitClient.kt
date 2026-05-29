@@ -1,11 +1,15 @@
 package com.greeneats.seller.data.api
 
 import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.greeneats.seller.BuildConfig
 import com.greeneats.seller.data.models.UnknownFallbackEnumAdapterFactory
 import com.squareup.moshi.Moshi
@@ -18,9 +22,10 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -55,11 +60,45 @@ object PrefsKeys {
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     @Volatile var cachedToken: String? = null
     @Volatile var cachedRefreshToken: String? = null
-    @Volatile private var cachedRestaurantId: String? = null
+    @Volatile var cachedRestaurantId: String? = null
+
+    // EncryptedSharedPreferences instance for auth tokens. Initialized lazily
+    // in provideOkHttpClient via initTokenPrefs(). Falls back to plain
+    // SharedPreferences if the Android Keystore is unavailable.
+    @Volatile var tokenPrefs: SharedPreferences? = null
 
     val sessionExpired = MutableStateFlow(false)
+
+    // Emitted by RestaurantPickerViewModel.select() whenever the active restaurant changes.
+    // OrdersViewModel, MenuViewModel, and DealsViewModel collect this to reset + reload.
+    val restaurantChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Creates EncryptedSharedPreferences backed by MasterKey / Android Keystore.
+     * Falls back to plain SharedPreferences if keystore is unavailable (device
+     * restore, OS upgrade, locked keystore) — user will be treated as logged-out
+     * and tokens re-populate on next successful login.
+     */
+    private fun initTokenPrefs(context: Context): SharedPreferences {
+        return try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                "greeneats_seller_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+        } catch (_: Exception) {
+            context.getSharedPreferences("greeneats_seller_fallback_prefs", Context.MODE_PRIVATE)
+        }
+    }
 
     @Provides
     @Singleton
@@ -73,14 +112,22 @@ object NetworkModule {
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
     ): OkHttpClient {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        scope.launch {
-            context.dataStore.data.collect { prefs ->
-                cachedToken = prefs[PrefsKeys.AUTH_TOKEN]
-                cachedRefreshToken = prefs[PrefsKeys.REFRESH_TOKEN]
-            }
+        // Initialize encrypted token storage
+        val prefs = initTokenPrefs(context)
+        tokenPrefs = prefs
+
+        // Prime token caches from encrypted prefs on IO thread
+        appScope.launch {
+            cachedToken = prefs.getString("auth_token", null)
+            cachedRefreshToken = prefs.getString("refresh_token", null)
         }
-        scope.launch {
+
+        // Restaurant ID stays in DataStore — not a secret
+        appScope.launch {
+            val initialPrefs = context.dataStore.data.first()
+            cachedRestaurantId = initialPrefs[PrefsKeys.RESTAURANT_ID]
+        }
+        appScope.launch {
             context.dataStore.data.collect { prefs ->
                 cachedRestaurantId = prefs[PrefsKeys.RESTAURANT_ID]
             }
@@ -163,6 +210,7 @@ private class TokenAuthenticator(
 ) : Authenticator {
 
     private val lock = Any()
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val refreshClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -204,19 +252,12 @@ private class TokenAuthenticator(
 
             NetworkModule.cachedToken = newTokens.first
             NetworkModule.cachedRefreshToken = newTokens.second
-
-            // RISK: runBlocking on an OkHttp thread can deadlock if the
-            // DataStore dispatcher is contended. This is acceptable here
-            // because (a) the synchronized(lock) already serialises
-            // refresh attempts, (b) DataStore I/O is fast, and (c) the
-            // alternative (fire-and-forget) risks losing the new token if
-            // the process dies before the write completes.
-            runBlocking {
-                context.dataStore.edit { prefs ->
-                    prefs[PrefsKeys.AUTH_TOKEN] = newTokens.first
-                    prefs[PrefsKeys.REFRESH_TOKEN] = newTokens.second
-                }
-            }
+            // Persist to encrypted prefs. SharedPreferences.apply() is async
+            // and non-blocking, so no risk of deadlocking OkHttp threads.
+            NetworkModule.tokenPrefs?.edit()
+                ?.putString("auth_token", newTokens.first)
+                ?.putString("refresh_token", newTokens.second)
+                ?.apply()
 
             return response.request.newBuilder()
                 .header("Authorization", "Bearer ${newTokens.first}")
@@ -254,6 +295,19 @@ private class TokenAuthenticator(
     private fun signalSessionExpired() {
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
+        NetworkModule.cachedRestaurantId = null
+        // Clear encrypted prefs immediately so a cold-start after force-quit
+        // cannot re-hydrate stale tokens and land the seller on the dashboard.
+        NetworkModule.tokenPrefs?.edit()
+            ?.remove("auth_token")
+            ?.remove("refresh_token")
+            ?.apply()
+        // Also clear restaurant ID from DataStore
+        appScope.launch {
+            context.dataStore.edit { prefs ->
+                prefs.remove(PrefsKeys.RESTAURANT_ID)
+            }
+        }
         NetworkModule.sessionExpired.value = true
     }
 

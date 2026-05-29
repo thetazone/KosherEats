@@ -26,8 +26,14 @@ final class UploadService {
         return URLSession(configuration: cfg)
     }()
 
+    /// Maximum pixel length on the longest side. Images larger than this are
+    /// scaled down (aspect-ratio preserved) before JPEG encoding so sellers
+    /// uploading 12 MP+ iPhone photos don't waste bandwidth and S3 storage.
+    private static let maxLongestSide: CGFloat = 1200
+
     func uploadImage(_ image: UIImage, kind: Kind) async throws -> String {
-        guard let jpeg = image.jpegData(compressionQuality: Self.jpegCompressionQuality) else {
+        let resized = Self.resizedIfNeeded(image)
+        guard let jpeg = resized.jpegData(compressionQuality: Self.jpegCompressionQuality) else {
             throw NSError(domain: "upload", code: 1, userInfo: [NSLocalizedDescriptionKey: "failed to encode image"])
         }
 
@@ -50,5 +56,21 @@ final class UploadService {
             throw NSError(domain: "upload", code: 3, userInfo: [NSLocalizedDescriptionKey: "S3 upload failed"])
         }
         return presign.publicUrl
+    }
+
+    // MARK: - Image resizing
+
+    /// Returns the image scaled down so its longest side is at most
+    /// `maxLongestSide`. Already-small images are returned unchanged.
+    private static func resizedIfNeeded(_ image: UIImage) -> UIImage {
+        let longest = max(image.size.width, image.size.height)
+        guard longest > maxLongestSide else { return image }
+        let scale = maxLongestSide / longest
+        let newSize = CGSize(width: (image.size.width * scale).rounded(.down),
+                             height: (image.size.height * scale).rounded(.down))
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
     }
 }

@@ -71,7 +71,7 @@ class GreenEatsMessagingService : FirebaseMessagingService() {
          * The deep link scheme for in-app routing from notification taps.
          * Must match the intent-filter in AndroidManifest.xml.
          */
-        private const val DEEP_LINK_SCHEME = "koshereats"
+        private const val DEEP_LINK_SCHEME = "greeneats"
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

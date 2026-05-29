@@ -141,6 +141,7 @@ class APIService: ObservableObject {
 
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = 15
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         if authenticated, let token = token {
@@ -215,6 +216,7 @@ class APIService: ObservableObject {
 
         var req = URLRequest(url: url)
         req.httpMethod = method
+        req.timeoutInterval = 15
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         if authenticated, let token = token {
@@ -695,7 +697,9 @@ class APIService: ObservableObject {
                                     // event — backend may add new event types
                                     // we don't yet know about. Log so we can
                                     // notice schema drift in TestFlight builds.
+                                    #if DEBUG
                                     print("[sse] decode error: \(error) payload=\(dataBuf)")
+                                    #endif
                                 }
                             }
                             dataBuf = ""

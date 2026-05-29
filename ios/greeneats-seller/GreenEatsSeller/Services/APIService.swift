@@ -600,7 +600,10 @@ actor APIService {
 
     func getOrders(status: String? = nil) async throws -> [Order] {
         var path = "/seller/orders"
-        if let s = status { path += "?status=\(s)" }
+        if let s = status,
+           let encoded = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "?status=\(encoded)"
+        }
         return try await request("GET", path: await sellerPath(path))
     }
 

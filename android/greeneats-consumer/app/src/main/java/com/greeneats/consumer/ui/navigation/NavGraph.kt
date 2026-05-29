@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -88,7 +89,7 @@ fun GreenEatsNavHost() {
     // Tracks which route the guest should return to after logging in.
     // When a guest tries a restricted action we stash the target here
     // so the login-success handler can send them back.
-    val pendingGuestReturn = remember { mutableStateOf<String?>(null) }
+    val pendingGuestReturn = rememberSaveable { mutableStateOf<String?>(null) }
 
     /** Navigate to login when a guest hits a restricted feature. */
     fun requireAuth(returnRoute: String) {

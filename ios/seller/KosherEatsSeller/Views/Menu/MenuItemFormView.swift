@@ -174,8 +174,9 @@ struct MenuItemFormView: View {
                         Button {
                             // priceText is dollars as typed; convert to cents.
                             let priceCents = Int(round((Double(priceText) ?? 0) * 100))
+                            let trimmedName = name.trimmingCharacters(in: .whitespaces)
                             Haptics.impact(.light)
-                            onSave(selectedCategoryId, name, description, priceCents, imageUrl, isMeat, isDairy, isPareve)
+                            onSave(selectedCategoryId, trimmedName, description, priceCents, imageUrl, isMeat, isDairy, isPareve)
                         } label: {
                             Text(isEditing ? "Update Item" : "Add Item")
                                 .font(.headline)
@@ -288,7 +289,7 @@ struct MenuItemFormView: View {
 
     private var canSave: Bool {
         let priceCents = Int(round((Double(priceText) ?? 0) * 100))
-        return !name.isEmpty &&
+        return !name.trimmingCharacters(in: .whitespaces).isEmpty &&
             !selectedCategoryId.isEmpty &&
             priceCents > 0 && priceCents <= 999_999 &&
             (isMeat || isDairy || isPareve) &&

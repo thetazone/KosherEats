@@ -71,7 +71,7 @@ struct CreateDealView: View {
                                 )
                             }
 
-                            formField("Min Order (cents, optional)", text: $minOrderAmount, placeholder: "e.g. 2000", keyboard: .numberPad)
+                            formField("Min Order Amount ($, optional)", text: $minOrderAmount, placeholder: "e.g. 20.00", keyboard: .decimalPad)
                         }
 
                         formSection("Expiration") {
@@ -221,7 +221,7 @@ struct CreateDealView: View {
             menuItemId: nil,
             discountType: discountType,
             discountValue: value,
-            minOrderAmount: Int(minOrderAmount),
+            minOrderAmount: minOrderAmount.isEmpty ? nil : Int(round((Double(minOrderAmount) ?? 0) * 100)),
             startsAt: nil,
             expiresAt: Self.isoFormatter.string(from: expiresAt)
         )

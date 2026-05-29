@@ -404,6 +404,8 @@ fun SellerOrderDetailScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Delivery Fee", order.deliveryFee)
                         Spacer(modifier = Modifier.height(4.dp))
+                        PriceRow("Service Fee", order.serviceFee)
+                        Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Tax", order.tax)
                         if (order.courierTip > 0) {
                             Spacer(modifier = Modifier.height(4.dp))
