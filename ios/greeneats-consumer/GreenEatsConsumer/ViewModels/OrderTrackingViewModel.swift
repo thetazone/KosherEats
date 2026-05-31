@@ -101,7 +101,7 @@ final class OrderTrackingViewModel: ObservableObject {
         pollTask?.cancel()
         pollGeneration &+= 1
         let generation = pollGeneration
-        pollTask = Task { [weak self] @MainActor in
+        pollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.pollIntervalNanos)
                 guard let self else { return }
@@ -114,7 +114,7 @@ final class OrderTrackingViewModel: ObservableObject {
 
     private func startLocationStream() {
         locationStreamTask?.cancel()
-        locationStreamTask = Task { [weak self] @MainActor in
+        locationStreamTask = Task { @MainActor [weak self] in
             var consecutiveFailures = 0
             while !Task.isCancelled {
                 guard let self else { return }
@@ -123,7 +123,6 @@ final class OrderTrackingViewModel: ObservableObject {
                     let stream = self.api.streamOrderLocation(id: self.orderID)
                     for try await event in stream {
                         if Task.isCancelled { return }
-                        guard let self else { return }
                         consecutiveFailures = 0
                         self.errorMessage = nil
                         guard event.lat >= -90 && event.lat <= 90,
@@ -144,7 +143,6 @@ final class OrderTrackingViewModel: ObservableObject {
                         }
                     }
                 } catch APIError.unauthorized {
-                    guard let self else { return }
                     sawAuthFailure = true
                     let refreshed = try? await self.api.performTokenRefresh()
                     if refreshed != true {
@@ -152,11 +150,9 @@ final class OrderTrackingViewModel: ObservableObject {
                         break
                     }
                 } catch {
-                    guard let self else { return }
                     self.errorMessage = error.localizedDescription
                 }
 
-                guard let self else { return }
                 if Task.isCancelled { break }
                 if !(self.order?.status.isActive ?? true) { break }
 

@@ -27,6 +27,8 @@ class CartViewModel: ObservableObject {
         case .bogo:
             guard cart.itemCount >= 2 else { return 0 }
             return cart.items.map(\.price).min() ?? 0
+        case .unknown:
+            return 0
         }
     }
 

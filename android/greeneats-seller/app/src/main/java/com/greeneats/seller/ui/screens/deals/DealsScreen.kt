@@ -54,6 +54,8 @@ import com.greeneats.seller.ui.theme.TextSecondary
 import com.greeneats.seller.ui.theme.TextWhite
 import com.greeneats.seller.ui.viewmodels.DealsViewModel
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 private object DealsStrings {
     const val CREATE_DEAL = "Create Deal"
@@ -68,8 +70,6 @@ private object DealsStrings {
     /** Separator between status and expiry countdown. */
     const val STATUS_SEPARATOR = "  ·  "
 }
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 
 @Composable
 fun DealsScreen(

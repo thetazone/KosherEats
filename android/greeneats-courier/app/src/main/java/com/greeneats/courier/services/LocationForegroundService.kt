@@ -39,8 +39,15 @@ class LocationForegroundService : Service() {
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Check permission before startForeground: on Android 14+, calling startForeground()
-        // with FOREGROUND_SERVICE_TYPE_LOCATION without ACCESS_FINE_LOCATION throws SecurityException.
+        if (intent?.getBooleanExtra(EXTRA_DELIVERY_ACTIVE, false) == true) {
+            val notification = buildNotification(deliveryActive = true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            return START_STICKY
+        }
         if (!locationTracker.hasPermission()) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(PERMISSION_ERROR_NOTIFICATION_ID, buildPermissionErrorNotification())
@@ -73,7 +80,7 @@ class LocationForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(deliveryActive: Boolean = false): Notification {
         val pi = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).apply {
@@ -81,10 +88,14 @@ class LocationForegroundService : Service() {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val contentText = if (deliveryActive)
+            "Delivery in progress — tracking your location"
+        else
+            "You're online — tracking your location"
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("GreenEats Driver")
-            .setContentText("You're online — tracking your location")
+            .setContentText(contentText)
             .setOngoing(true)
             .setContentIntent(pi)
             .build()
@@ -111,6 +122,7 @@ class LocationForegroundService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val PERMISSION_ERROR_NOTIFICATION_ID = 1002
         const val CHANNEL_ID = "greeneats_location"
+        const val EXTRA_DELIVERY_ACTIVE = "delivery_active"
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

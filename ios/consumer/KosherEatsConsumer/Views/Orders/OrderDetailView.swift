@@ -129,7 +129,7 @@ struct OrderDetailView: View {
 
             // Progress steps
             if order.status.isActive && order.status != .cancelled && order.status != .rejected {
-                progressSteps(currentStep: order.status.stepIndex)
+                progressSteps(currentStep: order.status.stepIndex, fulfillmentType: order.fulfillmentType ?? "delivery")
             }
         }
         .padding()
@@ -141,8 +141,8 @@ struct OrderDetailView: View {
         .accessibilityLabel("Order status: \(order.status.displayName), step \(order.status.stepIndex + 1) of 6")
     }
 
-    private func progressSteps(currentStep: Int) -> some View {
-        let isPickup = order.fulfillmentType == "pickup"
+    private func progressSteps(currentStep: Int, fulfillmentType: String = "delivery") -> some View {
+        let isPickup = fulfillmentType == "pickup"
         let steps = ["Placed", "Accepted", "Preparing", "Ready", isPickup ? "Ready for Pickup" : "On the Way", isPickup ? "Picked Up" : "Delivered"]
 
         return HStack(spacing: 0) {

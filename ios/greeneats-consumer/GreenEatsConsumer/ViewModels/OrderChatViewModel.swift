@@ -118,7 +118,7 @@ final class OrderChatViewModel: ObservableObject {
 
     private func startPolling() {
         pollTask?.cancel()
-        pollTask = Task { [weak self] @MainActor in
+        pollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 try? await Task.sleep(nanoseconds: 3_000_000_000)

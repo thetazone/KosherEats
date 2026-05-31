@@ -437,6 +437,7 @@ fun CreateDealScreen(
                                 DiscountType.PERCENTAGE -> "% Off"
                                 DiscountType.FIXED -> "$ Off"
                                 DiscountType.BOGO -> "BOGO"
+                                DiscountType.UNKNOWN -> "Other"
                             },
                             color = if (selected) Orange else TextSecondary,
                             fontSize = 13.sp,
@@ -623,11 +624,10 @@ fun CreateDealScreen(
                     } ?: return@Button
 
                     val discountValueCents = when (discountType) {
-                        // Cap percentage at 99 to prevent free-deal mistakes; FIXED already
-                        // capped by the input keyboard but coerce belt-and-braces.
                         DiscountType.PERCENTAGE -> (discountValue.toDoubleOrNull() ?: 0.0).coerceIn(1.0, 99.0).roundToInt()
                         DiscountType.FIXED -> dollarsToCents(discountValue).coerceAtLeast(1)
                         DiscountType.BOGO -> 0
+                        DiscountType.UNKNOWN -> 0
                     }
 
                     val minOrderCents = dollarsToCents(minOrderAmount).let {

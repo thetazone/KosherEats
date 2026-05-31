@@ -25,14 +25,16 @@ struct DeliveryActivityWidget: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(context.state.eta, style: .timer)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.orange)
-                            .monospacedDigit()
-                        Text("ETA")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
+                    if let eta = context.state.eta {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(eta, style: .timer)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.orange)
+                                .monospacedDigit()
+                            Text("ETA")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
 

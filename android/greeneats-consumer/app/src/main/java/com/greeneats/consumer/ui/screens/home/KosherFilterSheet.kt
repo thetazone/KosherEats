@@ -415,9 +415,11 @@ private fun certShortName(cert: KosherCertification): String = when (cert) {
     KosherCertification.OK -> "OK"
     KosherCertification.STAR_K -> "Star-K"
     KosherCertification.KOF_K -> "Kof-K"
+    KosherCertification.CHOF_K -> "Chof-K"
     KosherCertification.CRC -> "cRc"
     KosherCertification.BADATZ -> "Badatz"
     KosherCertification.CHABAD -> "Chabad"
     KosherCertification.LOCAL -> "Local"
     KosherCertification.OTHER -> "Other"
+    KosherCertification.UNKNOWN -> "Unknown"
 }
