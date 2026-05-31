@@ -79,13 +79,14 @@ func (h *Handler) LinkProvider(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Reject if this provider identity is already linked to a different user
-	// with the same role.
+	// with the same role and vertical.
 	var existingUserID string
 	lookupErr := h.db.Pool.QueryRow(r.Context(),
 		`SELECT u.id FROM users u
 		 JOIN user_auth_providers uap ON u.id = uap.user_id
 		 WHERE uap.provider = $1 AND uap.provider_id = $2
 		   AND u.role = (SELECT role FROM users WHERE id = $3)
+		   AND u.vertical = (SELECT vertical FROM users WHERE id = $3)
 		   AND u.id != $3`,
 		req.Provider, providerID, userID,
 	).Scan(&existingUserID)

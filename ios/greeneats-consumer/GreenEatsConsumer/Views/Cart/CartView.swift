@@ -165,7 +165,7 @@ struct CartView: View {
                     HStack {
                         Text("Checkout")
                         Spacer()
-                        Text(cart.subtotalFormatted)
+                        Text("$\(String(format: "%.2f", Double(cartVM.discountedSubtotal) / 100))")
                     }
                 }
                 .buttonStyle(KEPrimaryButtonStyle())

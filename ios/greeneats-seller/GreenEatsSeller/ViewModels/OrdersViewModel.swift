@@ -36,9 +36,8 @@ class OrdersViewModel: ObservableObject {
     /// or system push arrives — closes the ~30s polling-only gap where the
     /// dashboard kept showing "Waiting for a courier..." after a claim.
     private var pushObserver: NSObjectProtocol?
-    /// Debounce guard so rapid-fire poll ticks can't stack multiple
-    /// simultaneous alert sounds (e.g. two polls returning a new order
-    /// within 2 seconds).
+    /// Timestamp of the last alert sound. Used to debounce rapid-fire alerts
+    /// when multiple pending orders arrive in the same poll tick.
     private var lastAlertTime: Date = .distantPast
 
     init() {
@@ -209,7 +208,13 @@ class OrdersViewModel: ObservableObject {
     /// Triple-ping on a brand-new ticket — a single 1007 is easy to miss in
     /// a loud kitchen. Three short beeps within ~1.2s has a distinctive
     /// cadence sellers learn to recognize.
+    ///
+    /// Debounced: skips if an alert was played within the last 2 seconds so
+    /// multiple new pending orders in one poll don't stack overlapping pings.
     private func playNewOrderAlert() {
+        let now = Date()
+        guard now.timeIntervalSince(lastAlertTime) >= 2.0 else { return }
+        lastAlertTime = now
         AudioServicesPlaySystemSound(1007)
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 400_000_000)

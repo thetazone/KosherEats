@@ -3,11 +3,12 @@
 package middleware
 
 import (
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
-	"log/slog"
+	"github.com/koshereats/backend/internal/ctxkeys"
 )
 
 // statusRecorder wraps ResponseWriter to capture the status code for logging.
@@ -46,7 +47,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			// import the handlers package (would create a cycle), so we
 			// read the context key directly by string.
 			userID := ""
-			if v := r.Context().Value(contextKey("user")); v != nil {
+			if v := r.Context().Value(ctxkeys.UserKey); v != nil {
 				if m, ok := v.(map[string]string); ok {
 					userID = m["user_id"]
 				}
@@ -64,11 +65,6 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 		})
 	}
 }
-
-// contextKey mirrors the private type in handlers.AuthMiddleware so we can
-// read the user map from context without importing the handlers package
-// (would create an import cycle).
-type contextKey string
 
 // clientIP extracts the best-guess client IP from X-Forwarded-For (when
 // behind a proxy) or falls back to RemoteAddr with the port stripped.

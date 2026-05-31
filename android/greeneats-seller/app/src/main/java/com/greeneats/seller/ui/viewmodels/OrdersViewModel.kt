@@ -218,6 +218,82 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    fun sellerPickupOrder(orderId: String) {
+        if (_state.value.pendingOrderIds.contains(orderId)) return
+        viewModelScope.launch {
+            _state.update { it.copy(
+                pendingOrderIds = it.pendingOrderIds + orderId,
+                error = null,
+                updateSuccess = null,
+            ) }
+            try {
+                val response = apiService.sellerPickupOrder(orderId)
+                if (response.isSuccessful) {
+                    // Backend returns a status map, not the full order — re-fetch to
+                    // get the updated Order object for the UI.
+                    val detail = apiService.getOrderDetail(orderId)
+                    val updatedOrder = detail.body()
+                    _state.update { st ->
+                        st.copy(
+                            selectedOrder = updatedOrder ?: st.selectedOrder,
+                            orders = if (updatedOrder != null) st.orders.map { if (it.id == orderId) updatedOrder else it } else st.orders,
+                            pendingOrderIds = st.pendingOrderIds - orderId,
+                            updateSuccess = "Order picked up",
+                        )
+                    }
+                } else {
+                    _state.update { it.copy(
+                        pendingOrderIds = it.pendingOrderIds - orderId,
+                        error = "Failed to mark order as picked up",
+                    ) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    pendingOrderIds = it.pendingOrderIds - orderId,
+                    error = "Connection error: ${e.localizedMessage}",
+                ) }
+            }
+        }
+    }
+
+    fun sellerDeliverOrder(orderId: String) {
+        if (_state.value.pendingOrderIds.contains(orderId)) return
+        viewModelScope.launch {
+            _state.update { it.copy(
+                pendingOrderIds = it.pendingOrderIds + orderId,
+                error = null,
+                updateSuccess = null,
+            ) }
+            try {
+                val response = apiService.sellerDeliverOrder(orderId)
+                if (response.isSuccessful) {
+                    val detail = apiService.getOrderDetail(orderId)
+                    val updatedOrder = detail.body()
+                    _state.update { st ->
+                        st.copy(
+                            selectedOrder = updatedOrder ?: st.selectedOrder,
+                            orders = if (updatedOrder != null) st.orders.map { if (it.id == orderId) updatedOrder else it } else st.orders,
+                            pendingOrderIds = st.pendingOrderIds - orderId,
+                            updateSuccess = "Order delivered",
+                        )
+                    }
+                } else {
+                    _state.update { it.copy(
+                        pendingOrderIds = it.pendingOrderIds - orderId,
+                        error = "Failed to mark order as delivered",
+                    ) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    pendingOrderIds = it.pendingOrderIds - orderId,
+                    error = "Connection error: ${e.localizedMessage}",
+                ) }
+            }
+        }
+    }
+
     fun clearSelectedOrder() {
         _state.update { it.copy(selectedOrder = null) }
     }

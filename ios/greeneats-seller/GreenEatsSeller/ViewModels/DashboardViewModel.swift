@@ -93,6 +93,7 @@ class DashboardViewModel: ObservableObject {
             guard gen == loadGeneration else { return }
             self.restaurant = result
         } catch {
+            guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
     }

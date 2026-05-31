@@ -9,13 +9,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/koshereats/backend/internal/ctxkeys"
 	"github.com/koshereats/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type contextKey string
-
-const userContextKey contextKey = "user"
+const userContextKey = ctxkeys.UserKey
 
 type RegisterRequest struct {
 	Email     string          `json:"email"`
@@ -82,6 +81,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 
 	if req.Email == "" || req.Password == "" || req.FirstName == "" {
 		writeError(w, http.StatusBadRequest, "email, password, and first_name are required")
@@ -193,6 +194,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 
 	role := req.Role
 	if role == "" {

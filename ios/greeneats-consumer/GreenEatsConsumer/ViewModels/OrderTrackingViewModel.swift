@@ -123,6 +123,7 @@ final class OrderTrackingViewModel: ObservableObject {
                     let stream = self.api.streamOrderLocation(id: self.orderID)
                     for try await event in stream {
                         if Task.isCancelled { return }
+                        guard let self else { return }
                         consecutiveFailures = 0
                         self.errorMessage = nil
                         guard event.lat >= -90 && event.lat <= 90,

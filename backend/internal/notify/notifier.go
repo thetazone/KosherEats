@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/jackc/pgx/v5"
@@ -356,6 +357,31 @@ func (n *Notifier) OrderPickedUp(ctx context.Context, orderID, consumerID string
 	})
 }
 
+// OrderCancelled: consumer cancelled the order. Notify the seller.
+func (n *Notifier) OrderCancelled(ctx context.Context, orderID, restaurantID string) {
+	ownerID, err := n.restaurantOwnerID(ctx, restaurantID)
+	if err != nil {
+		return
+	}
+	n.dispatch(ctx, n.tokensForUser(ctx, ownerID, AppSeller), AppSeller, Payload{
+		Title: "Order cancelled",
+		Body:  "A customer cancelled their order.",
+		Data:  map[string]string{"order_id": orderID, "type": "order_cancelled"},
+	})
+}
+
+// OrderCompleted: seller marked a pickup order as completed. Notify the consumer.
+func (n *Notifier) OrderCompleted(ctx context.Context, orderID, consumerID string) {
+	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
+		return
+	}
+	n.dispatch(ctx, n.tokensForUser(ctx, consumerID, AppConsumer), AppConsumer, Payload{
+		Title: "Your pickup order is ready!",
+		Body:  "Head over to pick up your order.",
+		Data:  map[string]string{"order_id": orderID, "type": "completed"},
+	})
+}
+
 // OrderDelivered: courier handed off the food. Notify the consumer.
 func (n *Notifier) OrderDelivered(ctx context.Context, orderID, consumerID string) {
 	if !n.consumerOptedIn(ctx, consumerID, CategoryOrderUpdates) {
@@ -369,30 +395,10 @@ func (n *Notifier) OrderDelivered(ctx context.Context, orderID, consumerID strin
 }
 
 func fmtMoney(cents int) string {
+	if cents < 0 {
+		return "-" + fmtMoney(-cents)
+	}
 	dollars := cents / 100
 	remainder := cents % 100
-	return "$" + itoa(dollars) + "." + pad2(remainder)
-}
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	sign := ""
-	if i < 0 {
-		sign = "-"
-		i = -i
-	}
-	var buf []byte
-	for i > 0 {
-		buf = append([]byte{byte('0' + i%10)}, buf...)
-		i /= 10
-	}
-	return sign + string(buf)
-}
-func pad2(i int) string {
-	s := itoa(i)
-	if len(s) == 1 {
-		return "0" + s
-	}
-	return s
+	return fmt.Sprintf("$%d.%02d", dollars, remainder)
 }

@@ -116,20 +116,58 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 	d.sweepCourierPayouts(ctx)
 }
 
+// scheduledOrder is the projection needed to promote a scheduled order and
+// notify the seller.
+type scheduledOrder struct {
+	orderID        string
+	restaurantID   string
+	restaurantName string
+	total          int
+}
+
 // sweepScheduled flips scheduled orders into 'pending' 30 minutes before
-// their delivery window so seller dashboards pick them up.
+// their delivery window so seller dashboards pick them up, and notifies the
+// seller for each promoted order.
 func (d *Dispatcher) sweepScheduled(ctx context.Context) {
-	result, err := d.db.Exec(ctx,
-		`UPDATE orders
-		   SET status = 'pending', updated_at = NOW()
-		 WHERE status = 'scheduled'
-		   AND scheduled_for <= NOW() + INTERVAL '30 minutes'`)
+	rows, err := d.db.Query(ctx, `
+		SELECT o.id, o.restaurant_id, rest.name, o.total
+		  FROM orders o
+		  JOIN restaurants rest ON rest.id = o.restaurant_id
+		 WHERE o.status = 'scheduled'
+		   AND o.scheduled_for <= NOW() + INTERVAL '30 minutes'
+		 ORDER BY o.scheduled_for ASC`)
 	if err != nil {
 		slog.Error("scheduler sweep failed", slog.String("error", err.Error()))
 		return
 	}
-	if n := result.RowsAffected(); n > 0 {
-		slog.Info("scheduler dispatched orders", slog.Int64("count", n))
+
+	var due []scheduledOrder
+	for rows.Next() {
+		var o scheduledOrder
+		if err := rows.Scan(&o.orderID, &o.restaurantID, &o.restaurantName, &o.total); err != nil {
+			slog.Error("scheduler: scan failed", slog.String("error", err.Error()))
+			continue
+		}
+		due = append(due, o)
+	}
+	rows.Close()
+
+	for _, o := range due {
+		_, err := d.db.Exec(ctx,
+			`UPDATE orders SET status = 'pending', updated_at = NOW()
+			 WHERE id = $1 AND status = 'scheduled'`,
+			o.orderID)
+		if err != nil {
+			slog.Error("scheduler: promote failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+			continue
+		}
+		slog.Info("scheduler: order promoted to pending",
+			slog.String("order_id", o.orderID))
+		if d.notify != nil {
+			d.notify.OrderCreated(ctx, o.restaurantID, o.restaurantName, o.orderID, o.total)
+		}
 	}
 }
 

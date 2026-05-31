@@ -86,7 +86,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 
 	// Apply deal discount before tax so the user pays tax on the discounted
 	// subtotal. CreateOrder applies the same logic — keep them in sync.
-	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cartRestID, subtotal, dealItems)
+	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cartRestID, user["user_id"], subtotal, dealItems)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -122,7 +122,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	if isPickup {
 		tip = 0
 	}
-	if tip > subtotal {
+	if tip > discountedSubtotal {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}

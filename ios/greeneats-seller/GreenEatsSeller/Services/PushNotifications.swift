@@ -15,7 +15,6 @@ final class PushNotifications: NSObject, ObservableObject, UNUserNotificationCen
 
     func requestAuthorization() async {
         let center = UNUserNotificationCenter.current()
-        center.delegate = self
         do {
             let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
             if granted {

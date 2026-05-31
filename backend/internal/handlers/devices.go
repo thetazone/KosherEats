@@ -33,6 +33,16 @@ func (h *Handler) RegisterDevice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "token, platform, and app are required")
 		return
 	}
+	validPlatforms := map[string]bool{"ios": true, "android": true}
+	validApps := map[string]bool{"consumer": true, "seller": true, "courier": true}
+	if !validPlatforms[req.Platform] {
+		writeError(w, http.StatusBadRequest, "invalid platform")
+		return
+	}
+	if !validApps[req.App] {
+		writeError(w, http.StatusBadRequest, "invalid app")
+		return
+	}
 
 	_, err = h.db.Pool.Exec(r.Context(),
 		`INSERT INTO device_tokens (user_id, token, platform, app)

@@ -718,11 +718,11 @@ func (h *Handler) ToggleItemAvailability(w http.ResponseWriter, r *http.Request)
 	err = h.db.Pool.QueryRow(r.Context(),
 		`UPDATE menu_items SET is_available = $1, updated_at = NOW()
 		 WHERE id = $2 AND restaurant_id IN (SELECT id FROM restaurants WHERE owner_id = $3)
-		 RETURNING id, restaurant_id, category_id, name, description, price,
+		 RETURNING id, restaurant_id, category_id, name, description, image_url, price,
 		 is_meat, is_dairy, is_pareve, is_available, sort_order`,
 		req.IsAvailable, itemID, user["user_id"],
 	).Scan(&item.ID, &item.RestaurantID, &item.CategoryID, &item.Name, &item.Description,
-		&item.Price, &item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable, &item.SortOrder)
+		&item.ImageURL, &item.Price, &item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable, &item.SortOrder)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "menu item not found")
 		return

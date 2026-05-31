@@ -97,6 +97,10 @@ struct PaymentMethodsView: View {
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
         .padding(.horizontal)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(selectedPaymentOptionDisplay != nil
+            ? "Payment method: \(selectedPaymentOptionDisplay!.label), \(selectedPaymentOptionDisplay!.sublabel)"
+            : "No payment method saved")
     }
 
     private var stubState: some View {
@@ -104,6 +108,7 @@ struct PaymentMethodsView: View {
             Image(systemName: "wrench.and.screwdriver.fill")
                 .font(.system(size: 48))
                 .foregroundColor(.keTextMuted)
+                .accessibilityHidden(true)
             Text("Payments not configured")
                 .font(.headline)
                 .foregroundColor(.keTextPrimary)
@@ -113,6 +118,7 @@ struct PaymentMethodsView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func errorState(message: String) -> some View {
@@ -120,6 +126,7 @@ struct PaymentMethodsView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 40))
                 .foregroundColor(.keError)
+                .accessibilityHidden(true)
             Text(message)
                 .font(.subheadline)
                 .foregroundColor(.keTextSecondary)
@@ -131,6 +138,8 @@ struct PaymentMethodsView: View {
             .buttonStyle(KESecondaryButtonStyle())
             .frame(maxWidth: 280)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Error loading payment methods")
     }
 
     private func load() async {

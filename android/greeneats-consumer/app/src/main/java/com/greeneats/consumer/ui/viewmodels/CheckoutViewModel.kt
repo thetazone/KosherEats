@@ -347,8 +347,18 @@ class CheckoutViewModel @Inject constructor(
     fun onPayTapped() {
         if (_uiState.value.isProcessing) return
         val bundle = _uiState.value.bundle ?: return
+        // Guard against zero-cost orders slipping through the UI gate.
+        if (bundle.subtotal <= 0) {
+            _uiState.update { it.copy(errorMessage = "Cart is empty or invalid. Please add items and try again.") }
+            return
+        }
         if (bundle.isStub) {
-            finalizeOrder(paymentIntentId = "stub_intent")
+            finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}")
+            return
+        }
+        // Validate payment intent secret format before presenting the sheet.
+        if (!bundle.paymentIntentSecret.contains("_secret_")) {
+            _uiState.update { it.copy(errorMessage = "Payment is not configured. Please refresh and try again.") }
             return
         }
         viewModelScope.launch { _events.send(CheckoutEvent.PresentPaymentSheet(bundle)) }
@@ -404,40 +414,57 @@ class CheckoutViewModel @Inject constructor(
                 _uiState.update { it.copy(isProcessing = false, errorMessage = ERR_SELECT_ADDRESS) }
                 return@launch
             }
-            try {
-                val resp = api.createOrder(
-                    CreateOrderRequest(
-                        restaurantId = _restaurantId,
-                        deliveryAddress = if (isPickup) "" else "${addr.streetAddress}, ${addr.city}, ${addr.state} ${addr.zipCode}",
-                        deliveryLat = if (isPickup) 0.0 else addr.latitude,
-                        deliveryLng = if (isPickup) 0.0 else addr.longitude,
-                        paymentIntentId = paymentIntentId,
-                        tip = bundle.tip,
-                        scheduledFor = scheduledFor,
-                        fulfillmentType = state.fulfillmentType,
-                        appliedDealId = _appliedDealId,
-                    ),
-                )
-                if (resp.isSuccessful) {
-                    _uiState.update {
-                        it.copy(isProcessing = false, placedOrder = resp.body())
-                    }
-                } else if (resp.code() == 409) {
-                    // Duplicate payment_intent_id — order already exists; fetch it
-                    val existing = fetchMostRecentOrder()
-                    if (existing != null) {
-                        _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
+            var lastError: Exception? = null
+            for (attempt in 1..3) {
+                try {
+                    val resp = api.createOrder(
+                        CreateOrderRequest(
+                            restaurantId = _restaurantId,
+                            deliveryAddress = if (isPickup) "" else "${addr.streetAddress}, ${addr.city}, ${addr.state} ${addr.zipCode}",
+                            deliveryLat = if (isPickup) 0.0 else addr.latitude,
+                            deliveryLng = if (isPickup) 0.0 else addr.longitude,
+                            paymentIntentId = paymentIntentId,
+                            tip = bundle.tip,
+                            scheduledFor = scheduledFor,
+                            fulfillmentType = state.fulfillmentType,
+                            appliedDealId = _appliedDealId,
+                        ),
+                    )
+                    if (resp.isSuccessful) {
+                        _uiState.update {
+                            it.copy(isProcessing = false, placedOrder = resp.body())
+                        }
+                        return@launch
+                    } else if (resp.code() == 409) {
+                        // Duplicate payment_intent_id — order already exists; fetch it
+                        val existing = fetchMostRecentOrder()
+                        if (existing != null) {
+                            _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
+                        } else {
+                            _uiState.update { it.copy(isProcessing = false, errorMessage = "$ERR_ORDER_FAILED (409)") }
+                        }
+                        return@launch
                     } else {
-                        _uiState.update { it.copy(isProcessing = false, errorMessage = "$ERR_ORDER_FAILED (409)") }
+                        lastError = Exception("$ERR_ORDER_FAILED (${resp.code()})")
+                        if (attempt < 3) {
+                            delay(1000L * attempt)
+                        }
                     }
-                } else {
-                    _uiState.update {
-                        it.copy(isProcessing = false, errorMessage = "$ERR_ORDER_FAILED (${resp.code()})")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastError = e
+                    if (attempt < 3) {
+                        delay(1000L * attempt)
                     }
                 }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                _uiState.update { it.copy(isProcessing = false, errorMessage = e.localizedMessage) }
+            }
+            // All 3 attempts failed
+            _uiState.update {
+                it.copy(
+                    isProcessing = false,
+                    errorMessage = lastError?.localizedMessage ?: "Network error. Please check your connection.",
+                )
             }
         }
     }

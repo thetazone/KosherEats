@@ -92,6 +92,7 @@ interface ApiService {
         @Query("is_pas_yisroel") isPasYisroel: Boolean? = null,
         @Query("is_glatt_kosher") isGlattKosher: Boolean? = null,
         @Query("sort_by") sortBy: String? = null,
+        @Query("vertical") vertical: String = "vegan",
     ): Response<List<Restaurant>>
 
     @GET("restaurants/search")
@@ -99,11 +100,13 @@ interface ApiService {
         @Query("q") query: String,
         @Query("lat") latitude: Double? = null,
         @Query("lng") longitude: Double? = null,
+        @Query("vertical") vertical: String = "vegan",
     ): Response<List<Restaurant>>
 
     @GET("restaurants/suggested")
     suspend fun getSuggestedRestaurants(
         @Query("limit") limit: Int = 10,
+        @Query("vertical") vertical: String = "vegan",
     ): Response<List<Restaurant>>
 
     @GET("restaurants/{id}")

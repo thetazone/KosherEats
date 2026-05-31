@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -102,6 +103,17 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.Error("doordash webhook: delivered update failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))
+			break
+		}
+
+		var consumerID string
+		if err := h.db.Pool.QueryRow(ctx,
+			`SELECT user_id FROM orders WHERE id = $1`, orderID).Scan(&consumerID); err != nil {
+			slog.Warn("doordash webhook: failed to fetch consumer for delivery notification",
+				slog.String("order_id", orderID), slog.String("error", err.Error()))
+		}
+		if consumerID != "" && h.notify != nil {
+			go h.notify.OrderDelivered(context.Background(), orderID, consumerID)
 		}
 
 	case "cancelled":

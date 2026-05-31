@@ -77,6 +77,7 @@ type AdminCreateRestaurantRequest struct {
 	EstDeliveryMin      int      `json:"est_delivery_min"`
 	EstDeliveryMax      int      `json:"est_delivery_max"`
 	DeliveryMode        string   `json:"delivery_mode"`
+	Vertical            string   `json:"vertical"`
 }
 
 func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) {
@@ -120,16 +121,18 @@ func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) 
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, delivery_fee, min_order,
-		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode)
+		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode,
+		 vertical, approval_status, reviewed_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-		         $16, $17, $18, '', $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'platform'))
+		         $16, $17, $18, '', $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'platform'),
+		         COALESCE(NULLIF($25,''), 'kosher'), 'approved', NOW())
 		 RETURNING id`,
 		req.OwnerID, req.Name, req.Description, req.ImageURL, req.CoverImageURL,
 		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode,
 		req.Lat, req.Lng, req.KosherCertification, req.CertifyingAgency,
 		req.IsCholovYisroel, req.IsPasYisroel, req.IsGlattKosher, req.CuisineType,
 		req.DeliveryFee, req.MinOrder, req.EstDeliveryMin, req.EstDeliveryMax,
-		req.DeliveryMode,
+		req.DeliveryMode, req.Vertical,
 	).Scan(&id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create restaurant")
@@ -344,7 +347,6 @@ func (h *Handler) AdminApproveCourier(w http.ResponseWriter, r *http.Request) {
 		`UPDATE courier_profiles
 		   SET onboarding_status = 'approved',
 		       background_check_status = 'passed',
-		       payout_ready = true,
 		       updated_at = NOW()
 		 WHERE user_id = $1`, courierID)
 	if err != nil || result.RowsAffected() == 0 {
@@ -467,6 +469,7 @@ type AdminCreateSellerRequest struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Phone     string `json:"phone"`
+	Vertical  string `json:"vertical"`
 }
 
 // AdminCreateSeller creates a user with role=seller and returns the user id
@@ -496,10 +499,10 @@ func (h *Handler) AdminCreateSeller(w http.ResponseWriter, r *http.Request) {
 
 	var id string
 	err = h.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
-		 VALUES ($1, $2, $3, $4, $5, 'seller')
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical)
+		 VALUES ($1, $2, $3, $4, $5, 'seller', COALESCE(NULLIF($6,''), 'kosher'))
 		 RETURNING id`,
-		req.Email, hashed, req.FirstName, req.LastName, req.Phone,
+		req.Email, hashed, req.FirstName, req.LastName, req.Phone, req.Vertical,
 	).Scan(&id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create seller")

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/koshereats/backend/internal/ctxkeys"
 	"golang.org/x/time/rate"
 )
 
@@ -85,7 +86,7 @@ func (rl *RateLimiter) PerIP(next http.Handler) http.Handler {
 func (rl *RateLimiter) PerUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := clientIP(r)
-		if v := r.Context().Value(contextKey("user")); v != nil {
+		if v := r.Context().Value(ctxkeys.UserKey); v != nil {
 			if m, ok := v.(map[string]string); ok && m["user_id"] != "" {
 				key = "u:" + m["user_id"]
 			}

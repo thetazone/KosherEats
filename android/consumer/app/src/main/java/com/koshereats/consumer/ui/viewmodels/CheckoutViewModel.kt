@@ -485,44 +485,61 @@ class CheckoutViewModel @Inject constructor(
                     .toOffsetDateTime()
                     .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
             }
-            try {
-                val resp = api.createOrder(
-                    CreateOrderRequest(
-                        restaurantId = _restaurantId,
-                        deliveryAddress = if (isPickup || address == null) "" else "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
-                        deliveryLat = if (isPickup || address == null) 0.0 else address.latitude,
-                        deliveryLng = if (isPickup || address == null) 0.0 else address.longitude,
-                        paymentIntentId = paymentIntentId,
-                        tip = bundle.tip,
-                        scheduledFor = scheduledFor,
-                        fulfillmentType = state.fulfillmentType,
-                        appliedDealId = _appliedDealId,
-                    ),
-                )
-                if (resp.isSuccessful) {
-                    _uiState.update {
-                        it.copy(isProcessing = false, placedOrder = resp.body())
-                    }
-                } else if (resp.code() == 409) {
-                    // Duplicate payment_intent_id — order already exists. Fetch the latest
-                    // order and require it to belong to the same restaurant the user just
-                    // tried to check out from; otherwise an unrelated historical order
-                    // could surface to the user.
-                    val existing = fetchMostRecentOrder()
-                    val matches = existing != null && existing.restaurantId == _restaurantId
-                    if (matches) {
-                        _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
+            var lastError: Exception? = null
+            for (attempt in 1..3) {
+                try {
+                    val resp = api.createOrder(
+                        CreateOrderRequest(
+                            restaurantId = _restaurantId,
+                            deliveryAddress = if (isPickup || address == null) "" else "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
+                            deliveryLat = if (isPickup || address == null) 0.0 else address.latitude,
+                            deliveryLng = if (isPickup || address == null) 0.0 else address.longitude,
+                            paymentIntentId = paymentIntentId,
+                            tip = bundle.tip,
+                            scheduledFor = scheduledFor,
+                            fulfillmentType = state.fulfillmentType,
+                            appliedDealId = _appliedDealId,
+                        ),
+                    )
+                    if (resp.isSuccessful) {
+                        _uiState.update {
+                            it.copy(isProcessing = false, placedOrder = resp.body())
+                        }
+                        return@launch
+                    } else if (resp.code() == 409) {
+                        // Duplicate payment_intent_id — order already exists. Fetch the latest
+                        // order and require it to belong to the same restaurant the user just
+                        // tried to check out from; otherwise an unrelated historical order
+                        // could surface to the user.
+                        val existing = fetchMostRecentOrder()
+                        val matches = existing != null && existing.restaurantId == _restaurantId
+                        if (matches) {
+                            _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
+                        } else {
+                            _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
+                        }
+                        return@launch
                     } else {
-                        _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
+                        lastError = Exception("Order failed (${resp.code()})")
+                        if (attempt < 3) {
+                            delay(1000L * attempt)
+                        }
                     }
-                } else {
-                    _uiState.update {
-                        it.copy(isProcessing = false, errorMessage = "Order failed (${resp.code()})")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastError = e
+                    if (attempt < 3) {
+                        delay(1000L * attempt)
                     }
                 }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                _uiState.update { it.copy(isProcessing = false, errorMessage = "Network error. Please check your connection.") }
+            }
+            // All 3 attempts failed
+            _uiState.update {
+                it.copy(
+                    isProcessing = false,
+                    errorMessage = lastError?.localizedMessage ?: "Network error. Please check your connection.",
+                )
             }
         }
     }

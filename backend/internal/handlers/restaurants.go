@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -254,6 +255,9 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	q = esc.Replace(q)
+
 	vertical := verticalFromRequest(r)
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
@@ -489,8 +493,8 @@ func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 		        r.est_delivery_min, r.est_delivery_max, r.is_open, r.is_active, r.approval_status, r.delivery_mode, r.created_at, r.updated_at
 		   FROM restaurant_favorites f
 		   JOIN restaurants r ON f.restaurant_id = r.id
-		  WHERE f.user_id = $1
-		  ORDER BY f.created_at DESC`, user["user_id"])
+		  WHERE f.user_id = $1 AND r.vertical = $2
+		  ORDER BY f.created_at DESC`, user["user_id"], verticalFromRequest(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list favorites")
 		return
@@ -511,8 +515,10 @@ func (h *Handler) ListFavoriteIDs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT restaurant_id FROM restaurant_favorites WHERE user_id = $1`,
-		user["user_id"])
+		`SELECT f.restaurant_id FROM restaurant_favorites f
+		   JOIN restaurants r ON f.restaurant_id = r.id
+		  WHERE f.user_id = $1 AND r.vertical = $2`,
+		user["user_id"], verticalFromRequest(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load favorites")
 		return

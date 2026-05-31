@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -108,7 +109,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 	case "pickup_complete":
 		_, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'ready' AND external_delivery_id IS NOT NULL`,
+			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready') AND external_delivery_id IS NOT NULL`,
 			time.Now(), externalID)
 		if err != nil {
 			slog.Error("uber webhook: pickup_complete update failed",
@@ -134,6 +135,17 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.Error("uber webhook: delivered update failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
+			break
+		}
+
+		var consumerID string
+		if err := h.db.Pool.QueryRow(ctx,
+			`SELECT user_id FROM orders WHERE id = $1`, externalID).Scan(&consumerID); err != nil {
+			slog.Warn("uber webhook: failed to fetch consumer for delivery notification",
+				slog.String("order_id", externalID), slog.String("error", err.Error()))
+		}
+		if consumerID != "" && h.notify != nil {
+			go h.notify.OrderDelivered(context.Background(), externalID, consumerID)
 		}
 
 	case "canceled":

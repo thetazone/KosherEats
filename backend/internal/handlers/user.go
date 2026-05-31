@@ -40,9 +40,9 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	if err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
+		`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at
 		 FROM users WHERE id = $1`, user["user_id"],
-	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.AvatarURL,
+	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.Vertical, &u.AvatarURL,
 		&u.CreatedAt, &u.UpdatedAt); err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
@@ -101,9 +101,9 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	err := h.db.Pool.QueryRow(ctx,
-		`SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at, updated_at
+		`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at
 		 FROM users WHERE id = $1`, user["user_id"],
-	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.AvatarURL,
+	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.Vertical, &u.AvatarURL,
 		&u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
@@ -245,8 +245,18 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	tx.Exec(ctx, `DELETE FROM addresses WHERE user_id = $1`, uid)
 	// Anonymize orders (keep for accounting) rather than deleting
 	tx.Exec(ctx, `UPDATE orders SET user_id = NULL WHERE user_id = $1`, uid)
+	// Deactivate restaurants owned by this seller and unlink owner
+	tx.Exec(ctx, `UPDATE restaurants SET is_active = false, owner_id = NULL WHERE owner_id = $1`, uid)
+	// Anonymize courier assignments on orders
+	tx.Exec(ctx, `UPDATE orders SET courier_id = NULL WHERE courier_id = $1`, uid)
+	// Clean up courier locations
+	tx.Exec(ctx, `DELETE FROM courier_locations WHERE courier_id = $1`, uid)
 	// Delete courier profile if exists
 	tx.Exec(ctx, `DELETE FROM courier_profiles WHERE user_id = $1`, uid)
+	// Delete chat messages sent by this user
+	tx.Exec(ctx, `DELETE FROM chat_messages WHERE sender_user_id = $1`, uid)
+	// Delete courier ratings left by this consumer
+	tx.Exec(ctx, `DELETE FROM courier_ratings WHERE consumer_id = $1`, uid)
 	// Delete the user
 	_, err = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, uid)
 	if err != nil {

@@ -79,6 +79,7 @@ fun DietaryBadge(
         DietaryType.MEAT -> MeatRed to "Meat"
         DietaryType.DAIRY -> DairyBlue to "Dairy"
         DietaryType.PAREVE -> PareveGreen to "Pareve"
+        else -> return
     }
 
     Row(

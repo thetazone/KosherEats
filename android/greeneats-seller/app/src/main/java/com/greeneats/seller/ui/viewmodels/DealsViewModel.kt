@@ -132,7 +132,7 @@ class DealsViewModel @Inject constructor(
                                 .adapter(Map::class.java)
                                 .fromJson(errorBody)?.get("error") as? String
                         }
-                    } catch (_: Exception) { null }
+                    } catch (e: Exception) { if (e is CancellationException) throw e; null }
                     _state.value = _state.value.copy(
                         isCreating = false,
                         error = serverMsg ?: "Failed to create deal (HTTP ${response.code()})",

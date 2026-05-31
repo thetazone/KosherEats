@@ -15,6 +15,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -36,7 +37,7 @@ class LocationTracker @Inject constructor(
 
     private var handlerThread = HandlerThread("location-tracker").also { it.start() }
     private var handlerThreadAlive = true
-    private val listeners = LinkedHashMap<Any, (Double, Double, Double, Double) -> Unit>()
+    private val listeners = ConcurrentHashMap<Any, (Double, Double, Double, Double) -> Unit>()
     private var locationCallback: LocationCallback? = null
 
     fun hasPermission(): Boolean =

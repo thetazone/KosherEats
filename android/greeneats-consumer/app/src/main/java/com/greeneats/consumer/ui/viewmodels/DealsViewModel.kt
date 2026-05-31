@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -32,26 +33,26 @@ class DealsViewModel @Inject constructor(
 
     fun loadDeals() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val response = apiService.getNearbyDeals()
                 if (response.isSuccessful) {
-                    _uiState.value = _uiState.value.copy(
+                    _uiState.update { it.copy(
                         deals = response.body().orEmpty(),
                         isLoading = false,
-                    )
+                    ) }
                 } else {
-                    _uiState.value = _uiState.value.copy(
+                    _uiState.update { it.copy(
                         isLoading = false,
                         error = "Failed to load deals",
-                    )
+                    ) }
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                _uiState.value = _uiState.value.copy(
+                _uiState.update { it.copy(
                     isLoading = false,
                     error = e.localizedMessage ?: "Failed to load deals",
-                )
+                ) }
             }
         }
     }

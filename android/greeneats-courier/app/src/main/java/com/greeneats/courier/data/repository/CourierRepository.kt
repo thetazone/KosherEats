@@ -66,21 +66,25 @@ class CourierRepository @Inject constructor(
 
     suspend fun listAvailable(): Result<List<AvailableDelivery>> = runCatching {
         val r = api.listAvailable()
+        if (!r.isSuccessful) throw IllegalStateException(errorMessage(r, "Couldn't load available deliveries"))
         r.body()?.deliveries ?: emptyList()
     }
 
     suspend fun listUpcoming(): Result<List<AvailableDelivery>> = runCatching {
         val r = api.listUpcoming()
+        if (!r.isSuccessful) throw IllegalStateException(errorMessage(r, "Couldn't load upcoming deliveries"))
         r.body()?.deliveries ?: emptyList()
     }
 
     suspend fun listActive(): Result<List<CourierOrder>> = runCatching {
         val r = api.listActive()
+        if (!r.isSuccessful) throw IllegalStateException(errorMessage(r, "Couldn't load active deliveries"))
         r.body()?.orders ?: emptyList()
     }
 
     suspend fun listHistory(): Result<List<HistoryOrder>> = runCatching {
         val r = api.listHistory()
+        if (!r.isSuccessful) throw IllegalStateException(errorMessage(r, "Couldn't load delivery history"))
         r.body()?.orders ?: emptyList()
     }
 

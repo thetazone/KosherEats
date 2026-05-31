@@ -10,6 +10,11 @@ struct DealsView: View {
 
             if vm.isLoading && vm.deals.isEmpty {
                 ProgressView().tint(.kePrimary)
+            } else if let error = vm.errorMessage, vm.deals.isEmpty {
+                ErrorStateView(
+                    message: error,
+                    onRetry: { Task { await vm.load() } }
+                )
             } else if vm.deals.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "tag.slash")
@@ -64,14 +69,35 @@ class DealsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    private static let expiryFormatters: [ISO8601DateFormatter] = {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return [f1, f2]
+    }()
+
     func load() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            deals = try await APIService.shared.getNearbyDeals()
+            let all = try await APIService.shared.getNearbyDeals()
+            deals = all.filter { !Self.isExpired($0) }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Returns `true` when the deal has an `expiresAt` timestamp that is in the past.
+    private static func isExpired(_ deal: Deal) -> Bool {
+        guard let raw = deal.expiresAt else { return false }
+        for f in expiryFormatters {
+            if let date = f.date(from: raw) {
+                return date <= Date()
+            }
+        }
+        // Unparseable expiry -- keep the deal visible rather than hiding it.
+        return false
     }
 }
 

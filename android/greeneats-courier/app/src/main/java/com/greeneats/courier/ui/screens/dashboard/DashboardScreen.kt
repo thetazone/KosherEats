@@ -23,6 +23,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -30,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,39 +61,52 @@ fun DashboardScreen(
     vm: DashboardViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
         vm.resumeIfActive()
         vm.refresh()
     }
 
-    val activeOrder = state.active.firstOrNull()
-    if (activeOrder != null) {
-        // Full-screen delivery map takes over the content area — the bottom
-        // nav from CourierNavHost's Scaffold is still visible around it.
-        DeliveryMapScreen(
-            order = activeOrder,
-            viewModel = vm,
-            onOpenChat = onOpenChat,
-        )
-        return
+    LaunchedEffect(state.errorMessage) {
+        state.errorMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            vm.clearError()
+        }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundBlack)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        if (state.connectionLost) ConnectionLostBanner()
-        OnlineToggleCard(state.isOnline, onToggle = { vm.toggleOnline() })
+    val activeOrder = state.active.firstOrNull()
 
-        if (state.isOnline) {
-            AvailableSection(state.available, state.isLoading, onAccept = { vm.claim(it) })
+    Scaffold(
+        containerColor = Color.Transparent,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { _ ->
+        if (activeOrder != null) {
+            // Full-screen delivery map takes over the content area — the bottom
+            // nav from CourierNavHost's Scaffold is still visible around it.
+            DeliveryMapScreen(
+                order = activeOrder,
+                viewModel = vm,
+                onOpenChat = onOpenChat,
+            )
         } else {
-            OfflineHero()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(BackgroundBlack)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (state.connectionLost) ConnectionLostBanner()
+                OnlineToggleCard(state.isOnline, onToggle = { vm.toggleOnline() })
+
+                if (state.isOnline) {
+                    AvailableSection(state.available, state.isLoading, onAccept = { vm.claim(it) })
+                } else {
+                    OfflineHero()
+                }
+            }
         }
     }
 }

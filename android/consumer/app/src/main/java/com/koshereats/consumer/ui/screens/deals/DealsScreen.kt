@@ -36,6 +36,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,6 +72,19 @@ fun DealsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Filter out expired and inactive deals client-side
+    val activeDeals = remember(state.deals) {
+        state.deals.filter { deal ->
+            if (!deal.isActive) return@filter false
+            try {
+                val expiry = ZonedDateTime.parse(deal.expiresAt)
+                expiry.isAfter(ZonedDateTime.now())
+            } catch (_: Exception) {
+                true // keep deals with unparseable dates rather than hiding them
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -102,7 +116,7 @@ fun DealsScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             when {
-                state.isLoading && state.deals.isEmpty() -> {
+                state.isLoading && activeDeals.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
@@ -111,7 +125,7 @@ fun DealsScreen(
                     }
                 }
 
-                state.deals.isEmpty() -> {
+                activeDeals.isEmpty() -> {
                     // LazyColumn with a single full-height item — gives PullToRefreshBox a
                     // scrollable child so pull gestures register even when there are no deals.
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -162,7 +176,7 @@ fun DealsScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(state.deals, key = { it.id }) { deal ->
+                        items(activeDeals, key = { it.id }) { deal ->
                             DealCard(
                                 deal = deal,
                                 onClick = { onDealClick(deal) },

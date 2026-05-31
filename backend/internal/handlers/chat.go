@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"html"
 	"log/slog"
 	"net/http"
 	"time"
@@ -33,7 +34,7 @@ func (h *Handler) canAccessChat(r *http.Request, orderID, userID, role string) b
 	if role == "admin" {
 		return true
 	}
-	var consumerID string
+	var consumerID *string
 	var ownerID *string
 	var courierID *string
 	// LEFT JOIN so a missing restaurant row doesn't lock the consumer/courier
@@ -55,12 +56,12 @@ func (h *Handler) canAccessChat(r *http.Request, orderID, userID, role string) b
 
 	switch role {
 	case "consumer":
-		ok := consumerID == userID
+		ok := consumerID != nil && *consumerID == userID
 		if !ok {
 			slog.Warn("canAccessChat: consumer mismatch",
 				slog.String("order_id", orderID),
 				slog.String("jwt_user", userID),
-				slog.String("order_user", consumerID))
+				slog.Any("order_user", consumerID))
 		}
 		return ok
 	case "seller":
@@ -155,6 +156,7 @@ func (h *Handler) SendChatMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "message too long")
 		return
 	}
+	req.Text = html.EscapeString(req.Text)
 
 	var m ChatMessage
 	var createdAt time.Time

@@ -177,14 +177,12 @@ final class DashboardViewModel: ObservableObject {
     private static let earningsFractionalFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        f.timeZone = TimeZone(identifier: "UTC")!
         return f
     }()
 
     private static let earningsPlainFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
-        f.timeZone = TimeZone(identifier: "UTC")!
         return f
     }()
 

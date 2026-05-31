@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +86,36 @@ fun GreenEatsNavHost() {
     val addressViewModel: AddressViewModel = hiltViewModel()
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.uiState.collectAsStateWithLifecycle()
+
+    // Observe deep-link intents published by MainActivity (notification taps).
+    val context = LocalContext.current
+    val mainActivity = context as? com.greeneats.consumer.MainActivity
+    val deepLinkIntent by mainActivity?.deepLinkIntent?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf<android.content.Intent?>(null) }
+
+    LaunchedEffect(deepLinkIntent) {
+        val uri = deepLinkIntent?.data ?: return@LaunchedEffect
+        val segments = uri.pathSegments ?: return@LaunchedEffect
+        // Expected paths: /orders/{orderId}/tracking  or  /orders/{orderId}/chat
+        if (segments.size >= 3 && segments[0] == "orders") {
+            val orderId = segments[1]
+            if (orderId.isBlank() || !orderId.all { it.isLetterOrDigit() || it == '-' || it == '_' }) {
+                mainActivity?.consumeDeepLink()
+                return@LaunchedEffect
+            }
+            when (segments[2]) {
+                "tracking" -> navController.navigate(Screen.OrderTracking.createRoute(orderId)) {
+                    launchSingleTop = true
+                    popUpTo(Screen.Home.route)
+                }
+                "chat" -> navController.navigate(Screen.Chat.createRoute(orderId)) {
+                    launchSingleTop = true
+                    popUpTo(Screen.Home.route)
+                }
+            }
+        }
+        mainActivity?.consumeDeepLink()
+    }
 
     // Tracks which route the guest should return to after logging in.
     // When a guest tries a restricted action we stash the target here

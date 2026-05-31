@@ -74,6 +74,10 @@ func (h *Handler) CreateDeal(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "fixed discount must be at least 1 cent")
 			return
 		}
+		if req.DiscountValue > 10000 {
+			writeError(w, http.StatusBadRequest, "fixed discount cannot exceed $100")
+			return
+		}
 	case models.DiscountBOGO:
 		// No value needed
 	default:
@@ -229,7 +233,7 @@ func (h *Handler) DeactivateDeal(w http.ResponseWriter, r *http.Request) {
 //                 the cart has at least 2 units total. Otherwise 0.
 //                 Crude but matches the "buy one get one free" promise
 //                 without item-targeting logic.
-func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID string, subtotal int, items []models.OrderItem) (int, error) {
+func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID, userID string, subtotal int, items []models.OrderItem) (int, error) {
 	if dealID == "" {
 		return 0, nil
 	}
@@ -265,6 +269,18 @@ func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID 
 	}
 	if subtotal < minOrder {
 		return 0, fmt.Errorf("order subtotal of %d is below the deal minimum of %d", subtotal, minOrder)
+	}
+
+	// Limit deal to one use per customer.
+	var used bool
+	err = h.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM orders WHERE user_id = $1 AND applied_deal_id = $2 AND status NOT IN ('rejected','cancelled'))`,
+		userID, dealID).Scan(&used)
+	if err != nil {
+		return 0, fmt.Errorf("failed to check deal usage: %w", err)
+	}
+	if used {
+		return 0, fmt.Errorf("deal already used")
 	}
 
 	switch discountType {
@@ -318,6 +334,7 @@ func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
 		   AND r.is_active = true
+		   AND r.approval_status = 'approved'
 		   AND r.vertical = $1
 		 ORDER BY d.expires_at ASC`, vertical)
 	if err != nil {
@@ -363,6 +380,7 @@ func (h *Handler) ListRestaurantDeals(w http.ResponseWriter, r *http.Request) {
 		   AND d.is_active = true
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
+		   AND r.approval_status = 'approved'
 		   AND r.vertical = $2
 		 ORDER BY d.expires_at ASC`, restaurantID, vertical)
 	if err != nil {

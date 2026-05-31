@@ -710,6 +710,13 @@ enum DiscountType: String, Codable {
     case percentage
     case fixed
     case bogo
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = DiscountType(rawValue: raw) ?? .unknown
+    }
 }
 
 struct Deal: Codable, Identifiable {
@@ -742,6 +749,7 @@ struct Deal: Codable, Identifiable {
         case .percentage: return "\(discountValue)% Off"
         case .fixed: return "$\(String(format: "%.2f", Double(discountValue) / 100)) Off"
         case .bogo: return "Buy 1 Get 1 Free"
+        case .unknown: return ""
         }
     }
 

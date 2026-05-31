@@ -48,7 +48,7 @@ func (h *Handler) CloverConnectURL(w http.ResponseWriter, r *http.Request) {
 	}
 	restaurantID, err := h.resolveSellerRestaurantID(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "restaurant not found")
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *Handler) ListPOSIntegrations(w http.ResponseWriter, r *http.Request) {
 	}
 	restaurantID, err := h.resolveSellerRestaurantID(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "restaurant not found")
 		return
 	}
 	rows, err := h.db.Pool.Query(r.Context(),
@@ -178,7 +178,7 @@ func (h *Handler) DisconnectPOSIntegration(w http.ResponseWriter, r *http.Reques
 	}
 	restaurantID, err := h.resolveSellerRestaurantID(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "restaurant not found")
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -207,7 +207,7 @@ func (h *Handler) TestPOSIntegration(w http.ResponseWriter, r *http.Request) {
 	}
 	restaurantID, err := h.resolveSellerRestaurantID(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "restaurant not found")
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -239,7 +239,8 @@ func (h *Handler) TestPOSIntegration(w http.ResponseWriter, r *http.Request) {
 		MerchantID: merchantID, AccessToken: string(at), IsActive: true,
 	}
 	if err := adapter.TestConnection(r.Context(), integ); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"status": "fail", "error": err.Error()})
+		slog.Error("POS TestConnection failed", "provider", providerStr, "restaurant_id", restaurantID, "error", err)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"status": "fail", "error": "POS connection test failed"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

@@ -125,7 +125,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	deliveryFee := 0
 	if fulfillmentType != "pickup" {
 		var restAddress string
-		err := h.db.Pool.QueryRow(r.Context(),
+		err := tx.QueryRow(r.Context(),
 			`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, '')
 			   FROM restaurants WHERE id = $1`, cart.RestaurantID,
 		).Scan(&restAddress)
@@ -140,7 +140,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	// Apply the deal discount before tax so the recorded total agrees with
 	// the Stripe charge that CreatePaymentIntent computed using the same
 	// helper. resolveDealDiscount returns 0 when AppliedDealID is empty.
-	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cart.RestaurantID, subtotal, items)
+	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cart.RestaurantID, user["user_id"], subtotal, items)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -155,7 +155,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		// No courier means no tip lane; ignore any client-supplied value.
 		tip = 0
 	}
-	if tip > subtotal {
+	if tip > discountedSubtotal {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}
@@ -191,6 +191,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, scheduled_for, fulfillment_type,
 		 applied_deal_id, discount_amount)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		 ON CONFLICT (stripe_payment_id) WHERE stripe_payment_id != '' DO NOTHING
 		 RETURNING id, user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, est_delivery_time,
 		 fulfillment_type, created_at, updated_at`,
@@ -204,6 +205,10 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		&order.DeliveryAddress, &order.DeliveryLat, &order.DeliveryLng,
 		&order.StripePaymentID, &order.CourierTip, &order.EstDeliveryTime,
 		&order.FulfillmentType, &order.CreatedAt, &order.UpdatedAt)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusConflict, "order already created for this payment")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create order")
 		return
@@ -613,6 +618,10 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if order.RestaurantID != "" {
+		go h.notify.OrderCancelled(context.Background(), id, order.RestaurantID)
+	}
+
 	writeJSON(w, http.StatusOK, order)
 }
 
@@ -707,7 +716,7 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
 	}
 
@@ -982,6 +991,15 @@ func (h *Handler) CompleteOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "status updated but failed to reload order")
 		return
 	}
+
+	if order.UserID != "" {
+		if order.FulfillmentType == "pickup" {
+			go h.notify.OrderCompleted(context.Background(), id, order.UserID)
+		} else {
+			go h.notify.OrderDelivered(context.Background(), id, order.UserID)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, order)
 }
 
@@ -1203,6 +1221,16 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 	if err = tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "cannot update order status")
 		return
+	}
+
+	var consumerID string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT user_id FROM orders WHERE id = $1`, id).Scan(&consumerID); err != nil {
+		slog.Warn("failed to fetch consumer for delivery notification",
+			slog.String("order_id", id), slog.String("error", err.Error()))
+	}
+	if consumerID != "" {
+		go h.notify.OrderDelivered(context.Background(), id, consumerID)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "delivered"})

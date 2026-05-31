@@ -79,6 +79,16 @@ interface ApiService {
         @Body body: Map<String, String?>,
     ): Response<Order>
 
+    @PATCH("seller/orders/{orderId}/pickup")
+    suspend fun sellerPickupOrder(
+        @Path("orderId") orderId: String,
+    ): Response<Unit>
+
+    @PATCH("seller/orders/{orderId}/deliver")
+    suspend fun sellerDeliverOrder(
+        @Path("orderId") orderId: String,
+    ): Response<Unit>
+
     // --- Menu ---
 
     @GET("seller/menu")

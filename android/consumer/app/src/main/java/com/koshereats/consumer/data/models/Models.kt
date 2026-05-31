@@ -9,7 +9,8 @@ enum class KosherCertification(val displayName: String, val abbreviation: String
     @SerializedName("OK") OK("OK Kosher", "OK"),
     @SerializedName("Star-K") STAR_K("Star-K", "★K"),
     @SerializedName("Kof-K") KOF_K("Kof-K", "KF"),
-    @SerializedName(value = "CRC", alternate = ["cRc"]) CRC("Chicago Rabbinical Council", "cRc"),
+    @SerializedName(value = "cRc", alternate = ["CRC"]) CRC("Chicago Rabbinical Council", "cRc"),
+    @SerializedName("Chof-K") CHOF_K("Chof-K", "CK"),
     @SerializedName("Badatz") BADATZ("Badatz", "BD"),
     @SerializedName("CHABAD") CHABAD("Chabad", "CH"),
     @SerializedName("LOCAL") LOCAL("Local Rabbinical", "LR"),
@@ -354,7 +355,7 @@ data class Order(
     @SerializedName("delivery_address") val deliveryAddress: String = "",
     @SerializedName("delivery_lat") val deliveryLat: Double = 0.0,
     @SerializedName("delivery_lng") val deliveryLng: Double = 0.0,
-    @SerializedName("estimated_delivery_time") val estimatedDeliveryTime: String? = null,
+    @SerializedName("est_delivery_time") val estimatedDeliveryTime: String? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
     val courier: CourierPublic? = null,
@@ -367,6 +368,7 @@ data class Order(
     @SerializedName("delivered_at") val deliveredAt: String? = null,
     @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
     @SerializedName("scheduled_for") val scheduledFor: String? = null,
+    @SerializedName("courier_rating") val courierRating: Int? = null,
 )
 
 data class OrderItem(
@@ -374,7 +376,7 @@ data class OrderItem(
     val name: String = "",
     val quantity: Int = 1,
     val price: Int = 0,
-    @SerializedName("special_instructions") val specialInstructions: String? = null,
+    @SerializedName("notes") val specialInstructions: String? = null,
 )
 
 data class CreateOrderRequest(

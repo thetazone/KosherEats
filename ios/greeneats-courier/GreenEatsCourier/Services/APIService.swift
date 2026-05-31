@@ -646,10 +646,12 @@ final class APIService: ObservableObject {
     // MARK: - Chat
 
     func listChatMessages(orderID: String) async throws -> [ChatMessage] {
-        try await request(method: "GET", path: "/orders/\(orderID)/chat")
+        try validateOrderId(orderID)
+        return try await request(method: "GET", path: "/orders/\(orderID)/chat")
     }
 
     func sendChatMessage(orderID: String, text: String) async throws -> ChatMessage {
+        try validateOrderId(orderID)
         struct Body: Encodable { let text: String }
         return try await request(method: "POST", path: "/orders/\(orderID)/chat",
                                  body: Body(text: text))

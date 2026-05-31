@@ -85,8 +85,8 @@ class MainActivity : ComponentActivity() {
     /**
      * Parse a deep-link URI from the incoming intent and publish it so the
      * NavHost can route to the appropriate screen. Supported schemes:
-     *   - koshereats://orders/{orderId}/tracking
-     *   - koshereats://orders/{orderId}/chat
+     *   - greeneats://orders/{orderId}/tracking
+     *   - greeneats://orders/{orderId}/chat
      */
     private fun handleDeepLink(intent: Intent?) {
         val uri = intent?.data ?: return

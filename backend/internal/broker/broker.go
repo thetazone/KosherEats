@@ -48,7 +48,9 @@ func (b *Broker) Subscribe(orderID string) (<-chan LocationEvent, func()) {
 			}
 		}
 		b.mu.Unlock()
-		close(ch)
+		// Don't close(ch) — Publish may still hold a reference obtained
+		// before the lock. Subscribers use select (not range), so closing
+		// is unnecessary; GC will collect the unreferenced channel.
 	}
 }
 
