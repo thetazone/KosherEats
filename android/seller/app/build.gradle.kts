@@ -31,13 +31,17 @@ android {
             keyPassword = "android"
         }
         create("release") {
-            storeFile = file("release-upload.jks")
-            val ksPassword = lp("KEYSTORE_PASSWORD").also {
-                check(it.isNotEmpty()) { "KEYSTORE_PASSWORD not set in local.properties — refusing to sign release build" }
+            val ksPassword = findProperty("KEYSTORE_PASSWORD")?.toString() ?: lp("KEYSTORE_PASSWORD")
+            val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
+
+            if (ksPassword.isEmpty() && isReleaseBuild) {
+                error("KEYSTORE_PASSWORD not set — add it to local.properties or pass via -P")
             }
-            storePassword = ksPassword
+
+            storeFile = file("release-upload.jks")
+            storePassword = ksPassword.ifEmpty { "placeholder" }
             keyAlias = "upload"
-            keyPassword = ksPassword
+            keyPassword = ksPassword.ifEmpty { "placeholder" }
         }
     }
 
@@ -75,7 +79,12 @@ android {
             )
         }
         debug {
-            buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
+            // Override DEV_BASE_URL in local.properties to point at a staging server or
+            // the Fly deployment. Defaults to the Android emulator loopback
+            // (10.0.2.2 == host machine localhost) so dev work never mutates prod
+            // business state (orders, menus, open/close) by accident.
+            val devUrl = lp("DEV_BASE_URL").ifEmpty { "http://10.0.2.2:3000/api/v1/" }
+            buildConfigField("String", "BASE_URL", "\"$devUrl\"")
         }
     }
 

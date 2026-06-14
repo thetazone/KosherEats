@@ -24,9 +24,14 @@ struct ProfileView: View {
                                 showEditProfile = true
                             }
                             NavigationLink {
-                                OrdersListView(
+                                // Push the stack-agnostic content so My Orders joins
+                                // Profile's existing NavigationStack instead of nesting
+                                // a second one (which double-bars and swallows the title).
+                                OrdersListContent(
                                     pendingTrackingOrderId: $pendingTrackingOrderId,
-                                    pendingDetailOrderId: $pendingDetailOrderId
+                                    pendingDetailOrderId: $pendingDetailOrderId,
+                                    navigationTitle: "My Orders",
+                                    titleDisplayMode: .inline
                                 )
                             } label: {
                                 ProfileMenuRow(icon: "bag.fill", title: "My Orders", color: .kePrimary)

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -71,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,6 +81,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.MenuItem
@@ -633,7 +636,7 @@ fun RestaurantDetailScreen(
                                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = TextWhite)
                                 }
                             }
-                            AsyncImage(
+                            SubcomposeAsyncImage(
                                 model = restaurant.kosherCertificateUrl,
                                 contentDescription = "Kosher certificate",
                                 contentScale = ContentScale.Fit,
@@ -641,8 +644,46 @@ fun RestaurantDetailScreen(
                                     .fillMaxWidth()
                                     .padding(16.dp)
                                     .clip(RoundedCornerShape(12.dp)),
-                                placeholder = ColorPainter(SurfaceDark),
-                                error = ColorPainter(SurfaceDark),
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(300.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(color = Orange)
+                                    }
+                                },
+                                error = {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(300.dp)
+                                            .padding(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.ErrorOutline,
+                                            contentDescription = null,
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(40.dp),
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = "Unable to load certificate",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = TextSecondary,
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "The certificate for ${restaurant.name} could not be loaded. Please try again later.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextMuted,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                },
                             )
                         }
                     }

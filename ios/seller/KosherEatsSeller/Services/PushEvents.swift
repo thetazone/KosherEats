@@ -30,6 +30,14 @@ extension Notification.Name {
     /// push SellerOrderDetailView for the carried `order_id`, mirroring the
     /// Android launch-intent deep link (NavGraph routes to Screen.OrderDetail).
     static let orderDeepLinkRequested = Notification.Name("ke.orderDeepLinkRequested")
+
+    /// Posted when an in-app affordance wants to switch to the Orders tab
+    /// without targeting a specific ticket — e.g. the dashboard's "Showing X
+    /// of Y active orders" truncation row, mirroring Android's "View all"
+    /// deep link to the orders list. Distinct from `.orderDeepLinkRequested`,
+    /// which carries an `order_id` and pushes a single SellerOrderDetailView;
+    /// reusing that signal here would wrongly try to open a detail screen.
+    static let switchToOrdersTabRequested = Notification.Name("ke.switchToOrdersTab")
 }
 
 // MARK: - Push Event Types

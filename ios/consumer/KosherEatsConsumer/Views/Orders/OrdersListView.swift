@@ -1,18 +1,42 @@
 import SwiftUI
 
+// Tab-root wrapper. Owns the NavigationStack so the Cart tab slot in
+// MainTabView gets its own navigation context. When this screen is pushed
+// from another stack (Profile → My Orders), push `OrdersListContent`
+// directly instead — nesting a NavigationStack inside a pushed destination
+// yields a double nav bar and swallows the outer title.
 struct OrdersListView: View {
+    @Binding var pendingTrackingOrderId: String?
+    @Binding var pendingDetailOrderId: String?
+
+    var body: some View {
+        NavigationStack {
+            OrdersListContent(
+                pendingTrackingOrderId: $pendingTrackingOrderId,
+                pendingDetailOrderId: $pendingDetailOrderId
+            )
+        }
+    }
+}
+
+// Stack-agnostic content: attaches its navigation modifiers (title,
+// destinations) to whichever NavigationStack encloses it. Used standalone
+// when pushed inside an existing stack, or wrapped by OrdersListView for
+// the tab root.
+struct OrdersListContent: View {
     @StateObject private var vm = OrderViewModel()
     @EnvironmentObject var cartVM: CartViewModel
     @Binding var pendingTrackingOrderId: String?
     @Binding var pendingDetailOrderId: String?
+    var navigationTitle: String = "Orders"
+    var titleDisplayMode: NavigationBarItem.TitleDisplayMode = .large
     @State private var selectedSegment = 0
     @State private var showReorderToast = false
     @State private var reorderError: String? = nil
     @State private var reorderTask: Task<Void, Never>? = nil
 
     var body: some View {
-        NavigationStack {
-            ZStack {
+        ZStack {
                 Color.keBackground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -158,8 +182,8 @@ struct OrdersListView: View {
                         .animation(.easeInOut, value: reorderError)
                 }
             }
-            .navigationTitle("Orders")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle(navigationTitle)
+            .navigationBarTitleDisplayMode(titleDisplayMode)
             .onDisappear {
                 reorderTask?.cancel()
                 reorderTask = nil
@@ -179,7 +203,6 @@ struct OrdersListView: View {
             .navigationDestination(item: $pendingDetailOrderId) { id in
                 OrderDetailView(orderID: id)
             }
-        }
     }
 }
 

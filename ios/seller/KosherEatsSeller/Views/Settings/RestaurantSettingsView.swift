@@ -261,14 +261,26 @@ struct RestaurantSettingsView: View {
                             .disabled(isUploadingCert)
                             .onChange(of: certPickerItem) { _, newItem in
                                 Task {
+                                    guard newItem != nil else { return }
                                     guard let data = try? await newItem?.loadTransferable(type: Data.self),
-                                          let image = UIImage(data: data) else { return }
+                                          let image = UIImage(data: data) else {
+                                        errorMessage = "Couldn't read the selected image. Try a different photo."
+                                        return
+                                    }
+                                    // Remember the current state so a failed upload doesn't
+                                    // leave the just-picked (unsaved) image showing as if it's
+                                    // the live certificate — Save would then persist the OLD url.
+                                    let previousImage = certImage
+                                    let previousUrl = kosherCertificateUrl
                                     certImage = image
                                     isUploadingCert = true
+                                    errorMessage = nil
                                     do {
                                         kosherCertificateUrl = try await UploadService.shared.uploadImage(image, kind: .certificate)
                                     } catch {
-                                        errorMessage = "Certificate upload failed"
+                                        certImage = previousImage
+                                        kosherCertificateUrl = previousUrl
+                                        errorMessage = "Certificate upload failed. Please try again."
                                     }
                                     isUploadingCert = false
                                 }

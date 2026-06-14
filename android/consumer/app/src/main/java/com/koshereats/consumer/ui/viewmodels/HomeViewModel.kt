@@ -180,7 +180,9 @@ class HomeViewModel @Inject constructor(
         KosherCertification.STAR_K -> "Star-K"
         KosherCertification.KOF_K -> "Kof-K"
         KosherCertification.BADATZ -> "Badatz"
-        KosherCertification.CRC -> "CRC"
+        KosherCertification.CRC -> "cRc"
+        KosherCertification.CHOF_K -> "Chof-K"
+        KosherCertification.OTHER -> "other"
         else -> this.name
     }
 
@@ -266,7 +268,6 @@ class HomeViewModel @Inject constructor(
             page = 1,
             generation = loadTrigger.value.generation + 1,
         )
-        loadSuggested()
     }
 
     fun toggleGlattFilter() {
@@ -280,7 +281,6 @@ class HomeViewModel @Inject constructor(
             page = 1,
             generation = loadTrigger.value.generation + 1,
         )
-        loadSuggested()
     }
 
     fun toggleCholovYisroelFilter() {
@@ -294,7 +294,6 @@ class HomeViewModel @Inject constructor(
             page = 1,
             generation = loadTrigger.value.generation + 1,
         )
-        loadSuggested()
     }
 
     fun applyKosherFilters(
@@ -320,7 +319,6 @@ class HomeViewModel @Inject constructor(
             page = 1,
             generation = loadTrigger.value.generation + 1,
         )
-        loadSuggested()
     }
 
     override fun onCleared() {

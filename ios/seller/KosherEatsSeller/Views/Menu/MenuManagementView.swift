@@ -9,6 +9,7 @@ struct MenuManagementView: View {
     @State private var newCategoryName = ""
     @State private var searchText = ""
     @State private var itemToDelete: MenuItem?
+    @State private var categoryToDelete: MenuCategory?
 
     var body: some View {
         NavigationStack {
@@ -174,6 +175,24 @@ struct MenuManagementView: View {
                     Text("Are you sure you want to delete \"\(item.name)\"? This cannot be undone.")
                 }
             }
+            .alert("Delete Category", isPresented: Binding(
+                get: { categoryToDelete != nil },
+                set: { if !$0 { categoryToDelete = nil } }
+            )) {
+                Button("Cancel", role: .cancel) {
+                    categoryToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let category = categoryToDelete {
+                        Task { await vm.deleteCategory(id: category.id) }
+                        categoryToDelete = nil
+                    }
+                }
+            } message: {
+                if let category = categoryToDelete {
+                    Text("Are you sure you want to delete \"\(category.name)\"? This cannot be undone.")
+                }
+            }
             .overlay {
                 if let msg = vm.successMessage {
                     successToast(msg)
@@ -253,7 +272,7 @@ struct MenuManagementView: View {
 
                 if items.isEmpty {
                     Button(role: .destructive) {
-                        Task { await vm.deleteCategory(id: category.id) }
+                        categoryToDelete = category
                     } label: {
                         Image(systemName: "trash")
                             .font(.caption)

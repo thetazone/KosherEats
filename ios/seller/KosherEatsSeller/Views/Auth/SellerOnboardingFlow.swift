@@ -76,6 +76,12 @@ final class SellerOnboardingViewModel: ObservableObject {
     // UI
     @Published var isSubmitting = false
     @Published var errorMessage: String?
+    // Set when the restaurant is created but one or more drafted menu items
+    // failed to persist. We hold the seller on the review step showing the
+    // warning instead of immediately calling onComplete — otherwise the flow
+    // is torn down for the "You're all set!" screen before the warning ever
+    // renders a frame, and the seller never learns items were dropped.
+    @Published var createdWithFailures: Restaurant?
 
     func nextStep() {
         guard let next = OnboardingStep(rawValue: step.rawValue + 1) else { return }
@@ -171,9 +177,14 @@ final class SellerOnboardingViewModel: ObservableObject {
 
             isSubmitting = false
             if failedItemCount > 0 {
+                // Hold on the review step so the seller actually sees this; the
+                // "Continue to Dashboard" button (shown while createdWithFailures
+                // is set) calls onComplete once they've acknowledged it.
                 errorMessage = "\(failedItemCount) menu item\(failedItemCount == 1 ? "" : "s") couldn't be saved. You can re-add them from the Menu tab."
+                createdWithFailures = created
+            } else {
+                onComplete(created)
             }
-            onComplete(created)
         } catch {
             isSubmitting = false
             errorMessage = error.localizedDescription
@@ -1021,22 +1032,38 @@ private struct ReviewStepView: View {
                     Text(err).font(.caption).foregroundColor(.keError)
                 }
 
-                Button {
-                    Task { await vm.submit(onComplete: onComplete) }
-                } label: {
-                    Group {
-                        if vm.isSubmitting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("Submit for Review").font(.headline)
-                        }
+                if let created = vm.createdWithFailures {
+                    // Restaurant is already created and submitted — only some
+                    // menu items failed. Don't let them re-submit; let them
+                    // acknowledge the warning above and move on.
+                    Button {
+                        onComplete(created)
+                    } label: {
+                        Text("Continue to Dashboard")
+                            .font(.headline)
+                            .foregroundColor(.keTextOnAccent)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(Color.kePrimary)
+                            .cornerRadius(14)
                     }
-                    .foregroundColor(.keTextOnAccent)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(vm.isSubmitting ? Color.kePrimary.opacity(0.4) : Color.kePrimary)
-                    .cornerRadius(14)
+                } else {
+                    Button {
+                        Task { await vm.submit(onComplete: onComplete) }
+                    } label: {
+                        Group {
+                            if vm.isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("Submit for Review").font(.headline)
+                            }
+                        }
+                        .foregroundColor(.keTextOnAccent)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(vm.isSubmitting ? Color.kePrimary.opacity(0.4) : Color.kePrimary)
+                        .cornerRadius(14)
+                    }
+                    .disabled(vm.isSubmitting)
                 }
-                .disabled(vm.isSubmitting)
 
                 Spacer().frame(height: 40)
             }

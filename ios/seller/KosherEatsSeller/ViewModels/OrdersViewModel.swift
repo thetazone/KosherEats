@@ -223,18 +223,29 @@ class OrdersViewModel: ObservableObject {
     /// silent mode (common on a restaurant counter phone) without hijacking
     /// any other audio the device is playing.
     private func configureAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            #if DEBUG
-            print("[audio] failed to configure session: \(error)")
-            #endif
+        // `setActive(true)` is an IPC round-trip to the media server that can
+        // block for tens-to-hundreds of ms — too slow for the main actor,
+        // which this @MainActor VM otherwise runs on. AVAudioSession is
+        // thread-safe, so hop off to a utility task. The session only needs to
+        // be active before the first new-order ping plays, so the async hop
+        // doesn't race anything user-visible.
+        Task.detached(priority: .utility) {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+                try session.setActive(true)
+            } catch {
+                #if DEBUG
+                print("[audio] failed to configure session: \(error)")
+                #endif
+            }
         }
     }
 
     private func deactivateAudioSession() {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Task.detached(priority: .utility) {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     /// Timestamp of the last alert sound. Used to debounce rapid-fire alerts

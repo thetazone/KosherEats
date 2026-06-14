@@ -237,8 +237,51 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                // The server-side active count is authoritative. If it exceeds
+                // the number of orders we fetched (limit 100) and filtered to
+                // active statuses, the badge/list would silently undercount
+                // versus the stat card above — so surface a "Showing X of Y"
+                // row pointing the seller at the Orders tab for the full list.
+                // Mirrors Android DashboardScreen.kt's truncation card.
+                if !vm.isLoading && vm.stats.activeOrders > vm.activeOrders.count {
+                    truncationNotice
+                }
             }
         }
+    }
+
+    private var truncationNotice: some View {
+        // Tapping the row jumps to the Orders tab (Android "View all" parity).
+        // selectedTab lives on MainTabView and isn't reachable from here, so we
+        // post `.switchToOrdersTabRequested`, which MainTabView observes.
+        Button {
+            Haptics.impact(.light)
+            NotificationCenter.default.post(name: .switchToOrdersTabRequested, object: nil)
+        } label: {
+            HStack {
+                Text("Showing \(vm.activeOrders.count) of \(vm.stats.activeOrders) active orders")
+                    .font(.subheadline)
+                    .foregroundColor(.keTextSecondary)
+
+                Spacer()
+
+                Text("See Orders tab")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.kePrimary)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.kePrimary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(Color.keCard)
+            .cornerRadius(16)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the Orders tab to see all active orders")
     }
 
     private var emptyActiveOrders: some View {

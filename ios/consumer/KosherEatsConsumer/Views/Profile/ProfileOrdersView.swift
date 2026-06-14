@@ -13,12 +13,16 @@ struct ProfileOrdersView: View {
     @State private var pendingDetailOrderId: String?
 
     var body: some View {
-        OrdersListView(
+        // Push OrdersListContent (not OrdersListView) so this joins the enclosing
+        // NavigationStack rather than nesting its own. The title/displayMode are
+        // passed into the content so they bind to the active stack's nav bar
+        // instead of being swallowed by an inner stack's "Orders"/.large.
+        OrdersListContent(
             pendingTrackingOrderId: $pendingTrackingOrderId,
-            pendingDetailOrderId: $pendingDetailOrderId
+            pendingDetailOrderId: $pendingDetailOrderId,
+            navigationTitle: "My Orders",
+            titleDisplayMode: .inline
         )
-        .navigationTitle("My Orders")
-        .navigationBarTitleDisplayMode(.inline)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("My Orders")
         .accessibilityHint("View your active and past orders")

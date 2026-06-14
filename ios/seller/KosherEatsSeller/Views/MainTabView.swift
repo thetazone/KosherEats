@@ -58,5 +58,12 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .orderDeepLinkRequested)) { _ in
             selectedTab = .orders
         }
+        // The dashboard's "Showing X of Y active orders" truncation row posts
+        // `.switchToOrdersTabRequested` (Android "View all" parity). selectedTab
+        // is private to MainTabView, so DashboardView reaches it via this signal
+        // rather than a binding.
+        .onReceive(NotificationCenter.default.publisher(for: .switchToOrdersTabRequested)) { _ in
+            selectedTab = .orders
+        }
     }
 }

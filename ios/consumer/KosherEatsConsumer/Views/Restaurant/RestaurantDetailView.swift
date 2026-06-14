@@ -6,6 +6,9 @@ struct RestaurantDetailView: View {
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
     @State private var showCertificate = false
+    /// Menu item whose AddToCartSheet is presented after tapping a deal that
+    /// links to a specific item (mirrors Android's deal -> item-sheet flow).
+    @State private var dealLinkedItem: MenuItem?
 
     var body: some View {
         ZStack {
@@ -47,10 +50,22 @@ struct RestaurantDetailView: View {
                             dealsSection
                         }
 
+                        // Applied deal banner (title, min-order progress, remove)
+                        if let deal = appliedDealForThisRestaurant {
+                            appliedDealBanner(deal)
+                        }
+
                         // Menu
                         menuSection
                     }
                     .padding(.bottom, 100)
+                }
+                .sheet(item: $dealLinkedItem) { item in
+                    AddToCartSheet(
+                        item: item,
+                        restaurantID: restaurantID,
+                        restaurantName: vm.restaurant?.name
+                    )
                 }
             } else if let error = vm.errorMessage {
                 ErrorStateView(
@@ -222,10 +237,15 @@ struct RestaurantDetailView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(vm.deals) { deal in
-                        DealCard(deal: deal) {
-                            cartVM.applyDeal(deal)
-                            Haptics.success()
-                        }
+                        DealCard(
+                            deal: deal,
+                            onApply: { applyDeal(deal) },
+                            isApplied: cartVM.appliedDeal?.id == deal.id,
+                            onRemove: {
+                                cartVM.removeDeal()
+                                Haptics.success()
+                            }
+                        )
                     }
                 }
                 .padding(.horizontal)
@@ -234,6 +254,91 @@ struct RestaurantDetailView: View {
             Divider().background(Color.keDivider).padding(.horizontal)
         }
         .padding(.bottom, 8)
+    }
+
+    /// The currently applied deal, but only when it belongs to this restaurant —
+    /// a deal applied for a different restaurant must not surface here.
+    private var appliedDealForThisRestaurant: Deal? {
+        guard let deal = cartVM.appliedDeal, deal.restaurantId == restaurantID else { return nil }
+        return deal
+    }
+
+    /// Applies a deal and, when it links to a menu item that exists on this
+    /// menu and the restaurant is open, opens that item's add-to-cart sheet
+    /// (mirrors Android's RestaurantDetailScreen deal-tap behaviour).
+    private func applyDeal(_ deal: Deal) {
+        cartVM.applyDeal(deal)
+        Haptics.success()
+        guard deal.hasLinkedItem,
+              vm.restaurant?.isOpen == true,
+              let linkedItem = vm.menuCategories
+                .compactMap(\.items)
+                .flatMap({ $0 })
+                .first(where: { $0.id == deal.menuItemId })
+        else { return }
+        dealLinkedItem = linkedItem
+    }
+
+    // MARK: - Applied Deal Banner
+
+    private func appliedDealBanner(_ deal: Deal) -> some View {
+        let subtotal = cartVM.cart?.subtotal ?? 0
+        let minOrder = deal.minOrderAmount ?? 0
+        let needsMore = max(minOrder - subtotal, 0)
+
+        let progressText: String
+        if needsMore <= 0 {
+            progressText = String(localized: "Deal applied — discount appears at checkout")
+        } else if subtotal > 0 {
+            progressText = String(localized: "Order: \(format(subtotal)) / \(format(minOrder)) — add \(format(needsMore)) more")
+        } else if minOrder > 0 {
+            progressText = String(localized: "Minimum \(format(minOrder)) — add items to unlock")
+        } else {
+            progressText = String(localized: "Add items to unlock this deal")
+        }
+
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "tag.fill")
+                .font(.system(size: 18))
+                .foregroundColor(.kePrimary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(deal.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.keTextPrimary)
+                Text(progressText)
+                    .font(.system(size: 13))
+                    .foregroundColor(needsMore > 0 ? .kePrimary : .keTextSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                cartVM.removeDeal()
+                Haptics.success()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.keTextMuted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(String(localized: "Remove deal"))
+        }
+        .padding(12)
+        .background(Color.kePrimary.opacity(0.12))
+        .cornerRadius(Theme.cornerRadiusMedium)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Formats integer cents as a localized dollar string, matching the
+    /// `*Formatted` helpers used across the cart models.
+    private func format(_ cents: Int) -> String {
+        "$\(String(format: "%.2f", Double(max(cents, 0)) / 100))"
     }
 
     // MARK: - Menu

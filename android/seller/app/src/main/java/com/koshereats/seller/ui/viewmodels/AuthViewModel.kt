@@ -340,10 +340,20 @@ class AuthViewModel @Inject constructor(
             try {
                 val response = apiService.updateRestaurantStatus(mapOf("is_open" to targetIsOpen))
                 if (response.isSuccessful) {
-                    _state.value = _state.value.copy(
-                        restaurant = response.body(),
-                        isTogglingOpen = false,
-                    )
+                    val updated = response.body()
+                    if (updated != null) {
+                        _state.value = _state.value.copy(
+                            restaurant = updated,
+                            isTogglingOpen = false,
+                        )
+                    } else {
+                        // Keep the existing restaurant so the toggle card/header don't
+                        // blank out on an empty 200 body (matches updateRestaurantField).
+                        _state.value = _state.value.copy(
+                            isTogglingOpen = false,
+                            toggleError = "Server returned empty response.",
+                        )
+                    }
                 } else {
                     _state.value = _state.value.copy(
                         isTogglingOpen = false,

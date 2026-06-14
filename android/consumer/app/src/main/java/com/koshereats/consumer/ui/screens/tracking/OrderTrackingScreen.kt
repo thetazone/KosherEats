@@ -149,10 +149,18 @@ fun OrderTrackingScreen(
                 if (state.isLoading) {
                     CircularProgressIndicator(color = Orange)
                 } else {
-                    Text(
-                        text = state.errorMessage ?: stringResource(R.string.tracking_load_error),
-                        color = TextMuted,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = state.errorMessage ?: stringResource(R.string.tracking_load_error),
+                            color = TextMuted,
+                        )
+                        TextButton(onClick = { vm.start(orderId) }) {
+                            Text(stringResource(R.string.action_retry), color = Orange)
+                        }
+                    }
                 }
             }
         } else {

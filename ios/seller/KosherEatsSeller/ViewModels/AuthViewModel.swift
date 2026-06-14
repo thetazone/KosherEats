@@ -13,9 +13,15 @@ enum AppleSignInNonce {
         let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
         var result = ""
         var remaining = 32
+        var rng = SystemRandomNumberGenerator()
         while remaining > 0 {
-            var random: UInt8 = 0
-            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            // SystemRandomNumberGenerator is a CSPRNG that cannot fail, so the
+            // rejection-sampled byte is always cryptographically random. The
+            // old SecRandomCopyBytes path discarded its OSStatus — on the
+            // (vanishingly rare) failure the byte stayed 0, passed this
+            // `< charset.count` check, and appended charset[0] ('0'), which
+            // could degenerate the nonce to a predictable all-'0' string.
+            let random = UInt8.random(in: 0...255, using: &rng)
             if random < charset.count {
                 result.append(charset[Int(random)])
                 remaining -= 1
@@ -94,6 +100,12 @@ class AuthViewModel: ObservableObject {
                     KeychainHelper.delete(forKey: self.refreshTokenKey)
                     await APIService.shared.setToken(nil)
                     await APIService.shared.setRefreshToken(nil)
+                    // Clear the persisted restaurant selection too — same as
+                    // logout(). The refresh token expired/was revoked, so this
+                    // account's session is dead; on a shared counter device the
+                    // next account to sign in must not inherit account A's
+                    // `?restaurant_id=` on every /seller/* call.
+                    SelectedRestaurant.shared.set(nil)
                     self.isAuthenticated = false
                 } catch {
                     // Network / server errors on launch: don't unilaterally log

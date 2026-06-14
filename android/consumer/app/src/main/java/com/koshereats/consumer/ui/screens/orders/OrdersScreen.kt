@@ -191,7 +191,7 @@ private fun OrderCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Order #${order.orderNumber}",
+                        text = "Order #${order.id.take(8)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = TextTertiary,
                     )

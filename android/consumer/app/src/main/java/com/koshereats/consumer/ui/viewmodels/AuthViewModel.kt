@@ -299,7 +299,8 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
-                    android.util.Log.w("AuthViewModel", "socialLogin ${response.code()}: ${response.errorBody()?.string()}")
+                    val raw = response.errorBody()?.string().orEmpty()
+                    android.util.Log.w("AuthViewModel", "socialLogin failed: ${response.code()}, len=${raw.length}")
                     val msg = when (response.code()) {
                         401 -> "Authentication failed — please try again"
                         409 -> "An account with this email already exists"

@@ -25,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -84,6 +85,9 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
         const val CHANNEL_ID = "koshereats_consumer_default"
         private val recentMessageIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
         private val notificationIdCounter = AtomicInteger(1000)
+        // Stable notification id per order so later status updates replace the prior
+        // entry instead of stacking. Bounded to keep memory flat over long sessions.
+        private val notifIdMap = ConcurrentHashMap<String, Int>()
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -101,19 +105,23 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
         private fun showNotification(context: Context, title: String, body: String, orderId: String? = null) {
             ensureChannel(context)
 
+            // Order-scoped pushes reuse a stable id so each new status overwrites the
+            // previous one; non-order pushes keep a fresh id so they don't collide.
+            if (notifIdMap.size > 200) notifIdMap.clear()
+            val notifId = if (orderId != null) {
+                notifIdMap.getOrPut(orderId) { notificationIdCounter.getAndIncrement() }
+            } else {
+                notificationIdCounter.getAndIncrement()
+            }
+
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 orderId?.let {
                     putExtra("order_id", it)
                 }
             }
-            val requestCode = if (orderId != null) {
-                orderId.hashCode() * 31 + System.currentTimeMillis().toInt()
-            } else {
-                System.currentTimeMillis().toInt()
-            }
             val pi = PendingIntent.getActivity(
-                context, requestCode, intent,
+                context, notifId, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
 
@@ -136,12 +144,7 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
             }
 
             val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            val notifId = notificationIdCounter.getAndIncrement()
-            if (orderId != null) {
-                nm.notify(orderId, notifId, notification)
-            } else {
-                nm.notify(notifId, notification)
-            }
+            nm.notify(notifId, notification)
         }
     }
 }

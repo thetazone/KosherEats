@@ -36,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -95,6 +96,7 @@ fun SellerOrderDetailScreen(
     // pick up — so the seller must drive ready→picked_up→delivered themselves.
     val deliveryMode = authState.restaurant?.deliveryMode ?: "platform"
     var showRejectConfirm by remember { mutableStateOf(false) }
+    var rejectReason by remember { mutableStateOf("") }
 
     LaunchedEffect(orderId) {
         viewModel.clearMessages()
@@ -129,17 +131,33 @@ fun SellerOrderDetailScreen(
         AlertDialog(
             onDismissRequest = { showRejectConfirm = false },
             title = { Text("Reject Order?", color = TextWhite) },
-            text = { Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted) },
+            text = {
+                Column {
+                    Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = rejectReason,
+                        onValueChange = { rejectReason = it },
+                        label = { Text("Reason (optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showRejectConfirm = false
-                    viewModel.rejectPending(orderId)
+                    viewModel.rejectPending(orderId, rejectReason.trim().ifBlank { null })
+                    rejectReason = ""
                 }) {
                     Text("Reject Order", color = ErrorRed)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showRejectConfirm = false }) {
+                TextButton(onClick = {
+                    showRejectConfirm = false
+                    rejectReason = ""
+                }) {
                     Text("Cancel", color = TextWhite)
                 }
             },
@@ -196,11 +214,23 @@ fun SellerOrderDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "Failed to load order details. Please go back and try again.",
-                    color = ErrorRed,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(horizontal = 24.dp),
-                )
+                ) {
+                    Text(
+                        text = "Failed to load order details. Please try again.",
+                        color = ErrorRed,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { viewModel.loadOrderDetail(orderId) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                    ) {
+                        Text("Retry", fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
             return
         }

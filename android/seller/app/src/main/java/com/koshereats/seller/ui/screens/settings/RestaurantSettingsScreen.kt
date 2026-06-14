@@ -1,5 +1,7 @@
 package com.koshereats.seller.ui.screens.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import com.koshereats.seller.BuildConfig
@@ -26,8 +28,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -729,6 +735,41 @@ fun RestaurantSettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Legal & Support — mirrors iOS (App Store guideline 5.1.1) and keeps
+        // Play's Data safety / policy reviews satisfied with in-app links to the
+        // published policies and a support contact. External URLs open in the
+        // browser / mail app (no in-app webview); failures fall back to a Toast.
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        ) {
+            Column {
+                LegalLinkRow(
+                    icon = Icons.Filled.Shield,
+                    label = "Privacy Policy",
+                ) { openExternalUri(context, Uri.parse("https://koshereats.com/privacy")) }
+                HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                LegalLinkRow(
+                    icon = Icons.Filled.Description,
+                    label = "Terms of Service",
+                ) { openExternalUri(context, Uri.parse("https://koshereats.com/terms")) }
+                HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                LegalLinkRow(
+                    icon = Icons.AutoMirrored.Filled.HelpOutline,
+                    label = "Help & Support",
+                ) {
+                    openExternalUri(
+                        context = context,
+                        uri = Uri.parse("mailto:sellers@koshereats.com"),
+                        action = Intent.ACTION_SENDTO,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Logout
         Button(
             onClick = onLogout,
@@ -905,6 +946,58 @@ private fun SettingsSectionCard(
             Spacer(modifier = Modifier.height(16.dp))
             content()
         }
+    }
+}
+
+@Composable
+private fun LegalLinkRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Orange,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextWhite,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = TextMuted,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/**
+ * Opens a legal/support URI in the appropriate external app (browser for https,
+ * mail client for mailto), mirroring the ACTION_VIEW / ACTION_SENDTO pattern used
+ * elsewhere in the app. Shows a Toast if no handling app is installed.
+ */
+private fun openExternalUri(
+    context: android.content.Context,
+    uri: Uri,
+    action: String = Intent.ACTION_VIEW,
+) {
+    try {
+        context.startActivity(Intent(action, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "No app available to open this link.", Toast.LENGTH_SHORT).show()
     }
 }
 

@@ -21,9 +21,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +37,8 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -83,6 +87,22 @@ fun MenuManagementScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Local, client-side filter over the already-loaded category items. Mirrors iOS's
+    // .searchable on name/description so a seller can find and 86 one item fast during
+    // a rush instead of scrolling the whole list. No ViewModel round-trip needed.
+    var searchQuery by remember { mutableStateOf("") }
+    val visibleItems = remember(state.items, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            state.items
+        } else {
+            state.items.filter {
+                it.name.contains(query, ignoreCase = true) ||
+                    it.description.contains(query, ignoreCase = true)
+            }
+        }
+    }
+
     // Surface action errors (failed toggle/delete) as a transient toast. When the menu
     // list is already populated, optimistic-update reverts would otherwise be silent.
     LaunchedEffect(state.error) {
@@ -129,6 +149,47 @@ fun MenuManagementScreen(
                     color = TextSecondary,
                 )
             }
+
+            // Search
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                placeholder = {
+                    Text("Search menu items", style = MaterialTheme.typography.bodyMedium)
+                },
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                Icons.Filled.Clear,
+                                contentDescription = "Clear search",
+                                tint = TextMuted,
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextWhite,
+                    unfocusedTextColor = TextWhite,
+                    cursorColor = Orange,
+                    focusedBorderColor = Orange,
+                    unfocusedBorderColor = SurfaceDark,
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                    focusedPlaceholderColor = TextMuted,
+                    unfocusedPlaceholderColor = TextMuted,
+                ),
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Category chips
             Row(
@@ -222,12 +283,24 @@ fun MenuManagementScreen(
                             )
                         }
                     }
+                } else if (visibleItems.isEmpty()) {
+                    // Items exist but the search query matched none of them.
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "No items match \"${searchQuery.trim()}\"",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextMuted,
+                        )
+                    }
                 } else {
                     LazyColumn(
                         modifier = Modifier.padding(horizontal = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(state.items, key = { it.id }) { item ->
+                        items(visibleItems, key = { it.id }) { item ->
                             MenuItemCard(
                                 item = item,
                                 isPending = item.id in state.pendingItemIds,

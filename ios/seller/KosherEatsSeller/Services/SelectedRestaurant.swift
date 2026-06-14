@@ -42,13 +42,16 @@ final class SelectedRestaurant: ObservableObject {
     }
 
     /// Appends ?restaurant_id=xxx to a path if a selection is set.
-    /// Uses `.urlQueryAllowed` because the id is a query-parameter value,
-    /// not a URL path segment. This correctly encodes characters like `&`,
-    /// `=`, and `+` that are meaningful in a query string context.
+    /// Builds the value with URLComponents/URLQueryItem so the id is escaped
+    /// as a query-parameter *value*: reserved delimiters like `&`, `=`, and
+    /// `+` get percent-encoded. (`.urlQueryAllowed` deliberately permits those
+    /// delimiters to pass through, so it is the wrong set for a single value.)
     func appendQuery(to path: String) -> String {
-        guard let id = id,
-              let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return path }
+        guard let id = id else { return path }
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "restaurant_id", value: id)]
+        guard let encodedQuery = components.query else { return path }
         let sep = path.contains("?") ? "&" : "?"
-        return "\(path)\(sep)restaurant_id=\(encoded)"
+        return "\(path)\(sep)\(encodedQuery)"
     }
 }
