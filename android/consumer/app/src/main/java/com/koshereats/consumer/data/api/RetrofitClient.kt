@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.TypeAdapter
@@ -133,22 +134,32 @@ object NetworkModule {
     fun provideTokenPrefs(@ApplicationContext context: Context): SharedPreferences {
         // MasterKey.build() + EncryptedSharedPreferences.create() both hit the
         // Android Keystore synchronously and can throw after device restore, OS
-        // upgrades, or when the keystore is locked.  Fall back to plain prefs
-        // (user will be treated as logged-out; tokens will re-populate on next
-        // successful login) rather than crashing the app.
+        // upgrades, or when the keystore is locked.  Fall back to an in-memory,
+        // session-scoped store (user is effectively logged-out; tokens re-populate
+        // on next successful login) rather than crashing the app.  We deliberately
+        // do NOT write tokens to plain MODE_PRIVATE prefs: the JWT access token and
+        // long-lived refresh token must never touch disk in cleartext.
         return try {
             val masterKey = MasterKey.Builder(context)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build()
-            EncryptedSharedPreferences.create(
+            val encrypted = EncryptedSharedPreferences.create(
                 context,
                 "koshereats_secure_prefs",
                 masterKey,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
-        } catch (_: Exception) {
-            context.getSharedPreferences("koshereats_fallback_prefs", Context.MODE_PRIVATE)
+            // Keystore recovered after a previous fallback: wipe any cleartext
+            // token copy left on disk by an older build that fell back to plain
+            // prefs, so a still-valid refresh token can't linger unencrypted.
+            context.deleteSharedPreferences("koshereats_fallback_prefs")
+            encrypted
+        } catch (e: Exception) {
+            // Surface the silent fallback instead of swallowing it — a device
+            // whose Keystore is permanently broken would otherwise look healthy.
+            runCatching { FirebaseCrashlytics.getInstance().recordException(e) }
+            InMemorySharedPreferences()
         }
     }
 
@@ -212,6 +223,113 @@ object NetworkModule {
     @Singleton
     fun provideApiService(retrofit: Retrofit): ApiService {
         return retrofit.create(ApiService::class.java)
+    }
+}
+
+// Process-scoped SharedPreferences used only when the Android Keystore is
+// unavailable.  Nothing is persisted to disk, so secrets (access + refresh
+// tokens) never exist in cleartext: they live only for the current process and
+// are gone on restart, matching the documented "treated as logged-out" intent.
+private class InMemorySharedPreferences : SharedPreferences {
+    private val map = ConcurrentHashMap<String, Any?>()
+    private val listeners = java.util.Collections.newSetFromMap(
+        ConcurrentHashMap<SharedPreferences.OnSharedPreferenceChangeListener, Boolean>(),
+    )
+
+    override fun getAll(): MutableMap<String, *> = HashMap(map)
+
+    override fun getString(key: String?, defValue: String?): String? =
+        (map[key] as? String) ?: defValue
+
+    @Suppress("UNCHECKED_CAST")
+    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? =
+        (map[key] as? MutableSet<String>) ?: defValues
+
+    override fun getInt(key: String?, defValue: Int): Int = (map[key] as? Int) ?: defValue
+
+    override fun getLong(key: String?, defValue: Long): Long = (map[key] as? Long) ?: defValue
+
+    override fun getFloat(key: String?, defValue: Float): Float = (map[key] as? Float) ?: defValue
+
+    override fun getBoolean(key: String?, defValue: Boolean): Boolean =
+        (map[key] as? Boolean) ?: defValue
+
+    override fun contains(key: String?): Boolean = map.containsKey(key)
+
+    override fun edit(): SharedPreferences.Editor = EditorImpl()
+
+    override fun registerOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+    ) {
+        listener?.let { listeners.add(it) }
+    }
+
+    override fun unregisterOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+    ) {
+        listener?.let { listeners.remove(it) }
+    }
+
+    private fun notifyChanged(key: String?) {
+        for (l in listeners) l.onSharedPreferenceChanged(this, key)
+    }
+
+    private inner class EditorImpl : SharedPreferences.Editor {
+        // Null marks a key staged for removal; a sentinel distinguishes "clear all".
+        private val pending = LinkedHashMap<String, Any?>()
+        private var clearRequested = false
+
+        override fun putString(key: String, value: String?): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putStringSet(key: String, values: MutableSet<String>?): SharedPreferences.Editor =
+            apply { pending[key] = values }
+
+        override fun putInt(key: String, value: Int): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putLong(key: String, value: Long): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putFloat(key: String, value: Float): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun remove(key: String): SharedPreferences.Editor =
+            apply { pending[key] = REMOVE }
+
+        override fun clear(): SharedPreferences.Editor = apply { clearRequested = true }
+
+        override fun commit(): Boolean {
+            applyChanges()
+            return true
+        }
+
+        override fun apply() {
+            applyChanges()
+        }
+
+        private fun applyChanges() {
+            if (clearRequested) {
+                val keys = map.keys.toList()
+                map.clear()
+                keys.forEach { notifyChanged(it) }
+            }
+            for ((key, value) in pending) {
+                if (value === REMOVE || value == null) {
+                    map.remove(key)
+                } else {
+                    map[key] = value
+                }
+                notifyChanged(key)
+            }
+        }
+    }
+
+    private companion object {
+        private val REMOVE = Any()
     }
 }
 

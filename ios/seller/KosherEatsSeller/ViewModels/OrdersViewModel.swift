@@ -157,15 +157,7 @@ class OrdersViewModel: ObservableObject {
                     Haptics.notify(.warning)
                 }
                 self.knownPendingIDs = newPending
-                let inFlightOrders = Dictionary(
-                    uniqueKeysWithValues: self.orders
-                        .filter { inFlightOrderIDs.contains($0.id) }
-                        .map { ($0.id, $0) }
-                )
-                self.orders = fresh.map { order in
-                    inFlightOrders[order.id] ?? order
-                }
-                applyFilter()
+                mergeFresh(fresh)
                 consecutiveFailures = 0
                 pollHealthError = nil
             } catch APIError.unauthorized {
@@ -396,6 +388,24 @@ class OrdersViewModel: ObservableObject {
         } else {
             orders.append(updated)
         }
+        applyFilter()
+    }
+
+    /// Replaces the order list with a freshly-fetched batch while preserving
+    /// any order that currently has a mutation in flight. An accept / reject /
+    /// prepare / ready tap optimistically updates the local copy, but a poll
+    /// (this VM's own loop) or the dashboard's 30s timer can land a `fresh`
+    /// batch that still reflects the pre-mutation server state — without this
+    /// guard that stale copy would stomp the optimistic update the seller is
+    /// watching in SellerOrderDetailView. Shared by the poll loop here and by
+    /// DashboardViewModel.fetchActiveOrders via `sharedOrdersVM`.
+    func mergeFresh(_ fresh: [Order]) {
+        let inFlightOrders = Dictionary(
+            uniqueKeysWithValues: orders
+                .filter { inFlightOrderIDs.contains($0.id) }
+                .map { ($0.id, $0) }
+        )
+        orders = fresh.map { inFlightOrders[$0.id] ?? $0 }
         applyFilter()
     }
 }

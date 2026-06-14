@@ -76,7 +76,15 @@ struct MenuItemFormView: View {
                                         .foregroundColor(.keTextPrimary)
                                         .accessibilityLabel("Price in dollars")
                                         .onChange(of: priceText) { _, newValue in
-                                            var filtered = newValue.filter { $0.isNumber || $0 == "." }
+                                            // On comma-decimal locales (German, French,
+                                            // Spanish-LatAm, etc.) the decimalPad's only
+                                            // separator key IS the comma — the period can't
+                                            // be typed. Normalize comma → "." up front so
+                                            // "12,50" stays 12.50 instead of collapsing to
+                                            // 1250 (a 100× price inflation).
+                                            var filtered = newValue
+                                                .replacingOccurrences(of: ",", with: ".")
+                                                .filter { $0.isNumber || $0 == "." }
                                             // Prevent multiple decimal points — keep only the first "."
                                             if filtered.filter({ $0 == "." }).count > 1 {
                                                 var seenDot = false

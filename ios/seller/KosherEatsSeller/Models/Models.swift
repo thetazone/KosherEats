@@ -207,6 +207,21 @@ struct Restaurant: Codable, Identifiable {
     var estDeliveryMax: Int
     var isOpen: Bool
     var isActive: Bool
+    /// Platform moderation state: "pending", "approved", or "rejected".
+    /// Backend emits it with `omitempty` (models.go:126) so it can be absent
+    /// on older responses — optional, defaulting to nil. The dashboard treats
+    /// only an explicit "approved" as live; anything else (including nil) gates
+    /// the open/closed toggle and shows a "Pending approval" caption, mirroring
+    /// Android DashboardScreen.kt's `isApproved` gating.
+    var approvalStatus: String?
+
+    /// True only when the platform admin has approved this restaurant. A nil
+    /// (field absent) or any non-"approved" value reads as not-yet-approved so
+    /// the seller can't flip themselves open before review — the backend
+    /// enforces the same rule (seller.go ~L392), this just keeps the UI honest.
+    var isApproved: Bool {
+        approvalStatus?.caseInsensitiveCompare("approved") == .orderedSame
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, phone, email, street, city, state, lat, lng, rating
@@ -229,6 +244,7 @@ struct Restaurant: Codable, Identifiable {
         case estDeliveryMax = "est_delivery_max"
         case isOpen = "is_open"
         case isActive = "is_active"
+        case approvalStatus = "approval_status"
     }
 }
 

@@ -157,7 +157,7 @@ fun OrderTrackingScreen(
             }
         } else {
             TrackingMap(order = order, modifier = Modifier.fillMaxWidth().height(340.dp))
-            StatusHeader(status = order.status)
+            StatusHeader(status = order.status, estimatedDeliveryTime = order.estimatedDeliveryTime)
 
             state.errorMessage?.let { msg ->
                 Row(
@@ -262,7 +262,7 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StatusHeader(status: OrderStatus) {
+private fun StatusHeader(status: OrderStatus, estimatedDeliveryTime: String?) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -281,8 +281,37 @@ private fun StatusHeader(status: OrderStatus) {
             Spacer(Modifier.height(4.dp))
             Text(text = subtext, color = TextTertiary, fontSize = 12.sp)
         }
+        // ETA, shown for active non-pending statuses once the backend has
+        // populated an estimate (mirrors iOS OrderTrackingView's ETA header).
+        if (status.isActive && status != OrderStatus.PENDING && status != OrderStatus.SCHEDULED) {
+            formatEta(estimatedDeliveryTime)?.let { eta ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "ETA: $eta",
+                    color = Orange,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         Spacer(Modifier.height(12.dp))
         ProgressBar(status = status)
+    }
+}
+
+/**
+ * Formats an RFC-3339 estimated-delivery timestamp as a local `h:mm a` clock
+ * string. Returns null when the value is missing or unparseable so the ETA row
+ * is simply omitted rather than crashing or showing a raw timestamp.
+ */
+private fun formatEta(iso: String?): String? {
+    if (iso.isNullOrBlank()) return null
+    return try {
+        val local = java.time.OffsetDateTime.parse(iso)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+        java.time.format.DateTimeFormatter.ofPattern("h:mm a").format(local)
+    } catch (_: Throwable) {
+        null
     }
 }
 

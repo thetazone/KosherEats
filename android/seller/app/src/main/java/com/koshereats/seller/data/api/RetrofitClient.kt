@@ -1,11 +1,14 @@
 package com.koshereats.seller.data.api
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.koshereats.seller.BuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -33,15 +36,78 @@ import com.koshereats.seller.data.models.UnknownFallbackEnumAdapterFactory
 import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Qualifier
 import javax.inject.Singleton
 
+// Non-sensitive prefs only. The active restaurant id is fine on disk in
+// cleartext; access/refresh tokens are NOT — those live in TokenProvider's
+// EncryptedSharedPreferences (see Finding 1).
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "seller_prefs")
 
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class TokenPrefs
+
 object PrefsKeys {
-    val AUTH_TOKEN = stringPreferencesKey("auth_token")
-    val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
+    // AUTH_TOKEN / REFRESH_TOKEN intentionally removed from the DataStore key set:
+    // they are now stored encrypted via TokenProvider, never in the plaintext
+    // DataStore. Only the non-sensitive restaurant id remains here.
     val RESTAURANT_ID = stringPreferencesKey("restaurant_id")
+}
+
+/**
+ * Single source of truth for the seller's auth + refresh tokens, persisted in
+ * EncryptedSharedPreferences so they never touch disk in cleartext (Finding 1).
+ *
+ * Reads/writes mirror the in-memory [NetworkModule.cachedToken] /
+ * [NetworkModule.cachedRefreshToken] runtime caches the OkHttp interceptor and
+ * [TokenAuthenticator] already rely on, so the rest of the network stack is
+ * unchanged: the cache stays the hot path, encrypted prefs are the durable copy.
+ */
+@Singleton
+class TokenProvider @Inject constructor(
+    @TokenPrefs private val prefs: SharedPreferences,
+) {
+    init {
+        // Keystore unwrap is disk + crypto I/O — do it off the main thread, then
+        // hydrate the runtime caches the interceptors read.
+        CoroutineScope(Dispatchers.IO).launch {
+            val token = prefs.getString(KEY_AUTH, null)
+            val refresh = prefs.getString(KEY_REFRESH, null)
+            NetworkModule.cachedToken = token
+            NetworkModule.cachedRefreshToken = refresh
+        }
+    }
+
+    fun getToken(): String? = prefs.getString(KEY_AUTH, null)
+
+    fun getRefreshToken(): String? = prefs.getString(KEY_REFRESH, null)
+
+    fun persistTokens(token: String, refreshToken: String) {
+        NetworkModule.cachedToken = token
+        NetworkModule.cachedRefreshToken = refreshToken
+        prefs.edit()
+            .putString(KEY_AUTH, token)
+            .putString(KEY_REFRESH, refreshToken)
+            .apply()
+    }
+
+    fun clearTokens() {
+        NetworkModule.cachedToken = null
+        NetworkModule.cachedRefreshToken = null
+        prefs.edit()
+            .remove(KEY_AUTH)
+            .remove(KEY_REFRESH)
+            .apply()
+    }
+
+    private companion object {
+        const val KEY_AUTH = "auth_token"
+        const val KEY_REFRESH = "refresh_token"
+    }
 }
 
 @Module
@@ -62,6 +128,35 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    @TokenPrefs
+    fun provideTokenPrefs(@ApplicationContext context: Context): SharedPreferences {
+        // MasterKey.build() + EncryptedSharedPreferences.create() both hit the
+        // Android Keystore synchronously and can throw after device restore, OS
+        // upgrades, or when the keystore is locked. Fall back to an in-memory,
+        // session-scoped store (seller is effectively logged-out; tokens
+        // re-populate on next successful login) rather than crashing the app.
+        // We deliberately do NOT fall back to plain MODE_PRIVATE prefs: the JWT
+        // access token and long-lived refresh token must never touch disk in
+        // cleartext.
+        return try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                "seller_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("RetrofitClient", "EncryptedSharedPreferences unavailable — using in-memory token store", e)
+            InMemorySharedPreferences()
+        }
+    }
+
+    @Provides
+    @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder()
         .add(UnknownFallbackEnumAdapterFactory())
         .addLast(KotlinJsonAdapterFactory())
@@ -72,22 +167,18 @@ object NetworkModule {
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
         moshi: Moshi,
+        tokenProvider: TokenProvider,
     ): OkHttpClient {
-        // Prime caches on IO before the collectors below take over; avoids
-        // blocking the injection thread (potential ANR on cold start via main thread).
+        // Prime the token caches off the encrypted store, and the restaurant id
+        // off DataStore, before the collector below takes over. Avoids blocking
+        // the injection thread (potential ANR on cold start via main thread).
         appScope.launch {
+            cachedToken = tokenProvider.getToken()
+            cachedRefreshToken = tokenProvider.getRefreshToken()
             val initialPrefs = context.dataStore.data.first()
-            cachedToken = initialPrefs[PrefsKeys.AUTH_TOKEN]
-            cachedRefreshToken = initialPrefs[PrefsKeys.REFRESH_TOKEN]
             cachedRestaurantId = initialPrefs[PrefsKeys.RESTAURANT_ID]
         }
 
-        appScope.launch {
-            context.dataStore.data.collect { prefs ->
-                cachedToken = prefs[PrefsKeys.AUTH_TOKEN]
-                cachedRefreshToken = prefs[PrefsKeys.REFRESH_TOKEN]
-            }
-        }
         appScope.launch {
             context.dataStore.data.collect { prefs ->
                 cachedRestaurantId = prefs[PrefsKeys.RESTAURANT_ID]
@@ -141,7 +232,7 @@ object NetworkModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(sellerRestaurantInterceptor)
             .addInterceptor(loggingInterceptor)
-            .authenticator(TokenAuthenticator(context, moshi))
+            .authenticator(TokenAuthenticator(context, moshi, tokenProvider))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -168,6 +259,7 @@ object NetworkModule {
 private class TokenAuthenticator(
     private val context: Context,
     private val moshi: Moshi,
+    private val tokenProvider: TokenProvider,
 ) : Authenticator {
 
     private val lock = Any()
@@ -189,12 +281,20 @@ private class TokenAuthenticator(
         if (path.contains("/auth/")) return null
 
         // A 401 on a request that carried no Authorization header means the app
-        // was never authenticated for this call (e.g. a cold-start race, or a
-        // public endpoint rejecting an anonymous request). Treating it as a
-        // session expiry would clear DataStore and flip sessionExpired, which
-        // drives AuthViewModel.clearAuth() → unregisterDevice() — itself a fresh
-        // request that can 401 again, forming a feedback loop. Just give up.
-        if (response.request.header("Authorization") == null) return null
+        // was never authenticated for this call (e.g. a cold-start race where the
+        // token cache hadn't been primed yet, or a public endpoint rejecting an
+        // anonymous request). Treating it as a session expiry would clear DataStore
+        // and flip sessionExpired, which drives AuthViewModel.clearAuth() →
+        // unregisterDevice() — itself a fresh request that can 401 again, forming a
+        // feedback loop. If the cache has since been primed with a valid token,
+        // retry with it; otherwise give up WITHOUT signalling session-expired so a
+        // valid session is never wiped by an early unauthenticated request.
+        if (response.request.header("Authorization") == null) {
+            val primedToken = NetworkModule.cachedToken ?: return null
+            return response.request.newBuilder()
+                .header("Authorization", "Bearer $primedToken")
+                .build()
+        }
 
         synchronized(lock) {
             val currentToken = NetworkModule.cachedToken
@@ -216,16 +316,14 @@ private class TokenAuthenticator(
                     android.util.Log.i("RetrofitClient", "Token refresh succeeded")
                     NetworkModule.cachedToken = result.accessToken
                     NetworkModule.cachedRefreshToken = result.refreshToken
-                    // Persist asynchronously — cachedToken is the runtime source of truth,
-                    // so blocking OkHttp dispatcher threads for a DataStore write is unnecessary.
-                    // Guard: if clearAuth/signalSessionExpired nulled cachedToken before this
-                    // coroutine runs, skip the write so we don't ghost-persist a stale token.
+                    // Persist asynchronously to the encrypted store — cachedToken is the
+                    // runtime source of truth, so blocking OkHttp dispatcher threads for a
+                    // keystore write is unnecessary. Guard: if clearAuth/signalSessionExpired
+                    // nulled cachedToken before this coroutine runs, skip the write so we
+                    // don't ghost-persist a stale token.
                     appScope.launch {
                         if (NetworkModule.cachedToken == result.accessToken) {
-                            context.dataStore.edit { prefs ->
-                                prefs[PrefsKeys.AUTH_TOKEN] = result.accessToken
-                                prefs[PrefsKeys.REFRESH_TOKEN] = result.refreshToken
-                            }
+                            tokenProvider.persistTokens(result.accessToken, result.refreshToken)
                         }
                     }
                     response.request.newBuilder()
@@ -298,8 +396,10 @@ private class TokenAuthenticator(
         NetworkModule.cachedToken = null
         NetworkModule.cachedRefreshToken = null
         NetworkModule.cachedRestaurantId = null
-        // Clear DataStore immediately so a cold-start after force-quit cannot
-        // re-hydrate the stale tokens and land the seller on the dashboard.
+        // Wipe the persisted tokens (encrypted store) and the restaurant id
+        // (DataStore) immediately so a cold-start after force-quit cannot
+        // re-hydrate the stale session and land the seller on the dashboard.
+        tokenProvider.clearTokens()
         appScope.launch {
             context.dataStore.edit { it.clear() }
         }
@@ -314,5 +414,113 @@ private class TokenAuthenticator(
             prior = prior.priorResponse
         }
         return count
+    }
+}
+
+// Process-scoped SharedPreferences used only when the Android Keystore is
+// unavailable (device restore, OS upgrade, locked keystore). Nothing is
+// persisted to disk, so secrets (access + refresh tokens) never exist in
+// cleartext: they live only for the current process and are gone on restart,
+// matching the documented "treated as logged-out" intent.
+private class InMemorySharedPreferences : SharedPreferences {
+    private val map = ConcurrentHashMap<String, Any?>()
+    private val listeners = java.util.Collections.newSetFromMap(
+        ConcurrentHashMap<SharedPreferences.OnSharedPreferenceChangeListener, Boolean>(),
+    )
+
+    override fun getAll(): MutableMap<String, *> = HashMap(map)
+
+    override fun getString(key: String?, defValue: String?): String? =
+        (map[key] as? String) ?: defValue
+
+    @Suppress("UNCHECKED_CAST")
+    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? =
+        (map[key] as? MutableSet<String>) ?: defValues
+
+    override fun getInt(key: String?, defValue: Int): Int = (map[key] as? Int) ?: defValue
+
+    override fun getLong(key: String?, defValue: Long): Long = (map[key] as? Long) ?: defValue
+
+    override fun getFloat(key: String?, defValue: Float): Float = (map[key] as? Float) ?: defValue
+
+    override fun getBoolean(key: String?, defValue: Boolean): Boolean =
+        (map[key] as? Boolean) ?: defValue
+
+    override fun contains(key: String?): Boolean = map.containsKey(key)
+
+    override fun edit(): SharedPreferences.Editor = EditorImpl()
+
+    override fun registerOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+    ) {
+        listener?.let { listeners.add(it) }
+    }
+
+    override fun unregisterOnSharedPreferenceChangeListener(
+        listener: SharedPreferences.OnSharedPreferenceChangeListener?,
+    ) {
+        listener?.let { listeners.remove(it) }
+    }
+
+    private fun notifyChanged(key: String?) {
+        for (l in listeners) l.onSharedPreferenceChanged(this, key)
+    }
+
+    private inner class EditorImpl : SharedPreferences.Editor {
+        // Null marks a key staged for removal; a sentinel distinguishes "clear all".
+        private val pending = LinkedHashMap<String, Any?>()
+        private var clearRequested = false
+
+        override fun putString(key: String, value: String?): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putStringSet(key: String, values: MutableSet<String>?): SharedPreferences.Editor =
+            apply { pending[key] = values }
+
+        override fun putInt(key: String, value: Int): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putLong(key: String, value: Long): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putFloat(key: String, value: Float): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun putBoolean(key: String, value: Boolean): SharedPreferences.Editor =
+            apply { pending[key] = value }
+
+        override fun remove(key: String): SharedPreferences.Editor =
+            apply { pending[key] = REMOVE }
+
+        override fun clear(): SharedPreferences.Editor = apply { clearRequested = true }
+
+        override fun commit(): Boolean {
+            applyChanges()
+            return true
+        }
+
+        override fun apply() {
+            applyChanges()
+        }
+
+        private fun applyChanges() {
+            if (clearRequested) {
+                val keys = map.keys.toList()
+                map.clear()
+                keys.forEach { notifyChanged(it) }
+            }
+            for ((key, value) in pending) {
+                if (value === REMOVE || value == null) {
+                    map.remove(key)
+                } else {
+                    map[key] = value
+                }
+                notifyChanged(key)
+            }
+        }
+    }
+
+    private companion object {
+        private val REMOVE = Any()
     }
 }

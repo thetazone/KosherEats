@@ -68,6 +68,12 @@ class HomeViewModel @Inject constructor(
     // the refresh spinner stuck and skip the refetch.
     private data class LoadTrigger(
         val page: Int = 1,
+        // Selected delivery-address coordinates. When non-null the backend orders
+        // restaurants by proximity (ORDER BY point(lng,lat) <-> point); when null it
+        // falls back to rating. Null (not 0.0) for "no/ungeocoded address" so we
+        // never send a meaningless 0,0 proximity sort.
+        val latitude: Double? = null,
+        val longitude: Double? = null,
         val cuisine: CuisineType? = null,
         val glattOnly: Boolean = false,
         val cholovYisroelOnly: Boolean = false,
@@ -84,6 +90,8 @@ class HomeViewModel @Inject constructor(
                 .flatMapLatest { trigger ->
                     repository.getRestaurants(
                         page = trigger.page,
+                        latitude = trigger.latitude,
+                        longitude = trigger.longitude,
                         cuisine = trigger.cuisine?.name?.lowercase(),
                         isGlattKosher = if (trigger.glattOnly) true else null,
                         isCholovYisroel = if (trigger.cholovYisroelOnly) true else null,
@@ -200,12 +208,23 @@ class HomeViewModel @Inject constructor(
             _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
             return
         }
+        val trigger = loadTrigger.value
         searchJob = viewModelScope.launch {
             delay(300)
-            repository.searchRestaurants(query).collect { result ->
+            repository.searchRestaurants(
+                query,
+                latitude = trigger.latitude,
+                longitude = trigger.longitude,
+            ).collect { result ->
                 when (result) {
                     is Resource.Loading -> {
-                        _uiState.update { it.copy(isSearching = true) }
+                        // Clear any stale error (from a prior failed feed load or a
+                        // previous failed search) so a SUCCESSFUL zero-result search
+                        // renders "No restaurants found" — not "Search failed". The
+                        // `error` field is shared with the feed load path, so search
+                        // must reset it on each new attempt to keep error attribution
+                        // precise in HomeScreen's search empty-state branch.
+                        _uiState.update { it.copy(isSearching = true, error = null) }
                     }
                     is Resource.Success -> {
                         _uiState.update { it.copy(searchResults = result.data, isSearching = false) }
@@ -216,6 +235,23 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Update the delivery-location used for proximity ordering and refetch page 1.
+     * Pass null lat/lng when no address is selected or it isn't geocoded so the
+     * backend falls back to rating order instead of sorting around 0,0. No-op when
+     * the coordinates are unchanged, so it's safe to call on every address emission.
+     */
+    fun setLocation(latitude: Double?, longitude: Double?) {
+        val current = loadTrigger.value
+        if (current.latitude == latitude && current.longitude == longitude) return
+        loadTrigger.value = current.copy(
+            latitude = latitude,
+            longitude = longitude,
+            page = 1,
+            generation = current.generation + 1,
+        )
     }
 
     fun selectCuisine(cuisine: CuisineType?) {

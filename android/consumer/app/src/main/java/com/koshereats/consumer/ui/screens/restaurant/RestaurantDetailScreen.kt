@@ -85,6 +85,7 @@ import com.koshereats.consumer.data.models.MenuItem
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.data.models.formatPriceWhole
 import com.koshereats.consumer.ui.components.KosherInfoRow
+import com.koshereats.consumer.ui.components.MenuItemDietaryDot
 import com.koshereats.consumer.ui.components.MenuItemShimmer
 import com.koshereats.consumer.ui.components.ShimmerBrush
 import com.koshereats.consumer.ui.theme.*
@@ -259,6 +260,41 @@ fun RestaurantDetailScreen(
                             color = TextTertiary,
                         )
 
+                        // Stats row — mirrors iOS RestaurantDetailView (rating, ETA, fee)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            StatPill(
+                                icon = Icons.Filled.Star,
+                                text = "%.1f (%d)".format(restaurant.rating, restaurant.reviewCount),
+                                color = Orange,
+                            )
+                            if (restaurant.deliveryTimeMax > 0) {
+                                StatPill(
+                                    icon = Icons.Filled.Schedule,
+                                    text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
+                                    color = TextSecondary,
+                                )
+                            }
+                            StatPill(
+                                icon = Icons.Filled.LocalOffer,
+                                text = if (restaurant.deliveryFee == 0) "Free Delivery"
+                                else restaurant.deliveryFee.formatPrice(),
+                                color = if (restaurant.deliveryFee == 0) SuccessGreen else TextSecondary,
+                            )
+                        }
+
+                        if (restaurant.minimumOrder > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Min. order: ${restaurant.minimumOrder.formatPriceWhole()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+
                         if (!restaurant.isOpen) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(
@@ -382,17 +418,55 @@ fun RestaurantDetailScreen(
                     }
                 }
 
-                if (uiState.menuCategories.isEmpty() && !uiState.isLoading) {
-                    item(key = "empty_menu") {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = "This restaurant has no menu items yet.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextMuted,
-                            )
+                if (uiState.menuCategories.isEmpty()) {
+                    when {
+                        // Menu fetch still in flight (restaurant resolved first) — show
+                        // shimmer rows rather than flashing the "no menu items" message.
+                        uiState.isLoading -> {
+                            items(4, key = { "menu_shimmer_$it" }) {
+                                MenuItemShimmer()
+                            }
+                        }
+                        // Menu fetch failed — distinguish from genuine emptiness and offer retry.
+                        uiState.error != null -> {
+                            item(key = "menu_error") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        text = "Couldn't load the menu.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = TextSecondary,
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        // TODO(companion): RestaurantViewModel needs a real
+                                        // retryMenu()/reload() that re-fetches the menu. Until
+                                        // then we clear the stale error so the screen re-evaluates
+                                        // instead of permanently showing the failure.
+                                        onClick = { viewModel.clearError() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
+                        }
+                        else -> {
+                            item(key = "empty_menu") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        text = "This restaurant has no menu items yet.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = TextMuted,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -667,6 +741,31 @@ private fun DealBanner(
 }
 
 @Composable
+private fun StatPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    color: Color,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
 fun HorizontalMenuItemCard(
     menuItem: MenuItem,
     onClick: () -> Unit,
@@ -709,15 +808,24 @@ fun HorizontalMenuItemCard(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = menuItem.name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextWhite,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = 18.sp,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = menuItem.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            MenuItemDietaryDot(
+                isMeat = menuItem.isMeat,
+                isDairy = menuItem.isDairy,
+                isPareve = menuItem.isPareve,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = menuItem.price.formatPrice(),
@@ -744,14 +852,23 @@ fun VerticalMenuItemCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(
-                text = menuItem.name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextWhite,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = menuItem.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                MenuItemDietaryDot(
+                    isMeat = menuItem.isMeat,
+                    isDairy = menuItem.isDairy,
+                    isPareve = menuItem.isPareve,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
             if (menuItem.description.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(

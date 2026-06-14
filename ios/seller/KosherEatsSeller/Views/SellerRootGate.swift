@@ -17,6 +17,7 @@ struct SellerRootGate: View {
         case empty
         case complete
         case has
+        case failed
     }
 
     var body: some View {
@@ -38,6 +39,14 @@ struct SellerRootGate: View {
                 }
             case .has:
                 MainTabView()
+            case .failed:
+                ZStack {
+                    Color.keBackground.ignoresSafeArea()
+                    ErrorStateView(
+                        message: "Couldn't load your account. Check your connection and try again.",
+                        onRetry: { Task { await refresh() } }
+                    )
+                }
             }
         }
         .task(id: authVM.isAuthenticated) {
@@ -47,11 +56,18 @@ struct SellerRootGate: View {
 
     private func refresh() async {
         guard authVM.isAuthenticated, authVM.hasSellerAccess else { return }
+        phase = .loading
         do {
             let list = try await APIService.shared.listRestaurants()
             phase = list.isEmpty ? .empty : .has
         } catch {
-            phase = .has
+            // Fail open to the dashboard ONLY if this device has completed
+            // onboarding before (a persisted restaurant selection proves it) —
+            // the tabs have their own retries. A brand-new seller has no
+            // persisted id, so a flaky-network/cold-start error must NOT drop
+            // them onto a dashboard that 404s "restaurant not found"
+            // everywhere with no path back to onboarding; show retry instead.
+            phase = SelectedRestaurant.shared.id != nil ? .has : .failed
         }
     }
 }

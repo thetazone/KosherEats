@@ -40,7 +40,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,6 +81,16 @@ fun MenuManagementScreen(
     viewModel: MenuViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Surface action errors (failed toggle/delete) as a transient toast. When the menu
+    // list is already populated, optimistic-update reverts would otherwise be silent.
+    LaunchedEffect(state.error) {
+        if (state.error != null && state.items.isNotEmpty()) {
+            Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
+    }
 
     val categories: List<Pair<SellerMenuCategory?, String>> =
         listOf(null to "All") + state.categories.map { cat -> cat to cat.name }
@@ -150,47 +164,80 @@ fun MenuManagementScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = Orange)
-                }
-            } else if (state.items.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "No menu items yet",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = TextMuted,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Tap + to add your first item",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                        )
+            PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.loadMenuItems(state.selectedCategory) },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                if (state.isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Orange)
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(state.items, key = { it.id }) { item ->
-                        MenuItemCard(
-                            item = item,
-                            isPending = item.id in state.pendingItemIds,
-                            onEdit = { onEditItem(item.id) },
-                            onToggleAvailability = { viewModel.toggleAvailability(item) },
-                            onDelete = { viewModel.deleteMenuItem(item.id) },
-                        )
+                } else if (state.error != null && state.items.isEmpty()) {
+                    // Distinguish a failed load from a genuinely empty menu so a network
+                    // error doesn't masquerade as "No menu items yet".
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Couldn't load your menu",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextWhite,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = state.error ?: "Please try again",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            TextButton(
+                                onClick = { viewModel.loadMenuItems(state.selectedCategory) },
+                            ) {
+                                Text("Retry", color = Orange)
+                            }
+                        }
                     }
-                    item { Spacer(modifier = Modifier.height(80.dp)) }
+                } else if (state.items.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "No menu items yet",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Tap + to add your first item",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(state.items, key = { it.id }) { item ->
+                            MenuItemCard(
+                                item = item,
+                                isPending = item.id in state.pendingItemIds,
+                                onEdit = { onEditItem(item.id) },
+                                onToggleAvailability = { viewModel.toggleAvailability(item) },
+                                onDelete = { viewModel.deleteMenuItem(item.id) },
+                            )
+                        }
+                        item { Spacer(modifier = Modifier.height(80.dp)) }
+                    }
                 }
             }
         }

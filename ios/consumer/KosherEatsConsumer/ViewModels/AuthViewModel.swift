@@ -221,12 +221,25 @@ class AuthViewModel: ObservableObject {
         DeliveryActivityManager.shared.endTracking(finalStatus: "logged_out", displayText: "Session ended")
 
         GIDSignIn.sharedInstance.signOut()
-        api.logout()
+
+        // Unregister this device's APNs token from the *current* user, then clear
+        // the auth token — in that order, because /devices/unregister requires
+        // auth. Without unregistering, the backend keeps mapping this device →
+        // the user who just logged out, so the next account that signs in on the
+        // same device receives the previous user's order-status and chat pushes.
+        // Best-effort: a network failure must never strand the user in a
+        // logged-in state, so the local teardown below still runs synchronously.
+        // The cached APNs token is intentionally NOT cleared (it's device-scoped,
+        // not secret) so the next login re-registers it immediately.
+        Task { [api] in
+            await PushNotifications.shared.unregisterCurrentDeviceToken()
+            api.logout()
+        }
+
         user = nil
         isAuthenticated = false
         isLoading = false
         errorMessage = nil
-        PushNotifications.shared.pendingToken = nil
         AppRouter.shared.clearPendingRoutes()
     }
 

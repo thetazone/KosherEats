@@ -17,6 +17,16 @@ struct SellerOrderDetailView: View {
         self._order = State(initialValue: order)
     }
 
+    /// Resolve a detail screen from just an order id — used by the push
+    /// deep link when the order isn't in `vm.orders` yet (cold launch from a
+    /// notification tap). `order` starts nil; the `.task` below fetches by id,
+    /// and `.onReceive(vm.$orders)` fills it once the list loads.
+    init(vm: OrdersViewModel, orderID: String) {
+        self._vm = ObservedObject(wrappedValue: vm)
+        self.orderID = orderID
+        self._order = State(initialValue: nil)
+    }
+
     var body: some View {
         ZStack {
             Color.keBackground.ignoresSafeArea()

@@ -58,6 +58,7 @@ class CartViewModel: ObservableObject {
     var discount: Int {
         guard let deal = appliedDeal, let cart = cart, cart.subtotal > 0 else { return 0 }
         guard deal.restaurantId == cart.restaurantID else { return 0 }
+        guard !Self.isExpired(deal) else { return 0 }
         if let min = deal.minOrderAmount, cart.subtotal < min { return 0 }
         switch deal.discountType {
         case .percentage:
@@ -84,6 +85,51 @@ class CartViewModel: ObservableObject {
         appliedDeal = nil
     }
 
+    /// The deal id to attach to checkout, or `nil` when no deal currently
+    /// applies. Returns `nil` if the applied deal belongs to a different
+    /// restaurant than the current cart or has expired, so callers never send a
+    /// stale deal that the backend would reject with a 400. CheckoutView should
+    /// read this rather than `appliedDeal?.id` directly.
+    var dealIdForCheckout: String? {
+        guard let deal = appliedDeal, let cart else { return nil }
+        guard deal.restaurantId == cart.restaurantID, !Self.isExpired(deal) else { return nil }
+        return deal.id
+    }
+
+    /// ISO-8601 parsers covering timestamps with and without fractional
+    /// seconds (mirrors DealsView, since the backend emits both forms).
+    private static let expiryFormatters: [ISO8601DateFormatter] = {
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        return [f1, f2]
+    }()
+
+    /// True when the deal has an `expiresAt` timestamp in the past. An
+    /// unparseable timestamp is treated as not-expired (lets the backend be the
+    /// authority) rather than silently dropping a possibly-valid deal.
+    private static func isExpired(_ deal: Deal) -> Bool {
+        guard let raw = deal.expiresAt else { return false }
+        for f in expiryFormatters {
+            if let date = f.date(from: raw) { return date <= Date() }
+        }
+        return false
+    }
+
+    /// Drops `appliedDeal` if it no longer matches the current cart's
+    /// restaurant (or there is no cart). Called after every cart mutation so a
+    /// deal tied to a previous restaurant can't survive a server-side cart swap
+    /// and reach checkout. Expiry is handled at read time (`discount`,
+    /// `dealIdForCheckout`) so a deal that expires mid-session still surfaces
+    /// removed in the UI without needing a cart mutation to trigger it.
+    private func reconcileAppliedDeal() {
+        guard let deal = appliedDeal else { return }
+        if cart?.restaurantID != deal.restaurantId {
+            appliedDeal = nil
+        }
+    }
+
     // MARK: - Stale cart
 
     /// Reloads the cart from the server and drops it if the restaurant's menu
@@ -104,8 +150,10 @@ class CartViewModel: ObservableObject {
         errorMessage = nil
         do {
             cart = try await api.getCart()
+            reconcileAppliedDeal()
         } catch let APIError.httpError(code, _) where code == 404 {
             cart = nil
+            reconcileAppliedDeal()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -152,6 +200,7 @@ class CartViewModel: ObservableObject {
             )
             guard cartGeneration == gen else { isLoading = false; return nil }
             cart = result
+            reconcileAppliedDeal()
             Haptics.success()
             isLoading = false
             return nil

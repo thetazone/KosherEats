@@ -19,6 +19,11 @@ struct CheckoutView: View {
     @State private var showAddressPicker = false
     @State private var placedOrder: Order?
     @State private var bundleRefreshTask: Task<Void, Never>?
+    // Set the instant a custom-tip edit lands and cleared once the debounced
+    // refreshBundle finishes. isLoadingBundle stays false during the 500ms
+    // debounce sleep, so without this flag canPay would let the user pay
+    // against the previous (stale-tip) bundle before the refresh fires.
+    @State private var pendingBundleRefresh = false
     // Carries the order id we should deep-link to AFTER the confirmation
     // cover finishes dismissing — prevents the root tab from racing the
     // fullScreenCover dismissal animation.
@@ -48,7 +53,13 @@ struct CheckoutView: View {
                         TipSelector(
                             subtotal: vm.bundle?.subtotal ?? 0,
                             selected: vm.tipSelection,
-                            customAmount: $vm.customTipText,
+                            // Route edits through updateCustomTip so digit/decimal
+                            // filtering and the max-tip error actually fire — a raw
+                            // $vm.customTipText binding skips that validation.
+                            customAmount: Binding(
+                                get: { vm.customTipText },
+                                set: { vm.updateCustomTip($0) },
+                            ),
                             onSelect: { choice in vm.selectTip(choice) },
                         )
                     }
@@ -100,15 +111,25 @@ struct CheckoutView: View {
         }
         .onChange(of: vm.tipSelection) { _, _ in
             bundleRefreshTask?.cancel()
+            // Switching tip selection cancels any in-flight custom-tip task,
+            // which would otherwise bail before clearing pendingBundleRefresh
+            // and leave the pay button stuck disabled. This refresh's own
+            // isLoadingBundle guard covers the disable window from here.
+            pendingBundleRefresh = false
             bundleRefreshTask = Task { await vm.refreshBundle() }
         }
         .onChange(of: vm.customTipText) { _, _ in
             if vm.tipSelection == .custom {
+                // Mark a refresh pending BEFORE the debounce sleep so canPay
+                // disables the pay buttons immediately — otherwise the user
+                // could pay against the stale-tip bundle during the 500ms gap.
+                pendingBundleRefresh = true
                 bundleRefreshTask?.cancel()
                 bundleRefreshTask = Task {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     guard !Task.isCancelled else { return }
                     await vm.refreshBundle()
+                    pendingBundleRefresh = false
                 }
             }
         }
@@ -215,7 +236,7 @@ struct CheckoutView: View {
     }
 
     private var canPay: Bool {
-        guard vm.bundle != nil, !vm.isProcessing, !vm.isLoadingBundle else { return false }
+        guard vm.bundle != nil, !vm.isProcessing, !vm.isLoadingBundle, !pendingBundleRefresh else { return false }
         // Pickup orders don't need an address; delivery orders do.
         if vm.fulfillmentType == "pickup" { return true }
         return vm.selectedAddress != nil

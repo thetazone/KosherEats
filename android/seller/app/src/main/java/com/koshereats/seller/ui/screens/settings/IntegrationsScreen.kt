@@ -39,7 +39,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -70,8 +73,9 @@ import kotlinx.coroutines.launch
 // The Connect button launches a Chrome Custom Tab against our backend's
 // /seller/integrations/clover/connect-url; backend returns the Clover OAuth
 // AuthorizeURL with our HMAC state token. After Clover redirects to the
-// backend callback the seller dismisses the browser manually — list
-// refreshes on the next LaunchedEffect tick.
+// backend callback the seller dismisses the browser manually — the list
+// reloads on ON_RESUME (when this Activity comes back to the foreground)
+// so the newly connected POS shows up without navigating away.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,8 +89,18 @@ fun IntegrationsScreen(
     val testResults: SnapshotStateMap<String, String> = remember { mutableStateMapOf() }
     var testingID by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        viewModel.load()
+    // Reload on every ON_RESUME so returning from the Clover OAuth Custom Tab
+    // (a separate Activity that never removes this composable from composition)
+    // refreshes the integrations list. This also covers the initial entry.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.load()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Column(

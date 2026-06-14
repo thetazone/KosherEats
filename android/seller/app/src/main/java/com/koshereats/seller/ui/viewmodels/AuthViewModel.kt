@@ -9,6 +9,7 @@ import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.api.PrefsKeys
 import com.koshereats.seller.data.api.SocialLoginRequest
+import com.koshereats.seller.data.api.TokenProvider
 import com.koshereats.seller.data.api.dataStore
 import com.koshereats.seller.data.models.LoginRequest
 import com.koshereats.seller.data.models.PhoneStartRequest
@@ -55,6 +56,7 @@ data class AuthState(
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val apiService: ApiService,
+    private val tokenProvider: TokenProvider,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -75,10 +77,12 @@ class AuthViewModel @Inject constructor(
 
     private fun checkAuthStatus() {
         viewModelScope.launch {
+            // Auth + refresh tokens live in the encrypted store (Finding 1); only the
+            // non-sensitive restaurant id remains in the plaintext DataStore.
+            val token = tokenProvider.getToken()
+            val refresh = tokenProvider.getRefreshToken()
             val prefs = context.dataStore.data.first()
-            val token = prefs[PrefsKeys.AUTH_TOKEN]
-            val refresh = prefs[PrefsKeys.REFRESH_TOKEN]
-            // Re-prime restaurant ID here in case provideOkHttpClient's runBlocking
+            // Re-prime restaurant ID here in case provideOkHttpClient's async
             // read raced with a restaurant switch that completed just before this read.
             NetworkModule.cachedRestaurantId = prefs[PrefsKeys.RESTAURANT_ID]
             if (token != null) {
@@ -171,12 +175,9 @@ class AuthViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
-                    }
-                    NetworkModule.cachedToken = body.token
-                    NetworkModule.cachedRefreshToken = body.refreshToken
+                    // Persist tokens to the encrypted store (never plaintext DataStore).
+                    // persistTokens also refreshes the in-memory NetworkModule caches.
+                    tokenProvider.persistTokens(body.token, body.refreshToken)
                     _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
@@ -234,12 +235,9 @@ class AuthViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
-                    }
-                    NetworkModule.cachedToken = body.token
-                    NetworkModule.cachedRefreshToken = body.refreshToken
+                    // Persist tokens to the encrypted store (never plaintext DataStore).
+                    // persistTokens also refreshes the in-memory NetworkModule caches.
+                    tokenProvider.persistTokens(body.token, body.refreshToken)
                     _state.value = AuthState(
                         isLoggedIn = true,
                         isLoading = false,
@@ -474,12 +472,9 @@ class AuthViewModel @Inject constructor(
                         )
                         return@launch
                     }
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = body.token
-                        prefs[PrefsKeys.REFRESH_TOKEN] = body.refreshToken
-                    }
-                    NetworkModule.cachedToken = body.token
-                    NetworkModule.cachedRefreshToken = body.refreshToken
+                    // Persist tokens to the encrypted store (never plaintext DataStore).
+                    // persistTokens also refreshes the in-memory NetworkModule caches.
+                    tokenProvider.persistTokens(body.token, body.refreshToken)
                     _state.value = AuthState(isLoggedIn = true, isLoading = false)
                     PushBootstrap.registerCurrentToken(apiService)
                     loadRestaurant()
@@ -512,8 +507,9 @@ class AuthViewModel @Inject constructor(
 
     private suspend fun clearAuth() {
         PushBootstrap.deleteToken(apiService)
-        NetworkModule.cachedToken = null
-        NetworkModule.cachedRefreshToken = null
+        // Wipe encrypted tokens (also nulls the in-memory caches) and the
+        // non-sensitive restaurant id in DataStore.
+        tokenProvider.clearTokens()
         NetworkModule.cachedRestaurantId = null
         context.dataStore.edit { it.clear() }
         _state.value = AuthState(isLoggedIn = false, isLoading = false)

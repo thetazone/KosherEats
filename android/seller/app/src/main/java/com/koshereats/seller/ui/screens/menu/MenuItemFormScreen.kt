@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -99,7 +100,7 @@ import okio.BufferedSink
 import okio.source
 import java.io.ByteArrayOutputStream
 
-private data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true)
+private data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true, var isDefault: Boolean = false)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -270,6 +271,7 @@ fun MenuItemFormScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -709,9 +711,20 @@ private fun ModifierGroupDialog(
     var options by remember {
         mutableStateOf(
             existing?.modifiers?.map {
-                OptionEntry(id = it.id, name = it.name, priceDelta = String.format(Locale.US, "%.2f", it.priceDelta / 100.0), isAvailable = it.isAvailable)
+                OptionEntry(id = it.id, name = it.name, priceDelta = String.format(Locale.US, "%.2f", it.priceDelta / 100.0), isAvailable = it.isAvailable, isDefault = it.isDefault)
             } ?: listOf(OptionEntry()),
         )
+    }
+
+    val minValue = minSel.toIntOrNull() ?: 0
+    val maxValue = maxSel.toIntOrNull() ?: 0
+    // Mirror the backend's isValidModifierGroup invariants so the seller gets an
+    // inline reason instead of a generic 400/"Failed to..." after submitting.
+    val selectionError: String? = when {
+        maxValue < 1 -> "Max selections must be at least 1"
+        maxValue < minValue -> "Max selections must be greater than or equal to Min"
+        isRequired && minValue < 1 -> "Required groups need at least 1 selection (set Min to 1 or more)"
+        else -> null
     }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -782,6 +795,14 @@ private fun ModifierGroupDialog(
                         colors = textFieldColors,
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
+
+                selectionError?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
 
@@ -857,6 +878,7 @@ private fun ModifierGroupDialog(
                                 id = opt.id,
                                 name = opt.name.trim(),
                                 priceDelta = (((opt.priceDelta.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 999.99)) * 100).roundToInt(),
+                                isDefault = opt.isDefault,
                                 isAvailable = opt.isAvailable,
                                 sortOrder = i,
                             )
@@ -864,7 +886,7 @@ private fun ModifierGroupDialog(
                     )
                     onSave(request)
                 },
-                enabled = groupName.isNotBlank() && options.any { it.name.isNotBlank() },
+                enabled = groupName.isNotBlank() && options.any { it.name.isNotBlank() } && selectionError == null,
             ) {
                 Text("Save", color = Orange)
             }

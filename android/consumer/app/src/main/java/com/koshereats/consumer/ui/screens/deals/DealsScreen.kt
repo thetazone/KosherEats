@@ -21,8 +21,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -52,6 +56,7 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.ui.theme.BackgroundBlack
+import com.koshereats.consumer.ui.theme.ErrorRed
 import com.koshereats.consumer.ui.theme.Orange
 import com.koshereats.consumer.ui.theme.OrangeDark
 import com.koshereats.consumer.ui.theme.SurfaceDark
@@ -122,6 +127,62 @@ fun DealsScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(color = Orange)
+                    }
+                }
+
+                state.error != null && activeDeals.isEmpty() -> {
+                    // LazyColumn with a single full-height item — gives PullToRefreshBox a
+                    // scrollable child so pull gestures register even on the error state.
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val minH = maxHeight
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = minH)
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ErrorOutline,
+                                        contentDescription = null,
+                                        tint = ErrorRed.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(64.dp),
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = "Couldn't Load Deals",
+                                        color = TextWhite,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = state.error ?: "Something went wrong. Please try again.",
+                                        color = TextTertiary,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Center,
+                                        lineHeight = 20.sp,
+                                    )
+                                    Spacer(modifier = Modifier.height(20.dp))
+                                    OutlinedButton(
+                                        onClick = { viewModel.refresh() },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                                        border = BorderStroke(1.dp, Orange),
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Refresh,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Try Again")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

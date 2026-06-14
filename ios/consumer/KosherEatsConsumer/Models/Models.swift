@@ -22,9 +22,21 @@ enum KosherCertification: String, Codable, CaseIterable {
     case crc = "cRc"
     case badatz = "Badatz"
     case chofK = "Chof-K"
+    /// Catch-all for any certification value the backend stores outside the
+    /// canonical set. The column is a free-form VARCHAR with no CHECK
+    /// constraint and normalizeKosherCertification passes unknown values
+    /// through unchanged, so without a fallback a single non-canonical row
+    /// (e.g. "ou", a future agency) throws DecodingError and blanks the
+    /// entire restaurant list. Mirrors the OrderStatus/DiscountType pattern.
     case other
 
     var displayName: String { rawValue }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = KosherCertification(rawValue: raw) ?? .other
+    }
 
     var symbolName: String {
         switch self {

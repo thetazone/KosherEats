@@ -3,7 +3,14 @@ package com.koshereats.seller.ui.navigation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -16,7 +23,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -28,6 +38,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.koshereats.seller.R
 import com.koshereats.seller.ui.screens.auth.PhoneLoginScreen
 import com.koshereats.seller.ui.screens.auth.SellerLoginScreen
 import com.koshereats.seller.ui.screens.dashboard.DashboardScreen
@@ -62,11 +73,11 @@ fun NavGraph(
         currentDestination?.hierarchy?.any { it.route == screen.route } == true
     }
 
-    if (authState.isLoading) {
-        return
-    }
-
-    if (authState.isLoggedIn && authState.hasRestaurants == null) {
+    // While the auth check runs, or while a logged-in seller's restaurants are
+    // still loading (a network call with a 30s read timeout), show a branded
+    // splash instead of an empty Surface — otherwise cold start is a black screen.
+    if (authState.isLoading || (authState.isLoggedIn && authState.hasRestaurants == null)) {
+        SplashLoading()
         return
     }
 
@@ -339,5 +350,26 @@ fun NavGraph(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SplashLoading() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundBlack)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.auth_brand_name),
+            style = MaterialTheme.typography.headlineLarge,
+            color = TextWhite,
+            fontWeight = FontWeight.Bold,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        CircularProgressIndicator(color = Orange)
     }
 }

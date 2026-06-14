@@ -53,6 +53,12 @@ class APIService: ObservableObject {
             defer { lock.unlock() }
             return formatter.date(from: string)
         }
+
+        func string(from date: Date) -> String {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.string(from: date)
+        }
     }
 
     // URL configuration:
@@ -612,6 +618,23 @@ class APIService: ObservableObject {
         try await request(method: "GET", path: "/orders", authenticated: true)
     }
 
+    /// Keyset-paginated order history. Pass the `createdAt` of the last row from
+    /// the previous page as `cursor` to fetch older orders; nil fetches the
+    /// newest page. The backend expects an RFC3339Nano timestamp and returns up
+    /// to `limit` (max 100) rows in descending created_at order.
+    func listOrders(cursor: Date?, limit: Int = 50) async throws -> [Order] {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            items.append(URLQueryItem(name: "cursor",
+                                      value: APIService.iso8601Fractional.string(from: cursor)))
+        }
+        var components = URLComponents()
+        components.path = "/orders"
+        components.queryItems = items
+        let path = "/orders\(components.percentEncodedQuery.map { "?\($0)" } ?? "")"
+        return try await request(method: "GET", path: path, authenticated: true)
+    }
+
     func getOrder(id: String) async throws -> Order {
         try await request(method: "GET", path: "/orders/\(id)", authenticated: true)
     }
@@ -798,6 +821,17 @@ class APIService: ObservableObject {
     func registerDevice(token: String, platform: String, app: String) async throws {
         struct Body: Encodable { let token: String; let platform: String; let app: String }
         try await requestVoid(method: "POST", path: "/devices/register",
+                              body: Body(token: token, platform: platform, app: app),
+                              authenticated: true)
+    }
+
+    /// Detaches this device's APNs token from the current user so the next
+    /// account that signs in on the same install doesn't inherit its pushes.
+    /// Mirrors registerDevice's body; requires auth, so logout must call this
+    /// before clearing the token.
+    func unregisterDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid(method: "POST", path: "/devices/unregister",
                               body: Body(token: token, platform: platform, app: app),
                               authenticated: true)
     }

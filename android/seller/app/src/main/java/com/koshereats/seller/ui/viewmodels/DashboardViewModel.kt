@@ -49,6 +49,7 @@ class DashboardViewModel @Inject constructor(
     private var eventJob: Job? = null
     private val pollMutex = Mutex()
     private var loadJob: Job? = null
+    private var refreshJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var isFirstPoll = true
     @Volatile private var isPollingActive = false
@@ -59,10 +60,12 @@ class DashboardViewModel @Inject constructor(
         loadDashboard()
         viewModelScope.launch {
             NetworkModule.restaurantChanged.collect {
-                // Cancel any in-flight dashboard load so it cannot apply the previous
-                // restaurant's stats to the freshly-cleared state.
+                // Cancel any in-flight dashboard load or pull-to-refresh so it cannot
+                // apply the previous restaurant's stats to the freshly-cleared state.
                 loadJob?.cancel()
                 loadJob = null
+                refreshJob?.cancel()
+                refreshJob = null
                 _state.value = _state.value.copy(stats = DashboardStats(), activeOrders = emptyList())
                 lastSuccessfulFetchMs = 0L
                 loadDashboard()
@@ -235,7 +238,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            val restaurantAtStart = NetworkModule.cachedRestaurantId
             _state.update { it.copy(isRefreshing = true) }
             try {
                 coroutineScope {
@@ -243,6 +248,14 @@ class DashboardViewModel @Inject constructor(
                     val ordersDeferred = async { apiService.getOrders(status = null, limit = 100) }
                     val statsResponse = statsDeferred.await()
                     val ordersResponse = ordersDeferred.await()
+
+                    // The seller switched restaurants while this refresh was in flight; the
+                    // responses belong to the old restaurant, so drop them to avoid leaking
+                    // stale stats/orders into the newly selected restaurant's state.
+                    if (NetworkModule.cachedRestaurantId != restaurantAtStart) {
+                        _state.update { it.copy(isRefreshing = false) }
+                        return@coroutineScope
+                    }
 
                     val statsOk = statsResponse.isSuccessful
                     val ordersOk = ordersResponse.isSuccessful

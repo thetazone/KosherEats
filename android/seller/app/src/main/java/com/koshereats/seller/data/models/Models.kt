@@ -109,7 +109,6 @@ data class Restaurant(
     @Json(name = "kosher_certificate_url") val kosherCertificateUrl: String = "",
     @Json(name = "is_open") val isOpen: Boolean = false,
     @Json(name = "approval_status") val approvalStatus: String = "pending",
-    @Json(name = "opening_hours") val openingHours: Map<String, String> = emptyMap(),
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
     @Json(name = "min_order") val minimumOrder: Int = 0,
     @Json(name = "est_delivery_min") val averagePrepTime: Int = 30,
@@ -156,6 +155,29 @@ data class OrderItem(
 }
 
 @JsonClass(generateAdapter = true)
+data class CourierPublic(
+    val id: String = "",
+    @Json(name = "first_name") val firstName: String = "",
+    val phone: String = "",
+    @Json(name = "avatar_url") val avatarUrl: String = "",
+    @Json(name = "vehicle_type") val vehicleType: String = "",
+    @Json(name = "vehicle_make") val vehicleMake: String = "",
+    @Json(name = "vehicle_model") val vehicleModel: String = "",
+    @Json(name = "vehicle_color") val vehicleColor: String = "",
+    @Json(name = "license_plate") val licensePlate: String = "",
+    val rating: Double = 0.0,
+    @Json(name = "total_deliveries") val totalDeliveries: Int = 0,
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+) {
+    val vehicleSummary: String
+        get() {
+            val parts = listOf(vehicleColor, vehicleMake, vehicleModel).filter { it.isNotBlank() }
+            return if (parts.isEmpty()) vehicleType.replaceFirstChar { it.uppercase() } else parts.joinToString(" ")
+        }
+}
+
+@JsonClass(generateAdapter = true)
 data class Order(
     val id: String = "",
     @Json(name = "restaurant_id") val restaurantId: String = "",
@@ -172,6 +194,7 @@ data class Order(
     @Json(name = "fulfillment_type") val fulfillmentType: String = "delivery",
     @Json(name = "customer_name") val customerName: String = "",
     @Json(name = "customer_phone") val customerPhone: String = "",
+    @Json(name = "courier") val courier: CourierPublic? = null,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "scheduled_for") val scheduledFor: String? = null,

@@ -546,11 +546,33 @@ data class CourierPublic(
     val id: String = "",
     @SerializedName("first_name") val firstName: String = "",
     val rating: Double = 0.0,
-    @SerializedName("vehicle_summary") val vehicleSummary: String = "",
+    @SerializedName("avatar_url") val avatarUrl: String? = null,
+    @SerializedName("vehicle_type") val vehicleType: String = "",
+    @SerializedName("vehicle_make") val vehicleMake: String? = null,
+    @SerializedName("vehicle_model") val vehicleModel: String? = null,
+    @SerializedName("vehicle_color") val vehicleColor: String? = null,
+    @SerializedName("license_plate") val licensePlate: String? = null,
+    @SerializedName("total_deliveries") val totalDeliveries: Int = 0,
     val phone: String? = null,
     val lat: Double? = null,
     val lng: Double? = null,
-)
+) {
+    /**
+     * Human-readable vehicle description, derived client-side to match iOS:
+     * "[color make model]" joined by spaces, falling back to the capitalized
+     * vehicle type. The backend's CourierPublic JSON has no `vehicle_summary`
+     * key — it ships the individual vehicle fields instead.
+     */
+    val vehicleSummary: String
+        get() {
+            val parts = listOfNotNull(vehicleColor, vehicleMake, vehicleModel).filter { it.isNotEmpty() }
+            return if (parts.isEmpty()) {
+                vehicleType.replaceFirstChar { it.uppercase() }
+            } else {
+                parts.joinToString(" ")
+            }
+        }
+}
 
 data class CourierLocationEvent(
     val lat: Double = 0.0,

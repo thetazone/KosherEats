@@ -147,8 +147,13 @@ dependencies {
     // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.5.0")
 
-    // DataStore for local prefs
+    // DataStore for local prefs (non-sensitive only — restaurant_id)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // EncryptedSharedPreferences for auth_token / refresh_token at rest.
+    // Same version the consumer module uses. Sensitive tokens must never touch
+    // disk in cleartext — see TokenProvider in RetrofitClient.kt.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.1")

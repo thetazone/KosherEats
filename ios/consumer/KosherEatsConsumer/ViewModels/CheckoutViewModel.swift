@@ -84,6 +84,11 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     private var sheetContinuation: CheckedContinuation<Void, Error>?
     private var applePayContext: STPApplePayContext?
     private var applePayContinuation: CheckedContinuation<Void, Error>?
+    /// The exact bundle whose Apple Pay sheet is currently presented. The
+    /// delegate confirms THIS PaymentIntent, not `self.bundle`, which a
+    /// concurrent refreshBundle() can swap out from under the live sheet
+    /// (charging PI B while placeOrder records PI A).
+    private var applePayBundle: APIService.PaymentSheetBundle?
 
     deinit {
         // Resume any pending continuations so their Tasks don't leak.
@@ -138,7 +143,11 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         case .percent(let bps): return (subtotal * bps) / 10_000
         case .custom:
             let dollars = max(0, Double(customTipText) ?? 0)
-            return min(Int(dollars * 100), Self.maxTipCents)
+            // Round, don't truncate: binary float makes many exact-cent inputs
+            // land just below the integer (4.10 * 100 == 409.9999…) and Int()
+            // truncates toward zero, so $4.10 would become 409¢. Rounding keeps
+            // the charged tip equal to what the user typed.
+            return min(Int((dollars * 100).rounded()), Self.maxTipCents)
         }
     }
 
@@ -148,6 +157,14 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// load and any time the tip selection changes so the totals match what
     /// Stripe will actually charge.
     func refreshBundle() async {
+        // Never refresh while a charge is in flight. A refresh creates a brand-
+        // new PaymentIntent server-side and swaps `self.bundle`; if that lands
+        // while the PaymentSheet or Apple Pay sheet is up, the live sheet ends
+        // up confirming a different PaymentIntent than the one placeOrder will
+        // record (charge / order mismatch). The totals are locked once the user
+        // taps pay, so a stale-tip refresh has nothing useful to do here.
+        guard !isProcessing else { return }
+
         // Snapshot whether we're about to compute a percent tip against a
         // not-yet-loaded bundle (subtotal == 0). The backend only honours an
         // absolute cents tip — it never recomputes a percentage — so a percent
@@ -321,6 +338,10 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         }
 
         self.applePayContext = context
+        // Pin the exact bundle being charged so the delegate confirms THIS
+        // PaymentIntent regardless of any later refreshBundle() that replaces
+        // self.bundle.
+        self.applePayBundle = bundle
 
         try? await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -491,7 +512,10 @@ extension CheckoutViewModel: ApplePayContextDelegate {
         didCreatePaymentMethod paymentMethod: StripeAPI.PaymentMethod,
         paymentInformation: PKPayment
     ) async throws -> String {
-        guard let secret = self.bundle?.paymentIntentSecret else {
+        // Use the bundle pinned at present time, NOT self.bundle — a concurrent
+        // refreshBundle() may have replaced self.bundle with a different
+        // PaymentIntent, which would charge a PI that placeOrder never records.
+        guard let secret = self.applePayBundle?.paymentIntentSecret else {
             throw NSError(
                 domain: "Checkout",
                 code: -1,
@@ -519,6 +543,7 @@ extension CheckoutViewModel: ApplePayContextDelegate {
                 self.paymentSucceeded = false
             }
             self.applePayContext = nil
+            self.applePayBundle = nil
             self.applePayContinuation?.resume()
             self.applePayContinuation = nil
         }

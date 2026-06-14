@@ -45,6 +45,21 @@ struct DashboardView: View {
             }
             .navigationTitle("Dashboard")
             .navigationBarTitleDisplayMode(.large)
+            // Surface action errors (notably the open/closed toggle) as an alert
+            // once the restaurant has loaded. Previously vm.errorMessage was only
+            // rendered in the empty-state branch (restaurant == nil), so a failed
+            // setRestaurantOpen — including the backend's 403 "restaurant must be
+            // approved before it can be opened for orders" — left the toggle
+            // silently snapping back with no feedback. The full-screen
+            // ErrorStateView still owns the initial-load (restaurant == nil) case.
+            .alert("Couldn't update",
+                   isPresented: Binding(
+                    get: { vm.errorMessage != nil && vm.restaurant != nil },
+                    set: { if !$0 { vm.errorMessage = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(vm.errorMessage ?? "")
+            }
             .toolbar {
                 // Surface the restaurant picker only when the seller owns
                 // more than one restaurant — otherwise there's nothing to
@@ -92,32 +107,60 @@ struct DashboardView: View {
     // MARK: - Restaurant Status
 
     private func restaurantStatusCard(_ restaurant: Restaurant) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(restaurant.name)
-                    .font(.headline)
-                    .foregroundColor(.keTextPrimary)
+        // Until the platform admin approves the restaurant, the seller can't
+        // go live — the open/closed toggle is disabled and shows "Pending
+        // approval" instead of Open/Closed. The backend enforces the same
+        // 403 ("must be approved before it can be opened"), this just keeps
+        // the UI honest about why. Mirrors Android DashboardScreen.kt's
+        // `isApproved` gating + caption.
+        let isApproved = restaurant.isApproved
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(restaurant.name)
+                        .font(.headline)
+                        .foregroundColor(.keTextPrimary)
 
-                Text(restaurant.isOpen ? "Currently Open" : "Currently Closed")
-                    .font(.subheadline)
-                    .foregroundColor(restaurant.isOpen ? .keSuccess : .keTextMuted)
+                    Text(statusLabel(restaurant: restaurant, isApproved: isApproved))
+                        .font(.subheadline)
+                        .foregroundColor(statusColor(restaurant: restaurant, isApproved: isApproved))
+                }
+
+                Spacer()
+
+                Toggle("", isOn: Binding(
+                    // Force the toggle visually off while unapproved so it can
+                    // never read "open" before review, regardless of the
+                    // restaurant's stored is_open flag.
+                    get: { isApproved && restaurant.isOpen },
+                    set: { newValue in
+                        Task { await vm.setRestaurantOpen(newValue) }
+                    }
+                ))
+                .tint(.kePrimary)
+                .labelsHidden()
+                .disabled(!isApproved || vm.isTogglingOpen)
             }
 
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { restaurant.isOpen },
-                set: { newValue in
-                    Task { await vm.setRestaurantOpen(newValue) }
-                }
-            ))
-            .tint(.kePrimary)
-            .labelsHidden()
-            .disabled(vm.isTogglingOpen)
+            if !isApproved {
+                Text("We'll email you once the platform admin reviews your application. You can edit your menu and settings while you wait.")
+                    .font(.caption)
+                    .foregroundColor(.keTextMuted)
+            }
         }
         .padding()
         .background(Color.keCard)
         .cornerRadius(16)
+    }
+
+    private func statusLabel(restaurant: Restaurant, isApproved: Bool) -> String {
+        if !isApproved { return "Pending approval" }
+        return restaurant.isOpen ? "Currently Open" : "Currently Closed"
+    }
+
+    private func statusColor(restaurant: Restaurant, isApproved: Bool) -> Color {
+        if !isApproved { return .keWarning }
+        return restaurant.isOpen ? .keSuccess : .keTextMuted
     }
 
     // MARK: - Stats Grid

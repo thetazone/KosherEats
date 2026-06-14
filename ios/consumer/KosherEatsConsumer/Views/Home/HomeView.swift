@@ -11,6 +11,15 @@ struct HomeView: View {
     @State private var isFilterTransitioning = false
     @State private var deepLinkPath: [String] = []
 
+    // Server-backed search. While the user is typing we debounce by 300ms and
+    // hit GET /restaurants/search, which matches the whole catalog by name OR
+    // cuisine — unlike the local-only name/description filter that only sees the
+    // first 50 restaurants from GET /restaurants. nil means "not searching"
+    // (show the curated home list); an empty array means "searched, no matches".
+    @State private var searchResults: [Restaurant]?
+    @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
+
     var body: some View {
         NavigationStack(path: $deepLinkPath) {
             ZStack {
@@ -35,14 +44,18 @@ struct HomeView: View {
                             .padding(.horizontal)
                         }
 
-                        // Featured Section
-                        if !vm.featuredRestaurants.isEmpty {
-                            featuredSection
-                        }
+                        // Curated home sections are hidden while searching so the
+                        // results list isn't buried under unrelated carousels.
+                        if !isSearchActive {
+                            // Featured Section
+                            if !visibleFeaturedRestaurants.isEmpty {
+                                featuredSection
+                            }
 
-                        // Favorites Section
-                        if !vm.favoriteRestaurants.isEmpty {
-                            favoritesSection
+                            // Favorites Section
+                            if !visibleFavoriteRestaurants.isEmpty {
+                                favoritesSection
+                            }
                         }
 
                         // All Restaurants
@@ -78,6 +91,12 @@ struct HomeView: View {
                     onApply: { newFilters in
                         isFilterTransitioning = true
                         kosherFilters = newFilters
+                        // Re-run an active search so server results reflect the
+                        // newly-applied kosher constraints, not the ones in
+                        // effect when the query was first typed.
+                        if isSearchActive {
+                            scheduleSearch(for: searchText)
+                        }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                             withAnimation(.easeOut(duration: 0.2)) {
                                 isFilterTransitioning = false
@@ -89,12 +108,89 @@ struct HomeView: View {
         }
     }
 
+    /// Whether the user is actively running a text search. When true the home
+    /// shows server search results in place of the curated home sections.
+    private var isSearchActive: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var filteredRestaurants: [Restaurant] {
-        vm.filteredRestaurants(
-            searchText: searchText,
+        // While searching, drive the list off the server response (whole catalog,
+        // matched by name OR cuisine) and only narrow it locally by the cuisine
+        // chip — the kosher filters were already applied server-side via
+        // searchRestaurants(query:kosherFilters:).
+        if isSearchActive {
+            let results = searchResults ?? []
+            guard let cuisine = selectedCuisine else { return results }
+            return results.filter { restaurant in
+                restaurant.cuisineType.contains { $0.localizedCaseInsensitiveContains(cuisine) }
+            }
+        }
+        return vm.filteredRestaurants(
+            searchText: "",
             selectedCuisine: selectedCuisine,
             kosherFilters: kosherFilters
         )
+    }
+
+    /// Featured carousel, gated through the active kosher filters so the curated
+    /// row never surfaces restaurants the user has filtered out.
+    private var visibleFeaturedRestaurants: [Restaurant] {
+        guard kosherFilters.isActive else { return vm.featuredRestaurants }
+        return vm.featuredRestaurants.filter { matchesKosherFilters($0) }
+    }
+
+    /// Favorites list, gated through the active kosher filters for the same
+    /// reason as the featured carousel.
+    private var visibleFavoriteRestaurants: [Restaurant] {
+        guard kosherFilters.isActive else { return vm.favoriteRestaurants }
+        return vm.favoriteRestaurants.filter { matchesKosherFilters($0) }
+    }
+
+    /// Mirror of the kosher predicate applied in RestaurantStore.filteredRestaurants
+    /// so the curated home sections honour the same constraints as the main list.
+    private func matchesKosherFilters(_ restaurant: Restaurant) -> Bool {
+        if !kosherFilters.certifications.isEmpty,
+           !kosherFilters.certifications.contains(restaurant.kosherCertification) {
+            return false
+        }
+        if kosherFilters.glattOnly, !restaurant.isGlattKosher { return false }
+        if kosherFilters.cholovYisroelOnly, !restaurant.isCholovYisroel { return false }
+        if kosherFilters.pasYisroelOnly, !restaurant.isPasYisroel { return false }
+        return true
+    }
+
+    // MARK: - Search (server-backed, debounced)
+
+    /// Debounce keystrokes by 300ms, then query the server. Mirrors Android's
+    /// HomeViewModel.search. An empty query clears the search state and returns
+    /// the user to the curated home list.
+    private func scheduleSearch(for query: String) {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            searchTask = nil
+            isSearching = false
+            searchResults = nil
+            return
+        }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            isSearching = true
+            defer { isSearching = false }
+            do {
+                let results = try await vm.searchRestaurants(query: trimmed, kosherFilters: kosherFilters)
+                if Task.isCancelled { return }
+                searchResults = results
+            } catch {
+                if Task.isCancelled { return }
+                // Keep whatever results we had rather than wiping the list on a
+                // transient failure; the All Restaurants empty-state covers a
+                // genuinely empty first search.
+                searchResults = searchResults ?? []
+            }
+        }
     }
 
     // MARK: - Header
@@ -150,9 +246,20 @@ struct HomeView: View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.keTextMuted)
-            TextField(String(localized: "Search restaurants..."), text: $searchText)
+            TextField(String(localized: "Search restaurants, cuisines..."), text: $searchText)
                 .foregroundColor(.keTextPrimary)
                 .autocorrectionDisabled()
+                .onChange(of: searchText) { _, newValue in
+                    scheduleSearch(for: newValue)
+                }
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.keTextMuted)
+                }
+            }
         }
         .padding()
         .background(Color.keCard)
@@ -201,7 +308,7 @@ struct HomeView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
-                    ForEach(vm.featuredRestaurants) { restaurant in
+                    ForEach(visibleFeaturedRestaurants) { restaurant in
                         NavigationLink(destination: RestaurantDetailView(restaurantID: restaurant.id)) {
                             FeaturedRestaurantCard(restaurant: restaurant)
                         }
@@ -223,7 +330,7 @@ struct HomeView: View {
                 .padding(.horizontal)
 
             LazyVStack(spacing: 12) {
-                ForEach(vm.favoriteRestaurants) { restaurant in
+                ForEach(visibleFavoriteRestaurants) { restaurant in
                     NavigationLink(destination: RestaurantDetailView(restaurantID: restaurant.id)) {
                         RestaurantCardView(
                             restaurant: restaurant,
@@ -247,7 +354,7 @@ struct HomeView: View {
                 .foregroundColor(.keTextPrimary)
                 .padding(.horizontal)
 
-            if vm.isLoading || isFilterTransitioning {
+            if vm.isLoading || isFilterTransitioning || isSearching {
                 ProgressView()
                     .tint(.kePrimary)
                     .frame(maxWidth: .infinity, minHeight: 200)

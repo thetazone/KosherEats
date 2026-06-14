@@ -124,9 +124,24 @@ struct ConnectedAccountsView: View {
 private struct PhoneLinkSheet: View {
     @ObservedObject var vm: ConnectedAccountsViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var phone = ""
+    @State private var phoneDigits = ""
+    @State private var selectedCountry: Country = .defaultCountry
+    @State private var showCountryPicker = false
     @State private var code = ""
     @State private var codeSent = false
+
+    // Build the same E.164 string the login flow sends
+    // (SellerLoginView.startPhoneFlow): dial code + digits-only national
+    // number. The backend's looksLikeE164 requires a leading "+", so a raw
+    // typed string with no country code would be rejected — and a linked
+    // identity must match exactly what phone login produces.
+    private var phoneE164: String { selectedCountry.dialCode + phoneDigits }
+
+    // National-number length: 7-15 digits, matching SellerLoginView.isPhoneValid
+    // and the E.164 ceiling enforced by the onChange truncation below.
+    private var isPhoneValid: Bool {
+        phoneDigits.count >= 7 && phoneDigits.count <= 15
+    }
 
     var body: some View {
         NavigationStack {
@@ -136,16 +151,42 @@ private struct PhoneLinkSheet: View {
                         Text("Phone Number")
                             .font(.caption)
                             .foregroundColor(.keTextSecondary)
-                        TextField("+1 (555) 123-4567", text: $phone)
-                            .keyboardType(.phonePad)
-                            .padding()
-                            .background(Color.keCard)
-                            .cornerRadius(10)
+                        HStack(spacing: 10) {
+                            Button {
+                                showCountryPicker = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(selectedCountry.flag)
+                                    Text(selectedCountry.dialCode)
+                                        .foregroundColor(.keTextPrimary)
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(.keTextSecondary)
+                                }
+                                .padding()
+                                .background(Color.keCard)
+                                .cornerRadius(10)
+                            }
+
+                            TextField("Mobile number", text: $phoneDigits)
+                                .keyboardType(.numberPad)
+                                .textContentType(.telephoneNumber)
+                                .padding()
+                                .background(Color.keCard)
+                                .cornerRadius(10)
+                                .onChange(of: phoneDigits) { _, newValue in
+                                    let digits = newValue.filter(\.isNumber)
+                                    if digits != newValue { phoneDigits = digits }
+                                    if phoneDigits.count > 15 {
+                                        phoneDigits = String(phoneDigits.prefix(15))
+                                    }
+                                }
+                        }
                     }
 
                     Button {
                         Task {
-                            codeSent = await vm.startPhoneLink(phone: phone)
+                            codeSent = await vm.startPhoneLink(phone: phoneE164)
                         }
                     } label: {
                         if vm.loadingProvider == "phone" {
@@ -160,7 +201,7 @@ private struct PhoneLinkSheet: View {
                     .frame(height: 50)
                     .background(Color.kePrimary)
                     .cornerRadius(12)
-                    .disabled(phone.isEmpty || vm.loadingProvider != nil)
+                    .disabled(!isPhoneValid || vm.loadingProvider != nil)
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Verification Code")
@@ -171,11 +212,17 @@ private struct PhoneLinkSheet: View {
                             .padding()
                             .background(Color.keCard)
                             .cornerRadius(10)
+                            .onChange(of: code) { _, newValue in
+                                let digits = newValue.filter(\.isNumber)
+                                if digits != newValue { code = digits }
+                            }
                     }
 
                     Button {
                         Task {
-                            let success = await vm.verifyPhoneLink(phone: phone, code: code)
+                            // Verify against the same E.164 string we sent the
+                            // code to, so the linked identity matches.
+                            let success = await vm.verifyPhoneLink(phone: phoneE164, code: code)
                             if success { dismiss() }
                         }
                     } label: {
@@ -209,6 +256,12 @@ private struct PhoneLinkSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showCountryPicker) {
+                CountryCodePickerSheet(
+                    selected: $selectedCountry,
+                    isPresented: $showCountryPicker
+                )
             }
         }
         .presentationDetents([.medium])

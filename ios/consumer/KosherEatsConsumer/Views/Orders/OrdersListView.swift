@@ -86,6 +86,29 @@ struct OrdersListView: View {
                                         )
                                     }
                                     .buttonStyle(.plain)
+                                    .onAppear {
+                                        // Infinite scroll for Past history: when the
+                                        // last loaded order scrolls into view on the
+                                        // Past segment, pull the next keyset page.
+                                        // Active orders are never capped (the backend
+                                        // returns them on the first page), so only the
+                                        // Past tab drives load-more.
+                                        if selectedSegment == 1,
+                                           order.id == displayOrders.last?.id,
+                                           vm.canLoadMore {
+                                            Task { await vm.loadMorePastOrders() }
+                                        }
+                                    }
+                                }
+
+                                if selectedSegment == 1 && vm.isLoadingMore {
+                                    HStack {
+                                        Spacer()
+                                        ProgressView()
+                                            .tint(.kePrimary)
+                                            .padding(.vertical, 8)
+                                        Spacer()
+                                    }
                                 }
                             }
                             .padding()

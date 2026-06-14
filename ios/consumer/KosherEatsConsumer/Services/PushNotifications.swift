@@ -51,6 +51,25 @@ final class PushNotifications: NSObject, ObservableObject {
         }
     }
 
+    /// Detaches the cached APNs token from the user that is logging out.
+    /// Called by AuthViewModel.logout() *before* the auth token is cleared,
+    /// because /devices/unregister requires auth. Best-effort: any failure is
+    /// swallowed so a network blip never strands the user mid-logout. The
+    /// cached token is intentionally NOT cleared — it's device-scoped, so the
+    /// next successful login re-registers it via registerPendingTokenIfPossible.
+    func unregisterCurrentDeviceToken() async {
+        guard let data = pendingToken else { return }
+        guard APIService.shared.isAuthenticated else { return }
+        let hex = data.map { String(format: "%02x", $0) }.joined()
+        do {
+            try await APIService.shared.unregisterDevice(token: hex, platform: "ios", app: app)
+        } catch {
+            #if DEBUG
+            print("[push] failed to unregister token: \(error)")
+            #endif
+        }
+    }
+
     func handleRegistrationError(_ error: Error) {
         #if DEBUG
         print("[push] APNs registration failed: \(error)")

@@ -125,6 +125,10 @@ struct AddToCartSheet: View {
     @State private var notes = ""
     /// Selected modifier ids keyed by group id.
     @State private var selection: [String: Set<String>] = [:]
+    /// Add-to-cart error surfaced inline so the user sees it before the sheet
+    /// closes. CartView's alert is the only other renderer of cart errors and
+    /// it isn't on screen while this sheet is up.
+    @State private var inlineError: String?
 
     private var unitPrice: Int {
         let deltas = (item.modifierGroups ?? []).flatMap { group in
@@ -245,8 +249,12 @@ struct AddToCartSheet: View {
         ) { _ in
             Button(String(localized: "Start New Cart"), role: .destructive) {
                 Task {
-                    await cartVM.confirmPendingRestaurantSwitch()
-                    dismiss()
+                    inlineError = nil
+                    if let err = await cartVM.confirmPendingRestaurantSwitch() {
+                        inlineError = err
+                    } else {
+                        dismiss()
+                    }
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {
@@ -261,9 +269,11 @@ struct AddToCartSheet: View {
     /// add would discard a cart from a different restaurant the ViewModel stashes
     /// the request and publishes `pendingRestaurantSwitch`, which drives the
     /// confirmation alert; in that case we keep the sheet open. Otherwise the add
-    /// proceeds immediately and we dismiss.
+    /// proceeds immediately: we dismiss on success, or keep the sheet open and
+    /// surface the error inline so the user isn't left thinking it worked.
     private func submitAdd() async {
-        await cartVM.requestAddItem(
+        inlineError = nil
+        let err = await cartVM.requestAddItem(
             menuItemID: item.id,
             quantity: quantity,
             notes: notes.isEmpty ? nil : notes,
@@ -275,7 +285,10 @@ struct AddToCartSheet: View {
             selectedModifiers: resolvedModifiers
         )
         // Awaiting confirmation: leave the sheet up so the alert can present.
-        if cartVM.pendingRestaurantSwitch == nil {
+        guard cartVM.pendingRestaurantSwitch == nil else { return }
+        if let err {
+            inlineError = err
+        } else {
             dismiss()
         }
     }
@@ -316,6 +329,23 @@ struct AddToCartSheet: View {
         VStack(spacing: 0) {
             Divider().background(Color.keDivider)
             VStack(spacing: 12) {
+                if let inlineError {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.keError)
+                        Text(inlineError)
+                            .font(.footnote)
+                            .foregroundColor(.keError)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.keError.opacity(0.12))
+                    .cornerRadius(Theme.cornerRadiusSmall)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(inlineError)
+                }
+
                 HStack(spacing: 24) {
                     Button {
                         if quantity > 1 { quantity -= 1 }

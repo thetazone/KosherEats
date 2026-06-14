@@ -16,9 +16,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Loading status for the menu, tracked independently of the restaurant fetch so a
+ * menu failure (or a menu still in flight) is never misrendered as a successful but
+ * empty menu. Driven by [RestaurantViewModel.loadMenu].
+ */
+enum class MenuLoadState { Loading, Loaded, Error }
+
 data class RestaurantUiState(
     val restaurant: Restaurant? = null,
     val menuCategories: List<MenuCategory> = emptyList(),
+    val menuState: MenuLoadState = MenuLoadState.Loading,
+    val menuError: String? = null,
     val restaurantDeals: List<Deal> = emptyList(),
     val selectedCategoryIndex: Int = 0,
     val isLoading: Boolean = false,
@@ -68,16 +77,35 @@ class RestaurantViewModel @Inject constructor(
         viewModelScope.launch {
             repository.getRestaurantMenu(restaurantId).collect { result ->
                 when (result) {
-                    is Resource.Loading -> {}
+                    is Resource.Loading -> {
+                        _uiState.update {
+                            it.copy(menuState = MenuLoadState.Loading, menuError = null)
+                        }
+                    }
                     is Resource.Success -> {
-                        _uiState.update { it.copy(menuCategories = result.data) }
+                        _uiState.update {
+                            it.copy(
+                                menuCategories = result.data,
+                                menuState = MenuLoadState.Loaded,
+                                menuError = null,
+                            )
+                        }
                     }
                     is Resource.Error -> {
-                        _uiState.update { it.copy(error = result.message) }
+                        _uiState.update {
+                            it.copy(menuState = MenuLoadState.Error, menuError = result.message)
+                        }
                     }
                 }
             }
         }
+    }
+
+    /** Re-attempt the menu fetch after a failure; wired to the inline Retry action. */
+    fun retryMenu() {
+        val id = restaurantId
+        if (id.isNullOrEmpty()) return
+        loadMenu(id)
     }
 
     private fun loadDeals(restaurantId: String) {

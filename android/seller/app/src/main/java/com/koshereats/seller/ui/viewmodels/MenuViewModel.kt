@@ -98,6 +98,24 @@ class MenuViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Switches the visible category using the already-loaded menu tree. No network
+     * call and no full-screen spinner — chip taps must be instant and work offline,
+     * since `state.categories` already holds every category and its items.
+     * Use [loadMenuItems] only for explicit refreshes (pull-to-refresh, post-save).
+     */
+    fun selectCategory(category: SellerMenuCategory?) {
+        _state.update { state ->
+            val items = if (category == null) {
+                state.categories.flatMap { it.items }
+            } else {
+                state.categories.firstOrNull { it.id == category.id }?.items
+                    ?: category.items
+            }
+            state.copy(selectedCategory = category, items = items)
+        }
+    }
+
     fun loadMenuItem(itemId: String) {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null, selectedItem = null) }

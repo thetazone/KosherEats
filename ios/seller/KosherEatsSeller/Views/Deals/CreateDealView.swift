@@ -206,8 +206,8 @@ struct CreateDealView: View {
                 return
             }
             let cents = Int(round(dollars * 100))
-            if cents > 99999 {
-                localError = "Fixed discount cannot exceed $999.99"
+            if cents > 10000 {
+                localError = "Fixed discount cannot exceed $100"
                 return
             }
             value = cents

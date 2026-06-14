@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.models.*
 import com.koshereats.consumer.data.session.SessionManager
@@ -72,7 +73,15 @@ data class CartUiState(
 }
 
 private data class CartSnapshot(
+    // Explicit JSON keys keep the persisted snapshot stable across app updates.
+    // CartSnapshot lives in ui.viewmodels, which the proguard keep rules don't
+    // cover, so in minified release builds R8 obfuscates these field names. Gson
+    // uses the field name as the JSON key by default, so without @SerializedName
+    // the persisted key would be mapping-dependent (e.g. "a"/"b") and a different
+    // R8 mapping after an update would fail to deserialize the old snapshot.
+    @SerializedName("carts")
     val carts: Map<String, Cart>,
+    @SerializedName("active_restaurant_id")
     val activeRestaurantId: String?,
 )
 

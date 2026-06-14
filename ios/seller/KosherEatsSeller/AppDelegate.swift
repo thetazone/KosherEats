@@ -1,6 +1,10 @@
 import UIKit
 import UserNotifications
 
+// Note: `Notification.Name.orderDeepLinkRequested` is declared alongside the
+// other push notification names in PushEvents.swift so all push-related
+// signals live in one place.
+
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -36,15 +40,37 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         completionHandler([.banner, .sound, .badge])
     }
 
-    // Tap (background → foreground via notification): same fan-out so the
-    // dashboard's freshly-loaded state matches the push that brought the
-    // user back into the app.
+    // Tap (background/cold launch → foreground via notification): fan the
+    // order event out so the freshly-loaded dashboard state matches the push,
+    // AND request a deep link to the tapped order. Without the deep link the
+    // seller lands on whatever tab was last open and has to hunt for the
+    // ticket — Android lands them straight on it via the launch intent.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        PushEvents.postIfOrderEvent(response.notification.request.content.userInfo)
+        let userInfo = response.notification.request.content.userInfo
+        PushEvents.postIfOrderEvent(userInfo)
+        postOrderDeepLinkIfPresent(userInfo)
         completionHandler()
+    }
+
+    // Publishes a deep-link request carrying the tapped order's id so the UI
+    // can navigate to it. Skips chat pushes (their own pipeline) and anything
+    // lacking an order_id, matching PushEvents.postIfOrderEvent's gating so we
+    // never request navigation for a non-order push.
+    private func postOrderDeepLinkIfPresent(_ userInfo: [AnyHashable: Any]) {
+        let typeRaw = (userInfo[PushEvents.typeKey] as? String) ?? ""
+        if PushEvents.EventType(rawValue: typeRaw) == .chatMessage { return }
+
+        guard let orderID = userInfo[PushEvents.orderIDKey] as? String,
+              !orderID.isEmpty else { return }
+
+        NotificationCenter.default.post(
+            name: .orderDeepLinkRequested,
+            object: nil,
+            userInfo: [PushEvents.orderIDKey: orderID]
+        )
     }
 }

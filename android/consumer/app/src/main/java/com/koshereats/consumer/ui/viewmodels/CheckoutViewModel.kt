@@ -1,6 +1,9 @@
 package com.koshereats.consumer.ui.viewmodels
 
 import android.util.Log
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,6 +24,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -88,11 +92,15 @@ data class CheckoutUiState(
 class CheckoutViewModel @Inject constructor(
     private val api: ApiService,
     private val savedStateHandle: SavedStateHandle,
+    private val dataStore: DataStore<Preferences>,
 ) : ViewModel() {
 
     private companion object {
         const val KEY_RESTAURANT_ID = "checkout_restaurant_id"
         const val KEY_DEAL_ID = "checkout_deal_id"
+        // Mirror AddressViewModel's persisted selection so checkout honors the
+        // address the user picked in the Home "Deliver to" header.
+        val SELECTED_ADDRESS_ID = stringPreferencesKey("selected_address_id")
     }
 
     private val _uiState = MutableStateFlow(CheckoutUiState())
@@ -108,6 +116,15 @@ class CheckoutViewModel @Inject constructor(
     private var _restaurantId: String = ""
     private var _appliedDealId: String? = null
     private var _localSubtotalCents: Int = 0
+    // The local cart handed to bootstrap(), kept so retry() can re-run the sync.
+    private var _localCart: List<CartItem> = emptyList()
+    // Set when syncLocalCartToServer() failed; retry() must re-sync before refreshing
+    // the bundle, otherwise /payments/intent prices a cleared/partial server cart.
+    private var _syncFailed = false
+    // Set when the post-failure rollback (clearServerCart) ALSO failed, leaving the
+    // server cart holding a partial item set. Pricing/paying in this state could
+    // charge for the wrong items, so block Pay until a clean re-sync succeeds.
+    private var _serverCartCorrupted = false
 
     // Idempotency: track which payment intent IDs have already been finalized
     // so a duplicate PaymentSheetResult.Completed cannot create a second order.
@@ -142,6 +159,7 @@ class CheckoutViewModel @Inject constructor(
         // user can retry after an error without being blocked by stale finalized-intent IDs.
         finalizedIntentIds.clear()
         _bootstrapped = true
+        _localCart = localCart
         _localSubtotalCents = localCart.sumOf { it.totalPrice }
 
         // Seed the scheduled delivery time chosen on the cart screen. Only carry it
@@ -161,7 +179,13 @@ class CheckoutViewModel @Inject constructor(
         viewModelScope.launch {
             loadAddresses()
             if (localCart.isNotEmpty()) {
-                syncLocalCartToServer(localCart, effectiveRestaurantId)
+                // If the sync fails the server cart is empty (rollback) or partial
+                // (rollback also failed). Either way, pricing/charging it would be
+                // wrong — abort before launchRefreshBundle() so the "Failed to prepare
+                // cart" error stays visible and Retry can re-sync.
+                if (!syncLocalCartToServer(localCart, effectiveRestaurantId)) {
+                    return@launch
+                }
             }
             // When localCart is empty (process-death recovery), the server cart
             // is already in the right state — skip sync and load the bundle directly.
@@ -176,10 +200,19 @@ class CheckoutViewModel @Inject constructor(
             val resp = api.getAddresses()
             if (resp.isSuccessful) {
                 val list = resp.body().orEmpty()
+                val savedId = try {
+                    dataStore.data.first()[SELECTED_ADDRESS_ID]
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    null
+                }
                 _uiState.update { state ->
                     state.copy(
                         addresses = list,
+                        // Honor the user's Home-screen "Deliver to" choice first, then
+                        // fall back to default / first — matching AddressViewModel.
                         selectedAddress = state.selectedAddress
+                            ?: list.firstOrNull { it.id == savedId }
                             ?: list.firstOrNull { it.isDefault }
                             ?: list.firstOrNull(),
                     )
@@ -199,9 +232,12 @@ class CheckoutViewModel @Inject constructor(
      * Push local cart state up to the server so /payments/intent reads the
      * right subtotal. Clears first to avoid merging into whatever was there
      * from a previous session.
+     *
+     * Returns true on a clean sync; false if any add (or the rollback) failed, in
+     * which case the caller must NOT proceed to price/charge the server cart.
      */
-    private suspend fun syncLocalCartToServer(localCart: List<CartItem>, restaurantId: String) {
-        if (localCart.isEmpty()) return
+    private suspend fun syncLocalCartToServer(localCart: List<CartItem>, restaurantId: String): Boolean {
+        if (localCart.isEmpty()) return true
         try {
             api.clearServerCart()
             coroutineScope {
@@ -225,16 +261,32 @@ class CheckoutViewModel @Inject constructor(
                     }
                 }.awaitAll()
             }
+            // Clean sync — clear any prior failure state.
+            _syncFailed = false
+            _serverCartCorrupted = false
+            return true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
+            _syncFailed = true
             // Roll back: clear the server cart so /payments/intent cannot read a partial subtotal.
             try {
                 api.clearServerCart()
+                _serverCartCorrupted = false
             } catch (rollbackErr: Exception) {
                 if (rollbackErr is CancellationException) throw rollbackErr
+                // Rollback failed too: the server cart may hold a partial item set.
+                // Mark it corrupted so onPayTapped() refuses to charge until a clean re-sync.
+                _serverCartCorrupted = true
                 android.util.Log.w("CheckoutViewModel", "Server cart rollback failed after partial sync", rollbackErr)
             }
-            _uiState.update { it.copy(errorMessage = "Failed to prepare cart. Please try again.") }
+            _uiState.update {
+                it.copy(
+                    isLoadingBundle = false,
+                    bundle = null,
+                    errorMessage = "Failed to prepare cart. Please try again.",
+                )
+            }
+            return false
         }
     }
 
@@ -423,6 +475,13 @@ class CheckoutViewModel @Inject constructor(
      *  skip the sheet and finalize directly. */
     fun onPayTapped() {
         if (_uiState.value.isProcessing) return
+        // Hard block: if a failed sync left the server cart in a partial/unknown state
+        // and the rollback couldn't clean it up, refuse to charge until a successful
+        // re-sync (via Retry) clears this flag — the priced bundle may not match the cart.
+        if (_serverCartCorrupted) {
+            _uiState.update { it.copy(errorMessage = "Failed to prepare cart. Please try again.") }
+            return
+        }
         val bundle = _uiState.value.bundle ?: return
         // Hard guard against zero-cost orders slipping through the UI gate.
         if (bundle.subtotal <= 0 || bundle.total <= 0) {
@@ -591,6 +650,19 @@ class CheckoutViewModel @Inject constructor(
     }
 
     fun retry() {
+        // If the cart sync failed (server cart is empty after rollback, or partial if
+        // rollback also failed), re-run the full bootstrap sequence: re-sync, then price.
+        // Otherwise /payments/intent would price a cleared/partial cart and Retry is
+        // guaranteed to fail or charge the wrong items.
+        if (_syncFailed && _localCart.isNotEmpty()) {
+            viewModelScope.launch {
+                loadAddresses()
+                if (syncLocalCartToServer(_localCart, _restaurantId)) {
+                    launchRefreshBundle()
+                }
+            }
+            return
+        }
         viewModelScope.launch { loadAddresses() }
         launchRefreshBundle()
     }

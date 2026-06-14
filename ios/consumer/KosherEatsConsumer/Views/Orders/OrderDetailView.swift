@@ -3,6 +3,9 @@ import SwiftUI
 struct OrderDetailView: View {
     let orderID: String
     @StateObject private var vm = OrderViewModel()
+    /// Gates the destructive cancel behind a confirmation dialog so a single
+    /// accidental tap can't irreversibly cancel a paid order.
+    @State private var showCancelConfirmation = false
 
     var body: some View {
         ZStack {
@@ -77,8 +80,8 @@ struct OrderDetailView: View {
                         // gracefully via the error alert below rather than silently
                         // hiding the action.
                         if order.status == .scheduled || order.status == .pending || order.status == .accepted {
-                            Button {
-                                Task { await vm.cancelOrder(id: order.id) }
+                            Button(role: .destructive) {
+                                showCancelConfirmation = true
                             } label: {
                                 if vm.isCancelling {
                                     ProgressView()
@@ -90,6 +93,19 @@ struct OrderDetailView: View {
                             .buttonStyle(KESecondaryButtonStyle())
                             .disabled(vm.isCancelling)
                             .padding(.horizontal)
+                            .confirmationDialog(
+                                String(localized: "Cancel this order?"),
+                                isPresented: $showCancelConfirmation,
+                                titleVisibility: .visible
+                            ) {
+                                Button(String(localized: "Cancel Order"), role: .destructive) {
+                                    Haptics.impact(.medium)
+                                    Task { await vm.cancelOrder(id: order.id) }
+                                }
+                                Button(String(localized: "Keep Order"), role: .cancel) {}
+                            } message: {
+                                Text(String(localized: "This can't be undone. You'll be refunded to your original payment method."))
+                            }
                         }
 
                         // Order ID

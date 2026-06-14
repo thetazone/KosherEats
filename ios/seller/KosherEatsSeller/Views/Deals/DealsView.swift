@@ -12,6 +12,11 @@ struct DealsView: View {
                 if vm.isLoading && vm.deals.isEmpty {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .kePrimary))
+                } else if let err = vm.errorMessage, vm.deals.isEmpty {
+                    ErrorStateView(
+                        message: err,
+                        onRetry: { Task { await vm.loadDeals() } }
+                    )
                 } else if vm.deals.isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "tag.slash")
@@ -61,6 +66,18 @@ struct DealsView: View {
             }
             .task { await vm.loadDeals() }
             .refreshable { await vm.loadDeals() }
+            // When the list is populated, a load/deactivate failure can't use the
+            // full-screen ErrorStateView (that branch only renders when deals is
+            // empty). Without this alert a failed Deactivate sets vm.errorMessage
+            // but the seller gets no feedback. Mirrors SellerOrderDetailView.
+            .alert("Action failed",
+                   isPresented: Binding(
+                    get: { vm.errorMessage != nil && !vm.deals.isEmpty },
+                    set: { if !$0 { vm.errorMessage = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(vm.errorMessage ?? "")
+            }
             .sheet(isPresented: $showCreateDeal) {
                 CreateDealView { await vm.loadDeals() }
             }

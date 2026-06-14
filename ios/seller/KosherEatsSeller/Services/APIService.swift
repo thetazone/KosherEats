@@ -120,6 +120,27 @@ actor APIService {
     /// Fly.io cold-starts or momentary unavailability.
     private let maxRetries = 1
 
+    /// Whether a method may be auto-retried after a transient failure that can
+    /// occur *after* the backend committed the write (timeout, connection-lost,
+    /// 502/503/504). GET/PUT/DELETE are idempotent by HTTP semantics, and the
+    /// seller PATCH state transitions are guarded by the backend state machine
+    /// (re-applying them is a no-op/400), so they are safe to replay. POST is
+    /// not — replaying it would duplicate the created resource.
+    private func canRetryNonIdempotent(_ method: String) -> Bool {
+        method != "POST"
+    }
+
+    /// Decides whether a `URLError` should trigger a retry for the given
+    /// method. `.notConnectedToInternet` means the request never left the
+    /// device, so no server-side effect is possible — safe to retry for any
+    /// method, including POST. `.timedOut`/`.networkConnectionLost` can land
+    /// after the backend committed the write, so they are only retried for
+    /// idempotent methods.
+    private func shouldRetry(_ error: URLError, isIdempotent: Bool) -> Bool {
+        if error.code == .notConnectedToInternet { return true }
+        return isIdempotent && [.timedOut, .networkConnectionLost].contains(error.code)
+    }
+
     private func request<T: Decodable>(
         _ method: String,
         path: String,
@@ -149,13 +170,19 @@ actor APIService {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
+        // Only idempotent methods may be auto-retried after a transient failure
+        // or 5xx that can land *after* the backend committed the write — see
+        // canRetryNonIdempotent / shouldRetry. POST is still retried when the
+        // request never left the device (.notConnectedToInternet).
+        let isIdempotent = canRetryNonIdempotent(method)
+
         var lastError: Error = APIError.networkError("Unknown error")
         for attempt in 0...maxRetries {
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await session.data(for: req)
             } catch let urlError as URLError where attempt < maxRetries &&
-                [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+                shouldRetry(urlError, isIdempotent: isIdempotent) {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 continue
             } catch {
@@ -166,8 +193,10 @@ actor APIService {
                 throw APIError.invalidResponse
             }
 
-            // Retry on transient server errors (cold-start 502/503/504)
-            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+            // Retry on transient server errors (cold-start 502/503/504), but
+            // only for idempotent methods — a 502/504 can land after the write
+            // committed, so retrying a POST risks a duplicate.
+            if isIdempotent, [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
                 try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
                 continue
             }
@@ -268,13 +297,19 @@ actor APIService {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
+        // Only idempotent methods may be auto-retried after a transient failure
+        // or 5xx that can land *after* the backend committed the write — see
+        // canRetryNonIdempotent / shouldRetry. POST is still retried when the
+        // request never left the device (.notConnectedToInternet).
+        let isIdempotent = canRetryNonIdempotent(method)
+
         var lastError: Error = APIError.networkError("Unknown error")
         for attempt in 0...maxRetries {
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await session.data(for: req)
             } catch let urlError as URLError where attempt < maxRetries &&
-                [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+                shouldRetry(urlError, isIdempotent: isIdempotent) {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 continue
             } catch {
@@ -285,8 +320,10 @@ actor APIService {
                 throw APIError.invalidResponse
             }
 
-            // Retry on transient server errors (cold-start 502/503/504)
-            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+            // Retry on transient server errors (cold-start 502/503/504), but
+            // only for idempotent methods — a 502/504 can land after the write
+            // committed, so retrying a POST risks a duplicate.
+            if isIdempotent, [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
                 try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
                 continue
             }
@@ -615,12 +652,33 @@ actor APIService {
 
     // MARK: - Orders
 
-    func getOrders(status: String? = nil) async throws -> [Order] {
-        var path = "/seller/orders"
-        if let s = status,
-           let encoded = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            path += "?status=\(encoded)"
-        }
+    /// Fetches seller orders.
+    ///
+    /// The backend caps each page at 50 by default (max 100) and exposes
+    /// `created_at` cursor pagination. We request the maximum page size so that
+    /// active tickets can't silently fall off a busy night's list, and surface
+    /// `cursor` so callers can page through `Completed`/`All` history with a
+    /// load-more affordance. Pass the oldest fetched order's `created_at`
+    /// (RFC3339 with fractional seconds) as `cursor` to fetch the next page.
+    ///
+    /// - Parameters:
+    ///   - status: optional status filter (e.g. the active set) so active
+    ///     orders are fetched independently of the recency cap.
+    ///   - limit: page size (clamped server-side to 1...100). Defaults to the
+    ///     backend maximum.
+    ///   - cursor: `created_at` of the last order from the previous page;
+    ///     returns orders strictly older than it.
+    func getOrders(status: String? = nil, limit: Int = 100, cursor: String? = nil) async throws -> [Order] {
+        var query: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let status { query.append(URLQueryItem(name: "status", value: status)) }
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+
+        var components = URLComponents()
+        components.queryItems = query
+        // URLComponents percent-encodes the value for us; `+` in an ISO8601
+        // timezone offset is query-safe, but leave it to URLComponents so the
+        // status filter and cursor are escaped consistently.
+        let path = "/seller/orders" + (components.query.map { "?\($0)" } ?? "")
         return try await request("GET", path: await sellerPath(path))
     }
 
