@@ -93,13 +93,25 @@ private struct DealCard: View {
         return f
     }()
 
+    private enum DealStatus {
+        case deactivated, dateUnknown, expired, active
+    }
+
+    /// Status precedence mirrors Android DealsScreen.kt: the backend never flips
+    /// is_active when expires_at passes, so expiry must be derived client-side.
+    private var status: DealStatus {
+        guard deal.isActive else { return .deactivated }
+        guard let expiry = Self.parseDate(deal.expiresAt) else { return .dateUnknown }
+        return expiry < Date() ? .expired : .active
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(deal.title)
                         .font(.headline)
-                        .foregroundColor(.keTextPrimary)
+                        .foregroundColor(status == .active ? .keTextPrimary : .keTextMuted)
                     Text(deal.discountLabel)
                         .font(.subheadline.bold())
                         .foregroundColor(.kePrimary)
@@ -107,23 +119,13 @@ private struct DealCard: View {
 
                 Spacer()
 
-                if deal.isActive {
-                    Text("Active")
-                        .font(.caption.bold())
-                        .foregroundColor(.keSuccess)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.keSuccess.opacity(0.15))
-                        .cornerRadius(6)
-                } else {
-                    Text("Expired")
-                        .font(.caption.bold())
-                        .foregroundColor(.keTextMuted)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.keCard)
-                        .cornerRadius(6)
-                }
+                Text(statusText)
+                    .font(.caption.bold())
+                    .foregroundColor(statusColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(statusColor.opacity(0.15))
+                    .cornerRadius(6)
             }
 
             if !deal.description.isEmpty {
@@ -140,7 +142,7 @@ private struct DealCard: View {
 
                 Spacer()
 
-                if deal.isActive {
+                if status == .active {
                     Button("Deactivate") {
                         showConfirm = true
                     }
@@ -152,21 +154,36 @@ private struct DealCard: View {
         .padding()
         .background(Color.keCard)
         .cornerRadius(12)
-        .opacity(deal.isActive ? 1.0 : 0.55)
+        .opacity(status == .active ? 1.0 : 0.55)
         .confirmationDialog("Deactivate this deal?", isPresented: $showConfirm) {
             Button("Deactivate", role: .destructive, action: onDeactivate)
         }
     }
 
-    private func formattedDate(_ iso: String) -> String {
-        let date: Date
-        if let d = Self.isoFormatter.date(from: iso) {
-            date = d
-        } else if let d = Self.isoFormatterPlain.date(from: iso) {
-            date = d
-        } else {
-            return iso
+    private var statusText: String {
+        switch status {
+        case .deactivated: return "Deactivated"
+        case .dateUnknown: return "Date unknown"
+        case .expired: return "Expired"
+        case .active: return "Active"
         }
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .deactivated: return .keError
+        case .dateUnknown: return .keWarning
+        case .expired: return .keTextMuted
+        case .active: return .keSuccess
+        }
+    }
+
+    private static func parseDate(_ iso: String) -> Date? {
+        isoFormatter.date(from: iso) ?? isoFormatterPlain.date(from: iso)
+    }
+
+    private func formattedDate(_ iso: String) -> String {
+        guard let date = Self.parseDate(iso) else { return iso }
         return Self.displayFormatter.string(from: date)
     }
 }

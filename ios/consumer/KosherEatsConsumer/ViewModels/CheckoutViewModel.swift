@@ -148,6 +148,19 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// load and any time the tip selection changes so the totals match what
     /// Stripe will actually charge.
     func refreshBundle() async {
+        // Snapshot whether we're about to compute a percent tip against a
+        // not-yet-loaded bundle (subtotal == 0). The backend only honours an
+        // absolute cents tip — it never recomputes a percentage — so a percent
+        // tip evaluated here against a nil bundle bakes tip=0 into the
+        // PaymentIntent. On the first load we re-refresh once the real subtotal
+        // is known so the default tip isn't silently dropped.
+        let neededReRefresh: Bool
+        if case .percent = tipSelection, (bundle?.subtotal ?? 0) == 0 {
+            neededReRefresh = true
+        } else {
+            neededReRefresh = false
+        }
+
         bundleGeneration += 1
         let gen = bundleGeneration
         isLoadingBundle = true
@@ -160,6 +173,14 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId)
             guard gen == bundleGeneration, !Task.isCancelled else { return }
             bundle = fresh
+
+            // The percent tip was computed against a zero subtotal but we now
+            // have a real one — recompute and refresh once so the PaymentIntent
+            // reflects the intended tip. Re-entry is bounded: the second pass
+            // sees a non-zero subtotal and won't loop.
+            if neededReRefresh, fresh.tip == 0, fresh.subtotal > 0, currentTipCents() > 0 {
+                await refreshBundle()
+            }
         } catch {
             guard gen == bundleGeneration, !Task.isCancelled else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -172,11 +193,28 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// dev stub mode (no Stripe key configured server-side) this short-
     /// circuits and marks the payment as succeeded immediately so the rest
     /// of the flow stays testable locally.
+    /// Validates the chosen scheduled time BEFORE any card is charged. A
+    /// just-passed scheduled time must stop the flow here — once the card is
+    /// charged, blocking order creation leaves an unrecoverable
+    /// 'payment received, no order' state. Returns false (and sets
+    /// errorMessage) when the time has already passed.
+    private func scheduledTimeIsValid() -> Bool {
+        if let scheduled = scheduledFor, scheduled < Date() {
+            errorMessage = "Your scheduled time has passed. Please select a new time."
+            return false
+        }
+        return true
+    }
+
     func presentAndChargePaymentSheet(bundle: APIService.PaymentSheetBundle) async {
         paymentSucceeded = false
         isProcessing = true
         errorMessage = nil
         defer { isProcessing = false }
+
+        // Pre-charge validation: a stale scheduled time must abort before the
+        // card is charged, never after (see placeOrder).
+        guard scheduledTimeIsValid() else { return }
 
         if bundle.isStub {
             paymentSucceeded = true
@@ -257,6 +295,10 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         errorMessage = nil
         defer { isProcessing = false }
 
+        // Pre-charge validation: a stale scheduled time must abort before the
+        // card is charged, never after (see placeOrder).
+        guard scheduledTimeIsValid() else { return }
+
         if bundle.isStub {
             // Mirror the PaymentSheet dev-stub behaviour so reviewers without
             // real Stripe keys still get through the flow.
@@ -329,10 +371,12 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     func placeOrder(address: Address?, bundle: APIService.PaymentSheetBundle) async -> Order? {
         guard !isProcessing else { return nil }
 
-        if let scheduled = scheduledFor, scheduled < Date() {
-            errorMessage = "Your scheduled time has passed. Please select a new time."
-            return nil
-        }
+        // NOTE: the scheduled-time check lives in presentAndChargePaymentSheet /
+        // presentApplePayExpress, BEFORE the card is charged. We must NOT block
+        // here post-charge — that would strand a paid customer with no order.
+        // If the scheduled time has just passed the backend falls back to ASAP
+        // (status 'pending'), so we always send the request and let the server
+        // decide.
 
         isProcessing = true
         defer { isProcessing = false }

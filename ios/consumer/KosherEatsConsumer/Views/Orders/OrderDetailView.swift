@@ -67,14 +67,28 @@ struct OrderDetailView: View {
                         // Price breakdown
                         priceBreakdown(order: order)
 
-                        // Cancel button
-                        if order.status == .pending || order.status == .accepted {
+                        // Cancel button. `.scheduled` is included so a customer
+                        // who booked dinner in advance can cancel and be refunded
+                        // in-app. NOTE: the backend CancelOrder whitelist
+                        // (orders.go: status IN (pending, accepted)) currently does
+                        // NOT include models.OrderScheduled, so a scheduled-order
+                        // cancel returns 400 until that companion change lands —
+                        // see backendFollowups. Until then the failure surfaces
+                        // gracefully via the error alert below rather than silently
+                        // hiding the action.
+                        if order.status == .scheduled || order.status == .pending || order.status == .accepted {
                             Button {
                                 Task { await vm.cancelOrder(id: order.id) }
                             } label: {
-                                Text("Cancel Order")
+                                if vm.isCancelling {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    Text("Cancel Order")
+                                }
                             }
                             .buttonStyle(KESecondaryButtonStyle())
+                            .disabled(vm.isCancelling)
                             .padding(.horizontal)
                         }
 
@@ -94,6 +108,18 @@ struct OrderDetailView: View {
         }
         .navigationTitle("Order Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            String(localized: "Couldn't cancel order"),
+            isPresented: Binding(
+                get: { vm.cancelError != nil },
+                set: { if !$0 { vm.cancelError = nil } }
+            ),
+            presenting: vm.cancelError
+        ) { _ in
+            Button(String(localized: "OK"), role: .cancel) { vm.cancelError = nil }
+        } message: { message in
+            Text(message)
+        }
         .task {
             await vm.loadOrder(id: orderID)
             if vm.currentOrder?.status.isActive == true {

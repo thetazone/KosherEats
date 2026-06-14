@@ -413,7 +413,7 @@ fun CreateDealScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                DiscountType.entries.forEach { type ->
+                DiscountType.entries.filter { it != DiscountType.UNKNOWN }.forEach { type ->
                     val selected = discountType == type
                     Box(
                         modifier = Modifier
@@ -626,8 +626,7 @@ fun CreateDealScreen(
                     val discountValueCents = when (discountType) {
                         DiscountType.PERCENTAGE -> (discountValue.toDoubleOrNull() ?: 0.0).coerceIn(1.0, 99.0).roundToInt()
                         DiscountType.FIXED -> dollarsToCents(discountValue).coerceAtLeast(1)
-                        DiscountType.BOGO -> 0
-                        DiscountType.UNKNOWN -> 0
+                        else -> 0
                     }
 
                     val minOrderCents = dollarsToCents(minOrderAmount).let {

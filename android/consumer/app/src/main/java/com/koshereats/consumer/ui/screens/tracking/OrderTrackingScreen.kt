@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
@@ -84,11 +85,29 @@ fun OrderTrackingScreen(
     orderId: String,
     onBack: () -> Unit,
     onChat: (String) -> Unit,
+    onRate: (String) -> Unit = {},
     vm: OrderTrackingViewModel = hiltViewModel(),
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Auto-prompt for a courier rating once the order is delivered with a courier
+    // and no prior rating (mirrors iOS OrderTrackingView.maybePromptForRating).
+    // rememberSaveable so a config change / re-emit of the same DELIVERED state
+    // doesn't re-trigger the navigation after the user has been sent to rate.
+    var ratingPrompted by rememberSaveable(orderId) { mutableStateOf(false) }
+    LaunchedEffect(state.order?.status, state.order?.courier?.id, state.order?.courierRating) {
+        val o = state.order ?: return@LaunchedEffect
+        if (!ratingPrompted &&
+            o.status == OrderStatus.DELIVERED &&
+            o.courier != null &&
+            o.courierRating == null
+        ) {
+            ratingPrompted = true
+            onRate(orderId)
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(orderId, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

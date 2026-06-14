@@ -259,35 +259,45 @@ fun NavGraph(
                 }
             }
 
-            // Menu
-            composable(Screen.Menu.route) {
-                MenuManagementScreen(
-                    onAddItem = {
-                        navController.navigate(Screen.MenuItemForm.createRoute())
-                    },
-                    onEditItem = { itemId ->
-                        navController.navigate(Screen.MenuItemForm.createRoute(itemId))
-                    },
-                )
-            }
+            // Menu + Menu Item Form share one MenuViewModel via nested-graph scope, so
+            // the form's post-save loadMenuItems() refreshes the list the seller returns to.
+            navigation(startDestination = Screen.Menu.route, route = "menu_graph") {
+                composable(Screen.Menu.route) { backStackEntry ->
+                    val parentEntry = remember(backStackEntry) {
+                        navController.getBackStackEntry("menu_graph")
+                    }
+                    MenuManagementScreen(
+                        viewModel = hiltViewModel(parentEntry),
+                        onAddItem = {
+                            navController.navigate(Screen.MenuItemForm.createRoute())
+                        },
+                        onEditItem = { itemId ->
+                            navController.navigate(Screen.MenuItemForm.createRoute(itemId))
+                        },
+                    )
+                }
 
-            // Menu Item Form
-            composable(
-                route = Screen.MenuItemForm.route,
-                arguments = listOf(
-                    navArgument("itemId") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                ),
-            ) { backStackEntry ->
-                val itemId = backStackEntry.arguments?.getString("itemId")
-                MenuItemFormScreen(
-                    itemId = itemId,
-                    onBack = { navController.popBackStack() },
-                    onSaved = { navController.popBackStack() },
-                )
+                composable(
+                    route = Screen.MenuItemForm.route,
+                    arguments = listOf(
+                        navArgument("itemId") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                    ),
+                ) { backStackEntry ->
+                    val itemId = backStackEntry.arguments?.getString("itemId")
+                    val parentEntry = remember(backStackEntry) {
+                        navController.getBackStackEntry("menu_graph")
+                    }
+                    MenuItemFormScreen(
+                        itemId = itemId,
+                        viewModel = hiltViewModel(parentEntry),
+                        onBack = { navController.popBackStack() },
+                        onSaved = { navController.popBackStack() },
+                    )
+                }
             }
 
             // Deals

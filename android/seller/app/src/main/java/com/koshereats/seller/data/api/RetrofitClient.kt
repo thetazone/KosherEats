@@ -188,6 +188,14 @@ private class TokenAuthenticator(
         val path = response.request.url.encodedPath
         if (path.contains("/auth/")) return null
 
+        // A 401 on a request that carried no Authorization header means the app
+        // was never authenticated for this call (e.g. a cold-start race, or a
+        // public endpoint rejecting an anonymous request). Treating it as a
+        // session expiry would clear DataStore and flip sessionExpired, which
+        // drives AuthViewModel.clearAuth() → unregisterDevice() — itself a fresh
+        // request that can 401 again, forming a feedback loop. Just give up.
+        if (response.request.header("Authorization") == null) return null
+
         synchronized(lock) {
             val currentToken = NetworkModule.cachedToken
             val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
@@ -203,34 +211,46 @@ private class TokenAuthenticator(
                 return null
             }
 
-            val newTokens = tryRefresh(refreshToken) ?: run {
-                signalSessionExpired()
-                return null
-            }
-
-            android.util.Log.i("RetrofitClient", "Token refresh succeeded")
-            NetworkModule.cachedToken = newTokens.first
-            NetworkModule.cachedRefreshToken = newTokens.second
-            // Persist asynchronously — cachedToken is the runtime source of truth,
-            // so blocking OkHttp dispatcher threads for a DataStore write is unnecessary.
-            // Guard: if clearAuth/signalSessionExpired nulled cachedToken before this
-            // coroutine runs, skip the write so we don't ghost-persist a stale token.
-            appScope.launch {
-                if (NetworkModule.cachedToken == newTokens.first) {
-                    context.dataStore.edit { prefs ->
-                        prefs[PrefsKeys.AUTH_TOKEN] = newTokens.first
-                        prefs[PrefsKeys.REFRESH_TOKEN] = newTokens.second
+            return when (val result = tryRefresh(refreshToken)) {
+                is RefreshResult.Success -> {
+                    android.util.Log.i("RetrofitClient", "Token refresh succeeded")
+                    NetworkModule.cachedToken = result.accessToken
+                    NetworkModule.cachedRefreshToken = result.refreshToken
+                    // Persist asynchronously — cachedToken is the runtime source of truth,
+                    // so blocking OkHttp dispatcher threads for a DataStore write is unnecessary.
+                    // Guard: if clearAuth/signalSessionExpired nulled cachedToken before this
+                    // coroutine runs, skip the write so we don't ghost-persist a stale token.
+                    appScope.launch {
+                        if (NetworkModule.cachedToken == result.accessToken) {
+                            context.dataStore.edit { prefs ->
+                                prefs[PrefsKeys.AUTH_TOKEN] = result.accessToken
+                                prefs[PrefsKeys.REFRESH_TOKEN] = result.refreshToken
+                            }
+                        }
                     }
+                    response.request.newBuilder()
+                        .header("Authorization", "Bearer ${result.accessToken}")
+                        .build()
                 }
+                // Only a genuine 401 from /auth/refresh means the refresh token is
+                // dead — log the seller out. Transient failures (network, 5xx,
+                // malformed body) must NOT destroy a still-valid refresh token.
+                RefreshResult.Unauthorized -> {
+                    signalSessionExpired()
+                    null
+                }
+                is RefreshResult.Failure -> null
             }
-
-            return response.request.newBuilder()
-                .header("Authorization", "Bearer ${newTokens.first}")
-                .build()
         }
     }
 
-    private fun tryRefresh(refreshToken: String): Pair<String, String>? {
+    private sealed class RefreshResult {
+        data class Success(val accessToken: String, val refreshToken: String) : RefreshResult()
+        object Unauthorized : RefreshResult()
+        data class Failure(val reason: String) : RefreshResult()
+    }
+
+    private fun tryRefresh(refreshToken: String): RefreshResult {
         val json = JSONObject().put("refresh_token", refreshToken).toString()
         val body = json.toRequestBody("application/json".toMediaType())
         val request = okhttp3.Request.Builder()
@@ -240,30 +260,37 @@ private class TokenAuthenticator(
 
         return try {
             refreshClient.newCall(request).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    val bodyStr = resp.body?.string()
-                    if (bodyStr.isNullOrBlank()) {
-                        android.util.Log.w("RetrofitClient", "Token refresh: empty body")
-                        return@use null
+                when {
+                    resp.isSuccessful -> {
+                        val bodyStr = resp.body?.string()
+                        if (bodyStr.isNullOrBlank()) {
+                            android.util.Log.w("RetrofitClient", "Token refresh: empty body")
+                            return@use RefreshResult.Failure("empty_body")
+                        }
+                        val adapter = moshi.adapter(RefreshResponse::class.java)
+                        val parsed = try {
+                            adapter.fromJson(bodyStr)
+                        } catch (e: Exception) {
+                            android.util.Log.w("RetrofitClient", "Token refresh: bad JSON", e)
+                            return@use RefreshResult.Failure("json_parse")
+                        } ?: return@use RefreshResult.Failure("null_parse")
+                        val token = parsed.token.ifBlank { return@use RefreshResult.Failure("missing_token") }
+                        val refresh = parsed.refreshToken.ifBlank { return@use RefreshResult.Failure("missing_refresh") }
+                        RefreshResult.Success(token, refresh)
                     }
-                    val adapter = moshi.adapter(RefreshResponse::class.java)
-                    val parsed = try {
-                        adapter.fromJson(bodyStr)
-                    } catch (e: Exception) {
-                        android.util.Log.w("RetrofitClient", "Token refresh: bad JSON", e)
-                        null
-                    } ?: return@use null
-                    val token = parsed.token.ifBlank { return@use null }
-                    val refresh = parsed.refreshToken.ifBlank { return@use null }
-                    Pair(token, refresh)
-                } else {
-                    android.util.Log.w("RetrofitClient", "Token refresh failed: HTTP ${resp.code}")
-                    null
+                    resp.code == 401 -> {
+                        android.util.Log.w("RetrofitClient", "Token refresh rejected: HTTP 401")
+                        RefreshResult.Unauthorized
+                    }
+                    else -> {
+                        android.util.Log.w("RetrofitClient", "Token refresh failed: HTTP ${resp.code}")
+                        RefreshResult.Failure("http_${resp.code}")
+                    }
                 }
             }
         } catch (e: Exception) {
             android.util.Log.w("RetrofitClient", "Token refresh threw", e)
-            null
+            RefreshResult.Failure("network")
         }
     }
 

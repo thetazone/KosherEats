@@ -702,6 +702,18 @@ actor APIService {
         try await requestVoid("POST", path: "/devices/register",
                               body: Body(token: token, platform: platform, app: app))
     }
+
+    /// Removes this device's APNs token from the backend so a logged-out phone
+    /// stops receiving the previous user's order/chat pushes. Must run while the
+    /// bearer token is still set — the backend keys the delete on
+    /// (user_id, token, app), so AuthViewModel calls this BEFORE clearing tokens.
+    /// Mirrors Android's `ApiService.unregisterDevice` + the `/devices/unregister`
+    /// route in cmd/api/main.go.
+    func unregisterDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid("POST", path: "/devices/unregister",
+                              body: Body(token: token, platform: platform, app: app))
+    }
 }
 
 // MARK: - Request Models

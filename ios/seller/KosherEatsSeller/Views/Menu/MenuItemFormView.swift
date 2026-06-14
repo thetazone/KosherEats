@@ -4,8 +4,14 @@ import PhotosUI
 struct MenuItemFormView: View {
     let categories: [MenuCategory]
     var existingItem: MenuItem?
-    // Args: categoryId, name, description, priceCents, imageUrl, isMeat, isDairy, isPareve
-    let onSave: (String, String, String, Int, String, Bool, Bool, Bool) -> Void
+    // Args: categoryId, name, description, priceCents, imageUrl, isMeat, isDairy, isPareve.
+    // Async + awaited: the form keeps the Save button disabled for the full
+    // duration of the create/update request (NOT a hardcoded timer), so a second
+    // tap on a slow network can't fire a duplicate. Returns the failure message
+    // on error (or nil on success); the form renders it inline above Save and
+    // keeps the sheet open so a failed price edit can't masquerade as a success.
+    // On success the parent dismisses the sheet.
+    let onSave: (String, String, String, Int, String, Bool, Bool, Bool) async -> String?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -23,6 +29,18 @@ struct MenuItemFormView: View {
     @State private var pickedUIImage: UIImage?
     @State private var isUploading = false
     @State private var uploadError: String?
+
+    // Save-in-flight guard. Set the instant Save is tapped and held true for the
+    // entire awaited save request, so a rapid double-tap (even on a slow network)
+    // can't fire two create/update requests and duplicate the item. The parent
+    // dismisses the sheet on success; on failure `isSubmitting` flips back to
+    // false the moment the request returns and `saveError` is shown inline.
+    @State private var isSubmitting = false
+
+    // Failure feedback rendered ON this sheet (above Save). The parent's error
+    // toast lives behind the presented sheet and is invisible while it's up, so
+    // a failed save here would otherwise look like a success. nil = no error.
+    @State private var saveError: String?
 
     var isEditing: Bool { existingItem != nil }
 
@@ -170,21 +188,47 @@ struct MenuItemFormView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
+                        // Inline save-failure feedback. Rendered here (on the
+                        // sheet, directly above Save) because the parent's error
+                        // toast sits behind the presented sheet and is invisible
+                        // while it's up — so a failed price edit would otherwise
+                        // look like it saved.
+                        if let saveError {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.keError)
+                                Text(saveError)
+                                    .font(.subheadline)
+                                    .foregroundColor(.keError)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.keError.opacity(0.12))
+                            .cornerRadius(12)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Save failed: \(saveError)")
+                        }
+
                         // Save Button
                         Button {
-                            // priceText is dollars as typed; convert to cents.
-                            let priceCents = Int(round((Double(priceText) ?? 0) * 100))
-                            let trimmedName = name.trimmingCharacters(in: .whitespaces)
-                            Haptics.impact(.light)
-                            onSave(selectedCategoryId, trimmedName, description, priceCents, imageUrl, isMeat, isDairy, isPareve)
+                            submit()
                         } label: {
-                            Text(isEditing ? "Update Item" : "Add Item")
-                                .font(.headline)
-                                .foregroundColor(.keTextOnAccent)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 52)
-                                .background(canSave ? Color.kePrimary : Color.kePrimary.opacity(0.4))
-                                .cornerRadius(14)
+                            Group {
+                                if isSubmitting {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .keTextOnAccent))
+                                } else {
+                                    Text(isEditing ? "Update Item" : "Add Item")
+                                        .font(.headline)
+                                }
+                            }
+                            .foregroundColor(.keTextOnAccent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(canSave ? Color.kePrimary : Color.kePrimary.opacity(0.4))
+                            .cornerRadius(14)
                         }
                         .disabled(!canSave)
                     }
@@ -294,7 +338,42 @@ struct MenuItemFormView: View {
             priceCents > 0 && priceCents <= 999_999 &&
             (isMeat || isDairy || isPareve) &&
             !isUploading &&
+            !isSubmitting &&
             (pickerItem == nil || uploadError == nil)
+    }
+
+    /// Fires the save and keeps the Save button disabled for the FULL duration
+    /// of the awaited request, so a rapid double-tap — even on a slow network —
+    /// can't fire two create/update requests and duplicate the item. The button
+    /// only re-enables once the request actually returns (no magic-number
+    /// timer). On success the parent dismisses the sheet; on failure the sheet
+    /// stays open and the error is rendered inline above Save so a failed price
+    /// edit can't look like a success.
+    private func submit() {
+        guard !isSubmitting else { return }
+        // priceText is dollars as typed; convert to cents.
+        let priceCents = Int(round((Double(priceText) ?? 0) * 100))
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+
+        isSubmitting = true
+        saveError = nil
+        Haptics.impact(.light)
+
+        Task { @MainActor in
+            let error = await onSave(
+                selectedCategoryId, trimmedName, description, priceCents,
+                imageUrl, isMeat, isDairy, isPareve
+            )
+            // Tie re-enable to ACTUAL completion. On success the parent dismisses
+            // the sheet (this view is torn down, so the assignments below are a
+            // harmless no-op). On failure we surface the message inline and
+            // re-enable for a retry.
+            if let error {
+                saveError = error
+                Haptics.error()
+            }
+            isSubmitting = false
+        }
     }
 
     // MARK: - Photo picker

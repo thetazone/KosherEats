@@ -21,7 +21,18 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HomeUiState(
+    // The list the feed actually renders. This is the raw server list with the
+    // active cuisine/kosher filters applied client-side: the backend ignores all
+    // filter query params and always returns the same set, so filtering must
+    // happen here for the feed to be truthful (mirrors iOS
+    // RestaurantStore.filteredRestaurants). HomeScreen renders this field
+    // directly, so it MUST hold the post-filter list — not the raw set.
     val allRestaurants: List<Restaurant> = emptyList(),
+    // Raw, unfiltered list as returned by the server. Backs client-side filtering
+    // and pagination dedup, and is the correct source for KosherFilterSheet's live
+    // preview counts (which must count over the full population, not the already
+    // filtered feed).
+    val rawRestaurants: List<Restaurant> = emptyList(),
     val suggestedRestaurants: List<Restaurant> = emptyList(),
     val isSuggestedLoading: Boolean = false,
     val searchResults: List<Restaurant> = emptyList(),
@@ -51,6 +62,10 @@ class HomeViewModel @Inject constructor(
     private var loadMoreJob: Job? = null
 
     // Emitting a new value here cancels any in-flight getRestaurants call via flatMapLatest.
+    // `generation` is a monotonic nonce bumped on every (re)load so structurally
+    // identical triggers (e.g. pull-to-refresh on the default page-1 feed) still
+    // emit — MutableStateFlow conflates equal values, which would otherwise leave
+    // the refresh spinner stuck and skip the refetch.
     private data class LoadTrigger(
         val page: Int = 1,
         val cuisine: CuisineType? = null,
@@ -58,6 +73,7 @@ class HomeViewModel @Inject constructor(
         val cholovYisroelOnly: Boolean = false,
         val pasYisroelOnly: Boolean = false,
         val certifications: Set<KosherCertification> = emptySet(),
+        val generation: Long = 0,
     )
 
     private val loadTrigger = MutableStateFlow(LoadTrigger())
@@ -82,13 +98,29 @@ class HomeViewModel @Inject constructor(
                         }
                         is Resource.Success -> {
                             _uiState.update { state ->
-                                val newItems = if (page == 1) result.data else state.allRestaurants + result.data
+                                // Dedupe by id against the RAW list: the backend currently ignores
+                                // page/per_page and returns the same set on every page, so a naive
+                                // append would add duplicate restaurants and crash the LazyColumn
+                                // (which keys by id).
+                                val merged = if (page == 1) {
+                                    result.data.distinctBy { it.id }
+                                } else {
+                                    (state.rawRestaurants + result.data).distinctBy { it.id }
+                                }
+                                // Only consider there to be more pages if this page actually grew
+                                // the list AND came back full. If a page brought no new ids
+                                // (server didn't paginate), stop — otherwise loadMore() would loop.
+                                val grew = merged.size > state.rawRestaurants.size || page == 1
+                                val hasMore = grew &&
+                                    result.data.size >= ApiPaging.RESTAURANTS_PAGE_SIZE
                                 state.copy(
-                                    allRestaurants = newItems,
+                                    rawRestaurants = merged,
+                                    // The feed renders allRestaurants, so it must be the filtered view.
+                                    allRestaurants = applyFilters(merged, state),
                                     isLoading = false,
                                     isRefreshing = false,
                                     currentPage = page,
-                                    hasMore = result.data.size >= ApiPaging.RESTAURANTS_PAGE_SIZE,
+                                    hasMore = hasMore,
                                 )
                             }
                         }
@@ -120,6 +152,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    // Client-side cuisine + kosher filtering. The backend ignores all filter
+    // query params and always returns the same set, so the UI must filter the
+    // fetched list itself to be truthful. AND-combined, mirroring iOS
+    // RestaurantStore.filteredRestaurants.
+    private fun applyFilters(source: List<Restaurant>, state: HomeUiState): List<Restaurant> =
+        source.filter { r ->
+            val cuisineOk = state.selectedCuisine == null ||
+                r.cuisineTypes.contains(state.selectedCuisine)
+            val glattOk = !state.filterGlattOnly || r.isGlattKosher
+            val cholovOk = !state.filterCholovYisroelOnly || r.isCholovYisroel
+            val pasOk = !state.filterPasYisroelOnly || r.isPasYisroel
+            val certOk = state.filterCertifications.isEmpty() ||
+                r.kosherCertification in state.filterCertifications
+            cuisineOk && glattOk && cholovOk && pasOk && certOk
+        }
+
     private fun KosherCertification.toApiString(): String = when (this) {
         KosherCertification.STAR_K -> "Star-K"
         KosherCertification.KOF_K -> "Kof-K"
@@ -138,7 +186,10 @@ class HomeViewModel @Inject constructor(
         val nextPage = state.currentPage + 1
         loadMoreJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            loadTrigger.value = loadTrigger.value.copy(page = nextPage)
+            loadTrigger.value = loadTrigger.value.copy(
+                page = nextPage,
+                generation = loadTrigger.value.generation + 1,
+            )
         }
     }
 
@@ -168,22 +219,45 @@ class HomeViewModel @Inject constructor(
     }
 
     fun selectCuisine(cuisine: CuisineType?) {
-        _uiState.update { it.copy(selectedCuisine = cuisine) }
-        loadTrigger.value = loadTrigger.value.copy(cuisine = cuisine, page = 1)
+        // Re-filter the already-fetched list immediately so the feed updates
+        // even before the (no-op, server-ignores-filters) refetch resolves.
+        _uiState.update {
+            val next = it.copy(selectedCuisine = cuisine)
+            next.copy(allRestaurants = applyFilters(next.rawRestaurants, next))
+        }
+        loadTrigger.value = loadTrigger.value.copy(
+            cuisine = cuisine,
+            page = 1,
+            generation = loadTrigger.value.generation + 1,
+        )
         loadSuggested()
     }
 
     fun toggleGlattFilter() {
         val newValue = !_uiState.value.filterGlattOnly
-        _uiState.update { it.copy(filterGlattOnly = newValue) }
-        loadTrigger.value = loadTrigger.value.copy(glattOnly = newValue, page = 1)
+        _uiState.update {
+            val next = it.copy(filterGlattOnly = newValue)
+            next.copy(allRestaurants = applyFilters(next.rawRestaurants, next))
+        }
+        loadTrigger.value = loadTrigger.value.copy(
+            glattOnly = newValue,
+            page = 1,
+            generation = loadTrigger.value.generation + 1,
+        )
         loadSuggested()
     }
 
     fun toggleCholovYisroelFilter() {
         val newValue = !_uiState.value.filterCholovYisroelOnly
-        _uiState.update { it.copy(filterCholovYisroelOnly = newValue) }
-        loadTrigger.value = loadTrigger.value.copy(cholovYisroelOnly = newValue, page = 1)
+        _uiState.update {
+            val next = it.copy(filterCholovYisroelOnly = newValue)
+            next.copy(allRestaurants = applyFilters(next.rawRestaurants, next))
+        }
+        loadTrigger.value = loadTrigger.value.copy(
+            cholovYisroelOnly = newValue,
+            page = 1,
+            generation = loadTrigger.value.generation + 1,
+        )
         loadSuggested()
     }
 
@@ -194,12 +268,13 @@ class HomeViewModel @Inject constructor(
         certifications: Set<KosherCertification>,
     ) {
         _uiState.update {
-            it.copy(
+            val next = it.copy(
                 filterGlattOnly = glattOnly,
                 filterCholovYisroelOnly = cholovYisroelOnly,
                 filterPasYisroelOnly = pasYisroelOnly,
                 filterCertifications = certifications,
             )
+            next.copy(allRestaurants = applyFilters(next.rawRestaurants, next))
         }
         loadTrigger.value = loadTrigger.value.copy(
             glattOnly = glattOnly,
@@ -207,6 +282,7 @@ class HomeViewModel @Inject constructor(
             pasYisroelOnly = pasYisroelOnly,
             certifications = certifications,
             page = 1,
+            generation = loadTrigger.value.generation + 1,
         )
         loadSuggested()
     }
@@ -222,7 +298,14 @@ class HomeViewModel @Inject constructor(
 
     fun refresh() {
         _uiState.update { it.copy(currentPage = 1, hasMore = true, isRefreshing = true, error = null) }
-        loadTrigger.value = loadTrigger.value.copy(page = 1)
+        // Bump generation so the trigger always re-emits — without it, refreshing
+        // the default page-1 feed assigns a structurally identical value, which
+        // MutableStateFlow conflates, so nothing refetches and isRefreshing never
+        // clears (spinner spins forever).
+        loadTrigger.value = loadTrigger.value.copy(
+            page = 1,
+            generation = loadTrigger.value.generation + 1,
+        )
         loadSuggested()
     }
 }

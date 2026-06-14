@@ -266,7 +266,8 @@ struct RestaurantDetailView: View {
                             ForEach(items) { item in
                                 MenuItemView(
                                     item: item,
-                                    restaurantID: restaurantID
+                                    restaurantID: restaurantID,
+                                    restaurantName: vm.restaurant?.name
                                 )
                                 .padding(.horizontal)
                             }

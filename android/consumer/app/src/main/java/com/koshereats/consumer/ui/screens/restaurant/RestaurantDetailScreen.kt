@@ -203,6 +203,23 @@ fun RestaurantDetailScreen(
                                 )
                         )
 
+                        // Closed overlay — mirrors iOS RestaurantDetailView + home card
+                        if (!restaurant.isOpen) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(BackgroundBlack.copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Currently Closed",
+                                    color = TextWhite,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                            }
+                        }
+
                         // Restaurant name at bottom of hero
                         Column(
                             modifier = Modifier
@@ -241,6 +258,31 @@ fun RestaurantDetailScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = TextTertiary,
                         )
+
+                        if (!restaurant.isOpen) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ErrorRed.copy(alpha = 0.12f))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Filled.Schedule,
+                                    contentDescription = null,
+                                    tint = ErrorRed,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Currently closed — not accepting orders right now.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary,
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -327,7 +369,7 @@ fun RestaurantDetailScreen(
                                                 .find { it.id == deal.menuItemId }
                                             if (linkedItem != null) {
                                                 cartViewModel.applyDeal(deal)
-                                                sheetItem = linkedItem
+                                                if (restaurant.isOpen) sheetItem = linkedItem
                                             }
                                         } else {
                                             cartViewModel.applyDeal(deal)
@@ -408,7 +450,8 @@ fun RestaurantDetailScreen(
                         items(selectedCategory.items, key = { it.id }) { menuItem ->
                             VerticalMenuItemCard(
                                 menuItem = menuItem,
-                                onClick = { sheetItem = menuItem },
+                                isOrderable = restaurant.isOpen,
+                                onClick = { if (restaurant.isOpen) sheetItem = menuItem },
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 10.dp),
@@ -539,7 +582,7 @@ fun RestaurantDetailScreen(
                 val linkedItem = uiState.menuCategories
                     .flatMap { it.items }
                     .find { it.id == pendingDeal.menuItemId }
-                if (linkedItem != null) {
+                if (linkedItem != null && restaurant?.isOpen == true) {
                     sheetItem = linkedItem
                 }
                 cartViewModel.clearPendingDealItem()
@@ -551,7 +594,7 @@ fun RestaurantDetailScreen(
             MenuItemSheet(
                 menuItem = item,
                 onDismiss = { sheetItem = null },
-                onAddToCart = { qty, customizations, instructions ->
+                onAddToCart = { qty, modifiers, instructions ->
                     if (activeRestaurant == null) return@MenuItemSheet
                     cartViewModel.addItem(
                         menuItem = item,
@@ -559,7 +602,7 @@ fun RestaurantDetailScreen(
                         restaurantName = activeRestaurant.name,
                         restaurantImageUrl = activeRestaurant.logoUrl ?: activeRestaurant.imageUrl,
                         quantity = qty,
-                        selectedCustomizations = customizations,
+                        selectedModifiers = modifiers,
                         specialInstructions = instructions,
                     )
                 },
@@ -689,13 +732,14 @@ fun VerticalMenuItemCard(
     menuItem: MenuItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isOrderable: Boolean = true,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
-            .clickable(onClick = onClick)
+            .clickable(enabled = isOrderable, onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -737,7 +781,7 @@ fun VerticalMenuItemCard(
                 placeholder = ColorPainter(SurfaceDark),
                 error = ColorPainter(SurfaceDark),
             )
-            if (menuItem.isAvailable) {
+            if (menuItem.isAvailable && isOrderable) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

@@ -31,8 +31,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -124,10 +122,6 @@ fun MenuItemFormScreen(
     var isPareve by rememberSaveable { mutableStateOf(false) }
     var isDairy by rememberSaveable { mutableStateOf(false) }
     var isMeat by rememberSaveable { mutableStateOf(false) }
-    var spiceLevel by rememberSaveable { mutableStateOf("") }
-    var prepTime by rememberSaveable { mutableStateOf("15") }
-    var caloriesInput by rememberSaveable { mutableStateOf("") }
-    var allergensStr by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isUploadingImage by remember { mutableStateOf(false) }
@@ -171,10 +165,6 @@ fun MenuItemFormScreen(
             isPareve = item.isKosherPareve
             isDairy = item.isDairy
             isMeat = item.isMeat
-            spiceLevel = if (item.spiceLevel > 0) item.spiceLevel.toString() else ""
-            prepTime = item.preparationTime.toString()
-            caloriesInput = item.calories?.toString() ?: ""
-            allergensStr = item.allergens.joinToString(",")
             formInitialized = true
         } ?: run {
             // Only mark initialized for new items; for edit, wait until selectedItem arrives.
@@ -187,10 +177,6 @@ fun MenuItemFormScreen(
                 isPareve = false
                 isDairy = false
                 isMeat = false
-                spiceLevel = ""
-                prepTime = "15"
-                caloriesInput = ""
-                allergensStr = ""
                 formInitialized = true
             }
         }
@@ -410,96 +396,6 @@ fun MenuItemFormScreen(
                 }
             }
 
-            // Spice level (optional)
-            OutlinedTextField(
-                value = spiceLevel,
-                onValueChange = { v ->
-                    val n = v.filter { it.isDigit() }
-                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 5) spiceLevel = n
-                },
-                label = { Text("Spice Level (0-5, optional)") },
-                singleLine = true,
-                enabled = formInitialized || !isEditing,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // Prep time
-            OutlinedTextField(
-                value = prepTime,
-                onValueChange = { v ->
-                    val n = v.filter { it.isDigit() }
-                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 120) prepTime = n
-                },
-                label = { Text("Prep Time (min, 1–120)") },
-                singleLine = true,
-                enabled = formInitialized || !isEditing,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // Calories (optional)
-            OutlinedTextField(
-                value = caloriesInput,
-                onValueChange = { v ->
-                    val n = v.filter { it.isDigit() }
-                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 9999) caloriesInput = n
-                },
-                label = { Text("Calories (optional)") },
-                singleLine = true,
-                enabled = formInitialized || !isEditing,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // Allergens
-            Text(
-                text = "Allergens",
-                style = MaterialTheme.typography.titleSmall,
-                color = TextWhite,
-                fontWeight = FontWeight.SemiBold,
-            )
-            val allergenOptions = listOf("gluten", "dairy", "eggs", "nuts", "peanuts", "soy", "fish", "shellfish")
-            allergenOptions.chunked(4).forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    rowItems.forEach { allergen ->
-                        val isSelected = allergen in allergensStr.split(",")
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                if (formInitialized || !isEditing) {
-                                    val current = allergensStr.split(",").filter { it.isNotBlank() }.toMutableSet()
-                                    if (allergen in current) current.remove(allergen) else current.add(allergen)
-                                    allergensStr = current.joinToString(",")
-                                }
-                            },
-                            label = {
-                                Text(
-                                    allergen.replaceFirstChar { it.uppercase() },
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = SurfaceDark,
-                                labelColor = TextMuted,
-                                selectedContainerColor = Orange.copy(alpha = 0.2f),
-                                selectedLabelColor = Orange,
-                            ),
-                        )
-                    }
-                }
-            }
-
             // Kosher type checkboxes
             Text(
                 text = "Kosher Type",
@@ -615,10 +511,6 @@ fun MenuItemFormScreen(
                         isKosherPareve = isPareve,
                         isDairy = isDairy,
                         isMeat = isMeat,
-                        spiceLevel = spiceLevel.toIntOrNull(),
-                        preparationTime = prepTime.toIntOrNull()?.coerceIn(1, 120),
-                        calories = caloriesInput.toIntOrNull(),
-                        allergens = allergensStr.split(",").filter { it.isNotBlank() },
                     )
                     if (isEditing && itemId != null) {
                         viewModel.updateMenuItem(itemId, request)

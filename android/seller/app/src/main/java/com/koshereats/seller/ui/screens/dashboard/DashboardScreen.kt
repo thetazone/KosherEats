@@ -85,6 +85,17 @@ fun DashboardScreen(
         }
     }
 
+    // Open/Closed toggle failures land in authState.toggleError. The switch's
+    // checked state is bound to restaurant.isOpen (which the ViewModel leaves
+    // untouched on failure), so it already reverts on its own — here we just
+    // surface the error so the failure isn't silent.
+    LaunchedEffect(authState.toggleError) {
+        authState.toggleError?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            authViewModel.clearToggleError()
+        }
+    }
+
     DisposableEffect(Unit) {
         viewModel.startPolling()
         onDispose { viewModel.stopPolling() }

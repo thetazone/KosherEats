@@ -65,7 +65,7 @@ import com.koshereats.consumer.ui.viewmodels.OrdersViewModel
 @Composable
 fun OrdersScreen(
     onOrderClick: (String) -> Unit,
-    onReorderClick: (String) -> Unit,
+    onReorderClick: (Order) -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -140,7 +140,7 @@ fun OrdersScreen(
                         OrderCard(
                             order = order,
                             onClick = { onOrderClick(order.id) },
-                            onReorder = { onReorderClick(order.restaurantId) },
+                            onReorder = { onReorderClick(order) },
                         )
                     }
 

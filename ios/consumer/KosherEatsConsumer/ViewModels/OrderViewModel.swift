@@ -6,6 +6,14 @@ class OrderViewModel: ObservableObject {
     @Published var currentOrder: Order?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Set when a cancel request fails (e.g. the backend rejects the status).
+    /// Kept separate from `errorMessage` so a cancel failure surfaces as a
+    /// transient alert while the loaded order stays on screen, rather than
+    /// replacing the whole detail view with the load-error state.
+    @Published var cancelError: String?
+    /// True while a cancel request is in flight, to disable the button and
+    /// show a spinner.
+    @Published var isCancelling = false
 
     private let api = APIService.shared
     /// Handle for the in-flight poll loop started by `startPolling`. Storing
@@ -77,6 +85,10 @@ class OrderViewModel: ObservableObject {
     }
 
     func cancelOrder(id: String) async {
+        guard !isCancelling else { return }
+        isCancelling = true
+        cancelError = nil
+        defer { isCancelling = false }
         do {
             currentOrder = try await api.cancelOrder(id: id)
             if let index = orders.firstIndex(where: { $0.id == id }),
@@ -84,8 +96,20 @@ class OrderViewModel: ObservableObject {
                 orders[index] = updated
             }
         } catch {
-            errorMessage = error.localizedDescription
+            // Surface a friendly message; the backend currently 400s on a
+            // scheduled-order cancel until the whitelist companion change lands.
+            cancelError = cancelFailureMessage(for: error)
         }
+    }
+
+    /// Human-readable copy for a failed cancel. A 4xx from the server (e.g. the
+    /// status isn't in the CancelOrder whitelist) gets actionable phrasing;
+    /// everything else falls back to the underlying error description.
+    private func cancelFailureMessage(for error: Error) -> String {
+        if case let APIError.httpError(code, _) = error, (400..<500).contains(code) {
+            return String(localized: "This order can't be cancelled in the app right now. Please contact support to cancel and request a refund.")
+        }
+        return error.localizedDescription
     }
 
     func startPolling(orderID: String) {

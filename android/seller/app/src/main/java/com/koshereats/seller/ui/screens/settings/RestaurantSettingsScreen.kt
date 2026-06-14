@@ -6,7 +6,9 @@ import com.koshereats.seller.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,16 +23,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -40,9 +44,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,18 +61,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.Restaurant
-import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -101,11 +109,24 @@ fun RestaurantSettingsScreen(
     val scope = rememberCoroutineScope()
     var isUploadingCertificate by remember { mutableStateOf(false) }
     var showCertificate by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var isDeletingAccount by remember { mutableStateOf(false) }
 
     LaunchedEffect(authState.updateFieldError) {
         if (authState.updateFieldError != null) {
             Toast.makeText(context, authState.updateFieldError, Toast.LENGTH_SHORT).show()
             authViewModel.clearUpdateFieldError()
+        }
+    }
+
+    // Open/Closed toggle failures land in authState.toggleError. The switch's
+    // checked state is bound to restaurant.isOpen (left untouched by the
+    // ViewModel on failure) so it reverts on its own; surface the error so the
+    // failed toggle isn't silent.
+    LaunchedEffect(authState.toggleError) {
+        authState.toggleError?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            authViewModel.clearToggleError()
         }
     }
 
@@ -124,6 +145,51 @@ fun RestaurantSettingsScreen(
             isUploadingCertificate = false
         }
     }
+
+    // --- Editable form state, re-seeded whenever the loaded restaurant changes ---
+    // Keyed off id so a restaurant switch (or first load) repopulates the fields,
+    // but ordinary recompositions keep the seller's in-progress edits.
+    val restaurantKey = restaurant?.id
+    var name by remember(restaurantKey) { mutableStateOf(restaurant?.name.orEmpty()) }
+    var description by remember(restaurantKey) { mutableStateOf(restaurant?.description.orEmpty()) }
+    var phone by remember(restaurantKey) { mutableStateOf(restaurant?.phone.orEmpty()) }
+    var email by remember(restaurantKey) { mutableStateOf(restaurant?.email.orEmpty()) }
+    var street by remember(restaurantKey) { mutableStateOf(restaurant?.street.orEmpty()) }
+    var city by remember(restaurantKey) { mutableStateOf(restaurant?.city.orEmpty()) }
+    var state by remember(restaurantKey) { mutableStateOf(restaurant?.state.orEmpty()) }
+    var zipCode by remember(restaurantKey) { mutableStateOf(restaurant?.zipCode.orEmpty()) }
+    // Money fields are stored as integer cents; show dollars in the inputs.
+    var deliveryFee by remember(restaurantKey) {
+        mutableStateOf(centsToDollarString(restaurant?.deliveryFee ?: 0))
+    }
+    var minOrder by remember(restaurantKey) {
+        mutableStateOf(centsToDollarString(restaurant?.minimumOrder ?: 0))
+    }
+    var estDeliveryMin by remember(restaurantKey) {
+        mutableStateOf((restaurant?.averagePrepTime ?: 0).toString())
+    }
+    var estDeliveryMax by remember(restaurantKey) {
+        mutableStateOf((restaurant?.estDeliveryMax ?: 0).toString())
+    }
+    var kosherCert by remember(restaurantKey) {
+        mutableStateOf(restaurant?.kosherCertification ?: KosherCertification.OU)
+    }
+    var certifyingAgency by remember(restaurantKey) {
+        mutableStateOf(restaurant?.certificationDetails.orEmpty())
+    }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val textFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextWhite,
+        unfocusedTextColor = TextWhite,
+        focusedBorderColor = Orange,
+        unfocusedBorderColor = DividerColor,
+        cursorColor = Orange,
+        focusedLabelColor = Orange,
+        unfocusedLabelColor = TextMuted,
+        focusedContainerColor = SurfaceDark,
+        unfocusedContainerColor = SurfaceDark,
+    )
 
     Column(
         modifier = Modifier
@@ -244,54 +310,164 @@ fun RestaurantSettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Details Card
+        // Restaurant Info (editable)
         if (restaurant != null) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "Restaurant Details",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextWhite,
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+            SettingsSectionCard(icon = Icons.Filled.Restaurant, title = "Restaurant Info") {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 2,
+                    maxLines = 5,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone") },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
-                    SettingsRow(
-                        icon = Icons.Filled.LocationOn,
-                        label = "Address",
-                        value = restaurant.address.ifBlank { "Not set" },
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Address (editable)
+            SettingsSectionCard(icon = Icons.Filled.LocationOn, title = "Address") {
+                OutlinedTextField(
+                    value = street,
+                    onValueChange = { street = it },
+                    label = { Text("Street") },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = city,
+                        onValueChange = { city = it },
+                        label = { Text("City") },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                        modifier = Modifier.weight(0.6f),
                     )
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = Icons.Filled.Phone,
-                        label = "Phone",
-                        value = restaurant.phone.ifBlank { "Not set" },
+                    OutlinedTextField(
+                        value = state,
+                        onValueChange = { state = it.uppercase().take(2) },
+                        label = { Text("State") },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                        modifier = Modifier.weight(0.4f),
                     )
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = Icons.Filled.Email,
-                        label = "Email",
-                        value = restaurant.email.ifBlank { "Not set" },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        icon = Icons.Filled.VerifiedUser,
-                        label = "Kosher Certification",
-                        value = restaurant.kosherCertification.name,
-                    )
-                    if (restaurant.certificationDetails.isNotBlank()) {
-                        Text(
-                            text = restaurant.certificationDetails,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                            modifier = Modifier.padding(start = 42.dp, top = 4.dp),
-                        )
-                    }
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = zipCode,
+                    onValueChange = { zipCode = it.filter { c -> c.isDigit() }.take(10) },
+                    label = { Text("ZIP Code") },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Kosher Certification (editable)
+            SettingsSectionCard(icon = Icons.Filled.VerifiedUser, title = "Kosher Certification") {
+                Text(
+                    text = "Certification",
+                    color = TextMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    KosherCertification.entries
+                        .filter { it != KosherCertification.UNKNOWN }
+                        .forEach { cert ->
+                            val selected = kosherCert == cert
+                            Box(
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(
+                                        if (selected) Orange.copy(alpha = 0.15f)
+                                        else SurfaceDarkElevated,
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (selected) Orange else SurfaceDarkElevated,
+                                        shape = RoundedCornerShape(18.dp),
+                                    )
+                                    .clickable { kosherCert = cert }
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = cert.displayName,
+                                    color = if (selected) Orange else TextMuted,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                )
+                            }
+                        }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = certifyingAgency,
+                    onValueChange = { certifyingAgency = it },
+                    label = { Text("Certifying Agency") },
+                    singleLine = true,
+                    colors = textFieldColors,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -406,44 +582,132 @@ fun RestaurantSettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Pricing card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "Pricing",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextWhite,
+            // Delivery / Pricing (editable)
+            SettingsSectionCard(icon = Icons.Filled.AttachMoney, title = "Delivery") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = deliveryFee,
+                        onValueChange = { deliveryFee = sanitizeDecimal(it) },
+                        label = { Text("Delivery Fee ($)") },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column {
-                            Text("Delivery Fee", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                            Text(
-                                restaurant.deliveryFee.formatPrice(),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextWhite,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Minimum Order", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                            Text(
-                                restaurant.minimumOrder.formatPrice(),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = TextWhite,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    }
+                    OutlinedTextField(
+                        value = minOrder,
+                        onValueChange = { minOrder = sanitizeDecimal(it) },
+                        label = { Text("Min Order ($)") },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f),
+                    )
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedTextField(
+                        value = estDeliveryMin,
+                        onValueChange = { estDeliveryMin = it.filter { c -> c.isDigit() }.take(3) },
+                        label = { Text("Est. Min (min)") },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = estDeliveryMax,
+                        onValueChange = { estDeliveryMax = it.filter { c -> c.isDigit() }.take(3) },
+                        label = { Text("Est. Max (min)") },
+                        singleLine = true,
+                        colors = textFieldColors,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Save Changes
+            Button(
+                onClick = {
+                    val validationError = validateSettings(
+                        name = name,
+                        email = email,
+                        zipCode = zipCode,
+                        stateAbbr = state,
+                        estMin = estDeliveryMin,
+                        estMax = estDeliveryMax,
+                    )
+                    if (validationError != null) {
+                        Toast.makeText(context, validationError, Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    val changes = buildRestaurantChanges(
+                        restaurant = restaurant,
+                        name = name,
+                        description = description,
+                        phone = phone,
+                        email = email,
+                        street = street,
+                        city = city,
+                        stateAbbr = state,
+                        zipCode = zipCode,
+                        deliveryFeeDollars = deliveryFee,
+                        minOrderDollars = minOrder,
+                        estDeliveryMin = estDeliveryMin,
+                        estDeliveryMax = estDeliveryMax,
+                        kosherCert = kosherCert,
+                        certifyingAgency = certifyingAgency,
+                    )
+                    if (changes.isEmpty()) {
+                        Toast.makeText(context, "No changes to save", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    isSaving = true
+                    // Persist each changed field through the existing VM hook. The backend
+                    // applies these as partial COALESCE updates, and any failure surfaces via
+                    // the updateFieldError Toast wired in LaunchedEffect above.
+                    // NOTE: a single batched PUT would be cleaner — see companion edit request
+                    // for AuthViewModel.updateRestaurantFields(Map).
+                    changes.forEach { (key, value) ->
+                        authViewModel.updateRestaurantField(key, value)
+                    }
+                    Toast.makeText(context, "Saving changes…", Toast.LENGTH_SHORT).show()
+                    isSaving = false
+                },
+                enabled = !isSaving,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Orange,
+                    contentColor = TextWhite,
+                    disabledContainerColor = Orange.copy(alpha = 0.3f),
+                    disabledContentColor = TextWhite.copy(alpha = 0.6f),
+                ),
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        color = TextWhite,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("Save Changes", fontWeight = FontWeight.SemiBold)
             }
         }
 
@@ -480,6 +744,80 @@ fun RestaurantSettingsScreen(
             Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text("Sign Out", fontWeight = FontWeight.SemiBold)
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Delete Account — required by Google Play's User Data deletion policy.
+        OutlinedButton(
+            onClick = { showDeleteConfirm = true },
+            enabled = !isDeletingAccount,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
+        ) {
+            if (isDeletingAccount) {
+                CircularProgressIndicator(
+                    color = ErrorRed,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            } else {
+                Icon(Icons.Filled.DeleteForever, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text("Delete Account", fontWeight = FontWeight.SemiBold)
+        }
+
+        if (showDeleteConfirm) {
+            AlertDialog(
+                onDismissRequest = { if (!isDeletingAccount) showDeleteConfirm = false },
+                title = { Text("Delete Account", color = TextWhite) },
+                text = {
+                    Text(
+                        "This will permanently delete your account and all associated data. " +
+                            "This action cannot be undone.",
+                        color = TextMuted,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !isDeletingAccount,
+                        onClick = {
+                            isDeletingAccount = true
+                            scope.launch {
+                                val deleted = deleteAccountRequest()
+                                isDeletingAccount = false
+                                showDeleteConfirm = false
+                                if (deleted) {
+                                    // Clears local auth and routes back to login.
+                                    onLogout()
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Couldn't delete your account. Please try again.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            }
+                        },
+                    ) {
+                        Text("Delete", color = ErrorRed)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !isDeletingAccount,
+                        onClick = { showDeleteConfirm = false },
+                    ) {
+                        Text("Cancel", color = TextWhite)
+                    }
+                },
+                containerColor = SurfaceDark,
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -536,40 +874,165 @@ private suspend fun uploadCertificateSettings(
 }
 
 @Composable
-private fun SettingsRow(
-    icon: ImageVector,
-    label: String,
-    value: String,
+private fun SettingsSectionCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    content: @Composable () -> Unit,
 ) {
-    Row(
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = TextMuted,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextWhite,
-            )
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Orange,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite,
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            content()
         }
     }
 }
 
-@Composable
-private fun SettingsDivider() {
-    Spacer(modifier = Modifier.height(12.dp))
-    HorizontalDivider(color = DividerColor.copy(alpha = 0.5f), thickness = 0.5.dp, modifier = Modifier.padding(start = 32.dp))
-    Spacer(modifier = Modifier.height(12.dp))
+/**
+ * The exact JSON value the backend stores / the Restaurant model decodes via @Json. Matches
+ * each enum's displayName except OTHER, whose wire value is the lowercase "other".
+ */
+private fun kosherCertWireName(cert: KosherCertification): String =
+    if (cert == KosherCertification.OTHER) "other" else cert.displayName
+
+/** Formats integer cents as a plain dollar string (e.g. 599 -> "5.99") for text inputs. */
+private fun centsToDollarString(cents: Int): String =
+    if (cents == 0) "" else String.format(java.util.Locale.US, "%.2f", cents / 100.0)
+
+/** Dollars in the inputs -> integer cents on the wire (delivery_fee / min_order are INTEGER cents). */
+private fun dollarStringToCents(dollars: String): Int {
+    val parsed = dollars.trim().toDoubleOrNull() ?: 0.0
+    return Math.round(parsed * 100).toInt()
+}
+
+/** Keeps digits and a single decimal point so dollar fields stay parseable. */
+private fun sanitizeDecimal(input: String): String {
+    val filtered = input.filter { it.isDigit() || it == '.' }
+    val firstDot = filtered.indexOf('.')
+    if (firstDot < 0) return filtered
+    val head = filtered.substring(0, firstDot + 1)
+    val tail = filtered.substring(firstDot + 1).replace(".", "")
+    return head + tail.take(2)
+}
+
+/** Returns a user-facing error string if the form is invalid, or null when it passes. */
+private fun validateSettings(
+    name: String,
+    email: String,
+    zipCode: String,
+    stateAbbr: String,
+    estMin: String,
+    estMax: String,
+): String? {
+    if (name.trim().isEmpty()) return "Restaurant name is required."
+    if (name.trim().length > 200) return "Restaurant name must be 200 characters or fewer."
+    val trimmedEmail = email.trim()
+    if (trimmedEmail.isNotEmpty() && (!trimmedEmail.contains("@") || !trimmedEmail.contains("."))) {
+        return "Please enter a valid email address."
+    }
+    if (zipCode.trim().isEmpty()) return "ZIP code is required."
+    val trimmedState = stateAbbr.trim()
+    if (trimmedState.isNotEmpty() && trimmedState.length != 2) {
+        return "State abbreviation must be exactly 2 characters (e.g. NY)."
+    }
+    val min = estMin.trim().toIntOrNull()
+    val max = estMax.trim().toIntOrNull()
+    if (min != null && max != null && min > max) {
+        return "Estimated minimum delivery time can't exceed maximum."
+    }
+    return null
+}
+
+/**
+ * Builds a map of only the fields that differ from the loaded restaurant, keyed by the
+ * backend JSON names the seller `PUT /seller/restaurant` handler honors. The handler uses
+ * COALESCE per column, so sending only changed fields is a safe partial update.
+ */
+private fun buildRestaurantChanges(
+    restaurant: Restaurant,
+    name: String,
+    description: String,
+    phone: String,
+    email: String,
+    street: String,
+    city: String,
+    stateAbbr: String,
+    zipCode: String,
+    deliveryFeeDollars: String,
+    minOrderDollars: String,
+    estDeliveryMin: String,
+    estDeliveryMax: String,
+    kosherCert: KosherCertification,
+    certifyingAgency: String,
+): Map<String, Any> {
+    val changes = mutableMapOf<String, Any>()
+    if (name.trim() != restaurant.name) changes["name"] = name.trim()
+    if (description != restaurant.description) changes["description"] = description
+    if (phone.trim() != restaurant.phone) changes["phone"] = phone.trim()
+    if (email.trim() != restaurant.email) changes["email"] = email.trim()
+    if (street.trim() != restaurant.street) changes["street"] = street.trim()
+    if (city.trim() != restaurant.city) changes["city"] = city.trim()
+    if (stateAbbr.trim() != restaurant.state) changes["state"] = stateAbbr.trim()
+    if (zipCode.trim() != restaurant.zipCode) changes["zip_code"] = zipCode.trim()
+
+    val feeCents = dollarStringToCents(deliveryFeeDollars)
+    if (feeCents != restaurant.deliveryFee) changes["delivery_fee"] = feeCents
+    val minCents = dollarStringToCents(minOrderDollars)
+    if (minCents != restaurant.minimumOrder) changes["min_order"] = minCents
+
+    estDeliveryMin.trim().toIntOrNull()?.let {
+        if (it != restaurant.averagePrepTime) changes["est_delivery_min"] = it
+    }
+    estDeliveryMax.trim().toIntOrNull()?.let {
+        if (it != restaurant.estDeliveryMax) changes["est_delivery_max"] = it
+    }
+
+    if (kosherCert != restaurant.kosherCertification && kosherCert != KosherCertification.UNKNOWN) {
+        changes["kosher_certification"] = kosherCertWireName(kosherCert)
+    }
+    if (certifyingAgency != restaurant.certificationDetails) {
+        changes["certifying_agency"] = certifyingAgency
+    }
+    return changes
+}
+
+/**
+ * Authenticated DELETE of the signed-in seller's account. Hits the same endpoint iOS uses
+ * (`DELETE {BASE_URL}user/account`) with the cached bearer token. Returns true on 2xx.
+ * Kept self-contained (raw OkHttp, mirroring the certificate-upload helper) so it works
+ * without changing the shared ApiService; on success the caller clears local auth via onLogout.
+ */
+private suspend fun deleteAccountRequest(): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val token = com.koshereats.seller.data.api.NetworkModule.cachedToken
+            ?: return@withContext false
+        val request = Request.Builder()
+            .url(BuildConfig.BASE_URL + "user/account")
+            .addHeader("Authorization", "Bearer $token")
+            .delete()
+            .build()
+        certUploadClient.newCall(request).execute().use { it.isSuccessful }
+    } catch (_: Exception) {
+        false
+    }
 }

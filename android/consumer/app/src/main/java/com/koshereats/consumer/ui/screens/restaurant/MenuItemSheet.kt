@@ -47,98 +47,31 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.koshereats.consumer.data.models.CustomizationOption
 import com.koshereats.consumer.data.models.MenuItem
-import com.koshereats.consumer.data.models.MenuItemCustomization
-import com.koshereats.consumer.data.models.SelectedCustomization
+import com.koshereats.consumer.data.models.ModifierGroup
+import com.koshereats.consumer.data.models.SelectedModifier
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.ui.components.MenuItemDietaryDot
 import com.koshereats.consumer.ui.theme.*
-
-fun defaultCustomizationsFor(item: MenuItem): List<MenuItemCustomization> {
-    if (item.customizations.isNotEmpty()) return item.customizations
-
-    val removeOptions = mutableListOf(
-        CustomizationOption(id = "rm_onion", name = "No Onion"),
-        CustomizationOption(id = "rm_tomato", name = "No Tomato"),
-    )
-    val extras = mutableListOf<CustomizationOption>()
-
-    when {
-        item.isMeat -> {
-            removeOptions += listOf(
-                CustomizationOption(id = "rm_lettuce", name = "No Lettuce"),
-                CustomizationOption(id = "rm_pickles", name = "No Pickles"),
-                CustomizationOption(id = "rm_sauce", name = "No Sauce"),
-            )
-            extras += listOf(
-                CustomizationOption(id = "ex_avocado", name = "Avocado", priceModifier = 199),
-                CustomizationOption(id = "ex_jalapeno", name = "Jalapeños", priceModifier = 99),
-                CustomizationOption(id = "ex_extra_meat", name = "Extra Meat", priceModifier = 399),
-            )
-        }
-        item.isDairy -> {
-            removeOptions += listOf(
-                CustomizationOption(id = "rm_cheese", name = "No Cheese"),
-                CustomizationOption(id = "rm_sauce", name = "No Sauce"),
-                CustomizationOption(id = "rm_mushrooms", name = "No Mushrooms"),
-            )
-            extras += listOf(
-                CustomizationOption(id = "ex_cheese", name = "Extra Cheese", priceModifier = 149),
-                CustomizationOption(id = "ex_mushrooms", name = "Mushrooms", priceModifier = 99),
-            )
-        }
-        item.isPareve -> {
-            removeOptions += listOf(
-                CustomizationOption(id = "rm_dressing", name = "No Dressing"),
-                CustomizationOption(id = "rm_cucumber", name = "No Cucumber"),
-                CustomizationOption(id = "rm_peppers", name = "No Peppers"),
-            )
-            extras += listOf(
-                CustomizationOption(id = "ex_dressing", name = "Extra Dressing", priceModifier = 79),
-                CustomizationOption(id = "ex_hummus", name = "Side Hummus", priceModifier = 149),
-            )
-        }
-    }
-
-    if (removeOptions.size <= 2 && extras.isEmpty()) return emptyList()
-
-    return listOfNotNull(
-        MenuItemCustomization(
-            id = "customize",
-            name = "Customize",
-            required = false,
-            maxSelections = removeOptions.size,
-            options = removeOptions,
-        ),
-        if (extras.isNotEmpty()) MenuItemCustomization(
-            id = "extras",
-            name = "Extras",
-            required = false,
-            maxSelections = extras.size,
-            options = extras,
-        ) else null,
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MenuItemSheet(
     menuItem: MenuItem,
     onDismiss: () -> Unit,
-    onAddToCart: (quantity: Int, customizations: List<SelectedCustomization>, specialInstructions: String?) -> Unit,
+    onAddToCart: (quantity: Int, modifiers: List<SelectedModifier>, specialInstructions: String?) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var quantity by remember(menuItem.id) { mutableIntStateOf(1) }
     var specialInstructions by remember(menuItem.id) { mutableStateOf("") }
 
-    val customizations = remember(menuItem.id) { defaultCustomizationsFor(menuItem) }
+    val modifierGroups = remember(menuItem.id) { menuItem.modifierGroups }
     val selections = remember(menuItem.id) { mutableStateMapOf<String, Set<String>>() }
 
     fun isSelected(groupId: String, optionId: String): Boolean =
         selections[groupId]?.contains(optionId) == true
 
-    fun toggle(group: MenuItemCustomization, optionId: String) {
+    fun toggle(group: ModifierGroup, optionId: String) {
         val current = selections[group.id] ?: emptySet()
         selections[group.id] = if (current.contains(optionId)) {
             current - optionId
@@ -151,10 +84,10 @@ fun MenuItemSheet(
 
     fun extrasPrice(): Int {
         var total = 0
-        for (cust in customizations) {
-            val selected = selections[cust.id] ?: continue
-            for (opt in cust.options) {
-                if (opt.id in selected && opt.priceModifier > 0) total += opt.priceModifier
+        for (group in modifierGroups) {
+            val selected = selections[group.id] ?: continue
+            for (opt in group.modifiers) {
+                if (opt.id in selected && opt.priceDelta > 0) total += opt.priceDelta
             }
         }
         return total
@@ -163,8 +96,8 @@ fun MenuItemSheet(
     val unitPrice = menuItem.price + extrasPrice()
     val totalPrice = unitPrice * quantity
 
-    val requiredGroupsValid = customizations.all { group ->
-        !group.required || selections[group.id]?.isNotEmpty() == true
+    val requiredGroupsValid = modifierGroups.all { group ->
+        !group.isRequired || selections[group.id]?.isNotEmpty() == true
     }
 
     ModalBottomSheet(
@@ -223,7 +156,7 @@ fun MenuItemSheet(
             )
 
             // Customization groups
-            for (group in customizations) {
+            for (group in modifierGroups) {
                 Spacer(Modifier.height(20.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -232,7 +165,7 @@ fun MenuItemSheet(
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
                     )
-                    if (group.required) {
+                    if (group.isRequired) {
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Required",
@@ -243,7 +176,7 @@ fun MenuItemSheet(
                 }
                 Spacer(Modifier.height(10.dp))
 
-                for (option in group.options) {
+                for (option in group.modifiers) {
                     val selected = isSelected(group.id, option.id)
                     Row(
                         modifier = Modifier
@@ -282,9 +215,9 @@ fun MenuItemSheet(
                             color = TextWhite,
                             modifier = Modifier.weight(1f),
                         )
-                        if (option.priceModifier > 0) {
+                        if (option.priceDelta > 0) {
                             Text(
-                                text = "+${option.priceModifier.formatPrice()}",
+                                text = "+${option.priceDelta.formatPrice()}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextTertiary,
                             )
@@ -369,14 +302,19 @@ fun MenuItemSheet(
 
                 Button(
                     onClick = {
-                        val selected = customizations.mapNotNull { group ->
-                            val opts = selections[group.id]?.let { ids ->
-                                group.options.filter { it.id in ids }
-                            } ?: emptyList()
-                            if (opts.isNotEmpty()) SelectedCustomization(
-                                customizationId = group.id,
-                                selectedOptions = opts,
-                            ) else null
+                        val selected = modifierGroups.flatMap { group ->
+                            val ids = selections[group.id] ?: emptySet()
+                            group.modifiers
+                                .filter { it.id in ids }
+                                .map { option ->
+                                    SelectedModifier(
+                                        id = option.id,
+                                        groupId = group.id,
+                                        groupName = group.name,
+                                        name = option.name,
+                                        priceDelta = option.priceDelta,
+                                    )
+                                }
                         }
                         onAddToCart(quantity, selected, specialInstructions)
                         onDismiss()

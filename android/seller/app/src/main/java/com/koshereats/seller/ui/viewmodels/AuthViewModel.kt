@@ -33,6 +33,12 @@ data class AuthState(
     val restaurant: Restaurant? = null,
     val error: String? = null,
     val updateFieldError: String? = null,
+    /**
+     * Open/Closed toggle failures land here (not in [error]) so the hosting
+     * screens — DashboardScreen, RestaurantSettingsScreen — can surface them
+     * without also catching login/phone-auth errors they don't render.
+     */
+    val toggleError: String? = null,
     val isTogglingOpen: Boolean = false,
     /** null = not yet checked, true = seller owns at least one restaurant. */
     val hasRestaurants: Boolean? = null,
@@ -331,7 +337,7 @@ class AuthViewModel @Inject constructor(
 
     fun toggleOpen(targetIsOpen: Boolean) {
         if (_state.value.isTogglingOpen) return
-        _state.value = _state.value.copy(isTogglingOpen = true)
+        _state.value = _state.value.copy(isTogglingOpen = true, toggleError = null)
         viewModelScope.launch {
             try {
                 val response = apiService.updateRestaurantStatus(mapOf("is_open" to targetIsOpen))
@@ -343,15 +349,21 @@ class AuthViewModel @Inject constructor(
                 } else {
                     _state.value = _state.value.copy(
                         isTogglingOpen = false,
-                        error = "Failed to update restaurant status",
+                        toggleError = "Failed to update restaurant status",
                     )
                 }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isTogglingOpen = false,
-                    error = e.localizedMessage ?: "Network error",
+                    toggleError = e.localizedMessage ?: "Network error",
                 )
             }
+        }
+    }
+
+    fun clearToggleError() {
+        if (_state.value.toggleError != null) {
+            _state.value = _state.value.copy(toggleError = null)
         }
     }
 

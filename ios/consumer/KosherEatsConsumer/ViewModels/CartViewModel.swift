@@ -12,6 +12,43 @@ class CartViewModel: ObservableObject {
     @Published private(set) var isReordering = false
     @Published var appliedDeal: Deal?
 
+    /// A pending add that would replace the current cart because it's from a
+    /// different restaurant. The View binds to this to present a confirmation
+    /// alert; the add only proceeds via `confirmPendingRestaurantSwitch()`.
+    @Published var pendingRestaurantSwitch: PendingRestaurantSwitch?
+
+    /// Captured parameters for an add-to-cart that is awaiting the user's
+    /// confirmation to discard their existing cart from another restaurant.
+    struct PendingRestaurantSwitch: Identifiable {
+        let id = UUID()
+        let menuItemID: String
+        let quantity: Int
+        let notes: String?
+        let restaurantID: String
+        /// The restaurant being switched *to*. Optional because the add-to-cart
+        /// UI only has the restaurant id in scope; when nil the confirmation
+        /// message degrades to a generic phrasing.
+        let restaurantName: String?
+        let modifierIDs: [String]
+        let itemName: String
+        let unitPrice: Int
+        let selectedModifiers: [SelectedModifier]
+
+        /// Title for the confirmation alert the View presents.
+        var alertTitle: String {
+            if let restaurantName, !restaurantName.isEmpty {
+                return String(localized: "Start a new cart at \(restaurantName)?")
+            }
+            return String(localized: "Start a new cart?")
+        }
+
+        /// Body for the confirmation alert: warns that the existing cart from a
+        /// different restaurant will be discarded (mirrors the backend wipe).
+        var alertMessage: String {
+            String(localized: "Your items from your current cart will be removed.")
+        }
+    }
+
     private let api = APIService.shared
     private var cartGeneration = 0
 
@@ -127,6 +164,86 @@ class CartViewModel: ObservableObject {
             isLoading = false
             return msg
         }
+    }
+
+    // MARK: - Add with restaurant-switch confirmation
+
+    /// True if adding an item from `restaurantID` would discard the current
+    /// non-empty cart because it belongs to a different restaurant. Mirrors the
+    /// backend's AddToCart behaviour (it deletes the old cart_items and
+    /// reassigns the cart) and the local guest-cart "start fresh" branch.
+    func wouldSwitchRestaurant(to restaurantID: String) -> Bool {
+        guard let cart, !cart.items.isEmpty else { return false }
+        return cart.restaurantID != restaurantID
+    }
+
+    /// Entry point for the Add-to-Cart UI. If the add would silently wipe an
+    /// existing cart from another restaurant, it stashes the request and
+    /// publishes `pendingRestaurantSwitch` so the View can confirm first;
+    /// otherwise it adds immediately. Returns the add error message (if any)
+    /// when it proceeded without needing confirmation, or `nil` when it either
+    /// succeeded or is now awaiting confirmation.
+    @discardableResult
+    func requestAddItem(
+        menuItemID: String,
+        quantity: Int,
+        notes: String?,
+        restaurantID: String,
+        restaurantName: String? = nil,
+        modifierIDs: [String] = [],
+        itemName: String = "",
+        unitPrice: Int = 0,
+        selectedModifiers: [SelectedModifier] = []
+    ) async -> String? {
+        if wouldSwitchRestaurant(to: restaurantID) {
+            pendingRestaurantSwitch = PendingRestaurantSwitch(
+                menuItemID: menuItemID,
+                quantity: quantity,
+                notes: notes,
+                restaurantID: restaurantID,
+                restaurantName: restaurantName,
+                modifierIDs: modifierIDs,
+                itemName: itemName,
+                unitPrice: unitPrice,
+                selectedModifiers: selectedModifiers
+            )
+            return nil
+        }
+        return await addItem(
+            menuItemID: menuItemID,
+            quantity: quantity,
+            notes: notes,
+            restaurantID: restaurantID,
+            modifierIDs: modifierIDs,
+            itemName: itemName,
+            unitPrice: unitPrice,
+            selectedModifiers: selectedModifiers
+        )
+    }
+
+    /// Proceeds with the add the user confirmed will replace their cart.
+    @discardableResult
+    func confirmPendingRestaurantSwitch() async -> String? {
+        guard let pending = pendingRestaurantSwitch else { return nil }
+        pendingRestaurantSwitch = nil
+        // The deal was tied to the old restaurant's cart; drop it so it can't
+        // be misapplied to the new restaurant's items.
+        appliedDeal = nil
+        return await addItem(
+            menuItemID: pending.menuItemID,
+            quantity: pending.quantity,
+            notes: pending.notes,
+            restaurantID: pending.restaurantID,
+            modifierIDs: pending.modifierIDs,
+            itemName: pending.itemName,
+            unitPrice: pending.unitPrice,
+            selectedModifiers: pending.selectedModifiers
+        )
+    }
+
+    /// Dismisses the pending add, leaving the existing cart untouched.
+    func cancelPendingRestaurantSwitch() {
+        pendingRestaurantSwitch = nil
     }
 
     func reorder(items: [OrderItem], restaurantID: String) async -> String? {

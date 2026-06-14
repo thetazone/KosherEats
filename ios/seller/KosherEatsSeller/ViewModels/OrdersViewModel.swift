@@ -92,6 +92,12 @@ class OrdersViewModel: ObservableObject {
             guard gen == loadGeneration else { return }
             self.orders = fresh
             applyFilter()
+        } catch APIError.unauthorized {
+            guard gen == loadGeneration else { return }
+            // Session died mid-use (refresh token expired/revoked). Route to
+            // login instead of showing a generic "couldn't load" error the
+            // seller can't act on.
+            notifySessionExpired()
         } catch {
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
@@ -108,15 +114,16 @@ class OrdersViewModel: ObservableObject {
     /// to pull-to-refresh (they'd otherwise miss tickets sitting in the
     /// pending queue).
     ///
-    /// Polling ticks check `loadGeneration` so a restaurant switch (or any
-    /// explicit `load()`) cleanly abandons an in-flight tick rather than
-    /// letting the old restaurant's orders stomp on the new view.
+    /// Each polling tick re-reads `loadGeneration` so an explicit `load()`
+    /// (pull-to-refresh, push, Retry) only drops a stale in-flight tick — it
+    /// does NOT terminate the loop. A restaurant switch tears the whole task
+    /// down via `.task(id:)` cancellation, which is the only thing that ends
+    /// the loop besides the view disappearing.
     func loadAndAutoRefresh(interval: TimeInterval = 15) async {
         configureAudioSession()
         defer { deactivateAudioSession() }
         subscribeToRestaurantChanges()
         await load()
-        let gen = loadGeneration
         // Only seed on first run — preserve across task restarts so orders
         // that arrived while the seller was on another tab still trigger alerts.
         if self.knownPendingIDs.isEmpty {
@@ -126,13 +133,23 @@ class OrdersViewModel: ObservableObject {
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             if Task.isCancelled { break }
-            // Restaurant switched (or an external load() bumped the gen);
-            // abandon this loop — the new load() will start its own.
-            if gen != loadGeneration { break }
+            // Re-read the generation at the top of each tick. An external
+            // load() (push observer, pull-to-refresh, Retry) bumps the gen —
+            // we DON'T break on that, or the loop would die permanently and
+            // new-order alerts would stop. Instead this tick's result is
+            // checked against the gen captured here, so a concurrent load()
+            // only invalidates the in-flight tick rather than terminating the
+            // loop. A restaurant switch tears the whole task down via
+            // `.task(id: selectedRestaurant.id)` cancellation, so the loop
+            // never needs to self-terminate on a gen mismatch.
+            let gen = loadGeneration
             // Silent refresh — no spinner on subsequent ticks.
             do {
                 let fresh = try await APIService.shared.getOrders()
-                guard gen == loadGeneration else { break }
+                // A concurrent load() landed while this tick was in flight —
+                // its fresher result wins, so drop this stale one but keep
+                // polling (the next tick re-reads the bumped gen).
+                guard gen == loadGeneration else { continue }
                 let newPending = Set(fresh.filter { $0.status == .pending }.map(\.id))
                 let brandNew = newPending.subtracting(self.knownPendingIDs)
                 if !brandNew.isEmpty {
@@ -151,6 +168,14 @@ class OrdersViewModel: ObservableObject {
                 applyFilter()
                 consecutiveFailures = 0
                 pollHealthError = nil
+            } catch APIError.unauthorized {
+                // The refresh token expired or was revoked mid-session. This is
+                // NOT a network blip — no number of retries will recover it, and
+                // showing "Can't reach server" would be a lie. Hand off to
+                // AuthViewModel (via .sessionExpired) to clear tokens and route
+                // back to the login screen, then stop polling.
+                notifySessionExpired()
+                break
             } catch {
                 consecutiveFailures += 1
                 // Three in a row (~45s of silence) is long enough to be real —
@@ -161,6 +186,26 @@ class OrdersViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Posts `.sessionExpired` so AuthViewModel can clear the stored tokens and
+    /// drop the app back to the login screen with a "your session expired"
+    /// message. Guards against re-posting on every subsequent tick/call once
+    /// we've already kicked the seller out of an authenticated session.
+    ///
+    /// The routing back to login is owned by `AuthViewModel.isAuthenticated`,
+    /// which this view model cannot reach directly — so the actual token
+    /// invalidation + `isAuthenticated = false` flip lives in AuthViewModel's
+    /// `.sessionExpired` observer (registered in its init, calling
+    /// `handleSessionExpired()`). Here we only fire the event and clear the
+    /// misleading "can't reach server" banner.
+    private var didNotifySessionExpired = false
+    private func notifySessionExpired() {
+        guard !didNotifySessionExpired else { return }
+        didNotifySessionExpired = true
+        pollHealthError = nil
+        errorMessage = nil
+        NotificationCenter.default.post(name: .sessionExpired, object: nil)
     }
 
     /// Reload Orders (and reset polling state) whenever the seller picks a
@@ -353,4 +398,19 @@ class OrdersViewModel: ObservableObject {
         }
         applyFilter()
     }
+}
+
+// MARK: - Session Notifications
+
+extension Notification.Name {
+    /// Fired when an authenticated API call fails with `.unauthorized` after
+    /// the refresh attempt was exhausted — i.e. the session is dead (refresh
+    /// token expired or revoked mid-session) and no retry can recover it.
+    ///
+    /// AuthViewModel observes this to clear the stored tokens and set
+    /// `isAuthenticated = false`, which routes the app back to
+    /// `SellerLoginView`. Declared here (rather than in PushEvents.swift)
+    /// because this is an auth-lifecycle event, distinct from the order-push
+    /// event bus, and OrdersViewModel is the first site that needs it.
+    static let sessionExpired = Notification.Name("ke.sessionExpired")
 }

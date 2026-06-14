@@ -261,21 +261,45 @@ data class MenuItem(
     @SerializedName("is_vegan") val isVegan: Boolean = false,
     @SerializedName("is_gluten_free") val isGlutenFree: Boolean = false,
     val allergens: List<String> = emptyList(),
-    val customizations: List<MenuItemCustomization> = emptyList(),
-)
+    @SerializedName("modifier_groups") val modifierGroups: List<ModifierGroup> = emptyList(),
+) {
+    /** True if at least one group forces a selection before the item can be added. */
+    val hasRequiredModifiers: Boolean get() = modifierGroups.any { it.isRequired }
+}
 
-data class MenuItemCustomization(
+/**
+ * A set of selectable options on a menu item — e.g. "Choose your size"
+ * (required, single-select) or "Add-ons" (optional, multi-select). Mirrors
+ * backend models.ModifierGroup (modifier_groups in GET /restaurants/{id}/menu).
+ */
+data class ModifierGroup(
     val id: String = "",
+    @SerializedName("menu_item_id") val menuItemId: String = "",
     val name: String = "",
-    val required: Boolean = false,
+    val description: String? = null,
+    @SerializedName("is_required") val isRequired: Boolean = false,
+    @SerializedName("min_selections") val minSelections: Int = 0,
     @SerializedName("max_selections") val maxSelections: Int = 1,
-    val options: List<CustomizationOption> = emptyList(),
-)
+    @SerializedName("sort_order") val sortOrder: Int = 0,
+    val modifiers: List<Modifier> = emptyList(),
+) {
+    /** Radio-style: only one option may be picked. */
+    val isSingleSelect: Boolean get() = maxSelections == 1
+}
 
-data class CustomizationOption(
+/**
+ * A single selectable option inside a [ModifierGroup]. [priceDelta] is added
+ * to the base item price when selected and may be zero or negative. Mirrors
+ * backend models.Modifier.
+ */
+data class Modifier(
     val id: String = "",
+    @SerializedName("group_id") val groupId: String = "",
     val name: String = "",
-    @SerializedName("price_modifier") val priceModifier: Int = 0,
+    @SerializedName("price_delta") val priceDelta: Int = 0,
+    @SerializedName("is_default") val isDefault: Boolean = false,
+    @SerializedName("is_available") val isAvailable: Boolean = true,
+    @SerializedName("sort_order") val sortOrder: Int = 0,
 )
 
 // ── Cart ──────────────────────────────────────────────────
@@ -318,21 +342,30 @@ data class CartItem(
     @SerializedName("menu_item") val menuItem: MenuItem = MenuItem(),
     val quantity: Int = 1,
     @SerializedName("special_instructions") val specialInstructions: String? = null,
-    @SerializedName("selected_customizations") val selectedCustomizations: List<SelectedCustomization> = emptyList(),
+    @SerializedName("selected_modifiers") val selectedModifiers: List<SelectedModifier> = emptyList(),
 ) {
     val totalPrice: Int
         get() {
             val basePrice = menuItem.price
-            val customizationPrice = selectedCustomizations
-                .flatMap { it.selectedOptions }
-                .sumOf { it.priceModifier }
-            return (basePrice + customizationPrice) * quantity
+            val modifierPrice = selectedModifiers.sumOf { it.priceDelta }
+            return (basePrice + modifierPrice) * quantity
         }
 }
 
-data class SelectedCustomization(
-    @SerializedName("customization_id") val customizationId: String = "",
-    @SerializedName("selected_options") val selectedOptions: List<CustomizationOption> = emptyList(),
+/**
+ * Snapshot of a user's modifier selection, carried on cart + order line items.
+ * Mirrors backend models.SelectedModifier — the server returns these on
+ * GET /cart and GET /orders/{id} (and we build the same shape locally for the
+ * optimistic cart) so the line item can show "Large, Extra hummus". Name and
+ * priceDelta are snapshotted so display + pricing stay stable if the seller
+ * later edits the underlying modifier.
+ */
+data class SelectedModifier(
+    val id: String = "",
+    @SerializedName("group_id") val groupId: String = "",
+    @SerializedName("group_name") val groupName: String = "",
+    val name: String = "",
+    @SerializedName("price_delta") val priceDelta: Int = 0,
 )
 
 // ── Order ─────────────────────────────────────────────────
@@ -373,10 +406,13 @@ data class Order(
 
 data class OrderItem(
     val id: String = "",
+    @SerializedName("menu_item_id") val menuItemId: String = "",
     val name: String = "",
     val quantity: Int = 1,
+    /** Per-unit price in cents, inclusive of modifier deltas (backend OrderItem.Price). */
     val price: Int = 0,
     @SerializedName("notes") val specialInstructions: String? = null,
+    @SerializedName("selected_modifiers") val selectedModifiers: List<SelectedModifier> = emptyList(),
 )
 
 data class CreateOrderRequest(

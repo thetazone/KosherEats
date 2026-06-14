@@ -87,19 +87,25 @@ struct MenuManagementView: View {
                 MenuItemFormView(
                     categories: vm.categories,
                     onSave: { cat, name, desc, price, imageUrl, meat, dairy, pareve in
-                        Task {
-                            let success = await vm.createItem(
-                                categoryId: cat,
-                                name: name,
-                                description: desc,
-                                price: price,
-                                imageUrl: imageUrl,
-                                isMeat: meat,
-                                isDairy: dairy,
-                                isPareve: pareve
-                            )
-                            if success { showAddItem = false }
+                        // Awaited by the form so its Save button stays disabled
+                        // until this actually completes. Return nil on success
+                        // (parent dismisses), or the error so the form can show
+                        // it inline on the sheet.
+                        let success = await vm.createItem(
+                            categoryId: cat,
+                            name: name,
+                            description: desc,
+                            price: price,
+                            imageUrl: imageUrl,
+                            isMeat: meat,
+                            isDairy: dairy,
+                            isPareve: pareve
+                        )
+                        if success {
+                            showAddItem = false
+                            return nil
                         }
+                        return vm.errorMessage ?? "Couldn't save item. Please try again."
                     }
                 )
                 .presentationDetents([.medium, .large])
@@ -109,21 +115,23 @@ struct MenuManagementView: View {
                     categories: vm.categories,
                     existingItem: item,
                     onSave: { cat, name, desc, price, imageUrl, meat, dairy, pareve in
-                        Task {
-                            let success = await vm.updateItem(
-                                id: item.id,
-                                categoryId: cat,
-                                name: name,
-                                description: desc,
-                                price: price,
-                                imageUrl: imageUrl,
-                                isMeat: meat,
-                                isDairy: dairy,
-                                isPareve: pareve,
-                                isAvailable: item.isAvailable
-                            )
-                            if success { editingItem = nil }
+                        let success = await vm.updateItem(
+                            id: item.id,
+                            categoryId: cat,
+                            name: name,
+                            description: desc,
+                            price: price,
+                            imageUrl: imageUrl,
+                            isMeat: meat,
+                            isDairy: dairy,
+                            isPareve: pareve,
+                            isAvailable: item.isAvailable
+                        )
+                        if success {
+                            editingItem = nil
+                            return nil
                         }
+                        return vm.errorMessage ?? "Couldn't save item. Please try again."
                     }
                 )
                 .presentationDetents([.medium, .large])

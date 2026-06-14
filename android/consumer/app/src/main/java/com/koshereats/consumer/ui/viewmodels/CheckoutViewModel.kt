@@ -100,6 +100,10 @@ class CheckoutViewModel @Inject constructor(
 
     private var refreshBundleJob: Job? = null
     private var deliveryQuoteJob: Job? = null
+    // The exact bundle handed to Stripe when the user tapped Pay. onPaymentResult must
+    // finalize against THIS bundle's intent — not _uiState.value.bundle, which a debounced
+    // refresh can swap to a different intent (or null) while the PaymentSheet is open.
+    private var presentedBundle: PaymentSheetBundle? = null
     private var _bootstrapped = false
     private var _restaurantId: String = ""
     private var _appliedDealId: String? = null
@@ -109,7 +113,12 @@ class CheckoutViewModel @Inject constructor(
     // so a duplicate PaymentSheetResult.Completed cannot create a second order.
     private val finalizedIntentIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
-    fun bootstrap(localCart: List<CartItem>, restaurantId: String, appliedDealId: String? = null) {
+    fun bootstrap(
+        localCart: List<CartItem>,
+        restaurantId: String,
+        appliedDealId: String? = null,
+        scheduledFor: LocalDateTime? = null,
+    ) {
         // Recover IDs from SavedStateHandle when the live args are empty (process-death recovery).
         val effectiveRestaurantId = restaurantId.ifEmpty {
             savedStateHandle.get<String>(KEY_RESTAURANT_ID).orEmpty()
@@ -134,6 +143,14 @@ class CheckoutViewModel @Inject constructor(
         finalizedIntentIds.clear()
         _bootstrapped = true
         _localSubtotalCents = localCart.sumOf { it.totalPrice }
+
+        // Seed the scheduled delivery time chosen on the cart screen. Only carry it
+        // over if it is still comfortably in the future (>5 min, matching
+        // updateScheduledFor's guard); a slot that lapsed while the user lingered
+        // falls back to ASAP rather than failing the place-order time check later.
+        if (scheduledFor != null && scheduledFor.isAfter(LocalDateTime.now().plusMinutes(5))) {
+            _uiState.update { it.copy(scheduledFor = scheduledFor) }
+        }
 
         // Always persist so process-death recovery can restore the IDs on the next launch.
         savedStateHandle[KEY_RESTAURANT_ID] = effectiveRestaurantId
@@ -190,8 +207,7 @@ class CheckoutViewModel @Inject constructor(
             coroutineScope {
                 localCart.map { item ->
                     async {
-                        val modifierIds = item.selectedCustomizations
-                            .flatMap { it.selectedOptions }
+                        val modifierIds = item.selectedModifiers
                             .map { it.id }
                             .filter { it.isNotEmpty() }
                         val resp = api.addToCart(
@@ -321,6 +337,9 @@ class CheckoutViewModel @Inject constructor(
     }
 
     fun updateCustomTip(value: String) {
+        // Never reprice mid-payment: a debounced refresh that fired while the PaymentSheet
+        // is open would swap the bundle out from under the intent the user is paying.
+        if (_uiState.value.isProcessing) return
         _uiState.update { it.copy(customTipText = value) }
         if (_uiState.value.tipChoice is TipChoice.Custom) {
             refreshBundleJob?.cancel()
@@ -359,6 +378,10 @@ class CheckoutViewModel @Inject constructor(
     }
 
     private suspend fun refreshBundle() {
+        // Never reprice while a payment is in flight. Nulling the bundle / fetching a new
+        // intent here would let onPaymentResult finalize against the wrong intent once the
+        // PaymentSheet (presenting the previous bundle) returns.
+        if (_uiState.value.isProcessing) return
         // Always discard the in-flight payment sheet bundle here; otherwise an old bundle
         // could be presented to Stripe right after the user changed tip/address.
         _uiState.update { it.copy(isLoadingBundle = true, bundle = null, errorMessage = null, pendingPaymentSheet = null) }
@@ -406,15 +429,22 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Cart is empty or invalid. Please add items and try again.") }
             return
         }
+        // Lock in the bundle the user is paying and stop any in-flight/debounced reprice so
+        // refreshBundle() can't swap _uiState.value.bundle while the PaymentSheet is open.
+        refreshBundleJob?.cancel()
+        deliveryQuoteJob?.cancel()
+        presentedBundle = bundle
         // Stub orders must use a unique stub intent so the idempotency guard doesn't
         // collapse multiple stub orders placed in the same VM session into one.
         _uiState.update { it.copy(isProcessing = true) }
         if (bundle.isStub) {
-            finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}")
+            presentedBundle = null
+            finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}", paidBundle = bundle)
             return
         }
         // Non-stub orders need a valid Stripe payment intent secret to present the sheet.
         if (!bundle.paymentIntentSecret.contains("_secret_")) {
+            presentedBundle = null
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment is not configured. Please refresh and try again.") }
             return
         }
@@ -428,26 +458,33 @@ class CheckoutViewModel @Inject constructor(
     /** Called by the composable after PaymentSheet closes. `success` means the
      *  user completed payment; false means cancel or failure. */
     fun onPaymentResult(success: Boolean, error: String? = null) {
+        // Use the bundle that was actually presented to Stripe, not _uiState.value.bundle —
+        // the latter may have been swapped by a refresh that raced the open PaymentSheet.
+        val paid = presentedBundle
         if (!success) {
+            presentedBundle = null
             // Force a fresh bundle (and new payment intent) on the next attempt so the user
             // never gets stuck retrying against a stale intent the server already saw fail.
             _uiState.update { it.copy(isProcessing = false, errorMessage = error, bundle = null) }
             launchRefreshBundle()
             return
         }
-        val bundle = _uiState.value.bundle ?: run {
+        val bundle = paid ?: run {
+            presentedBundle = null
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment recorded but order summary was lost. Please check your orders.") }
             return
         }
         val intentId = extractIntentId(bundle.paymentIntentSecret)
         if (intentId == null) {
+            presentedBundle = null
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Unexpected Stripe response — please try again") }
             return
         }
-        finalizeOrder(intentId)
+        presentedBundle = null
+        finalizeOrder(intentId, paidBundle = bundle)
     }
 
-    private fun finalizeOrder(paymentIntentId: String) {
+    private fun finalizeOrder(paymentIntentId: String, paidBundle: PaymentSheetBundle) {
         // Idempotency guard: if Stripe (or our own retry) calls onPaymentResult twice with
         // the same intent, only the first call may proceed to /orders. Otherwise duplicate
         // orders bypass server-side dedupe whenever it has any race window.
@@ -467,10 +504,10 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
             return
         }
-        val bundle = state.bundle ?: run {
-            _uiState.update { it.copy(isProcessing = false, errorMessage = "Could not load order summary. Please try again.") }
-            return
-        }
+        // Use the bundle the user actually paid for. The server cross-checks that the
+        // client-sent tip matches the amount baked into the paid intent (VerifyPaymentSucceeded),
+        // so sending _uiState.value.bundle.tip after a mid-payment reprice would fail verification.
+        val bundle = paidBundle
 
         // Final guard: a scheduledFor that drifted into the past while the user lingered
         // would be silently rejected by the server with a generic error. Catch it here.

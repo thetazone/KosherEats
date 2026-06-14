@@ -535,8 +535,7 @@ private fun CartItemRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val mods = cartItem.selectedCustomizations
-                    .flatMap { it.selectedOptions }
+                val mods = cartItem.selectedModifiers
                     .joinToString(", ") { it.name }
                 if (mods.isNotBlank()) {
                     Text(

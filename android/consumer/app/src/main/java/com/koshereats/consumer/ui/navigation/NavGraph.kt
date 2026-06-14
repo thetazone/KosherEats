@@ -331,6 +331,10 @@ fun KosherEatsNavHost(
                     localCart = cartItems,
                     restaurantId = restaurantId,
                     appliedDealId = dealId,
+                    // Carry the delivery slot chosen on the cart screen into checkout;
+                    // without this the scheduled time is silently dropped and every
+                    // order is placed ASAP.
+                    scheduledFor = cartState.scheduledFor,
                     onBack = { navController.popBackStack() },
                     onOrderPlaced = { order ->
                         cartViewModel.clearCartForRestaurant(restaurantId)
@@ -386,6 +390,11 @@ fun KosherEatsNavHost(
                     orderId = orderId,
                     onBack = { navController.popBackStack() },
                     onChat = { id -> navController.navigate(Screen.Chat.createRoute(id)) },
+                    onRate = { id ->
+                        navController.navigate(Screen.Rating.createRoute(id)) {
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
 
@@ -401,8 +410,16 @@ fun KosherEatsNavHost(
                         onOrderClick = { orderId ->
                             navController.navigate(Screen.OrderTracking.createRoute(orderId))
                         },
-                        onReorderClick = { restaurantId ->
-                            navController.navigate(Screen.Restaurant.createRoute(restaurantId))
+                        onReorderClick = { order ->
+                            // Re-add the past order's line items to the cart, then open it.
+                            // If the order carried nothing re-addable (e.g. a legacy order
+                            // without menu_item_id), fall back to the restaurant page so the
+                            // button is never a dead no-op.
+                            if (cartViewModel.reorder(order)) {
+                                navController.navigate(Screen.Cart.route)
+                            } else {
+                                navController.navigate(Screen.Restaurant.createRoute(order.restaurantId))
+                            }
                         },
                     )
                 }

@@ -3,6 +3,9 @@ import SwiftUI
 struct MenuItemView: View {
     let item: MenuItem
     let restaurantID: String
+    /// Name of the restaurant this item belongs to. Used to phrase the
+    /// cross-restaurant cart-switch confirmation; nil degrades to generic copy.
+    var restaurantName: String? = nil
     @EnvironmentObject var cartVM: CartViewModel
     @State private var showAddSheet = false
 
@@ -73,7 +76,7 @@ struct MenuItemView: View {
         .accessibilityLabel("\(item.name), \(item.priceFormatted)\(item.isAvailable ? "" : ", unavailable")")
         .accessibilityHint(item.isAvailable ? String(localized: "Double tap to customize and add to cart") : "")
         .sheet(isPresented: $showAddSheet) {
-            AddToCartSheet(item: item, restaurantID: restaurantID)
+            AddToCartSheet(item: item, restaurantID: restaurantID, restaurantName: restaurantName)
         }
     }
 }
@@ -113,6 +116,8 @@ struct KashrusTypeIndicator: View {
 struct AddToCartSheet: View {
     let item: MenuItem
     let restaurantID: String
+    /// Name of this item's restaurant, surfaced in the cart-switch confirmation.
+    var restaurantName: String? = nil
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
 
@@ -222,6 +227,57 @@ struct AddToCartSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .alert(
+            cartVM.pendingRestaurantSwitch?.alertTitle ?? "",
+            isPresented: Binding(
+                get: { cartVM.pendingRestaurantSwitch != nil },
+                set: { presented in
+                    // The system clears the binding when either alert button is
+                    // tapped; if it went false without us consuming the pending
+                    // switch (e.g. a swipe-to-dismiss), treat it as a cancel so
+                    // the existing cart is left untouched.
+                    if !presented, cartVM.pendingRestaurantSwitch != nil {
+                        cartVM.cancelPendingRestaurantSwitch()
+                    }
+                }
+            ),
+            presenting: cartVM.pendingRestaurantSwitch
+        ) { _ in
+            Button(String(localized: "Start New Cart"), role: .destructive) {
+                Task {
+                    await cartVM.confirmPendingRestaurantSwitch()
+                    dismiss()
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                cartVM.cancelPendingRestaurantSwitch()
+            }
+        } message: { pending in
+            Text(pending.alertMessage)
+        }
+    }
+
+    /// Routes the add through the ViewModel's restaurant-switch guard. If the
+    /// add would discard a cart from a different restaurant the ViewModel stashes
+    /// the request and publishes `pendingRestaurantSwitch`, which drives the
+    /// confirmation alert; in that case we keep the sheet open. Otherwise the add
+    /// proceeds immediately and we dismiss.
+    private func submitAdd() async {
+        await cartVM.requestAddItem(
+            menuItemID: item.id,
+            quantity: quantity,
+            notes: notes.isEmpty ? nil : notes,
+            restaurantID: restaurantID,
+            restaurantName: restaurantName,
+            modifierIDs: allSelectedIDs,
+            itemName: item.name,
+            unitPrice: item.price,
+            selectedModifiers: resolvedModifiers
+        )
+        // Awaiting confirmation: leave the sheet up so the alert can present.
+        if cartVM.pendingRestaurantSwitch == nil {
+            dismiss()
+        }
     }
 
     private var header: some View {
@@ -288,19 +344,7 @@ struct AddToCartSheet: View {
                 }
 
                 Button {
-                    Task {
-                        await cartVM.addItem(
-                            menuItemID: item.id,
-                            quantity: quantity,
-                            notes: notes.isEmpty ? nil : notes,
-                            restaurantID: restaurantID,
-                            modifierIDs: allSelectedIDs,
-                            itemName: item.name,
-                            unitPrice: item.price,
-                            selectedModifiers: resolvedModifiers
-                        )
-                        dismiss()
-                    }
+                    Task { await submitAdd() }
                 } label: {
                     if cartVM.isLoading {
                         ProgressView()

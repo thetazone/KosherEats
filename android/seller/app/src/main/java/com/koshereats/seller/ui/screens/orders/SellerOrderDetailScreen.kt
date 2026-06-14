@@ -75,6 +75,7 @@ import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.viewmodels.AuthViewModel
 import com.koshereats.seller.ui.viewmodels.OrdersViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -83,12 +84,17 @@ fun SellerOrderDetailScreen(
     orderId: String,
     onBack: () -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val authState by authViewModel.state.collectAsStateWithLifecycle()
     val order = state.selectedOrder
     val context = LocalContext.current
+    // The restaurant's delivery_mode (from AuthViewModel restaurant state). When
+    // "restaurant", the restaurant self-delivers — no platform courier will ever
+    // pick up — so the seller must drive ready→picked_up→delivered themselves.
+    val deliveryMode = authState.restaurant?.deliveryMode ?: "platform"
     var showRejectConfirm by remember { mutableStateOf(false) }
-    var showCancelConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(orderId) {
         viewModel.clearMessages()
@@ -135,28 +141,6 @@ fun SellerOrderDetailScreen(
             dismissButton = {
                 TextButton(onClick = { showRejectConfirm = false }) {
                     Text("Cancel", color = TextWhite)
-                }
-            },
-            containerColor = SurfaceDark,
-        )
-    }
-
-    if (showCancelConfirm) {
-        AlertDialog(
-            onDismissRequest = { showCancelConfirm = false },
-            title = { Text("Cancel Order?", color = TextWhite) },
-            text = { Text("The customer will be notified that their order has been cancelled.", color = TextMuted) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showCancelConfirm = false
-                    viewModel.cancelInProgress(orderId)
-                }) {
-                    Text("Cancel Order", color = ErrorRed)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCancelConfirm = false }) {
-                    Text("Keep Order", color = TextWhite)
                 }
             },
             containerColor = SurfaceDark,
@@ -375,6 +359,19 @@ fun SellerOrderDetailScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = TextWhite,
                                         )
+                                        // Customer-selected (and paid-for) modifiers — the kitchen
+                                        // needs these to prepare the order correctly. Mirrors iOS's
+                                        // modifierSummary ("Large • Extra hummus").
+                                        val modifierSummary = item.selectedModifiers
+                                            ?.takeIf { it.isNotEmpty() }
+                                            ?.joinToString(" • ") { it.name }
+                                        if (modifierSummary != null) {
+                                            Text(
+                                                text = modifierSummary,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextSecondary,
+                                            )
+                                        }
                                         if (item.specialInstructions.isNotBlank()) {
                                             Text(
                                                 text = item.specialInstructions,
@@ -438,6 +435,7 @@ fun SellerOrderDetailScreen(
                 OrderActionButtons(
                     status = order.status,
                     isPickup = order.isPickup,
+                    isSelfDelivery = deliveryMode == "restaurant",
                     scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
@@ -452,8 +450,13 @@ fun SellerOrderDetailScreen(
                     onComplete = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.COMPLETED)
                     },
+                    onSelfPickup = {
+                        viewModel.sellerPickupOrder(orderId)
+                    },
+                    onSelfDeliver = {
+                        viewModel.sellerDeliverOrder(orderId)
+                    },
                     onCancel = { showRejectConfirm = true },
-                    onCancelInProgress = { showCancelConfirm = true },
                 )
             }
 
@@ -485,14 +488,16 @@ private fun PriceRow(label: String, amount: Int) {
 private fun OrderActionButtons(
     status: OrderStatus,
     isPickup: Boolean,
+    isSelfDelivery: Boolean,
     scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
     onStartPreparing: () -> Unit,
     onMarkReady: () -> Unit,
     onComplete: () -> Unit,
+    onSelfPickup: () -> Unit,
+    onSelfDeliver: () -> Unit,
     onCancel: () -> Unit,
-    onCancelInProgress: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -582,17 +587,6 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                OutlinedButton(
-                    onClick = onCancelInProgress,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -609,17 +603,6 @@ private fun OrderActionButtons(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
                     }
-                }
-                OutlinedButton(
-                    onClick = onCancelInProgress,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.READY -> {
@@ -639,6 +622,24 @@ private fun OrderActionButtons(
                             Text("Complete Order", fontWeight = FontWeight.SemiBold)
                         }
                     }
+                } else if (isSelfDelivery) {
+                    // Restaurant self-delivers: no platform courier will ever pick this up,
+                    // so the seller drives ready→picked_up themselves.
+                    Button(
+                        onClick = onSelfPickup,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusAccepted),
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Mark Picked Up (self-delivery)", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 } else {
                     Button(
                         onClick = {},
@@ -654,24 +655,43 @@ private fun OrderActionButtons(
                 }
             }
             OrderStatus.PICKED_UP -> {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Out for Delivery",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = StatusAccepted,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "The courier has picked up this order and is en route to the customer.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
+                if (isSelfDelivery) {
+                    // Restaurant self-delivers: seller drives picked_up→delivered themselves.
+                    Button(
+                        onClick = onSelfDeliver,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Mark Delivered", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Out for Delivery",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = StatusAccepted,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "The courier has picked up this order and is en route to the customer.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
                     }
                 }
             }

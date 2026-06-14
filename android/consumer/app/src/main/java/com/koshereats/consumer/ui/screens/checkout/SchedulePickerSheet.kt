@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koshereats.consumer.ui.theme.*
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -51,15 +52,19 @@ fun SchedulePickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val zone = remember { ZoneId.systemDefault() }
-    val nowMillis = Instant.now().toEpochMilli()
-    val sevenDaysMillis = nowMillis + 7 * 24 * 60 * 60 * 1000L
     val startLocal = remember(current) { current ?: LocalDateTime.now().plusMinutes(45) }
 
+    // Material3 DatePicker works entirely in UTC start-of-day millis. Build the
+    // bounds the same way so the calendar lines up with the user's local date:
+    // today must be selectable and the window must reach exactly 7 local days out.
+    val todayUtcMillis = LocalDate.now(zone).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+    val sevenDaysMillis = LocalDate.now(zone).plusDays(7).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
     val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = startLocal.atZone(zone).toInstant().toEpochMilli(),
+        initialSelectedDateMillis = startLocal.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         selectableDates = object : androidx.compose.material3.SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                return utcTimeMillis in nowMillis..sevenDaysMillis
+                return utcTimeMillis in todayUtcMillis..sevenDaysMillis
             }
         },
     )
@@ -68,6 +73,7 @@ fun SchedulePickerSheet(
         initialMinute = startLocal.minute,
     )
     var showTime by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -124,6 +130,15 @@ fun SchedulePickerSheet(
                 )
             }
 
+            validationError?.let { error ->
+                Text(
+                    text = error,
+                    color = ErrorRed,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -140,18 +155,24 @@ fun SchedulePickerSheet(
                 Button(
                     onClick = {
                         if (!showTime) {
+                            validationError = null
                             showTime = true
                         } else {
-                            val chosenMillis = datePickerState.selectedDateMillis ?: nowMillis
-                            val date = Instant.ofEpochMilli(chosenMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                            // DatePicker.selectedDateMillis is UTC start-of-day; decode it
+                            // in UTC so a NY user who taps June 11 gets June 11 (not June 10).
+                            val chosenMillis = datePickerState.selectedDateMillis ?: todayUtcMillis
+                            val date = Instant.ofEpochMilli(chosenMillis).atZone(ZoneOffset.UTC).toLocalDate()
                             val combined = LocalDateTime.of(
                                 date,
                                 java.time.LocalTime.of(timePickerState.hour, timePickerState.minute),
                             )
                             val minAllowed = LocalDateTime.now().plusMinutes(45)
                             if (combined.isBefore(minAllowed)) {
-                                onAsap()
+                                // Don't silently downgrade to ASAP — tell the user so they can
+                                // pick a real later time instead of getting an immediate order.
+                                validationError = "Pick a time at least 45 minutes from now, or choose ASAP."
                             } else {
+                                validationError = null
                                 onConfirm(combined)
                             }
                         }

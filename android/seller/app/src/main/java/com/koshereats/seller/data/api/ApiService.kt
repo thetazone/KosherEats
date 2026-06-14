@@ -79,10 +79,10 @@ interface ApiService {
         @Body body: Map<String, String?>,
     ): Response<Order>
 
-    @PATCH("seller/orders/{orderId}/cancel")
-    suspend fun cancelOrder(
-        @Path("orderId") orderId: String,
-    ): Response<Order>
+    // NOTE: There is intentionally no seller `cancel` endpoint. The backend only
+    // exposes /cancel under the consumer order group (CancelOrder), not under
+    // /seller/orders. Sellers terminate an order via /reject (PENDING only). The
+    // Cancel-in-progress affordance was removed from the UI because it 404'd.
 
     @PATCH("seller/orders/{orderId}/pickup")
     suspend fun sellerPickupOrder(

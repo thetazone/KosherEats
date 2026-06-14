@@ -284,9 +284,15 @@ class OrdersViewModel @Inject constructor(
                 val response = apiService.getOrders(status = statusStr, page = 1, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     val body = response.body() ?: emptyList()
+                    // The backend ignores the `status` query param, so it returns the newest
+                    // PAGE_SIZE orders of ALL statuses. Filter client-side so the selected chip
+                    // shows only matching orders immediately (matching pollSilently's merge).
+                    val filtered = if (status != null) body.filter { it.status == status } else body
                     _state.update { it.copy(
-                        orders = body,
+                        orders = filtered,
                         isLoading = false,
+                        // hasMorePages keys on the raw (unfiltered) page size: a full page means
+                        // the server may hold older rows beyond this window worth paging into.
                         hasMorePages = body.size == PAGE_SIZE,
                         currentPage = 1,
                     ) }
@@ -322,10 +328,25 @@ class OrdersViewModel @Inject constructor(
                         if (current.selectedFilter != filterAtStart) {
                             current.copy(isLoadingMore = false)
                         } else {
+                            // De-dup by id before appending: SellerOrdersScreen renders with
+                            // items(key = { it.id }) and Compose crashes on duplicate keys. Dupes
+                            // arise because the backend pagination ignores `page` (it only honors
+                            // `cursor`), so each load-more returns the same newest window, and even
+                            // with real cursor paging the OFFSET window shifts as new orders arrive.
+                            val existingIds = current.orders.map { it.id }.toSet()
+                            val unseen = body.filter { it.id !in existingIds }
+                            // Apply the status filter client-side — the backend ignores `status`.
+                            val unseenFiltered = if (filterAtStart != null) {
+                                unseen.filter { it.status == filterAtStart }
+                            } else unseen
                             current.copy(
-                                orders = current.orders + body,
+                                orders = current.orders + unseenFiltered,
                                 currentPage = pageToLoad,
-                                hasMorePages = body.size == PAGE_SIZE,
+                                // Terminate pagination when the page brought no unseen ids: the
+                                // server returned a window we already hold, so paging further would
+                                // loop forever fetching duplicates. A full page of new ids means
+                                // more may remain.
+                                hasMorePages = unseen.isNotEmpty() && body.size == PAGE_SIZE,
                                 isLoadingMore = false,
                             )
                         }
@@ -469,16 +490,6 @@ class OrdersViewModel @Inject constructor(
             return
         }
         doOrderApiCall(orderId) { apiService.rejectOrder(orderId, mapOf("reason" to reason)) }
-    }
-
-    fun cancelInProgress(orderId: String) {
-        val order = _state.value.selectedOrder?.takeIf { it.id == orderId }
-            ?: _state.value.orders.find { it.id == orderId }
-        if (order?.status != OrderStatus.ACCEPTED && order?.status != OrderStatus.PREPARING) {
-            _state.update { it.copy(error = "Can only cancel an accepted or preparing order") }
-            return
-        }
-        doOrderApiCall(orderId) { apiService.cancelOrder(orderId) }
     }
 
     private fun doOrderApiCall(orderId: String, call: suspend () -> Response<Order>) {
@@ -626,6 +637,10 @@ class OrdersViewModel @Inject constructor(
                                 if (order.id in current.pendingOrderIds)
                                     current.orders.find { it.id == order.id } ?: order
                                 else order
+                            // The backend ignores `status`; filter client-side so a refreshed
+                            // filtered view shows only matching orders (consistent with loadOrders).
+                            }.let { list ->
+                                if (filterAtStart != null) list.filter { it.status == filterAtStart } else list
                             }
                             current.copy(
                                 orders = orders,

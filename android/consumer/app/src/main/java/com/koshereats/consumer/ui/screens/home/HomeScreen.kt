@@ -459,7 +459,10 @@ fun HomeScreen(
                 currentCholovYisroel = uiState.filterCholovYisroelOnly,
                 currentPasYisroel = uiState.filterPasYisroelOnly,
                 currentCertifications = uiState.filterCertifications,
-                allRestaurants = uiState.allRestaurants,
+                // Preview counts must be computed over the full, unfiltered population
+                // (rawRestaurants) — counting over the already-filtered feed
+                // (allRestaurants) under-reports when relaxing an active filter.
+                allRestaurants = uiState.rawRestaurants,
                 onDismiss = { showFilterSheet = false },
                 onApply = { g, c, p, certs ->
                     viewModel.applyKosherFilters(g, c, p, certs)

@@ -5,57 +5,59 @@ struct DealsView: View {
     @StateObject private var vm = DealsViewModel()
 
     var body: some View {
-        ZStack {
-            Color.keBackground.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                Color.keBackground.ignoresSafeArea()
 
-            if vm.isLoading && vm.deals.isEmpty {
-                ProgressView().tint(.kePrimary)
-            } else if let error = vm.errorMessage, vm.deals.isEmpty {
-                ErrorStateView(
-                    message: error,
-                    onRetry: { Task { await vm.load() } }
-                )
-            } else if vm.deals.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "tag.slash")
-                        .font(.system(size: 48))
-                        .foregroundColor(.keTextMuted)
-                    Text("No deals right now")
-                        .font(.headline)
-                        .foregroundColor(.keTextPrimary)
-                    Text("Check back later for deals from nearby restaurants.")
-                        .font(.subheadline)
-                        .foregroundColor(.keTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
-            } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 14) {
-                        ForEach(vm.deals) { deal in
-                            NavigationLink(destination: RestaurantDetailView(restaurantID: deal.restaurantId)) {
-                                DealListCard(deal: deal) {
-                                    cartVM.applyDeal(deal)
-                                    Haptics.success()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
+                if vm.isLoading && vm.deals.isEmpty {
+                    ProgressView().tint(.kePrimary)
+                } else if let error = vm.errorMessage, vm.deals.isEmpty {
+                    ErrorStateView(
+                        message: error,
+                        onRetry: { Task { await vm.load() } }
+                    )
+                } else if vm.deals.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "tag.slash")
+                            .font(.system(size: 48))
+                            .foregroundColor(.keTextMuted)
+                        Text("No deals right now")
+                            .font(.headline)
+                            .foregroundColor(.keTextPrimary)
+                        Text("Check back later for deals from nearby restaurants.")
+                            .font(.subheadline)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
                     }
-                    .padding()
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 14) {
+                            ForEach(vm.deals) { deal in
+                                NavigationLink(destination: RestaurantDetailView(restaurantID: deal.restaurantId)) {
+                                    DealListCard(deal: deal) {
+                                        cartVM.applyDeal(deal)
+                                        Haptics.success()
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding()
+                    }
                 }
             }
-        }
-        .navigationTitle("Deals Near You")
-        .navigationBarTitleDisplayMode(.large)
-        .task { await vm.load() }
-        .refreshable { await vm.load() }
-        .overlay {
-            if vm.isLoading && !vm.deals.isEmpty {
-                ProgressView()
-                    .tint(.kePrimary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding()
+            .navigationTitle("Deals Near You")
+            .navigationBarTitleDisplayMode(.large)
+            .task { await vm.load() }
+            .refreshable { await vm.load() }
+            .overlay {
+                if vm.isLoading && !vm.deals.isEmpty {
+                    ProgressView()
+                        .tint(.kePrimary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding()
+                }
             }
         }
     }
