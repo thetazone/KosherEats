@@ -64,7 +64,7 @@ import com.koshereats.consumer.ui.viewmodels.OrdersViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersScreen(
-    onOrderClick: (String) -> Unit,
+    onOrderClick: (Order) -> Unit,
     onReorderClick: (Order) -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
@@ -139,7 +139,7 @@ fun OrdersScreen(
                     items(uiState.orders, key = { it.id }) { order ->
                         OrderCard(
                             order = order,
-                            onClick = { onOrderClick(order.id) },
+                            onClick = { onOrderClick(order) },
                             onReorder = { onReorderClick(order) },
                         )
                     }

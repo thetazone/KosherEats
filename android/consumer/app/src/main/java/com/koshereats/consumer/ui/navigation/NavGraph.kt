@@ -61,6 +61,7 @@ import com.koshereats.consumer.ui.screens.checkout.OrderConfirmationScreen
 import com.koshereats.consumer.ui.screens.deals.DealsScreen
 import com.koshereats.consumer.ui.screens.home.HomeScreen
 import com.koshereats.consumer.ui.screens.map.NearbyMapScreen
+import com.koshereats.consumer.ui.screens.orders.OrderDetailScreen
 import com.koshereats.consumer.ui.screens.orders.OrdersScreen
 import com.koshereats.consumer.ui.screens.profile.EditProfileScreen
 import com.koshereats.consumer.ui.screens.profile.PaymentMethodsScreen
@@ -398,6 +399,25 @@ fun KosherEatsNavHost(
                 )
             }
 
+            composable(
+                route = Screen.OrderDetail.route,
+                arguments = listOf(navArgument("orderId") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                if (!authState.isRehydrating && authState.sessionState != SessionState.Authenticated) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
+                val orderId = backStackEntry.arguments?.getString("orderId")
+                if (orderId.isNullOrEmpty()) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                    return@composable
+                }
+                OrderDetailScreen(
+                    orderId = orderId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Screen.Orders.route) {
                 if (authState.sessionState != SessionState.Authenticated) {
                     GuestBlockedScreen(
@@ -407,8 +427,15 @@ fun KosherEatsNavHost(
                     )
                 } else {
                     OrdersScreen(
-                        onOrderClick = { orderId ->
-                            navController.navigate(Screen.OrderTracking.createRoute(orderId))
+                        onOrderClick = { order ->
+                            // Mirror iOS: active orders open the live tracking map;
+                            // terminal/non-active orders (delivered, completed,
+                            // cancelled, rejected) open the receipt detail screen.
+                            if (order.status.isActive) {
+                                navController.navigate(Screen.OrderTracking.createRoute(order.id))
+                            } else {
+                                navController.navigate(Screen.OrderDetail.createRoute(order.id))
+                            }
                         },
                         onReorderClick = { order ->
                             // Re-add the past order's line items to the cart, then open it.

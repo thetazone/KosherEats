@@ -30,6 +30,9 @@ sealed class Screen(val route: String) {
     data object OrderTracking : Screen("orders/{orderId}/tracking") {
         fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/tracking"
     }
+    data object OrderDetail : Screen("orders/{orderId}/detail") {
+        fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/detail"
+    }
     data object Chat : Screen("orders/{orderId}/chat") {
         fun createRoute(orderId: String) = "orders/${Uri.encode(orderId)}/chat"
     }
