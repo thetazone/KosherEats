@@ -1,7 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { cart as cartApi, orders as ordersApi, payments as paymentsApi, restaurants as restaurantsApi, user as userApi } from "@/lib/api";
+import { auth as authApi, cart as cartApi, orders as ordersApi, payments as paymentsApi, restaurants as restaurantsApi, user as userApi } from "@/lib/api";
 import type { Cart } from "@/types";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
@@ -32,9 +32,55 @@ interface PaymentIntentBundle {
   total: number;
 }
 
+// Persisted between confirmPayment (charge captured) and a successful
+// orders.create so a network blip / expired token / 5xx can never leave the
+// customer charged with no order — the order is re-attempted on next mount.
+// orders.create is idempotent on payment_intent_id, so retrying is safe.
+interface PendingOrder {
+  payment_intent_id: string;
+  restaurant_id: string;
+  delivery_address: string;
+  delivery_lat: number;
+  delivery_lng: number;
+}
+
+const PENDING_ORDER_KEY = "pending_order";
+const ORDER_RETRY_DELAYS_MS = [500, 1500, 4000];
+
+function loadPendingOrder(): PendingOrder | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_ORDER_KEY);
+    return raw ? (JSON.parse(raw) as PendingOrder) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingOrder(p: PendingOrder): void {
+  window.localStorage.setItem(PENDING_ORDER_KEY, JSON.stringify(p));
+}
+
+function clearPendingOrder(): void {
+  window.localStorage.removeItem(PENDING_ORDER_KEY);
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 function isUnauthorized(err: unknown): boolean {
   const msg = String(err instanceof Error ? err.message : err).toLowerCase();
   return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
+}
+
+// orders.create is idempotent on payment_intent_id: if the FIRST POST committed
+// server-side but its response was lost (network blip / timeout / 5xx-after-
+// commit), every replay of the same payment_intent_id returns HTTP 409
+// "order already created for this payment". The order DOES exist, so this
+// conflict is a SUCCESS for our retry/recovery loop — we must clear the
+// persisted intent and proceed, never treat it as a retriable failure.
+function isAlreadyCreated(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return msg.includes("409") || msg.includes("already created for this payment");
 }
 
 function formatUSD(cents: number): string {
@@ -61,6 +107,23 @@ export default function CartPage() {
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [checkoutStarting, setCheckoutStarting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // "finalizing" → charge captured, order POST in flight/retrying. We surface a
+  // clear state instead of silently navigating away if orders.create fails.
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
+
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [addrForm, setAddrForm] = useState({
+    label: "Home",
+    street: "",
+    city: "",
+    state: "",
+    zip_code: "",
+    lat: "",
+    lng: "",
+  });
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
@@ -70,8 +133,85 @@ export default function CartPage() {
     }
     setToken(t);
     void loadAll(t);
+    // A charge was captured on a previous visit but the order POST never
+    // confirmed — re-attempt it now so the customer is never charged with no
+    // order. Idempotent on payment_intent_id.
+    void recoverPendingOrder(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refresh the 15-min access token in place (the order POST can outlive it).
+  // Returns the new token, or null if refresh is unavailable/failed.
+  async function refreshToken(): Promise<string | null> {
+    const rt = typeof window !== "undefined" ? window.localStorage.getItem("refresh_token") : null;
+    if (!rt) return null;
+    try {
+      const data = (await authApi.refresh(rt)) as { token: string; refresh_token?: string };
+      if (!data?.token) return null;
+      window.localStorage.setItem("token", data.token);
+      if (data.refresh_token) window.localStorage.setItem("refresh_token", data.refresh_token);
+      setToken(data.token);
+      return data.token;
+    } catch {
+      return null;
+    }
+  }
+
+  // Re-POST a persisted order with backoff. On 401, refresh the token once and
+  // retry with the fresh one. Clears the persisted intent on success; leaves it
+  // in place on exhaustion so the next mount can try again.
+  async function submitPendingOrder(pending: PendingOrder, initialToken: string): Promise<boolean> {
+    let activeToken = initialToken;
+    for (let attempt = 0; attempt <= ORDER_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        await ordersApi.create(activeToken, {
+          restaurant_id: pending.restaurant_id,
+          delivery_address: pending.delivery_address,
+          delivery_lat: pending.delivery_lat,
+          delivery_lng: pending.delivery_lng,
+          payment_intent_id: pending.payment_intent_id,
+        });
+        clearPendingOrder();
+        return true;
+      } catch (err) {
+        // The order already exists for this payment (lost-response replay).
+        // Idempotency conflict == success: clear the intent and stop retrying.
+        if (isAlreadyCreated(err)) {
+          clearPendingOrder();
+          return true;
+        }
+        if (isUnauthorized(err)) {
+          const fresh = await refreshToken();
+          if (fresh) {
+            activeToken = fresh;
+            continue; // retry immediately with the refreshed token
+          }
+        }
+        if (attempt < ORDER_RETRY_DELAYS_MS.length) {
+          await sleep(ORDER_RETRY_DELAYS_MS[attempt]);
+          continue;
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+
+  async function recoverPendingOrder(t: string) {
+    const pending = loadPendingOrder();
+    if (!pending) return;
+    setFinalizing(true);
+    setFinalizeError(null);
+    const ok = await submitPendingOrder(pending, t);
+    setFinalizing(false);
+    if (ok) {
+      router.push("/orders");
+    } else {
+      setFinalizeError(
+        "Your payment went through but we couldn't confirm your order. We'll keep retrying — please don't pay again."
+      );
+    }
+  }
 
   async function loadAll(t: string) {
     setLoading(true);
@@ -157,19 +297,116 @@ export default function CartPage() {
     }
   }
 
+  // Called only AFTER Stripe confirmPayment has captured the charge. We persist
+  // the order intent to localStorage FIRST so that if orders.create fails for
+  // any reason the order can be re-attempted on the next mount — the customer
+  // is never charged with no order.
   async function finalizeOrder(paymentIntentId: string) {
     if (!token || !cart) throw new Error("Session expired");
     const addr = addresses.find((a) => a.id === selectedAddressId);
     if (!addr) throw new Error("No delivery address selected");
 
-    await ordersApi.create(token, {
+    const pending: PendingOrder = {
+      payment_intent_id: paymentIntentId,
       restaurant_id: cart.restaurant_id,
       delivery_address: formatAddress(addr),
       delivery_lat: addr.lat,
       delivery_lng: addr.lng,
-      payment_intent_id: paymentIntentId,
-    });
-    router.push("/orders");
+    };
+    savePendingOrder(pending);
+
+    // Close the Stripe modal and show the dedicated finishing/retry state.
+    setIntent(null);
+    setStripePromise(null);
+    setFinalizing(true);
+    setFinalizeError(null);
+
+    const ok = await submitPendingOrder(pending, token);
+    setFinalizing(false);
+    if (ok) {
+      router.push("/orders");
+    } else {
+      setFinalizeError(
+        "Your payment went through but we couldn't confirm your order. We'll keep retrying — please don't pay again."
+      );
+    }
+  }
+
+  async function retryFinalize() {
+    if (!token) return;
+    const pending = loadPendingOrder();
+    if (!pending) return;
+    setFinalizing(true);
+    setFinalizeError(null);
+    const ok = await submitPendingOrder(pending, token);
+    setFinalizing(false);
+    if (ok) {
+      router.push("/orders");
+    } else {
+      setFinalizeError(
+        "Still couldn't confirm your order. We'll keep retrying — please don't pay again."
+      );
+    }
+  }
+
+  async function saveAddress(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    const street = addrForm.street.trim();
+    const city = addrForm.city.trim();
+    const state = addrForm.state.trim();
+    const zip = addrForm.zip_code.trim();
+    if (!street || !city || !state || !zip) {
+      setAddressError("Please fill in street, city, state, and ZIP.");
+      return;
+    }
+    // The backend does NOT geocode (it stores lat/lng verbatim) and there's no
+    // geocoding API key web-side, so the user supplies coordinates manually —
+    // same pattern as the admin restaurant form. These feed delivery routing
+    // and the distance-based delivery-fee quote, so we reject placeholder/
+    // out-of-range values (especially null-island 0,0) rather than send junk.
+    const lat = parseFloat(addrForm.lat);
+    const lng = parseFloat(addrForm.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setAddressError("Enter the address's latitude and longitude.");
+      return;
+    }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setAddressError("Latitude must be between -90 and 90, longitude between -180 and 180.");
+      return;
+    }
+    if (lat === 0 && lng === 0) {
+      setAddressError("Coordinates can't be (0, 0). Enter the address's real latitude and longitude.");
+      return;
+    }
+    setSavingAddress(true);
+    setAddressError(null);
+    try {
+      await userApi.addAddress(token, {
+        label: addrForm.label.trim() || "Home",
+        street,
+        city,
+        state,
+        zip_code: zip,
+        lat,
+        lng,
+      });
+      const fresh = (await userApi.listAddresses(token)) as Address[];
+      setAddresses(fresh);
+      const added = fresh.find((x) => x.is_default) ?? fresh[fresh.length - 1];
+      if (added) setSelectedAddressId(added.id);
+      setShowAddressForm(false);
+      setAddrForm({ label: "Home", street: "", city: "", state: "", zip_code: "", lat: "", lng: "" });
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        window.localStorage.removeItem("token");
+        router.replace("/auth");
+        return;
+      }
+      setAddressError(err instanceof Error ? err.message : "Failed to save address");
+    } finally {
+      setSavingAddress(false);
+    }
   }
 
   const subtotal = cart?.subtotal ?? 0;
@@ -234,14 +471,35 @@ export default function CartPage() {
           </p>
         )}
 
-        {items.length === 0 ? (
+        {(finalizing || finalizeError) && (
+          <div
+            className={`card p-6 mb-6 border ${
+              finalizeError ? "border-red-800 bg-red-900/20" : "border-brand-700 bg-brand-900/10"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {finalizing ? (
+              <p className="text-dark-200">Finishing your order… please don&apos;t close this tab.</p>
+            ) : (
+              <>
+                <p className="text-red-300 mb-4">{finalizeError}</p>
+                <button onClick={retryFinalize} className="btn-primary inline-block">
+                  Retry confirming order
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {finalizing ? null : items.length === 0 ? (
           <div className="card p-12 text-center">
             <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
             </svg>
             <h2 className="text-xl font-bold mb-2">Your cart is empty</h2>
             <p className="text-dark-400 mb-6">Add items from a restaurant to get started.</p>
-            <a href="/" className="btn-primary inline-block">Browse Restaurants</a>
+            <a href="/search" className="btn-primary inline-block">Browse Restaurants</a>
           </div>
         ) : (
           <div className="flex flex-col lg:flex-row gap-8">
@@ -334,13 +592,11 @@ export default function CartPage() {
                     Delivery address
                   </label>
                   {addresses.length === 0 ? (
-                    <div className="text-sm text-dark-400">
-                      You have no saved addresses. Add one from your{" "}
-                      <a href="/" className="text-brand-400 underline">
-                        account
-                      </a>{" "}
-                      to place an order.
-                    </div>
+                    !showAddressForm && (
+                      <div className="text-sm text-dark-400">
+                        You have no saved addresses. Add one below to place an order.
+                      </div>
+                    )
                   ) : (
                     <select
                       id="cart-address"
@@ -354,6 +610,92 @@ export default function CartPage() {
                         </option>
                       ))}
                     </select>
+                  )}
+
+                  {showAddressForm ? (
+                    <form onSubmit={saveAddress} className="mt-3 space-y-2">
+                      <input
+                        className="input w-full"
+                        placeholder="Label (e.g. Home)"
+                        value={addrForm.label}
+                        onChange={(e) => setAddrForm((f) => ({ ...f, label: e.target.value }))}
+                      />
+                      <input
+                        className="input w-full"
+                        placeholder="Street address"
+                        value={addrForm.street}
+                        onChange={(e) => setAddrForm((f) => ({ ...f, street: e.target.value }))}
+                      />
+                      <input
+                        className="input w-full"
+                        placeholder="City"
+                        value={addrForm.city}
+                        onChange={(e) => setAddrForm((f) => ({ ...f, city: e.target.value }))}
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          className="input w-full"
+                          placeholder="State"
+                          value={addrForm.state}
+                          onChange={(e) => setAddrForm((f) => ({ ...f, state: e.target.value }))}
+                        />
+                        <input
+                          className="input w-full"
+                          placeholder="ZIP"
+                          value={addrForm.zip_code}
+                          onChange={(e) => setAddrForm((f) => ({ ...f, zip_code: e.target.value }))}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          className="input w-full"
+                          type="number"
+                          step="any"
+                          placeholder="Latitude (e.g. 40.7128)"
+                          value={addrForm.lat}
+                          onChange={(e) => setAddrForm((f) => ({ ...f, lat: e.target.value }))}
+                        />
+                        <input
+                          className="input w-full"
+                          type="number"
+                          step="any"
+                          placeholder="Longitude (e.g. -74.0060)"
+                          value={addrForm.lng}
+                          onChange={(e) => setAddrForm((f) => ({ ...f, lng: e.target.value }))}
+                        />
+                      </div>
+                      <p className="text-xs text-dark-500">
+                        Used for delivery routing and to estimate your delivery fee.
+                      </p>
+                      {addressError && <div className="text-sm text-red-400">{addressError}</div>}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="submit"
+                          disabled={savingAddress}
+                          className="btn-primary flex-1 text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {savingAddress ? "Saving…" : "Save address"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddressForm(false);
+                            setAddressError(null);
+                          }}
+                          className="btn-secondary text-center"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddressForm(true)}
+                      className="mt-2 text-sm text-brand-400 underline"
+                    >
+                      + Add delivery address
+                    </button>
                   )}
                 </div>
 

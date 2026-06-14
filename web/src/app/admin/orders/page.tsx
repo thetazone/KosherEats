@@ -6,16 +6,26 @@ import { adminApi, AdminOrder, formatCents } from "@/lib/adminApi";
 /**
  * Admin orders overview — last 100 orders across the platform. Auto-refreshes
  * every 15s so an admin watching the dashboard sees new orders come in live.
+ *
+ * A transient poll failure must NOT brick the dashboard: once we have a good
+ * table, a failed refresh keeps the last good data on screen behind a small
+ * "reconnecting…" banner, and the next successful poll clears it. Only the
+ * very first load (no data yet) shows the full-screen failure state. Polling
+ * pauses while the tab is hidden and resumes on focus to avoid pointless
+ * background fetches.
  */
 export default function OrdersPage() {
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasData, setHasData] = useState(false);
 
   async function load() {
     try {
       const data = await adminApi.orders();
       setOrders(data);
+      setHasData(true);
+      setError(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -25,12 +35,50 @@ export default function OrdersPage() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 15_000);
-    return () => clearInterval(t);
+
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (timer === null) timer = setInterval(load, 15_000);
+    };
+    const stop = () => {
+      if (timer !== null) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        // Refresh immediately on return so the table isn't 15s stale.
+        load();
+        start();
+      }
+    };
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   if (loading) return <div className="text-neutral-500">Loading orders…</div>;
-  if (error) return <div className="text-red-400">Failed: {error}</div>;
+  // Only block the whole view when the very first load failed and we have no
+  // good data to show. After that, errors surface as a non-blocking banner.
+  if (error && !hasData)
+    return (
+      <div className="space-y-4">
+        <div className="text-red-400">Failed: {error}</div>
+        <button
+          onClick={load}
+          className="text-sm px-3 py-1.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 transition"
+        >
+          Retry
+        </button>
+      </div>
+    );
 
   return (
     <div className="space-y-6">
@@ -40,6 +88,18 @@ export default function OrdersPage() {
           Last 100 orders across the platform • refreshes every 15s
         </p>
       </div>
+
+      {error && (
+        <div className="flex items-center justify-between gap-4 px-4 py-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-300 text-sm">
+          <span>Reconnecting… showing last loaded orders.</span>
+          <button
+            onClick={load}
+            className="text-xs px-2 py-1 rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 transition"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
         <table className="w-full">

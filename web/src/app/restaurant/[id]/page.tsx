@@ -1,169 +1,21 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { useState } from "react";
+import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
+import type { MenuCategory, MenuItem, Restaurant } from "@/types";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-const MOCK_RESTAURANT = {
-  id: "1",
-  name: "Jerusalem Grill",
-  description:
-    "Authentic Israeli and Middle Eastern cuisine, made fresh daily with the finest kosher ingredients. Family recipes passed down through generations.",
-  image_url: "/placeholder-restaurant.jpg",
-  kosher_certification: "OU",
-  certifying_agency: "Orthodox Union",
-  is_cholov_yisroel: false,
-  is_pas_yisroel: true,
-  is_glatt_kosher: true,
-  cuisine_type: ["Israeli", "Middle Eastern"],
-  rating: 4.8,
-  review_count: 324,
-  delivery_fee: 399,
-  min_order: 1500,
-  est_delivery_min: 25,
-  est_delivery_max: 40,
-  is_open: true,
-  street: "123 Main St",
-  city: "Brooklyn",
-  state: "NY",
-  phone: "(718) 555-0123",
-};
-
-const MOCK_MENU = [
-  {
-    id: "cat1",
-    name: "Starters",
-    sort_order: 0,
-    items: [
-      {
-        id: "item1",
-        name: "Hummus Plate",
-        description: "Creamy hummus with warm pita, olive oil, and paprika",
-        price: 1299,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item2",
-        name: "Falafel Platter",
-        description: "Six crispy falafel balls with tahini, Israeli salad, and pickles",
-        price: 1499,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item3",
-        name: "Stuffed Grape Leaves",
-        description: "Hand-rolled grape leaves filled with seasoned rice",
-        price: 1099,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-    ],
-  },
-  {
-    id: "cat2",
-    name: "Grilled Meats",
-    sort_order: 1,
-    items: [
-      {
-        id: "item4",
-        name: "Mixed Grill",
-        description: "Chicken, lamb kebab, and kofte served with rice pilaf and grilled vegetables",
-        price: 2899,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-      {
-        id: "item5",
-        name: "Lamb Shawarma Plate",
-        description: "Slow-roasted lamb shawarma with hummus, tahini, and fresh salad",
-        price: 2499,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-      {
-        id: "item6",
-        name: "Chicken Schnitzel",
-        description: "Crispy breaded chicken breast with lemon and garlic sauce",
-        price: 2199,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-    ],
-  },
-  {
-    id: "cat3",
-    name: "Sides",
-    sort_order: 2,
-    items: [
-      {
-        id: "item7",
-        name: "Israeli Salad",
-        description: "Finely diced tomatoes, cucumbers, onions with lemon and olive oil",
-        price: 799,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item8",
-        name: "French Fries",
-        description: "Crispy golden fries with za'atar seasoning",
-        price: 699,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-    ],
-  },
-  {
-    id: "cat4",
-    name: "Drinks",
-    sort_order: 3,
-    items: [
-      {
-        id: "item9",
-        name: "Fresh Lemonade",
-        description: "House-made lemonade with mint",
-        price: 499,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item10",
-        name: "Turkish Coffee",
-        description: "Traditional dark Turkish coffee with cardamom",
-        price: 399,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-    ],
-  },
-];
-
-interface CartItem {
+interface LocalCartItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
+}
+
+function isUnauthorized(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
 }
 
 function DietaryBadge({ label, color }: { label: string; color: string }) {
@@ -175,36 +27,117 @@ function DietaryBadge({ label, color }: { label: string; color: string }) {
 }
 
 export default function RestaurantPage() {
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [activeCategory, setActiveCategory] = useState(MOCK_MENU[0]?.id);
-  const rest = MOCK_RESTAURANT;
+  const params = useParams<{ id: string }>();
+  const id = params?.id;
+  const router = useRouter();
 
-  const addToCart = (item: { id: string; name: string; price: number }) => {
-    setCart((prev) => {
-      const existing = prev.find((c) => c.id === item.id);
-      if (existing) {
-        return prev.map((c) =>
-          c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c
-        );
-      }
-      return [...prev, { ...item, quantity: 1 }];
-    });
-  };
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
+  const [menu, setMenu] = useState<MenuCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const removeFromCart = (itemId: string) => {
-    setCart((prev) => {
-      const existing = prev.find((c) => c.id === itemId);
-      if (existing && existing.quantity > 1) {
-        return prev.map((c) =>
-          c.id === itemId ? { ...c, quantity: c.quantity - 1 } : c
-        );
+  const [cart, setCart] = useState<LocalCartItem[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
+  const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    void loadAll(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  async function loadAll(restaurantId: string) {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [r, m] = await Promise.all([
+        restaurantsApi.get(restaurantId) as Promise<Restaurant>,
+        restaurantsApi.getMenu(restaurantId) as Promise<MenuCategory[]>,
+      ]);
+      setRestaurant(r);
+      const categories = [...m].sort((a, b) => a.sort_order - b.sort_order);
+      setMenu(categories);
+      setActiveCategory(categories[0]?.id);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Failed to load restaurant");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function addToCart(item: MenuItem) {
+    if (!id) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) {
+      router.push("/auth");
+      return;
+    }
+
+    setMutatingItemId(item.id);
+    setMutationError(null);
+    try {
+      await cartApi.addItem(token, {
+        menu_item_id: item.id,
+        restaurant_id: id,
+        quantity: 1,
+      });
+      setCart((prev) => {
+        const existing = prev.find((c) => c.id === item.id);
+        if (existing) {
+          return prev.map((c) =>
+            c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c
+          );
+        }
+        return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
+      });
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        window.localStorage.removeItem("token");
+        router.push("/auth");
+        return;
       }
-      return prev.filter((c) => c.id !== itemId);
-    });
-  };
+      setMutationError(err instanceof Error ? err.message : "Failed to add item to cart");
+    } finally {
+      setMutatingItemId(null);
+    }
+  }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  if (loading) {
+    return (
+      <>
+        <Header />
+        <main className="flex-1 max-w-7xl mx-auto px-4 py-8">
+          <div className="card p-12 text-center text-dark-400">Loading restaurant…</div>
+        </main>
+      </>
+    );
+  }
+
+  if (loadError || !restaurant) {
+    return (
+      <>
+        <Header />
+        <main className="flex-1 max-w-7xl mx-auto px-4 py-8">
+          <div className="card p-12 text-center">
+            <h2 className="text-xl font-bold mb-2">Couldn&apos;t load this restaurant</h2>
+            <p className="text-dark-400 mb-6">{loadError ?? "Restaurant not found."}</p>
+            <button
+              onClick={() => id && loadAll(id)}
+              className="btn-primary inline-block"
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  const rest = restaurant;
 
   return (
     <>
@@ -294,7 +227,7 @@ export default function RestaurantPage() {
               {/* Category Tabs */}
               <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
                 <div className="flex gap-3 overflow-x-auto">
-                  {MOCK_MENU.map((cat) => (
+                  {menu.map((cat) => (
                     <button
                       key={cat.id}
                       onClick={() => setActiveCategory(cat.id)}
@@ -310,73 +243,81 @@ export default function RestaurantPage() {
                 </div>
               </div>
 
-              {/* Menu Items */}
-              {MOCK_MENU.map((category) => (
-                <div key={category.id} className="mb-8">
-                  <h2 className="text-xl font-bold mb-4">{category.name}</h2>
-                  <div className="space-y-3">
-                    {category.items.map((item) => {
-                      const cartItem = cart.find((c) => c.id === item.id);
-                      return (
-                        <div
-                          key={item.id}
-                          className="card p-4 flex justify-between items-start gap-4 hover:border-dark-600 transition-colors"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold">{item.name}</h3>
-                              {item.is_meat && (
-                                <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
-                              )}
-                              {item.is_dairy && (
-                                <DietaryBadge label="Dairy" color="bg-blue-900/40 text-blue-400" />
-                              )}
-                              {item.is_pareve && (
-                                <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
-                              )}
-                            </div>
-                            <p className="text-dark-400 text-sm mb-2">
-                              {item.description}
-                            </p>
-                            <span className="text-brand-400 font-semibold">
-                              ${(item.price / 100).toFixed(2)}
-                            </span>
-                          </div>
+              {mutationError && (
+                <div className="card p-3 mb-4 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+                  {mutationError}
+                </div>
+              )}
 
-                          <div className="flex items-center gap-2">
-                            {cartItem ? (
-                              <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
-                                <button
-                                  onClick={() => removeFromCart(item.id)}
-                                  className="w-7 h-7 rounded-full bg-dark-700 hover:bg-dark-600 flex items-center justify-center text-white transition-colors"
-                                >
-                                  -
-                                </button>
-                                <span className="font-semibold w-6 text-center">
-                                  {cartItem.quantity}
-                                </span>
+              {menu.length === 0 ? (
+                <div className="card p-12 text-center text-dark-400">
+                  This restaurant hasn&apos;t published a menu yet.
+                </div>
+              ) : (
+                menu.map((category) => (
+                  <div key={category.id} className="mb-8">
+                    <h2 className="text-xl font-bold mb-4">{category.name}</h2>
+                    <div className="space-y-3">
+                      {(category.items ?? []).map((item) => {
+                        const cartItem = cart.find((c) => c.id === item.id);
+                        const isPending = mutatingItemId === item.id;
+                        return (
+                          <div
+                            key={item.id}
+                            className="card p-4 flex justify-between items-start gap-4 hover:border-dark-600 transition-colors"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold">{item.name}</h3>
+                                {item.is_meat && (
+                                  <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
+                                )}
+                                {item.is_dairy && (
+                                  <DietaryBadge label="Dairy" color="bg-blue-900/40 text-blue-400" />
+                                )}
+                                {item.is_pareve && (
+                                  <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
+                                )}
+                              </div>
+                              <p className="text-dark-400 text-sm mb-2">
+                                {item.description}
+                              </p>
+                              <span className="text-brand-400 font-semibold">
+                                ${(item.price / 100).toFixed(2)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {cartItem ? (
+                                <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
+                                  <span className="font-semibold w-6 text-center">
+                                    {cartItem.quantity}
+                                  </span>
+                                  <button
+                                    onClick={() => addToCart(item)}
+                                    disabled={isPending || !item.is_available}
+                                    className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
                                 <button
                                   onClick={() => addToCart(item)}
-                                  className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 flex items-center justify-center text-white transition-colors"
+                                  disabled={isPending || !item.is_available}
+                                  className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
                                 >
-                                  +
+                                  {!item.is_available ? "Unavailable" : isPending ? "Adding…" : "Add"}
                                 </button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => addToCart(item)}
-                                className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-                              >
-                                Add
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
             {/* Cart Sidebar (desktop) */}

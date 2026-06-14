@@ -13,10 +13,21 @@ import { adminApi } from "@/lib/adminApi";
  * restaurant?" lookup problem for the admin — each new restaurant gets a
  * dedicated seller login they can hand off to the restaurant operator.
  */
+// An already-registered seller email is a recoverable condition: it means a
+// prior submit created the seller but the restaurant step failed. We proceed to
+// step 2 instead of bricking the flow with a hard duplicate-email error.
+function isDuplicateEmail(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return msg.includes("already exists") || msg.includes("already registered") || msg.includes("duplicate") || msg.includes("409");
+}
+
 export default function NewRestaurantPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Persisted across resubmits so a failed step 2 doesn't force step 1 to
+  // re-run createSeller (which would fail on duplicate email).
+  const [createdSellerId, setCreatedSellerId] = useState<string | null>(null);
 
   // Seller account fields
   const [sellerEmail, setSellerEmail] = useState("");
@@ -34,6 +45,8 @@ export default function NewRestaurantPage() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [zip, setZip] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
   const [cuisine, setCuisine] = useState("");
   const [kosherCert, setKosherCert] = useState("OU");
   const [isGlatt, setIsGlatt] = useState(false);
@@ -45,45 +58,91 @@ export default function NewRestaurantPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    // Validate coordinates before any network call. No geocoding API key is
+    // available, so the admin enters lat/lng manually; we guard against the
+    // (0,0) "Null Island" default that buries restaurants in distance sorting.
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      setError("Latitude and longitude are required and must be valid numbers.");
+      return;
+    }
+    if (lat < -90 || lat > 90) {
+      setError("Latitude must be between -90 and 90.");
+      return;
+    }
+    if (lng < -180 || lng > 180) {
+      setError("Longitude must be between -180 and 180.");
+      return;
+    }
+    if (lat === 0 && lng === 0) {
+      setError("Coordinates can't be (0, 0). Enter the restaurant's real latitude and longitude.");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Step 1: create seller
-      const seller = await adminApi.createSeller({
-        email: sellerEmail,
-        password: sellerPassword,
-        first_name: sellerFirstName,
-        last_name: sellerLastName,
-        phone: sellerPhone,
-      });
+      // Step 1: create seller — skipped on resubmit if a seller already exists.
+      let sellerId = createdSellerId;
+      if (!sellerId) {
+        try {
+          const seller = await adminApi.createSeller({
+            email: sellerEmail,
+            password: sellerPassword,
+            first_name: sellerFirstName,
+            last_name: sellerLastName,
+            phone: sellerPhone,
+          });
+          sellerId = seller.id;
+          setCreatedSellerId(seller.id);
+        } catch (err) {
+          if (isDuplicateEmail(err)) {
+            // A previous submit already created this seller. Surface the
+            // restaurant fields step instead of bricking on duplicate email.
+            setError(
+              "A seller with this email already exists (likely from a previous attempt). Fix the restaurant fields below and submit again to finish.",
+            );
+            return;
+          }
+          setError(`Step 1 (create seller) failed: ${(err as Error).message}`);
+          return;
+        }
+      }
 
       // Step 2: create restaurant owned by that seller
-      await adminApi.createRestaurant({
-        owner_id: seller.id,
-        name,
-        description,
-        image_url: imageUrl,
-        phone,
-        email,
-        street,
-        city,
-        state,
-        zip_code: zip,
-        lat: 0,
-        lng: 0,
-        kosher_certification: kosherCert,
-        is_glatt_kosher: isGlatt,
-        is_cholov_yisroel: isCholovYisroel,
-        is_pas_yisroel: isPasYisroel,
-        cuisine_type: cuisine.split(",").map((c) => c.trim()).filter(Boolean),
-        delivery_fee: Math.round(parseFloat(deliveryFee || "0") * 100),
-        min_order: 0,
-        est_delivery_min: 25,
-        est_delivery_max: 45,
-      });
+      try {
+        await adminApi.createRestaurant({
+          owner_id: sellerId,
+          name,
+          description,
+          image_url: imageUrl,
+          phone,
+          email,
+          street,
+          city,
+          state,
+          zip_code: zip,
+          lat,
+          lng,
+          kosher_certification: kosherCert,
+          is_glatt_kosher: isGlatt,
+          is_cholov_yisroel: isCholovYisroel,
+          is_pas_yisroel: isPasYisroel,
+          cuisine_type: cuisine.split(",").map((c) => c.trim()).filter(Boolean),
+          delivery_fee: Math.round(parseFloat(deliveryFee || "0") * 100),
+          min_order: 0,
+          est_delivery_min: 25,
+          est_delivery_max: 45,
+        });
+      } catch (err) {
+        // Seller is already created and held in state, so resubmitting will
+        // skip step 1 and retry only the restaurant creation.
+        setError(`Step 2 (create restaurant) failed: ${(err as Error).message}`);
+        return;
+      }
 
       router.push("/admin/restaurants");
-    } catch (err) {
-      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -120,6 +179,13 @@ export default function NewRestaurantPage() {
             <Field label="State" value={state} onChange={setState} required />
             <Field label="Zip" value={zip} onChange={setZip} required />
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Latitude" value={latitude} onChange={setLatitude} type="number" placeholder="40.7128" required />
+            <Field label="Longitude" value={longitude} onChange={setLongitude} type="number" placeholder="-74.0060" required />
+          </div>
+          <p className="text-xs text-neutral-500">
+            Required for distance-based listing. Look up the exact coordinates (e.g. right-click the spot in Google Maps) — don&apos;t leave these at (0, 0).
+          </p>
         </Section>
 
         <Section title="Kashrus">

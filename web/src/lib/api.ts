@@ -4,22 +4,130 @@ interface FetchOptions extends RequestInit {
   token?: string;
 }
 
+// localStorage keys the app already uses (see app/auth/page.tsx).
+const TOKEN_KEY = "token";
+const REFRESH_TOKEN_KEY = "refresh_token";
+const USER_KEY = "user";
+
+function getStored(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(key);
+}
+
+function clearAuthTokens() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
+}
+
+// Single in-flight refresh shared across concurrent 401s so a burst of
+// requests (e.g. mid-checkout) only triggers one /auth/refresh round-trip.
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function runRefresh(): Promise<string | null> {
+  const refreshToken = getStored(REFRESH_TOKEN_KEY);
+  if (!refreshToken) return null;
+
+  try {
+    const data = (await auth.refresh(refreshToken)) as {
+      token?: string;
+      refresh_token?: string;
+    };
+    if (typeof window !== "undefined" && data?.token) {
+      window.localStorage.setItem(TOKEN_KEY, data.token);
+      if (data.refresh_token) {
+        window.localStorage.setItem(REFRESH_TOKEN_KEY, data.refresh_token);
+      }
+    }
+    return data?.token ?? null;
+  } catch {
+    // Refresh itself failed — drop the dead session so the next guarded
+    // read sees a logged-out state, and let the original 401 propagate.
+    clearAuthTokens();
+    return null;
+  }
+}
+
+// Resolve the shared refresh once, then clear it so a later expiry can retry.
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = runRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+function buildHeaders(token: string | undefined, extra: HeadersInit | undefined): HeadersInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(extra as Record<string, string> | undefined),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function fetchAPI<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { token, ...fetchOptions } = options;
 
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options.headers,
+  // Idempotent GETs are safe to retry once on a transient network failure.
+  const method = (fetchOptions.method || "GET").toUpperCase();
+  const isIdempotent = method === "GET";
+  const isRefreshCall = endpoint === "/auth/refresh";
+  const callerSignal = options.signal;
+
+  // Bug B: never hang forever on a stalled network. Each attempt gets its OWN
+  // fresh timeout so a retry isn't handed an already-aborted signal (a fired
+  // AbortSignal.timeout stays aborted, which makes fetch reject instantly).
+  // A caller-supplied signal is reused verbatim and we never retry past it.
+  const doFetch = async (authToken: string | undefined): Promise<Response> => {
+    const signal = callerSignal ?? AbortSignal.timeout(15000);
+    try {
+      return await fetch(`${API_BASE}${endpoint}`, {
+        ...fetchOptions,
+        headers: buildHeaders(authToken, options.headers),
+        signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+        throw new Error("Connection timed out");
+      }
+      throw err;
+    }
   };
 
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  let res: Response;
+  try {
+    res = await doFetch(token);
+  } catch (err) {
+    // Bug B: one automatic retry with short backoff for idempotent GETs only.
+    // Retry on a fresh-timeout abort AND on genuine transient network errors
+    // (TypeError: Failed to fetch — DNS hiccup, connection reset). Never retry
+    // when the caller's own signal aborted — that's an intentional cancel.
+    const retriable =
+      isIdempotent &&
+      !(callerSignal?.aborted ?? false) &&
+      ((err instanceof Error && err.message === "Connection timed out") ||
+        err instanceof TypeError);
+    if (retriable) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      res = await doFetch(token);
+    } else {
+      throw err;
+    }
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    ...fetchOptions,
-    headers,
-  });
+  // Bug A: silent 15-min access-token expiry. On a 401, try one refresh and
+  // replay the original request with the new access token.
+  if (res.status === 401 && !isRefreshCall && getStored(REFRESH_TOKEN_KEY)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      res = await doFetch(newToken);
+    }
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: "Request failed" }));

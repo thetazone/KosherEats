@@ -1,70 +1,166 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { useState } from "react";
-
-type OrderStatus = "pending" | "accepted" | "preparing" | "ready" | "delivered" | "cancelled";
+import { cart as cartApi, orders as ordersApi } from "@/lib/api";
+import type { Order, OrderStatus } from "@/types";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
   pending: { label: "Pending", color: "text-yellow-400", bg: "bg-yellow-900/30" },
   accepted: { label: "Accepted", color: "text-blue-400", bg: "bg-blue-900/30" },
   preparing: { label: "Preparing", color: "text-brand-400", bg: "bg-brand-900/30" },
   ready: { label: "Ready", color: "text-green-400", bg: "bg-green-900/30" },
+  picked_up: { label: "On the way", color: "text-blue-400", bg: "bg-blue-900/30" },
   delivered: { label: "Delivered", color: "text-green-400", bg: "bg-green-900/30" },
   cancelled: { label: "Cancelled", color: "text-red-400", bg: "bg-red-900/30" },
+  rejected: { label: "Rejected", color: "text-red-400", bg: "bg-red-900/30" },
 };
 
-const MOCK_ORDERS = [
-  {
-    id: "ord-001",
-    restaurant_name: "Jerusalem Grill",
-    status: "preparing" as OrderStatus,
-    items: [
-      { name: "Mixed Grill", quantity: 1, price: 2899 },
-      { name: "Hummus Plate", quantity: 2, price: 1299 },
-    ],
-    total: 5496,
-    created_at: "2026-03-30T20:15:00Z",
-    est_delivery_time: "2026-03-30T21:00:00Z",
-  },
-  {
-    id: "ord-002",
-    restaurant_name: "Shalom Sushi",
-    status: "delivered" as OrderStatus,
-    items: [
-      { name: "Salmon Roll", quantity: 2, price: 1599 },
-      { name: "Edamame", quantity: 1, price: 699 },
-    ],
-    total: 4897,
-    created_at: "2026-03-29T19:30:00Z",
-    est_delivery_time: "2026-03-29T20:15:00Z",
-  },
-  {
-    id: "ord-003",
-    restaurant_name: "Kosher Burger Co.",
-    status: "delivered" as OrderStatus,
-    items: [
-      { name: "Double Smash Burger", quantity: 1, price: 1899 },
-      { name: "Loaded Fries", quantity: 1, price: 899 },
-      { name: "Milkshake", quantity: 1, price: 799 },
-    ],
-    total: 4597,
-    created_at: "2026-03-28T12:00:00Z",
-    est_delivery_time: "2026-03-28T12:40:00Z",
-  },
-];
+const TERMINAL_STATUSES: OrderStatus[] = ["delivered", "cancelled", "rejected"];
+const CANCELLABLE_STATUSES: OrderStatus[] = ["pending", "accepted"];
+
+function isUnauthorized(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
+}
+
+function formatUSD(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function activeProgressWidth(status: OrderStatus): string {
+  switch (status) {
+    case "pending":
+      return "12%";
+    case "accepted":
+      return "25%";
+    case "preparing":
+      return "50%";
+    case "ready":
+      return "75%";
+    default:
+      return "100%";
+  }
+}
 
 export default function OrdersPage() {
+  const router = useRouter();
+  const [token, setToken] = useState<string | null>(null);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"active" | "past">("active");
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const activeOrders = MOCK_ORDERS.filter(
-    (o) => !["delivered", "cancelled"].includes(o.status)
-  );
-  const pastOrders = MOCK_ORDERS.filter((o) =>
-    ["delivered", "cancelled"].includes(o.status)
-  );
+  useEffect(() => {
+    const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!t) {
+      router.replace("/auth");
+      return;
+    }
+    setToken(t);
+    void loadOrders(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const orders = filter === "active" ? activeOrders : pastOrders;
+  async function loadOrders(t: string) {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const list = (await ordersApi.list(t)) as Order[];
+      setOrders(list);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        window.localStorage.removeItem("token");
+        router.replace("/auth");
+        return;
+      }
+      setLoadError(err instanceof Error ? err.message : "Failed to load orders");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function cancelOrder(id: string) {
+    if (!token) return;
+    setCancellingId(id);
+    setActionError(null);
+    try {
+      await ordersApi.cancel(token, id);
+      const list = (await ordersApi.list(token)) as Order[];
+      setOrders(list);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        window.localStorage.removeItem("token");
+        router.replace("/auth");
+        return;
+      }
+      setActionError(err instanceof Error ? err.message : "Failed to cancel order");
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
+  async function reorder(order: Order) {
+    if (!token) return;
+    setReorderingId(order.id);
+    setActionError(null);
+    try {
+      for (const item of order.items) {
+        await cartApi.addItem(token, {
+          menu_item_id: item.menu_item_id,
+          restaurant_id: order.restaurant_id,
+          quantity: item.quantity,
+          notes: item.notes,
+        });
+      }
+      router.push("/cart");
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        window.localStorage.removeItem("token");
+        router.replace("/auth");
+        return;
+      }
+      setActionError(err instanceof Error ? err.message : "Failed to reorder");
+      setReorderingId(null);
+    }
+  }
+
+  const activeOrders = orders.filter((o) => !TERMINAL_STATUSES.includes(o.status));
+  const pastOrders = orders.filter((o) => TERMINAL_STATUSES.includes(o.status));
+  const visibleOrders = filter === "active" ? activeOrders : pastOrders;
+
+  if (loading) {
+    return (
+      <>
+        <Header />
+        <main className="flex-1 max-w-4xl mx-auto px-4 py-8">
+          <div className="card p-12 text-center text-dark-400">Loading your orders…</div>
+        </main>
+      </>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <>
+        <Header />
+        <main className="flex-1 max-w-4xl mx-auto px-4 py-8">
+          <div className="card p-12 text-center">
+            <h2 className="text-xl font-bold mb-2">Couldn&apos;t load your orders</h2>
+            <p className="text-dark-400 mb-6">{loadError}</p>
+            <button onClick={() => token && loadOrders(token)} className="btn-primary inline-block">
+              Retry
+            </button>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
@@ -96,7 +192,13 @@ export default function OrdersPage() {
           </button>
         </div>
 
-        {orders.length === 0 ? (
+        {actionError && (
+          <div className="card p-3 mb-4 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+            {actionError}
+          </div>
+        )}
+
+        {visibleOrders.length === 0 ? (
           <div className="card p-12 text-center">
             <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -115,10 +217,15 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {orders.map((order) => {
+            {visibleOrders.map((order) => {
               const statusConfig = STATUS_CONFIG[order.status];
+              const isActive = !TERMINAL_STATUSES.includes(order.status);
+              const canCancel = CANCELLABLE_STATUSES.includes(order.status);
+              const isCancelling = cancellingId === order.id;
+              const isReordering = reorderingId === order.id;
+              const isExpanded = expandedId === order.id;
               return (
-                <div key={order.id} className="card p-5 hover:border-dark-600 transition-colors cursor-pointer">
+                <div key={order.id} className="card p-5 hover:border-dark-600 transition-colors">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="font-bold text-lg">{order.restaurant_name}</h3>
@@ -137,7 +244,7 @@ export default function OrdersPage() {
                   </div>
 
                   {/* Progress bar for active orders */}
-                  {filter === "active" && (
+                  {isActive && (
                     <div className="mb-4">
                       <div className="flex justify-between text-xs text-dark-500 mb-1">
                         <span>Order placed</span>
@@ -148,18 +255,7 @@ export default function OrdersPage() {
                       <div className="h-1.5 bg-dark-800 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-brand-500 rounded-full transition-all"
-                          style={{
-                            width:
-                              order.status === "pending"
-                                ? "12%"
-                                : order.status === "accepted"
-                                ? "25%"
-                                : order.status === "preparing"
-                                ? "50%"
-                                : order.status === "ready"
-                                ? "75%"
-                                : "100%",
-                          }}
+                          style={{ width: activeProgressWidth(order.status) }}
                         />
                       </div>
                     </div>
@@ -170,16 +266,74 @@ export default function OrdersPage() {
                       {order.items.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
                     </div>
                     <span className="font-semibold text-brand-400">
-                      ${(order.total / 100).toFixed(2)}
+                      {formatUSD(order.total)}
                     </span>
                   </div>
 
-                  {filter === "past" && (
-                    <div className="mt-3 flex gap-3">
-                      <button className="btn-primary py-2 px-4 text-sm">Reorder</button>
-                      <button className="btn-secondary py-2 px-4 text-sm">View Receipt</button>
+                  {/* Receipt breakdown (toggled by View Receipt) */}
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-dark-700 space-y-2 text-sm">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex justify-between text-dark-400">
+                          <span>
+                            {item.quantity}x {item.name}
+                          </span>
+                          <span>{formatUSD(item.price * item.quantity)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-dark-400 border-t border-dark-700 pt-2">
+                        <span>Subtotal</span>
+                        <span>{formatUSD(order.subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-dark-400">
+                        <span>Delivery fee</span>
+                        <span>{formatUSD(order.delivery_fee)}</span>
+                      </div>
+                      <div className="flex justify-between text-dark-400">
+                        <span>Service fee</span>
+                        <span>{formatUSD(order.service_fee)}</span>
+                      </div>
+                      <div className="flex justify-between text-dark-400">
+                        <span>Tax</span>
+                        <span>{formatUSD(order.tax)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-base border-t border-dark-700 pt-2">
+                        <span>Total</span>
+                        <span className="text-brand-400">{formatUSD(order.total)}</span>
+                      </div>
+                      <p className="text-dark-500 text-xs pt-1">
+                        Delivered to {order.delivery_address}
+                      </p>
                     </div>
                   )}
+
+                  {/* Actions */}
+                  <div className="mt-3 flex gap-3">
+                    {isActive && canCancel && (
+                      <button
+                        onClick={() => cancelOrder(order.id)}
+                        disabled={isCancelling}
+                        className="btn-secondary py-2 px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isCancelling ? "Cancelling…" : "Cancel Order"}
+                      </button>
+                    )}
+                    {!isActive && (
+                      <button
+                        onClick={() => reorder(order)}
+                        disabled={isReordering}
+                        className="btn-primary py-2 px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isReordering ? "Adding to cart…" : "Reorder"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : order.id)}
+                      className="btn-secondary py-2 px-4 text-sm"
+                    >
+                      {isExpanded ? "Hide Receipt" : "View Receipt"}
+                    </button>
+                  </div>
                 </div>
               );
             })}

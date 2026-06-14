@@ -24,14 +24,57 @@ export const adminAuth = {
 
 async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = adminAuth.get();
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
+  const method = (init.method || "GET").toUpperCase();
+  const isIdempotent = method === "GET";
+  const callerSignal = init.signal;
+
+  // Bug B: never hang forever on a stalled network. Each attempt gets its OWN
+  // fresh timeout so a retry isn't handed an already-aborted signal (a fired
+  // AbortSignal.timeout stays aborted, which makes fetch reject instantly).
+  // A caller-supplied signal is reused verbatim and we never retry past it.
+  const doFetch = async (): Promise<Response> => {
+    const signal = callerSignal ?? AbortSignal.timeout(15000);
+    try {
+      return await fetch(`${API_BASE}${path}`, {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...init.headers,
+        },
+        signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+        throw new Error("Connection timed out");
+      }
+      throw err;
+    }
+  };
+
+  // Note: the admin session stores only a single access token (no
+  // refresh_token is persisted), so there is no refresh-and-replay path here.
+  let res: Response;
+  try {
+    res = await doFetch();
+  } catch (err) {
+    // One automatic retry with short backoff for idempotent GETs only. Retry on
+    // a fresh-timeout abort AND on genuine transient network errors (TypeError:
+    // Failed to fetch — DNS hiccup, connection reset). Never retry when the
+    // caller's own signal aborted — that's an intentional cancel.
+    const retriable =
+      isIdempotent &&
+      !(callerSignal?.aborted ?? false) &&
+      ((err instanceof Error && err.message === "Connection timed out") ||
+        err instanceof TypeError);
+    if (retriable) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      res = await doFetch();
+    } else {
+      throw err;
+    }
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error(err.error || `HTTP ${res.status}`);
