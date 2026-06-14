@@ -221,6 +221,8 @@ type Order struct {
 	Status          OrderStatus `json:"status"`
 	Items           []OrderItem `json:"items"`
 	Subtotal        int         `json:"subtotal"`
+	DiscountAmount  int         `json:"discount_amount"`
+	AppliedDealID   *string     `json:"applied_deal_id,omitempty"`
 	DeliveryFee     int         `json:"delivery_fee"`
 	ServiceFee      int         `json:"service_fee"`
 	Tax             int         `json:"tax"`

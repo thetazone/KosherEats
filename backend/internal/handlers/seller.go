@@ -677,13 +677,25 @@ func (h *Handler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
 
 	var item models.MenuItem
 	err = h.db.Pool.QueryRow(r.Context(),
+		// category_id is updatable so a seller can recategorize an item, but
+		// the target category must belong to the SAME restaurant as the item
+		// (validated via a correlated subquery against menu_categories). If the
+		// supplied category_id doesn't belong to this restaurant the subquery
+		// returns NULL, which would violate the NOT NULL / FK constraint, so we
+		// COALESCE back to the existing category_id — a bad/cross-tenant id is a
+		// no-op on the category rather than an error or a tenant breach.
 		`UPDATE menu_items SET name = $1, description = $2, image_url = $3, price = $4,
-		 is_meat = $5, is_dairy = $6, is_pareve = $7, updated_at = NOW()
-		 WHERE id = $8 AND restaurant_id IN (SELECT id FROM restaurants WHERE owner_id = $9)
+		 is_meat = $5, is_dairy = $6, is_pareve = $7,
+		 category_id = COALESCE(
+		     (SELECT mc.id FROM menu_categories mc
+		       WHERE mc.id = $8 AND mc.restaurant_id = menu_items.restaurant_id),
+		     category_id),
+		 updated_at = NOW()
+		 WHERE id = $9 AND restaurant_id IN (SELECT id FROM restaurants WHERE owner_id = $10)
 		 RETURNING id, restaurant_id, category_id, name, description, image_url, price,
 		 is_meat, is_dairy, is_pareve, is_available, sort_order`,
 		req.Name, req.Description, req.ImageURL, req.Price, req.IsMeat, req.IsDairy, req.IsPareve,
-		itemID, user["user_id"],
+		req.CategoryID, itemID, user["user_id"],
 	).Scan(&item.ID, &item.RestaurantID, &item.CategoryID, &item.Name, &item.Description,
 		&item.ImageURL, &item.Price, &item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable, &item.SortOrder)
 
@@ -856,7 +868,12 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 		`SELECT
 		    COUNT(*) FILTER (WHERE o.created_at::date = CURRENT_DATE
 		                      AND o.status NOT IN ('cancelled','rejected'))   AS today_orders,
-		    COALESCE(SUM(o.total) FILTER (
+		    -- Seller revenue is FOOD SALES only — the discounted item subtotal
+		    -- the seller actually earns on (subtotal - discount_amount, matching
+		    -- discountedSubtotal in CreateOrder). Courier tip, tax, delivery and
+		    -- service fees are pass-throughs / not restaurant money, so they're
+		    -- excluded; this reconciles with the iOS/Android "food sales" figure.
+		    COALESCE(SUM(o.subtotal - o.discount_amount) FILTER (
 		        WHERE o.created_at::date = CURRENT_DATE
 		          AND o.status NOT IN ('cancelled','rejected')
 		    ), 0)                                                              AS today_revenue_cents,
