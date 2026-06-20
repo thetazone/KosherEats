@@ -2,95 +2,51 @@
 
 import { Header } from "@/components/layout/Header";
 import { RestaurantCard } from "@/components/restaurant/RestaurantCard";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { restaurants as restaurantsApi } from "@/lib/api";
 
 const CERTIFICATIONS = ["All", "OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
 
-const MOCK_RESULTS = [
-  {
-    id: "1",
-    name: "Jerusalem Grill",
-    image_url: "",
-    kosher_certification: "OU",
-    cuisine_type: ["Israeli", "Middle Eastern"],
-    rating: 4.8,
-    review_count: 324,
-    delivery_fee: 399,
-    est_delivery_min: 25,
-    est_delivery_max: 40,
-    is_glatt_kosher: true,
-    is_open: true,
-  },
-  {
-    id: "2",
-    name: "Shalom Sushi",
-    image_url: "",
-    kosher_certification: "OK",
-    cuisine_type: ["Japanese", "Sushi"],
-    rating: 4.6,
-    review_count: 189,
-    delivery_fee: 499,
-    est_delivery_min: 30,
-    est_delivery_max: 45,
-    is_glatt_kosher: false,
-    is_open: true,
-  },
-  {
-    id: "3",
-    name: "Kosher Burger Co.",
-    image_url: "",
-    kosher_certification: "Star-K",
-    cuisine_type: ["American", "Burgers"],
-    rating: 4.5,
-    review_count: 412,
-    delivery_fee: 299,
-    est_delivery_min: 20,
-    est_delivery_max: 35,
-    is_glatt_kosher: true,
-    is_open: true,
-  },
-  {
-    id: "5",
-    name: "Pita Palace",
-    image_url: "",
-    kosher_certification: "OU",
-    cuisine_type: ["Israeli", "Fast Food"],
-    rating: 4.3,
-    review_count: 156,
-    delivery_fee: 349,
-    est_delivery_min: 15,
-    est_delivery_max: 30,
-    is_glatt_kosher: true,
-    is_open: true,
-  },
-  {
-    id: "6",
-    name: "Cholent House",
-    image_url: "",
-    kosher_certification: "cRc",
-    cuisine_type: ["Jewish", "Traditional"],
-    rating: 4.7,
-    review_count: 89,
-    delivery_fee: 449,
-    est_delivery_min: 35,
-    est_delivery_max: 50,
-    is_glatt_kosher: true,
-    is_open: false,
-  },
-];
+interface Restaurant {
+  id: string;
+  name: string;
+  image_url?: string;
+  kosher_certification?: string;
+  cuisine_type?: string[];
+  rating?: number;
+  review_count?: number;
+  delivery_fee?: number;
+  est_delivery_min?: number;
+  est_delivery_max?: number;
+  is_glatt_kosher?: boolean;
+  is_open?: boolean;
+}
 
 export default function SearchPage() {
+  const [all, setAll] = useState<Restaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [query, setQuery] = useState("");
   const [selectedCert, setSelectedCert] = useState("All");
   const [glattOnly, setGlattOnly] = useState(false);
   const [sortBy, setSortBy] = useState<"rating" | "delivery_time" | "delivery_fee">("rating");
 
-  let filtered = MOCK_RESULTS;
+  useEffect(() => {
+    restaurantsApi
+      .list()
+      .then((data) => setAll(((data as Restaurant[]) || []).filter(Boolean)))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  let filtered = [...all];
   if (query) {
+    const q = query.toLowerCase();
     filtered = filtered.filter(
       (r) =>
-        r.name.toLowerCase().includes(query.toLowerCase()) ||
-        r.cuisine_type.some((c) => c.toLowerCase().includes(query.toLowerCase()))
+        r.name.toLowerCase().includes(q) ||
+        (r.cuisine_type || []).some((c) => c.toLowerCase().includes(q))
     );
   }
   if (selectedCert !== "All") {
@@ -101,9 +57,9 @@ export default function SearchPage() {
   }
 
   filtered.sort((a, b) => {
-    if (sortBy === "rating") return b.rating - a.rating;
-    if (sortBy === "delivery_time") return a.est_delivery_min - b.est_delivery_min;
-    return a.delivery_fee - b.delivery_fee;
+    if (sortBy === "rating") return (b.rating || 0) - (a.rating || 0);
+    if (sortBy === "delivery_time") return (a.est_delivery_min || 0) - (b.est_delivery_min || 0);
+    return (a.delivery_fee || 0) - (b.delivery_fee || 0);
   });
 
   return (
@@ -127,7 +83,6 @@ export default function SearchPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-4 mb-8">
-          {/* Certification Filter */}
           <div className="flex gap-2 overflow-x-auto pb-2">
             {CERTIFICATIONS.map((cert) => (
               <button
@@ -144,7 +99,6 @@ export default function SearchPage() {
             ))}
           </div>
 
-          {/* Glatt Toggle */}
           <button
             onClick={() => setGlattOnly(!glattOnly)}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors border ${
@@ -156,7 +110,6 @@ export default function SearchPage() {
             Glatt Only
           </button>
 
-          {/* Sort */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
@@ -169,24 +122,51 @@ export default function SearchPage() {
         </div>
 
         {/* Results */}
-        <div className="mb-4 text-dark-400 text-sm">
-          {filtered.length} restaurant{filtered.length !== 1 ? "s" : ""} found
-        </div>
-
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="text-dark-400 text-sm py-12 text-center">Loading restaurants…</div>
+        ) : error ? (
           <div className="card p-12 text-center">
-            <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <h2 className="text-xl font-bold mb-2">No results found</h2>
-            <p className="text-dark-400">Try adjusting your search or filters.</p>
+            <h2 className="text-xl font-bold mb-2">Couldn&apos;t load restaurants</h2>
+            <p className="text-dark-400">{error}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((restaurant) => (
-              <RestaurantCard key={restaurant.id} restaurant={restaurant} />
-            ))}
-          </div>
+          <>
+            <div className="mb-4 text-dark-400 text-sm">
+              {filtered.length} restaurant{filtered.length !== 1 ? "s" : ""} found
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="card p-12 text-center">
+                <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <h2 className="text-xl font-bold mb-2">No results found</h2>
+                <p className="text-dark-400">Try adjusting your search or filters.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filtered.map((r) => (
+                  <RestaurantCard
+                    key={r.id}
+                    restaurant={{
+                      id: r.id,
+                      name: r.name,
+                      image_url: r.image_url || "",
+                      kosher_certification: r.kosher_certification || "Kosher",
+                      cuisine_type: r.cuisine_type || [],
+                      rating: r.rating || 0,
+                      review_count: r.review_count || 0,
+                      delivery_fee: r.delivery_fee || 0,
+                      est_delivery_min: r.est_delivery_min || 0,
+                      est_delivery_max: r.est_delivery_max || 0,
+                      is_glatt_kosher: !!r.is_glatt_kosher,
+                      is_open: r.is_open !== false,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
     </>

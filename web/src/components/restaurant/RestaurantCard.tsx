@@ -25,6 +25,13 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
       >
         {/* Image */}
         <div className="relative h-48 bg-dark-800 overflow-hidden">
+          {restaurant.image_url && (
+            <img
+              src={restaurant.image_url}
+              alt={restaurant.name}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-dark-900/80 to-transparent z-10" />
           {!restaurant.is_open && (
             <div className="absolute inset-0 flex items-center justify-center z-20">
@@ -33,8 +40,10 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
               </span>
             </div>
           )}
-          {/* Placeholder gradient for image */}
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-900/40 to-dark-800" />
+          {/* Placeholder gradient when no image */}
+          {!restaurant.image_url && (
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-900/40 to-dark-800" />
+          )}
 
           {/* Certification badge */}
           <div className="absolute top-3 left-3 z-20">

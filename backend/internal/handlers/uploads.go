@@ -35,6 +35,7 @@ var allowedContentTypes = map[string]bool{
 	"image/jpg":  true,
 	"image/png":  true,
 	"image/heic": true,
+	"image/webp": true,
 }
 
 func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {

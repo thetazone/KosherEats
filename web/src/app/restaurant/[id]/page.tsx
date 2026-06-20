@@ -1,163 +1,48 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { restaurants as restaurantsApi } from "@/lib/api";
 
-const MOCK_RESTAURANT = {
-  id: "1",
-  name: "Jerusalem Grill",
-  description:
-    "Authentic Israeli and Middle Eastern cuisine, made fresh daily with the finest kosher ingredients. Family recipes passed down through generations.",
-  image_url: "/placeholder-restaurant.jpg",
-  kosher_certification: "OU",
-  certifying_agency: "Orthodox Union",
-  is_cholov_yisroel: false,
-  is_pas_yisroel: true,
-  is_glatt_kosher: true,
-  cuisine_type: ["Israeli", "Middle Eastern"],
-  rating: 4.8,
-  review_count: 324,
-  delivery_fee: 399,
-  min_order: 1500,
-  est_delivery_min: 25,
-  est_delivery_max: 40,
-  is_open: true,
-  street: "123 Main St",
-  city: "Brooklyn",
-  state: "NY",
-  phone: "(718) 555-0123",
-};
+interface MenuItem {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  image_url?: string;
+  is_meat?: boolean;
+  is_dairy?: boolean;
+  is_pareve?: boolean;
+  is_available?: boolean;
+}
 
-const MOCK_MENU = [
-  {
-    id: "cat1",
-    name: "Starters",
-    sort_order: 0,
-    items: [
-      {
-        id: "item1",
-        name: "Hummus Plate",
-        description: "Creamy hummus with warm pita, olive oil, and paprika",
-        price: 1299,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item2",
-        name: "Falafel Platter",
-        description: "Six crispy falafel balls with tahini, Israeli salad, and pickles",
-        price: 1499,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item3",
-        name: "Stuffed Grape Leaves",
-        description: "Hand-rolled grape leaves filled with seasoned rice",
-        price: 1099,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-    ],
-  },
-  {
-    id: "cat2",
-    name: "Grilled Meats",
-    sort_order: 1,
-    items: [
-      {
-        id: "item4",
-        name: "Mixed Grill",
-        description: "Chicken, lamb kebab, and kofte served with rice pilaf and grilled vegetables",
-        price: 2899,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-      {
-        id: "item5",
-        name: "Lamb Shawarma Plate",
-        description: "Slow-roasted lamb shawarma with hummus, tahini, and fresh salad",
-        price: 2499,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-      {
-        id: "item6",
-        name: "Chicken Schnitzel",
-        description: "Crispy breaded chicken breast with lemon and garlic sauce",
-        price: 2199,
-        is_meat: true,
-        is_dairy: false,
-        is_pareve: false,
-        is_available: true,
-      },
-    ],
-  },
-  {
-    id: "cat3",
-    name: "Sides",
-    sort_order: 2,
-    items: [
-      {
-        id: "item7",
-        name: "Israeli Salad",
-        description: "Finely diced tomatoes, cucumbers, onions with lemon and olive oil",
-        price: 799,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item8",
-        name: "French Fries",
-        description: "Crispy golden fries with za'atar seasoning",
-        price: 699,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-    ],
-  },
-  {
-    id: "cat4",
-    name: "Drinks",
-    sort_order: 3,
-    items: [
-      {
-        id: "item9",
-        name: "Fresh Lemonade",
-        description: "House-made lemonade with mint",
-        price: 499,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-      {
-        id: "item10",
-        name: "Turkish Coffee",
-        description: "Traditional dark Turkish coffee with cardamom",
-        price: 399,
-        is_meat: false,
-        is_dairy: false,
-        is_pareve: true,
-        is_available: true,
-      },
-    ],
-  },
-];
+interface Category {
+  id: string;
+  name: string;
+  sort_order?: number;
+  items: MenuItem[];
+}
+
+interface Restaurant {
+  id: string;
+  name: string;
+  description?: string;
+  image_url?: string;
+  logo_url?: string;
+  kosher_certification?: string;
+  certifying_agency?: string;
+  is_cholov_yisroel?: boolean;
+  is_pas_yisroel?: boolean;
+  is_glatt_kosher?: boolean;
+  cuisine_type?: string[];
+  rating?: number;
+  review_count?: number;
+  delivery_fee?: number;
+  min_order?: number;
+  est_delivery_min?: number;
+  est_delivery_max?: number;
+}
 
 interface CartItem {
   id: string;
@@ -174,10 +59,36 @@ function DietaryBadge({ label, color }: { label: string; color: string }) {
   );
 }
 
+// UberEats scrapes sometimes leave a rating string ("100% (3)") as the description.
+function isRatingNoise(s?: string) {
+  return !!s && /^\d{1,3}%\s*\(\d/.test(s.trim());
+}
+
 export default function RestaurantPage() {
+  const params = useParams();
+  const id = String((params as { id?: string })?.id || "");
+
+  const [rest, setRest] = useState<Restaurant | null>(null);
+  const [menu, setMenu] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [activeCategory, setActiveCategory] = useState(MOCK_MENU[0]?.id);
-  const rest = MOCK_RESTAURANT;
+  const [activeCategory, setActiveCategory] = useState<string>("");
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    Promise.all([restaurantsApi.get(id), restaurantsApi.getMenu(id)])
+      .then(([r, m]) => {
+        setRest(r as Restaurant);
+        const cats = ((m as Category[]) || []).filter((c) => c && c.items);
+        setMenu(cats);
+        setActiveCategory(cats[0]?.id || "");
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   const addToCart = (item: { id: string; name: string; price: number }) => {
     setCart((prev) => {
@@ -205,19 +116,52 @@ export default function RestaurantPage() {
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const deliveryFee = rest?.delivery_fee || 0;
+
+  if (loading) {
+    return (
+      <>
+        <Header />
+        <main className="flex-1 max-w-7xl mx-auto px-4 py-20 text-center text-dark-400">
+          Loading restaurant…
+        </main>
+      </>
+    );
+  }
+
+  if (error || !rest) {
+    return (
+      <>
+        <Header />
+        <main className="flex-1 max-w-7xl mx-auto px-4 py-20 text-center">
+          <h1 className="text-2xl font-bold mb-2">Restaurant not found</h1>
+          <p className="text-dark-400">{error || "This restaurant is unavailable."}</p>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
       <Header />
       <main className="flex-1">
         {/* Hero */}
-        <div className="relative h-64 bg-gradient-to-br from-brand-900/60 to-dark-900">
-          <div className="absolute inset-0 bg-gradient-to-t from-dark-950 to-transparent" />
+        <div className="relative h-64 bg-dark-900">
+          {rest.image_url && (
+            <img
+              src={rest.image_url}
+              alt={rest.name}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-dark-950 via-dark-950/50 to-dark-950/10" />
           <div className="absolute bottom-0 left-0 right-0 p-6 max-w-7xl mx-auto">
             <div className="flex items-center gap-3 mb-2">
-              <span className="bg-brand-500 text-white text-sm font-bold px-3 py-1 rounded-lg">
-                {rest.kosher_certification}
-              </span>
+              {rest.kosher_certification && (
+                <span className="bg-brand-500 text-white text-sm font-bold px-3 py-1 rounded-lg">
+                  {rest.kosher_certification}
+                </span>
+              )}
               {rest.is_glatt_kosher && (
                 <span className="bg-dark-800 text-brand-400 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
                   Glatt Kosher
@@ -236,34 +180,42 @@ export default function RestaurantPage() {
         <div className="max-w-7xl mx-auto px-4 py-6">
           {/* Restaurant Info */}
           <div className="flex flex-wrap items-center gap-4 mb-6">
-            <div className="flex items-center gap-1">
-              <svg className="w-5 h-5 text-brand-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              <span className="font-semibold">{rest.rating}</span>
-              <span className="text-dark-400">({rest.review_count} reviews)</span>
-            </div>
-            <span className="text-dark-600">·</span>
-            <span className="text-dark-400">{rest.cuisine_type.join(", ")}</span>
-            <span className="text-dark-600">·</span>
-            <span className="text-dark-400">
-              {rest.est_delivery_min}-{rest.est_delivery_max} min
-            </span>
-            <span className="text-dark-600">·</span>
-            <span className="text-dark-400">
-              ${(rest.delivery_fee / 100).toFixed(2)} delivery
-            </span>
-            {rest.min_order > 0 && (
+            {(rest.rating ?? 0) > 0 && (
+              <>
+                <div className="flex items-center gap-1">
+                  <svg className="w-5 h-5 text-brand-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  <span className="font-semibold">{rest.rating}</span>
+                  {(rest.review_count ?? 0) > 0 && (
+                    <span className="text-dark-400">({rest.review_count} reviews)</span>
+                  )}
+                </div>
+                <span className="text-dark-600">·</span>
+              </>
+            )}
+            {rest.cuisine_type && rest.cuisine_type.length > 0 && (
+              <span className="text-dark-400 capitalize">{rest.cuisine_type.join(", ")}</span>
+            )}
+            {(rest.est_delivery_min ?? 0) > 0 && (
               <>
                 <span className="text-dark-600">·</span>
                 <span className="text-dark-400">
-                  ${(rest.min_order / 100).toFixed(2)} min order
+                  {rest.est_delivery_min}-{rest.est_delivery_max} min
                 </span>
+              </>
+            )}
+            {deliveryFee > 0 && (
+              <>
+                <span className="text-dark-600">·</span>
+                <span className="text-dark-400">${(deliveryFee / 100).toFixed(2)} delivery</span>
               </>
             )}
           </div>
 
-          <p className="text-dark-300 mb-8 max-w-3xl">{rest.description}</p>
+          {rest.description && (
+            <p className="text-dark-300 mb-8 max-w-3xl">{rest.description}</p>
+          )}
 
           {/* Kosher Info Card */}
           <div className="card p-4 mb-8">
@@ -271,7 +223,10 @@ export default function RestaurantPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div>
                 <span className="text-dark-400">Certification</span>
-                <p className="font-medium">{rest.kosher_certification} — {rest.certifying_agency}</p>
+                <p className="font-medium">
+                  {rest.kosher_certification || "Kosher"}
+                  {rest.certifying_agency ? ` — ${rest.certifying_agency}` : ""}
+                </p>
               </div>
               <div>
                 <span className="text-dark-400">Glatt Kosher</span>
@@ -292,26 +247,28 @@ export default function RestaurantPage() {
             {/* Menu */}
             <div className="flex-1">
               {/* Category Tabs */}
-              <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
-                <div className="flex gap-3 overflow-x-auto">
-                  {MOCK_MENU.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setActiveCategory(cat.id)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                        activeCategory === cat.id
-                          ? "bg-brand-500 text-white"
-                          : "bg-dark-800 text-dark-300 hover:bg-dark-700"
-                      }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
+              {menu.length > 1 && (
+                <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
+                  <div className="flex gap-3 overflow-x-auto">
+                    {menu.map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setActiveCategory(cat.id)}
+                        className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                          activeCategory === cat.id
+                            ? "bg-brand-500 text-white"
+                            : "bg-dark-800 text-dark-300 hover:bg-dark-700"
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Menu Items */}
-              {MOCK_MENU.map((category) => (
+              {menu.map((category) => (
                 <div key={category.id} className="mb-8">
                   <h2 className="text-xl font-bold mb-4">{category.name}</h2>
                   <div className="space-y-3">
@@ -322,6 +279,13 @@ export default function RestaurantPage() {
                           key={item.id}
                           className="card p-4 flex justify-between items-start gap-4 hover:border-dark-600 transition-colors"
                         >
+                          {item.image_url && (
+                            <img
+                              src={item.image_url}
+                              alt={item.name}
+                              className="w-24 h-24 rounded-xl object-cover flex-shrink-0 bg-dark-800"
+                            />
+                          )}
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="font-semibold">{item.name}</h3>
@@ -335,9 +299,9 @@ export default function RestaurantPage() {
                                 <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
                               )}
                             </div>
-                            <p className="text-dark-400 text-sm mb-2">
-                              {item.description}
-                            </p>
+                            {!isRatingNoise(item.description) && item.description && (
+                              <p className="text-dark-400 text-sm mb-2">{item.description}</p>
+                            )}
                             <span className="text-brand-400 font-semibold">
                               ${(item.price / 100).toFixed(2)}
                             </span>
@@ -408,14 +372,16 @@ export default function RestaurantPage() {
                         <span>Subtotal</span>
                         <span>${(cartTotal / 100).toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-sm text-dark-400 mb-1">
-                        <span>Delivery fee</span>
-                        <span>${(rest.delivery_fee / 100).toFixed(2)}</span>
-                      </div>
+                      {deliveryFee > 0 && (
+                        <div className="flex justify-between text-sm text-dark-400 mb-1">
+                          <span>Delivery fee</span>
+                          <span>${(deliveryFee / 100).toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-semibold mt-2">
                         <span>Total</span>
                         <span className="text-brand-400">
-                          ${((cartTotal + rest.delivery_fee) / 100).toFixed(2)}
+                          ${((cartTotal + deliveryFee) / 100).toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -432,16 +398,13 @@ export default function RestaurantPage() {
         {/* Mobile Cart Bar */}
         {cartCount > 0 && (
           <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 z-50">
-            <a
-              href="/cart"
-              className="btn-primary w-full flex items-center justify-between"
-            >
+            <a href="/cart" className="btn-primary w-full flex items-center justify-between">
               <span className="bg-brand-600 px-2.5 py-0.5 rounded-lg text-sm font-bold">
                 {cartCount}
               </span>
               <span className="font-semibold">Go to Checkout</span>
               <span className="font-semibold">
-                ${((cartTotal + rest.delivery_fee) / 100).toFixed(2)}
+                ${((cartTotal + deliveryFee) / 100).toFixed(2)}
               </span>
             </a>
           </div>
