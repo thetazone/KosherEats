@@ -11,6 +11,16 @@ class MenuViewModel: ObservableObject {
     @Published var successMessage: String?
     @Published var togglingItemIDs: Set<String> = []
 
+    /// The most recent menu import — surfaced as a banner while it runs and
+    /// briefly when it finishes. nil when there's nothing to show.
+    @Published var activeImport: MenuImport?
+    private var importPollTask: Task<Void, Never>?
+    #if DEBUG
+    /// Preview/screenshot harness: when true, load() is a no-op so seeded
+    /// categories + activeImport survive without a live backend.
+    var previewMode = false
+    #endif
+
     /// Watches `SelectedRestaurant` so a switch in the picker reloads the
     /// menu tab in place — otherwise sellers would see the previous
     /// restaurant's items until they relaunch.
@@ -31,6 +41,9 @@ class MenuViewModel: ObservableObject {
     }
 
     func load() async {
+        #if DEBUG
+        if previewMode { isLoading = false; return }
+        #endif
         guard !isReloading else {
             pendingReload = true
             return
@@ -241,4 +254,65 @@ class MenuViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
     }
+
+    // MARK: - Import status
+
+    /// Watches the latest menu import. While one is pending/running it polls
+    /// every few seconds, surfacing progress; when it finishes it reloads the
+    /// menu so the imported items appear, holds the result briefly, then clears.
+    func startImportWatch() {
+        guard importPollTask == nil else { return }
+        importPollTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.importPollTask = nil }
+            guard let job = await self.fetchLatestImport(), job.isInProgress else { return }
+            self.activeImport = job
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if Task.isCancelled { return }
+                guard let latest = await self.fetchLatestImport() else { return }
+                self.activeImport = latest
+                if !latest.isInProgress {
+                    await self.load()                       // surface imported items
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    if self.activeImport?.id == latest.id { self.activeImport = nil }
+                    return
+                }
+            }
+        }
+    }
+
+    func stopImportWatch() {
+        importPollTask?.cancel()
+        importPollTask = nil
+    }
+
+    private func fetchLatestImport() async -> MenuImport? {
+        (try? await APIService.shared.listMenuImports())?.first
+    }
+
+    #if DEBUG
+    /// Seeded state for the screenshot harness: an in-progress import over a
+    /// small real-looking menu. No backend calls (previewMode short-circuits load()).
+    static func previewImporting() -> MenuViewModel {
+        let vm = MenuViewModel()
+        vm.previewMode = true
+        let item = { (id: String, name: String, cents: Int) in
+            MenuItem(id: id, restaurantId: "r1", categoryId: "c1", name: name,
+                     description: "", imageUrl: nil, price: cents,
+                     isMeat: false, isDairy: false, isPareve: true,
+                     isAvailable: true, modifierGroups: nil)
+        }
+        vm.categories = [
+            MenuCategory(id: "c1", restaurantId: "r1", name: "From the Oven", sortOrder: 0,
+                         items: [item("i1", "Slice of Pizza", 450), item("i2", "Kalamata Pizza Pie", 4000)]),
+            MenuCategory(id: "c2", restaurantId: "r1", name: "From the Fryer", sortOrder: 1,
+                         items: [item("i3", "Mozzarella Sticks (12 pcs)", 1650), item("i4", "Four Garlic Knots", 400)]),
+        ]
+        vm.allItems = vm.categories.flatMap { $0.items ?? [] }
+        vm.activeImport = MenuImport(id: "imp1", status: "running", sourceUrl: nil,
+                                     itemsTotal: 14, itemsCreated: 6, error: nil)
+        return vm
+    }
+    #endif
 }

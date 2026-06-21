@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MenuManagementView: View {
-    @StateObject private var vm = MenuViewModel()
+    @StateObject private var vm: MenuViewModel
     @ObservedObject private var selectedRestaurant = SelectedRestaurant.shared
     @State private var showAddItem = false
     @State private var editingItem: MenuItem?
@@ -10,6 +10,11 @@ struct MenuManagementView: View {
     @State private var searchText = ""
     @State private var itemToDelete: MenuItem?
     @State private var categoryToDelete: MenuCategory?
+
+    /// `previewVM` is the DEBUG screenshot-harness injection; production uses a fresh VM.
+    init(previewVM: MenuViewModel? = nil) {
+        _vm = StateObject(wrappedValue: previewVM ?? MenuViewModel())
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,21 +42,52 @@ struct MenuManagementView: View {
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if let name = selectedRestaurant.name {
-                    HStack(spacing: 6) {
-                        Image(systemName: "storefront.fill")
-                            .font(.caption2)
-                            .foregroundColor(.kePrimary)
-                        Text("Showing: \(name)")
-                            .font(.caption.bold())
-                            .foregroundColor(.keTextSecondary)
-                            .lineLimit(1)
-                        Spacer()
+                VStack(spacing: 0) {
+                    if let name = selectedRestaurant.name {
+                        HStack(spacing: 6) {
+                            Image(systemName: "storefront.fill")
+                                .font(.caption2)
+                                .foregroundColor(.kePrimary)
+                            Text("Showing: \(name)")
+                                .font(.caption.bold())
+                                .foregroundColor(.keTextSecondary)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
-                    .background(Color.keBackground)
+                    if let job = vm.activeImport {
+                        HStack(spacing: 10) {
+                            switch job.status {
+                            case "failed":
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.keError)
+                                Text("Menu import failed — you can add items manually.")
+                                    .font(.caption.bold()).foregroundColor(.keTextPrimary)
+                            case "done":
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.kePrimary)
+                                Text("Imported \(job.itemsCreated) item\(job.itemsCreated == 1 ? "" : "s") from UberEats")
+                                    .font(.caption.bold()).foregroundColor(.keTextPrimary)
+                            default:
+                                ProgressView().controlSize(.small).tint(.kePrimary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Importing your menu from UberEats…")
+                                        .font(.caption.bold()).foregroundColor(.keTextPrimary)
+                                    Text(job.itemsTotal > 0 ? "\(job.itemsCreated) of \(job.itemsTotal) items added" : "Fetching items…")
+                                        .font(.caption2).foregroundColor(.keTextSecondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.kePrimary.opacity(0.12))
+                    }
                 }
+                .background(Color.keBackground)
             }
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.large)
@@ -83,7 +119,9 @@ struct MenuManagementView: View {
             .task {
                 vm.startObservingRestaurant()
                 await vm.load()
+                vm.startImportWatch()
             }
+            .onDisappear { vm.stopImportWatch() }
             .sheet(isPresented: $showAddItem) {
                 MenuItemFormView(
                     categories: vm.categories,

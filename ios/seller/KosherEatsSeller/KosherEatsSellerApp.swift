@@ -22,11 +22,24 @@ struct KosherEatsSellerApp: App {
         #endif
     }
 
+    // DEBUG-only: `-keMenuImportPreview` boots the Menu tab with a seeded
+    // in-progress import so the status banner can be screenshotted. Release: false.
+    private var isMenuImportPreview: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-keMenuImportPreview")
+        #else
+        return false
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
                 if isOnboardingPreview {
                     SellerOnboardingFlow(onComplete: { _ in })
+                        .environmentObject(authVM)
+                } else if isMenuImportPreview {
+                    MenuManagementView(previewVM: .previewImporting())
                         .environmentObject(authVM)
                 } else if authVM.isAuthenticated {
                     if authVM.hasSellerAccess {
