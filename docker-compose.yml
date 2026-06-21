@@ -16,6 +16,9 @@ services:
       # JWT_SECRET must be set — fall through from .env, but make it
       # explicit here so docker compose fails loudly if missing.
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      # No-login admin dashboard secret for local dev (/admin/restaurants?key=).
+      # In prod set this as a real Fly secret (and don't reuse this value).
+      ADMIN_DASHBOARD_KEY: ${ADMIN_DASHBOARD_KEY:-devadmin123}
     depends_on:
       postgres:
         condition: service_healthy

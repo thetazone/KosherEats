@@ -92,6 +92,11 @@ func main() {
 	// doesn't block the link.
 	r.Get("/admin/restaurants/decision", h.RestaurantDecisionPage)
 	r.Post("/admin/restaurants/decision", h.RestaurantDecisionPage)
+	// No-login admin dashboard gated by the ADMIN_DASHBOARD_KEY shared secret
+	// (?key=). Lists pending restaurants with one-click Approve/Reject so
+	// approvals don't depend on email magic links. Disabled if the env is unset.
+	r.Get("/admin/restaurants", h.AdminRestaurantsPage)
+	r.Post("/admin/restaurants/{id}/decision", h.AdminRestaurantDecision)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
