@@ -41,6 +41,23 @@ struct KosherEatsSellerApp: App {
         #endif
     }
 
+    // DEBUG-only: `-keAutoLoginEmail <email> -keAutoLoginPassword <pw>` signs in
+    // with email/password on launch, so a demo/screenshot sim lands straight on
+    // the authenticated dashboard without anyone typing credentials. Never
+    // compiled into release.
+    private var autoLoginCredentials: (email: String, password: String)? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let ei = args.firstIndex(of: "-keAutoLoginEmail"), ei + 1 < args.count,
+              let pi = args.firstIndex(of: "-keAutoLoginPassword"), pi + 1 < args.count else {
+            return nil
+        }
+        return (args[ei + 1], args[pi + 1])
+        #else
+        return nil
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -89,6 +106,15 @@ struct KosherEatsSellerApp: App {
                 if authVM.isAuthenticated {
                     await PushNotifications.shared.requestAuthorization()
                     await PushNotifications.shared.registerPendingTokenIfPossible()
+                }
+            }
+            .task {
+                // DEBUG demo harness: sign in automatically when launched with
+                // -keAutoLoginEmail/-keAutoLoginPassword. login() overwrites any
+                // stale Keychain token, so it's safe even if a prior session for
+                // a different account was restored by AuthViewModel.init().
+                if let creds = autoLoginCredentials, !authVM.isAuthenticated {
+                    await authVM.login(email: creds.email, password: creds.password)
                 }
             }
             .onOpenURL { url in
