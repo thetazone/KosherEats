@@ -307,6 +307,28 @@ struct MenuItem: Codable, Identifiable, Equatable {
     }
 }
 
+/// A self-serve menu-import job (UberEats today). Created when the seller pastes
+/// a store link during onboarding; the Menu screen polls it to show progress.
+/// Only the fields the app needs are modeled — Codable ignores the rest.
+struct MenuImport: Codable, Identifiable {
+    let id: String
+    let status: String          // pending | running | done | failed
+    let sourceUrl: String?
+    let itemsTotal: Int
+    let itemsCreated: Int
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, error
+        case sourceUrl = "source_url"
+        case itemsTotal = "items_total"
+        case itemsCreated = "items_created"
+    }
+
+    /// True while the import is still in flight (drives the "importing…" banner).
+    var isInProgress: Bool { status == "pending" || status == "running" }
+}
+
 struct ModifierGroup: Codable, Identifiable, Equatable {
     let id: String
     let menuItemId: String

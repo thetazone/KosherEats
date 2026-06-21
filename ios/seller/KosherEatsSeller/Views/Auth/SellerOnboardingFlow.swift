@@ -148,6 +148,19 @@ final class SellerOnboardingViewModel: ObservableObject {
         do {
             let created = try await APIService.shared.createRestaurant(body)
 
+            // Kick off the UberEats menu import if the seller pasted a link on
+            // the Import step. Best-effort: the restaurant now exists so the job
+            // attaches to it; a failure here is surfaced on the review step but
+            // doesn't undo the restaurant. The scrape+import is drained server-side.
+            var importFailed = false
+            if !ubereatsImportUrl.isEmpty {
+                do {
+                    _ = try await APIService.shared.createMenuImport(sourceURL: ubereatsImportUrl)
+                } catch {
+                    importFailed = true
+                }
+            }
+
             // Persist drafted menu items grouped by category, same shape as
             // Android's OnboardingViewModel.submit().
             var failedItemCount = 0
@@ -183,11 +196,19 @@ final class SellerOnboardingViewModel: ObservableObject {
             }
 
             isSubmitting = false
-            if failedItemCount > 0 {
+            if failedItemCount > 0 || importFailed {
                 // Hold on the review step so the seller actually sees this; the
                 // "Continue to Dashboard" button (shown while createdWithFailures
                 // is set) calls onComplete once they've acknowledged it.
-                errorMessage = "\(failedItemCount) menu item\(failedItemCount == 1 ? "" : "s") couldn't be saved. You can re-add them from the Menu tab."
+                var parts: [String] = []
+                if failedItemCount > 0 {
+                    parts.append("\(failedItemCount) menu item\(failedItemCount == 1 ? "" : "s") couldn't be saved.")
+                }
+                if importFailed {
+                    parts.append("We couldn't start your UberEats import.")
+                }
+                parts.append("You can fix this from the Menu tab.")
+                errorMessage = parts.joined(separator: " ")
                 createdWithFailures = created
             } else {
                 onComplete(created)

@@ -553,6 +553,33 @@ actor APIService {
         try await requestVoid("DELETE", path: await sellerPath("/seller/menu/categories/\(id)"))
     }
 
+    // MARK: - Menu import
+
+    struct CreateMenuImportBody: Encodable {
+        let source: String
+        let sourceURL: String
+        enum CodingKeys: String, CodingKey {
+            case source
+            case sourceURL = "source_url"
+        }
+    }
+
+    /// Enqueue an async menu import from an UberEats store URL. Returns the
+    /// 202 job row; the actual scrape+import is drained out-of-process.
+    func createMenuImport(sourceURL: String) async throws -> MenuImport {
+        try await request("POST", path: await sellerPath("/seller/menu/imports"),
+                          body: CreateMenuImportBody(source: "ubereats", sourceURL: sourceURL))
+    }
+
+    /// Recent import jobs for the active restaurant, newest first.
+    func listMenuImports() async throws -> [MenuImport] {
+        try await request("GET", path: await sellerPath("/seller/menu/imports"))
+    }
+
+    func getMenuImport(id: String) async throws -> MenuImport {
+        try await request("GET", path: await sellerPath("/seller/menu/imports/\(id)"))
+    }
+
     // MARK: - POS Integrations
 
     struct POSIntegration: Codable, Identifiable {

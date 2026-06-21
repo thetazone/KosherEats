@@ -240,6 +240,12 @@ func main() {
 			r.Delete("/modifier-groups/{groupId}", h.DeleteModifierGroup)
 			r.Post("/categories", h.CreateCategory)
 			r.Delete("/categories/{id}", h.DeleteCategory)
+
+			// Self-serve menu import: paste an UberEats store URL; an
+			// out-of-process worker drains the job and writes menu items.
+			r.Post("/imports", h.CreateMenuImport)
+			r.Get("/imports", h.ListMenuImports)
+			r.Get("/imports/{id}", h.GetMenuImport)
 		})
 
 		r.Route("/orders", func(r chi.Router) {

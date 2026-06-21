@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -814,6 +815,154 @@ func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, cat)
+}
+
+// --- Menu import (self-serve UberEats import) --------------------------------
+
+// menuImportSelectCols is shared by the import read/return queries so the scan
+// order in scanMenuImport stays in lockstep. error is coalesced to '' so the
+// destination *string never sees a NULL.
+const menuImportSelectCols = `id, restaurant_id, source, source_url, status, items_total, items_created, COALESCE(error, ''), created_at, updated_at`
+
+// scanMenuImport reads one menu_imports row in menuImportSelectCols order.
+// Works for both pgx.Row (QueryRow) and pgx.Rows (Query) — both satisfy Scan.
+func scanMenuImport(row interface{ Scan(dest ...any) error }, job *models.MenuImport) error {
+	return row.Scan(&job.ID, &job.RestaurantID, &job.Source, &job.SourceURL,
+		&job.Status, &job.ItemsTotal, &job.ItemsCreated, &job.Error,
+		&job.CreatedAt, &job.UpdatedAt)
+}
+
+// CreateMenuImport enqueues an async menu import for the seller's restaurant
+// from an external store URL (UberEats today). The scrape+import runs
+// out-of-process on a residential browser node (datacenter IPs get blocked by
+// UberEats); this handler only records the job. Returns 202 with the new row.
+func (h *Handler) CreateMenuImport(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req struct {
+		Source    string `json:"source"`
+		SourceURL string `json:"source_url"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Source == "" {
+		req.Source = "ubereats"
+	}
+	if req.Source != "ubereats" {
+		writeError(w, http.StatusBadRequest, "unsupported import source")
+		return
+	}
+	if !isUberEatsURL(req.SourceURL) {
+		writeError(w, http.StatusBadRequest, "a valid ubereats.com store URL is required")
+		return
+	}
+
+	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusNotFound, "restaurant not found")
+		return
+	}
+
+	var job models.MenuImport
+	err = scanMenuImport(h.db.Pool.QueryRow(r.Context(),
+		`INSERT INTO menu_imports (restaurant_id, source, source_url)
+		 VALUES ($1, $2, $3)
+		 RETURNING `+menuImportSelectCols,
+		restID, req.Source, strings.TrimSpace(req.SourceURL),
+	), &job)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create import job")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, job)
+}
+
+// GetMenuImport returns one import job, scoped to the caller's restaurants so a
+// seller can't read another seller's job.
+func (h *Handler) GetMenuImport(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	jobID := chi.URLParam(r, "id")
+
+	var job models.MenuImport
+	err = scanMenuImport(h.db.Pool.QueryRow(r.Context(),
+		`SELECT `+menuImportSelectCols+`
+		 FROM menu_imports
+		 WHERE id = $1 AND restaurant_id IN (SELECT id FROM restaurants WHERE owner_id = $2)`,
+		jobID, user["user_id"],
+	), &job)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "import not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, job)
+}
+
+// ListMenuImports returns recent import jobs for the seller's resolved
+// restaurant, newest first — used by the Menu screen to show import progress.
+func (h *Handler) ListMenuImports(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	restID, err := h.resolveSellerRestaurant(r, user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusNotFound, "restaurant not found")
+		return
+	}
+
+	rows, err := h.db.Pool.Query(r.Context(),
+		`SELECT `+menuImportSelectCols+`
+		 FROM menu_imports WHERE restaurant_id = $1
+		 ORDER BY created_at DESC LIMIT 20`,
+		restID,
+	)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list imports")
+		return
+	}
+	defer rows.Close()
+
+	jobs := []models.MenuImport{}
+	for rows.Next() {
+		var job models.MenuImport
+		if err := scanMenuImport(rows, &job); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read imports")
+			return
+		}
+		jobs = append(jobs, job)
+	}
+	writeJSON(w, http.StatusOK, jobs)
+}
+
+// isUberEatsURL accepts links with or without a scheme and requires an
+// ubereats.com host. Mirrors the iOS client-side check so both reject the same
+// inputs. The scrape worker is responsible for the URL actually resolving.
+func isUberEatsURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	lower := strings.ToLower(raw)
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "ubereats.com" || strings.HasSuffix(host, ".ubereats.com")
 }
 
 // DeleteCategory removes a category (cascades to items via FK ON DELETE CASCADE).
