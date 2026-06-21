@@ -327,10 +327,15 @@ struct PasswordResetView: View {
                     .disabled(!canSubmit || isWorking)
 
                     if codeSent {
-                        Button("Didn't get it? Send again") { Task { await sendCode() } }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.keTextSecondary)
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 16) {
+                            Button("Change email") {
+                                codeSent = false; code = ""; newPassword = ""; error = nil; info = nil
+                            }
+                            Spacer()
+                            Button("Didn't get it? Send again") { Task { await sendCode() } }
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.keTextSecondary)
                     }
                 }
                 .padding(24)

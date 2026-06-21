@@ -51,7 +51,7 @@ struct KosherEatsSellerApp: App {
                     MenuManagementView(previewVM: .previewImporting())
                         .environmentObject(authVM)
                 } else if isPasswordResetPreview {
-                    NavigationStack { PasswordResetView(email: "you@restaurant.com") }
+                    PasswordResetHarness()
                 } else if authVM.isAuthenticated {
                     if authVM.hasSellerAccess {
                         SellerRootGate()
@@ -102,3 +102,28 @@ struct KosherEatsSellerApp: App {
         }
     }
 }
+
+#if DEBUG
+/// Faithful preview of the reset flow: a stand-in sign-in screen that presents
+/// the reset sheet, so Close + the post-reset auto-dismiss behave like
+/// production (where PasswordResetView is a sheet over EmailAuthView).
+private struct PasswordResetHarness: View {
+    @State private var showSheet = true
+    var body: some View {
+        ZStack {
+            Color.keBackground.ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("Sign-in screen (preview)")
+                    .foregroundColor(.keTextSecondary)
+                Button("Forgot password?") { showSheet = true }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.kePrimary)
+            }
+        }
+        .sheet(isPresented: $showSheet) {
+            NavigationStack { PasswordResetView(email: "") }
+                .presentationDetents([.medium, .large])
+        }
+    }
+}
+#endif
