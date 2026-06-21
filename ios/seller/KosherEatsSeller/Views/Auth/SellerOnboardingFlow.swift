@@ -43,6 +43,25 @@ private let onboardingMenuCategories = [
     "Sides", "Desserts", "Drinks",
 ]
 
+// Full state names → USPS 2-letter code. Stored as the abbreviation in
+// vm.stateField (the backend wants "NY"), but sellers pick the full name from a
+// dropdown — most people don't know the abbreviations.
+private let usStates: [(name: String, code: String)] = [
+    ("Alabama", "AL"), ("Alaska", "AK"), ("Arizona", "AZ"), ("Arkansas", "AR"),
+    ("California", "CA"), ("Colorado", "CO"), ("Connecticut", "CT"), ("Delaware", "DE"),
+    ("District of Columbia", "DC"), ("Florida", "FL"), ("Georgia", "GA"), ("Hawaii", "HI"),
+    ("Idaho", "ID"), ("Illinois", "IL"), ("Indiana", "IN"), ("Iowa", "IA"),
+    ("Kansas", "KS"), ("Kentucky", "KY"), ("Louisiana", "LA"), ("Maine", "ME"),
+    ("Maryland", "MD"), ("Massachusetts", "MA"), ("Michigan", "MI"), ("Minnesota", "MN"),
+    ("Mississippi", "MS"), ("Missouri", "MO"), ("Montana", "MT"), ("Nebraska", "NE"),
+    ("Nevada", "NV"), ("New Hampshire", "NH"), ("New Jersey", "NJ"), ("New Mexico", "NM"),
+    ("New York", "NY"), ("North Carolina", "NC"), ("North Dakota", "ND"), ("Ohio", "OH"),
+    ("Oklahoma", "OK"), ("Oregon", "OR"), ("Pennsylvania", "PA"), ("Rhode Island", "RI"),
+    ("South Carolina", "SC"), ("South Dakota", "SD"), ("Tennessee", "TN"), ("Texas", "TX"),
+    ("Utah", "UT"), ("Vermont", "VT"), ("Virginia", "VA"), ("Washington", "WA"),
+    ("West Virginia", "WV"), ("Wisconsin", "WI"), ("Wyoming", "WY"),
+]
+
 // MARK: - ViewModel
 
 @MainActor
@@ -423,6 +442,17 @@ private struct BasicsStepView: View {
                 if let pictureError {
                     Text(pictureError).font(.caption).foregroundColor(.keError)
                 }
+                if pictureImage != nil {
+                    Button {
+                        pictureItem = nil
+                        pictureImage = nil
+                        vm.pictureUrl = ""
+                    } label: {
+                        Label("Remove picture", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                            .foregroundColor(.keError)
+                    }
+                }
 
                 Spacer().frame(height: 4)
 
@@ -472,6 +502,17 @@ private struct BasicsStepView: View {
                 }
                 if let logoError {
                     Text(logoError).font(.caption).foregroundColor(.keError)
+                }
+                if logoImage != nil {
+                    Button {
+                        logoItem = nil
+                        logoImage = nil
+                        vm.logoUrl = ""
+                    } label: {
+                        Label("Remove logo", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                            .foregroundColor(.keError)
+                    }
                 }
 
                 onboardingField("Restaurant Name", text: $vm.name)
@@ -554,17 +595,34 @@ private struct BasicsStepView: View {
 private struct AddressStepView: View {
     @ObservedObject var vm: SellerOnboardingViewModel
 
+    private var statePicker: some View {
+        Menu {
+            ForEach(usStates, id: \.code) { st in
+                Button("\(st.name) (\(st.code))") { vm.stateField = st.code }
+            }
+        } label: {
+            HStack {
+                Text(usStates.first(where: { $0.code == vm.stateField })?.name ?? "State")
+                    .foregroundColor(vm.stateField.isEmpty ? .keTextMuted : .keTextPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .foregroundColor(.keTextMuted)
+                    .font(.caption)
+            }
+            .padding()
+            .background(Color.keSurface)
+            .cornerRadius(10)
+        }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
                 onboardingField("Street Address", text: $vm.street)
                 onboardingField("City", text: $vm.city)
                 HStack(spacing: 12) {
-                    onboardingField("State", text: $vm.stateField)
-                        .onChange(of: vm.stateField) { _, v in
-                            if v.count > 2 { vm.stateField = String(v.prefix(2)).uppercased() }
-                            else { vm.stateField = v.uppercased() }
-                        }
+                    statePicker
                     onboardingField("Zip Code", text: $vm.zipCode, keyboard: .numberPad)
                 }
 
@@ -674,6 +732,17 @@ private struct KosherStepView: View {
                 }
                 if let certError {
                     Text(certError).font(.caption).foregroundColor(.keError)
+                }
+                if certImage != nil {
+                    Button {
+                        certItem = nil
+                        certImage = nil
+                        vm.kosherCertificateUrl = ""
+                    } label: {
+                        Label("Remove certificate photo", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                            .foregroundColor(.keError)
+                    }
                 }
 
                 Text("Additional Certifications")
