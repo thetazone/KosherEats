@@ -380,6 +380,30 @@ actor APIService {
         return try await request("POST", path: "/auth/email/check", body: body)
     }
 
+    // MARK: - Password reset
+
+    struct MessageResponse: Decodable { let message: String }
+
+    /// Email a 6-digit reset code. The backend always 200s (no account-enumeration).
+    @discardableResult
+    func forgotPassword(email: String) async throws -> MessageResponse {
+        try await request("POST", path: "/auth/password/forgot", body: ["email": email])
+    }
+
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> MessageResponse {
+        struct Body: Encodable {
+            let email: String
+            let code: String
+            let newPassword: String
+            enum CodingKeys: String, CodingKey {
+                case email, code
+                case newPassword = "new_password"
+            }
+        }
+        return try await request("POST", path: "/auth/password/reset",
+                                 body: Body(email: email, code: code, newPassword: newPassword))
+    }
+
     /// Returns the currently authenticated user. Used on cold start to restore
     /// `user` (and therefore `hasSellerAccess`) after a saved token is loaded —
     /// without this, `AuthViewModel.user` stays nil and real sellers get routed

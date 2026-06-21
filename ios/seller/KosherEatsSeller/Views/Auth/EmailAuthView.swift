@@ -18,6 +18,7 @@ struct EmailAuthView: View {
     @State private var mode: Mode = .initial
     @State private var isChecking = false
     @State private var localError: String?
+    @State private var showReset = false
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable { case email, password, first, last }
@@ -114,6 +115,13 @@ struct EmailAuthView: View {
                             .foregroundColor(.keTextSecondary)
                             .frame(maxWidth: .infinity)
                     }
+
+                    if mode == .existing {
+                        Button("Forgot password?") { showReset = true }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.kePrimary)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .padding(24)
                 .adaptiveContentWidth(520)
@@ -121,6 +129,10 @@ struct EmailAuthView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { focusedField = .email }
+        .sheet(isPresented: $showReset) {
+            NavigationStack { PasswordResetView(email: email) }
+                .presentationDetents([.medium, .large])
+        }
     }
 
     @ViewBuilder
@@ -241,5 +253,141 @@ struct EmailAuthView: View {
         } catch {
             localError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+    }
+}
+
+/// Email-code password reset, presented from EmailAuthView's "Forgot password?".
+/// Step 1 emails a 6-digit code; step 2 takes the code + a new password.
+struct PasswordResetView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var email: String
+    @State private var code = ""
+    @State private var newPassword = ""
+    @State private var codeSent = false
+    @State private var isWorking = false
+    @State private var error: String?
+    @State private var info: String?
+
+    init(email: String) {
+        _email = State(initialValue: email)
+    }
+
+    var body: some View {
+        ZStack {
+            Color.keBackground.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Reset password")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.keTextPrimary)
+                    Text(codeSent
+                         ? "Enter the 6-digit code we emailed to \(email) and choose a new password."
+                         : "We'll email a 6-digit code to reset your password.")
+                        .font(.subheadline)
+                        .foregroundColor(.keTextSecondary)
+
+                    labeled("Email") {
+                        TextField("you@restaurant.com", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .disabled(codeSent)
+                            .modifier(ResetFieldStyle())
+                    }
+
+                    if codeSent {
+                        labeled("Code") {
+                            TextField("123456", text: $code)
+                                .keyboardType(.numberPad)
+                                .modifier(ResetFieldStyle())
+                        }
+                        labeled("New password") {
+                            SecureField("At least 6 characters", text: $newPassword)
+                                .textContentType(.newPassword)
+                                .modifier(ResetFieldStyle())
+                        }
+                    }
+
+                    if let error { Text(error).font(.caption).foregroundColor(.keError) }
+                    if let info { Text(info).font(.caption).foregroundColor(.kePrimary) }
+
+                    Button {
+                        Task { if codeSent { await reset() } else { await sendCode() } }
+                    } label: {
+                        Group {
+                            if isWorking { ProgressView().tint(.keTextOnAccent) }
+                            else { Text(codeSent ? "Reset password" : "Send reset code").font(.headline) }
+                        }
+                        .foregroundColor(.keTextOnAccent)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(canSubmit ? Color.kePrimary : Color.kePrimary.opacity(0.4))
+                        .cornerRadius(12)
+                    }
+                    .disabled(!canSubmit || isWorking)
+
+                    if codeSent {
+                        Button("Didn't get it? Send again") { Task { await sendCode() } }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.keTextSecondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(24)
+                .adaptiveContentWidth(520)
+            }
+        }
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var canSubmit: Bool {
+        codeSent ? (code.count >= 4 && newPassword.count >= 6) : email.contains("@")
+    }
+
+    private func sendCode() async {
+        error = nil; info = nil; isWorking = true
+        defer { isWorking = false }
+        do {
+            _ = try await APIService.shared.forgotPassword(email: email.trimmingCharacters(in: .whitespaces))
+            codeSent = true
+            info = "If an account exists, a code is on its way."
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    private func reset() async {
+        error = nil; info = nil; isWorking = true
+        defer { isWorking = false }
+        do {
+            let resp = try await APIService.shared.resetPassword(
+                email: email.trimmingCharacters(in: .whitespaces),
+                code: code.trimmingCharacters(in: .whitespaces),
+                newPassword: newPassword)
+            info = resp.message
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            dismiss()
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private func labeled<C: View>(_ label: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(.system(size: 14, weight: .medium)).foregroundColor(.keTextSecondary)
+            content()
+        }
+    }
+}
+
+private struct ResetFieldStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding()
+            .background(Color.keCard)
+            .cornerRadius(12)
+            .foregroundColor(.keTextPrimary)
     }
 }

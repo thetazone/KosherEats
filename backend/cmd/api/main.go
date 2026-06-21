@@ -123,6 +123,10 @@ func main() {
 		// for a JWT if the phone is associated with an existing account.
 		r.Post("/phone/start", h.StartPhoneLogin)
 		r.Post("/phone/verify", h.VerifyPhoneLogin)
+		// Email password reset: forgot emails a 6-digit code; reset trades the
+		// code + new password for an updated credential.
+		r.Post("/password/forgot", h.ForgotPassword)
+		r.Post("/password/reset", h.ResetPassword)
 	})
 
 	// App Store reviewer bypass — only registered when REVIEWER_SECRET is set.

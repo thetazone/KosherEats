@@ -32,6 +32,15 @@ struct KosherEatsSellerApp: App {
         #endif
     }
 
+    // DEBUG-only: `-kePasswordResetPreview` shows the password-reset screen.
+    private var isPasswordResetPreview: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-kePasswordResetPreview")
+        #else
+        return false
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -41,6 +50,8 @@ struct KosherEatsSellerApp: App {
                 } else if isMenuImportPreview {
                     MenuManagementView(previewVM: .previewImporting())
                         .environmentObject(authVM)
+                } else if isPasswordResetPreview {
+                    NavigationStack { PasswordResetView(email: "you@restaurant.com") }
                 } else if authVM.isAuthenticated {
                     if authVM.hasSellerAccess {
                         SellerRootGate()
