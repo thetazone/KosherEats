@@ -1,7 +1,7 @@
 import SwiftUI
 import PhotosUI
 
-// 5-step onboarding wizard that mirrors the Android seller flow
+// 6-step onboarding wizard that mirrors the Android seller flow
 // (android/seller/.../onboarding/OnboardingScreen.kt). Replaces the older
 // monolithic CreateRestaurantView + post-create OnboardingMenuBuilderView
 // pair. Single ObservableObject holds all state; each step reads/writes
@@ -12,13 +12,14 @@ import PhotosUI
 // MARK: - Step model
 
 enum OnboardingStep: Int, CaseIterable {
-    case basics, address, kosher, menu, review
+    case importMenu, basics, address, kosher, menu, review
 
     var title: String {
         switch self {
         case .basics: return "Restaurant Details"
         case .address: return "Address"
         case .kosher: return "Kosher Certification"
+        case .importMenu: return "Import Menu"
         case .menu: return "Menu Items"
         case .review: return "Review & Submit"
         }
@@ -69,6 +70,12 @@ final class SellerOnboardingViewModel: ObservableObject {
     @Published var isPasYisroel = false
     @Published var isGlattKosher = false
     @Published var kosherCertificateUrl = ""
+
+    // Import (UberEats) — captured on the importMenu step; empty == skipped.
+    // The actual import job is created after the restaurant exists (wired in a
+    // later slice); for now this drives the "we'll import your menu" banner on
+    // the Menu step and is reviewed on the Review step.
+    @Published var ubereatsImportUrl = ""
 
     // Menu
     @Published var menuItems: [OnboardingMenuDraft] = []
@@ -211,6 +218,7 @@ struct SellerOnboardingFlow: View {
                 case .basics: BasicsStepView(vm: vm)
                 case .address: AddressStepView(vm: vm)
                 case .kosher: KosherStepView(vm: vm)
+                case .importMenu: ImportMenuStepView(vm: vm)
                 case .menu: MenuStepView(vm: vm)
                 case .review: ReviewStepView(vm: vm, onComplete: onComplete)
                 }
@@ -222,6 +230,7 @@ struct SellerOnboardingFlow: View {
         }
         .background(Color.keBackground.ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: vm.step)
+        .onAppear { applyDebugInitialStep() }
         .confirmationDialog(
             "Use a different account?",
             isPresented: $showSignOutConfirm,
@@ -236,7 +245,7 @@ struct SellerOnboardingFlow: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            if vm.step != .basics {
+            if vm.step.rawValue > 0 {
                 Button {
                     vm.previousStep()
                 } label: {
@@ -305,6 +314,24 @@ struct SellerOnboardingFlow: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    // DEBUG-only: jump to a step when launched via `-keOnboardingStep <case>`,
+    // so any onboarding screen can be screenshotted in the simulator. No-op in release.
+    private func applyDebugInitialStep() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-keOnboardingStep"), i + 1 < args.count else { return }
+        switch args[i + 1] {
+        case "basics": vm.step = .basics
+        case "address": vm.step = .address
+        case "kosher": vm.step = .kosher
+        case "importMenu": vm.step = .importMenu
+        case "menu": vm.step = .menu
+        case "review": vm.step = .review
+        default: break
+        }
+        #endif
     }
 }
 
@@ -698,7 +725,142 @@ private struct KosherStepView: View {
     }
 }
 
-// MARK: - Step 4: Menu
+// MARK: - Step 4: Import Menu
+
+private struct ImportMenuStepView: View {
+    @ObservedObject var vm: SellerOnboardingViewModel
+
+    @State private var urlText = ""
+    @State private var consent = false
+    @State private var localError: String?
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 34))
+                        .foregroundColor(.kePrimary)
+                    Text("Already on UberEats?")
+                        .font(.title3.bold())
+                        .foregroundColor(.keTextPrimary)
+                    Text("Paste your UberEats store link and we'll build your full menu — items, prices, and photos — for you. No adding items one by one.")
+                        .font(.subheadline)
+                        .foregroundColor(.keTextSecondary)
+                }
+                .padding(.top, 4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("UberEats store link")
+                        .font(.caption.bold())
+                        .foregroundColor(.keTextSecondary)
+                    HStack(spacing: 8) {
+                        ZStack(alignment: .leading) {
+                            if urlText.isEmpty {
+                                Text(verbatim: "https://www.ubereats.com/store/…")
+                                    .foregroundColor(.keTextMuted)
+                                    .lineLimit(1)
+                            }
+                            TextField("", text: $urlText)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .foregroundColor(.keTextPrimary)
+                        }
+                        .padding()
+                        .background(Color.keSurface)
+                        .cornerRadius(10)
+                        Button {
+                            if let s = UIPasteboard.general.string {
+                                urlText = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                        } label: {
+                            Text("Paste")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.kePrimary)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 48)
+                                .background(Color.kePrimary.opacity(0.1))
+                                .cornerRadius(10)
+                        }
+                        .accessibilityLabel("Paste link from clipboard")
+                    }
+                    Text("In the UberEats app: open your store → Share → Copy link, then paste it here.")
+                        .font(.caption)
+                        .foregroundColor(.keTextMuted)
+                }
+
+                Button {
+                    consent.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: consent ? "checkmark.square.fill" : "square")
+                            .foregroundColor(consent ? .kePrimary : .keTextMuted)
+                            .font(.system(size: 20))
+                        Text("I'm authorized to manage this restaurant and consent to importing its menu from UberEats.")
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .background(Color.keCard)
+                    .cornerRadius(12)
+                }
+                .accessibilityLabel("Authorization consent")
+                .accessibilityValue(consent ? "checked" : "unchecked")
+
+                if let localError {
+                    Text(localError).font(.caption).foregroundColor(.keError)
+                }
+
+                continueButton(label: "Import my menu") {
+                    guard let normalized = normalizedUberEatsURL(urlText) else {
+                        localError = "Enter a valid UberEats store link (an ubereats.com address)."
+                        return
+                    }
+                    guard consent else {
+                        localError = "Please confirm you're authorized to import this menu."
+                        return
+                    }
+                    vm.ubereatsImportUrl = normalized
+                    localError = nil
+                    vm.nextStep()
+                }
+
+                Button {
+                    vm.ubereatsImportUrl = ""
+                    vm.nextStep()
+                } label: {
+                    Text("Skip — I'll add items manually")
+                        .font(.subheadline)
+                        .foregroundColor(.keTextMuted)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+
+                Spacer().frame(height: 32)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .adaptiveContentWidth(560)
+        }
+    }
+
+    // Lenient parse: accepts links without a scheme; requires an ubereats.com host.
+    private func normalizedUberEatsURL(_ raw: String) -> String? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        let lower = s.lowercased()
+        if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") {
+            s = "https://" + s
+        }
+        guard let url = URL(string: s), let host = url.host?.lowercased() else { return nil }
+        guard host == "ubereats.com" || host.hasSuffix(".ubereats.com") else { return nil }
+        return s
+    }
+}
+
+// MARK: - Step 5: Menu
 
 private struct MenuStepView: View {
     @ObservedObject var vm: SellerOnboardingViewModel
@@ -707,6 +869,19 @@ private struct MenuStepView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 12) {
+                if !vm.ubereatsImportUrl.isEmpty {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.kePrimary)
+                        Text("We'll import your UberEats menu after you finish setup. Add any extra items here in the meantime.")
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .background(Color.kePrimary.opacity(0.1))
+                    .cornerRadius(12)
+                }
                 Text("Add your menu items so they're ready when you launch.")
                     .font(.subheadline)
                     .foregroundColor(.keTextSecondary)
@@ -974,7 +1149,7 @@ private struct AddMenuItemForm: View {
     }
 }
 
-// MARK: - Step 5: Review
+// MARK: - Step 6: Review
 
 private struct ReviewStepView: View {
     @ObservedObject var vm: SellerOnboardingViewModel
@@ -1010,7 +1185,19 @@ private struct ReviewStepView: View {
                 }
 
                 reviewSection("Menu (\(vm.menuItems.count) items)") {
-                    if vm.menuItems.isEmpty {
+                    if !vm.ubereatsImportUrl.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                                .foregroundColor(.kePrimary)
+                                .font(.caption)
+                            Text("Your UberEats menu will be imported after you submit.")
+                                .foregroundColor(.keTextPrimary)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.caption)
+                        .padding(.vertical, 2)
+                    }
+                    if vm.menuItems.isEmpty && vm.ubereatsImportUrl.isEmpty {
                         Text("No menu items added. You can add them later from the Menu tab.")
                             .font(.caption)
                             .foregroundColor(.keTextSecondary)

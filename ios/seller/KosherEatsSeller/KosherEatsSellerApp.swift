@@ -11,10 +11,24 @@ struct KosherEatsSellerApp: App {
     @State private var profileSheetDismissed = false
     @Environment(\.scenePhase) private var scenePhase
 
+    // DEBUG-only screenshot harness: launching with `-keOnboardingPreview` boots
+    // the seller onboarding wizard directly (bypassing auth); `-keOnboardingStep
+    // <case>` jumps to a step (see SellerOnboardingFlow). Always false in release.
+    private var isOnboardingPreview: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-keOnboardingPreview")
+        #else
+        return false
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
-                if authVM.isAuthenticated {
+                if isOnboardingPreview {
+                    SellerOnboardingFlow(onComplete: { _ in })
+                        .environmentObject(authVM)
+                } else if authVM.isAuthenticated {
                     if authVM.hasSellerAccess {
                         SellerRootGate()
                             .environmentObject(authVM)
