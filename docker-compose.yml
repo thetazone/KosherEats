@@ -56,7 +56,11 @@ services:
       retries: 5
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        # Baked into the client bundle so the browser hits the local API.
+        NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
     ports:
       - "3000:3000"
     environment:
