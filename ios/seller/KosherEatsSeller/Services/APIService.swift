@@ -489,6 +489,7 @@ actor APIService {
         let isCholovYisroel: Bool
         let isPasYisroel: Bool
         let isGlattKosher: Bool
+        var fromImport: Bool = false
 
         enum CodingKeys: String, CodingKey {
             case name, description, phone, email, street, city, state
@@ -502,6 +503,7 @@ actor APIService {
             case isCholovYisroel = "is_cholov_yisroel"
             case isPasYisroel = "is_pas_yisroel"
             case isGlattKosher = "is_glatt_kosher"
+            case fromImport = "from_import"
         }
     }
 

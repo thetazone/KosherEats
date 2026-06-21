@@ -95,6 +95,9 @@ final class SellerOnboardingViewModel: ObservableObject {
     // later slice); for now this drives the "we'll import your menu" banner on
     // the Menu step and is reviewed on the Review step.
     @Published var ubereatsImportUrl = ""
+    /// True when the seller pasted an import link — relaxes the manual detail
+    /// fields (address/phone/picture) since the import worker fills them in.
+    var isImporting: Bool { !ubereatsImportUrl.isEmpty }
 
     // Menu
     @Published var menuItems: [OnboardingMenuDraft] = []
@@ -131,7 +134,7 @@ final class SellerOnboardingViewModel: ObservableObject {
 
     func submit(onComplete: @escaping (Restaurant) -> Void) async {
         guard !isSubmitting else { return }
-        if pictureUrl.isEmpty {
+        if pictureUrl.isEmpty && !isImporting {
             errorMessage = "Restaurant picture is required"
             step = .basics
             return
@@ -161,7 +164,8 @@ final class SellerOnboardingViewModel: ObservableObject {
             cuisineType: [],
             isCholovYisroel: isCholovYisroel,
             isPasYisroel: isPasYisroel,
-            isGlattKosher: isGlattKosher
+            isGlattKosher: isGlattKosher,
+            fromImport: isImporting
         )
 
         do {
@@ -394,6 +398,9 @@ private struct BasicsStepView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
+                if vm.isImporting {
+                    importHint("Importing from UberEats — we'll fill in your address, phone, cuisine, and a photo. Just add your name + email here, and your kosher certificate next.")
+                }
                 Text("Restaurant Picture *")
                     .font(.subheadline.bold())
                     .foregroundColor(.keTextPrimary)
@@ -529,7 +536,7 @@ private struct BasicsStepView: View {
                         vm.errorMessage = "Restaurant name is required"
                         return
                     }
-                    if vm.phone.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if !vm.isImporting && vm.phone.trimmingCharacters(in: .whitespaces).isEmpty {
                         vm.errorMessage = "Phone is required"
                         return
                     }
@@ -537,7 +544,7 @@ private struct BasicsStepView: View {
                         vm.errorMessage = "Valid email is required"
                         return
                     }
-                    if vm.pictureUrl.isEmpty {
+                    if !vm.isImporting && vm.pictureUrl.isEmpty {
                         vm.errorMessage = "Restaurant picture is required"
                         return
                     }
@@ -619,6 +626,9 @@ private struct AddressStepView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
+                if vm.isImporting {
+                    importHint("We'll import your address from UberEats — leave this blank to use it, or fill it in to override.")
+                }
                 onboardingField("Street Address", text: $vm.street)
                 onboardingField("City", text: $vm.city)
                 HStack(spacing: 12) {
@@ -631,17 +641,25 @@ private struct AddressStepView: View {
                 }
 
                 continueButton {
-                    if vm.street.trimmingCharacters(in: .whitespaces).isEmpty ||
-                       vm.city.trimmingCharacters(in: .whitespaces).isEmpty ||
-                       vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty ||
-                       vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
-                        vm.errorMessage = "All address fields are required"
-                        return
-                    }
-                    let digits = vm.zipCode.filter { $0.isNumber }
-                    if digits.count != 5 {
-                        vm.errorMessage = "ZIP code must be 5 digits"
-                        return
+                    let allBlank = vm.street.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                   vm.city.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                   vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                   vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty
+                    // When importing we fill the address from UberEats, so an
+                    // all-blank address is fine; a partial one must still be valid.
+                    if !(vm.isImporting && allBlank) {
+                        if vm.street.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           vm.city.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
+                            vm.errorMessage = "All address fields are required"
+                            return
+                        }
+                        let digits = vm.zipCode.filter { $0.isNumber }
+                        if digits.count != 5 {
+                            vm.errorMessage = "ZIP code must be 5 digits"
+                            return
+                        }
                     }
                     vm.nextStep()
                 }
@@ -914,6 +932,11 @@ private struct ImportMenuStepView: View {
                         return
                     }
                     vm.ubereatsImportUrl = normalized
+                    // Pre-fill a provisional name from the store slug so Basics
+                    // isn't blank; the import worker overwrites with the exact name.
+                    if vm.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                        vm.name = provisionalName(from: normalized)
+                    }
                     localError = nil
                     vm.nextStep()
                 }
@@ -934,6 +957,14 @@ private struct ImportMenuStepView: View {
             .padding(.top, 8)
             .adaptiveContentWidth(560)
         }
+        .onAppear {
+            // If the seller copied their UberEats link, drop it in so a missed
+            // paste doesn't push them to skip the import.
+            if urlText.isEmpty, let clip = UIPasteboard.general.string,
+               normalizedUberEatsURL(clip) != nil {
+                urlText = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
     }
 
     // Lenient parse: accepts links without a scheme; requires an ubereats.com host.
@@ -947,6 +978,17 @@ private struct ImportMenuStepView: View {
         guard let url = URL(string: s), let host = url.host?.lowercased() else { return nil }
         guard host == "ubereats.com" || host.hasSuffix(".ubereats.com") else { return nil }
         return s
+    }
+
+    // Derive a readable provisional name from the store slug in the URL
+    // (.../store/<slug>/<id>): "pizza-kids-n-action" -> "Pizza Kids N Action".
+    private func provisionalName(from urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return "" }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard let i = parts.firstIndex(of: "store"), i + 1 < parts.count else { return "" }
+        return parts[i + 1].split(separator: "-")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 }
 
@@ -1389,6 +1431,21 @@ private struct ReviewStepView: View {
 }
 
 // MARK: - Shared helpers
+
+private func importHint(_ text: String) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+        Image(systemName: "sparkles")
+            .foregroundColor(.kePrimary)
+            .font(.caption)
+        Text(text)
+            .font(.caption)
+            .foregroundColor(.keTextSecondary)
+        Spacer(minLength: 0)
+    }
+    .padding(10)
+    .background(Color.kePrimary.opacity(0.1))
+    .cornerRadius(10)
+}
 
 private func onboardingField(
     _ placeholder: String,

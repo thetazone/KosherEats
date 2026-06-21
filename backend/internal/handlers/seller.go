@@ -134,6 +134,10 @@ type CreateRestaurantRequest struct {
 	IsCholovYisroel      bool     `json:"is_cholov_yisroel"`
 	IsPasYisroel         bool     `json:"is_pas_yisroel"`
 	IsGlattKosher        bool     `json:"is_glatt_kosher"`
+	// FromImport: the seller is importing their menu from UberEats, so the
+	// address/phone/picture get filled by the import worker afterward — relax
+	// those required-field checks (name/email/cert stay required up front).
+	FromImport           bool     `json:"from_import"`
 }
 
 // CreateRestaurant inserts a new restaurant owned by the calling seller.
@@ -164,13 +168,21 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if req.Street == "" || req.City == "" || req.State == "" || req.ZipCode == "" {
-		writeError(w, http.StatusBadRequest, "full address (street, city, state, zip_code) is required")
-		return
-	}
-	if req.Phone == "" {
-		writeError(w, http.StatusBadRequest, "phone is required")
-		return
+	// Address, phone, and the restaurant picture are filled by the UberEats
+	// import worker when from_import is set, so don't block onboarding on them.
+	if !req.FromImport {
+		if req.Street == "" || req.City == "" || req.State == "" || req.ZipCode == "" {
+			writeError(w, http.StatusBadRequest, "full address (street, city, state, zip_code) is required")
+			return
+		}
+		if req.Phone == "" {
+			writeError(w, http.StatusBadRequest, "phone is required")
+			return
+		}
+		if req.ImageURL == "" {
+			writeError(w, http.StatusBadRequest, "image_url (restaurant picture) is required")
+			return
+		}
 	}
 	if req.Email == "" {
 		writeError(w, http.StatusBadRequest, "email is required")
@@ -178,10 +190,6 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.KosherCertification == "" {
 		writeError(w, http.StatusBadRequest, "kosher_certification is required")
-		return
-	}
-	if req.ImageURL == "" {
-		writeError(w, http.StatusBadRequest, "image_url (restaurant picture) is required")
 		return
 	}
 	if req.KosherCertificateURL == "" {
