@@ -66,7 +66,7 @@ private let usStates: [(name: String, code: String)] = [
 
 @MainActor
 final class SellerOnboardingViewModel: ObservableObject {
-    @Published var step: OnboardingStep = .basics
+    @Published var step: OnboardingStep = .importMenu
 
     // Basics
     @Published var name = ""
@@ -1457,9 +1457,11 @@ private func onboardingField(
         .keyboardType(keyboard)
         .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
         .foregroundColor(.keTextPrimary)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color.keSurface)
         .cornerRadius(10)
+        .contentShape(Rectangle())
 }
 
 private func continueButton(
