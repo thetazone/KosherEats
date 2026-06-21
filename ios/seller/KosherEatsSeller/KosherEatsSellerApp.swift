@@ -58,9 +58,36 @@ struct KosherEatsSellerApp: App {
         #endif
     }
 
+    // The real, shipping root: auth-gated seller content. Extracted so the
+    // DEBUG preview harnesses in `body` can fall through to it without the
+    // Release build ever referencing DEBUG-only preview symbols.
+    @ViewBuilder private var rootView: some View {
+        if authVM.isAuthenticated {
+            if authVM.hasSellerAccess {
+                SellerRootGate()
+                    .environmentObject(authVM)
+            } else {
+                // Authenticated via Apple/Google but role != seller. Rare after
+                // Phase 2 (each app's auth call now creates a role-scoped
+                // account), but kept for safety.
+                SellerOnboardingView()
+                    .environmentObject(authVM)
+            }
+        } else {
+            SellerLoginView()
+                .environmentObject(authVM)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
+                // The screenshot/preview harnesses below reference DEBUG-only
+                // symbols (previewImporting(), PasswordResetHarness), so the
+                // whole preview branch must be #if DEBUG — otherwise a Release
+                // archive fails to compile even though the gating props are
+                // false in Release. rootView is the real, shipping content.
+                #if DEBUG
                 if isOnboardingPreview {
                     SellerOnboardingFlow(onComplete: { _ in })
                         .environmentObject(authVM)
@@ -69,21 +96,12 @@ struct KosherEatsSellerApp: App {
                         .environmentObject(authVM)
                 } else if isPasswordResetPreview {
                     PasswordResetHarness()
-                } else if authVM.isAuthenticated {
-                    if authVM.hasSellerAccess {
-                        SellerRootGate()
-                            .environmentObject(authVM)
-                    } else {
-                        // Authenticated via Apple/Google but role != seller.
-                        // Rare after Phase 2 (each app's auth call now creates
-                        // a role-scoped account), but kept for safety.
-                        SellerOnboardingView()
-                            .environmentObject(authVM)
-                    }
                 } else {
-                    SellerLoginView()
-                        .environmentObject(authVM)
+                    rootView
                 }
+                #else
+                rootView
+                #endif
             }
             .preferredColorScheme(.dark)
             .sheet(isPresented: Binding(
