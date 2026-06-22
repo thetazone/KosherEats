@@ -118,10 +118,14 @@ func main() {
 		r.Post("/login", h.Login)
 		r.Post("/refresh", h.RefreshToken)
 		r.Post("/social", h.SocialLogin)
-		// Used by the unified email entry on each app: given an email, says
-		// whether a user exists so the client can route to "enter password"
-		// vs "create account". Doesn't leak enough to be a useful enumeration
-		// primitive beyond what /login already reveals via its error message.
+		// Used by the unified email entry on each app: given an email, says whether
+		// a user exists so the client can route to "enter password" vs "create
+		// account". NOTE: this IS an account-existence oracle for a precise
+		// (email, role, vertical) tuple — /login does NOT leak existence (it returns
+		// the same 401 "invalid credentials" for unknown-email and wrong-password),
+		// so this reveals strictly MORE than /login. It is currently throttled only
+		// by the shared per-IP authLimiter; consider a dedicated stricter limiter /
+		// CAPTCHA before relying on it being safe.
 		r.Post("/email/check", h.CheckEmail)
 		// Phone OTP login (Twilio Verify). Used by the seller app's "Continue
 		// with phone" flow. Start sends the SMS; verify trades a valid code

@@ -180,8 +180,11 @@ func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Don't expose the user's role — it's strictly more information than
-	// /login leaks and enables targeted account-enumeration attacks.
+	// Don't expose the user's role. Note the boolean `exists` itself is an
+	// account-enumeration signal that /login does not provide (/login returns an
+	// identical 401 for unknown-email and wrong-password); the role would only
+	// make it worse. This endpoint is currently guarded only by the shared
+	// per-IP authLimiter.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"exists": true,
 		"role":   "",

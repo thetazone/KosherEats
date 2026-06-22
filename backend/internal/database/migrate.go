@@ -91,9 +91,12 @@ func (db *DB) loadAppliedMigrations(ctx context.Context) (map[string]bool, error
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			continue
+			return nil, err
 		}
 		out[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
