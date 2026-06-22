@@ -260,6 +260,9 @@ struct OrderConfirmationView: View {
     private var priceCard: some View {
         VStack(spacing: 8) {
             priceRow("Subtotal", order.subtotalFormatted)
+            if order.discount > 0 {
+                priceRow("Savings", order.discountFormatted)
+            }
             priceRow("Delivery fee", order.deliveryFeeFormatted)
             priceRow("Service fee", order.serviceFeeFormatted)
             priceRow("Tax", order.taxFormatted)

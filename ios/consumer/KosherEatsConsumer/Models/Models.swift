@@ -538,6 +538,11 @@ struct Order: Codable, Identifiable {
     var serviceFee: Int
     var tax: Int
     var total: Int
+    /// Deal discount applied to this order, in cents (0 when no deal).
+    /// Backed by an optional so older API responses that predate the
+    /// `discount` field still decode (synthesized Codable treats a missing
+    /// optional key as nil); `discount` normalizes that to 0.
+    private var discountRaw: Int?
     var deliveryAddress: String
     var deliveryLat: Double
     var deliveryLng: Double
@@ -575,8 +580,16 @@ struct Order: Codable, Identifiable {
         "$\(String(format: "%.2f", Double(max(tax, 0)) / 100))"
     }
 
+    /// Deal discount in cents (0 when no deal applied).
+    var discount: Int { discountRaw ?? 0 }
+
+    var discountFormatted: String {
+        "-$\(String(format: "%.2f", Double(max(discount, 0)) / 100))"
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, total, courier
+        case discountRaw = "discount"
         case userID = "user_id"
         case restaurantID = "restaurant_id"
         case restaurantName = "restaurant_name"

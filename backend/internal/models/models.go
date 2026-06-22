@@ -238,6 +238,10 @@ type Order struct {
 	Status          OrderStatus `json:"status"`
 	Items           []OrderItem `json:"items"`
 	Subtotal        int         `json:"subtotal"`
+	// Discount is the deal discount applied to the subtotal before tax, in
+	// cents (0 when no deal). The totals reconcile as
+	// subtotal - discount + delivery_fee + service_fee + tax + courier_tip == total.
+	Discount        int         `json:"discount"`
 	DeliveryFee     int         `json:"delivery_fee"`
 	ServiceFee      int         `json:"service_fee"`
 	Tax             int         `json:"tax"`

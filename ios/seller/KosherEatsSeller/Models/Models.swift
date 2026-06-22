@@ -514,6 +514,10 @@ struct Order: Codable, Identifiable {
     let deliveryFee: Int
     let serviceFee: Int
     let tax: Int
+    /// Deal discount applied to this order, in cents (0 when no deal). Subtracted
+    /// in the totals breakdown so the rows reconcile to `total`. Backend emits it
+    /// as `discount`; defaults to 0 when absent (pre-deal-pricing responses).
+    let discount: Int
     let total: Int
     let deliveryAddress: String
     let estDeliveryTime: String?
@@ -533,7 +537,7 @@ struct Order: Codable, Identifiable {
     var isPickup: Bool { fulfillmentType == "pickup" }
 
     enum CodingKeys: String, CodingKey {
-        case id, status, items, subtotal, tax, total, courier
+        case id, status, items, subtotal, tax, discount, total, courier
         case userId = "user_id"
         case restaurantId = "restaurant_id"
         case restaurantName = "restaurant_name"
@@ -562,6 +566,8 @@ struct Order: Codable, Identifiable {
         deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
         serviceFee = try c.decode(Int.self, forKey: .serviceFee)
         tax = try c.decode(Int.self, forKey: .tax)
+        // Default to 0 so responses without a deal discount still decode.
+        discount = (try c.decodeIfPresent(Int.self, forKey: .discount)) ?? 0
         total = try c.decode(Int.self, forKey: .total)
         deliveryAddress = try c.decode(String.self, forKey: .deliveryAddress)
         estDeliveryTime = try c.decodeIfPresent(String.self, forKey: .estDeliveryTime)

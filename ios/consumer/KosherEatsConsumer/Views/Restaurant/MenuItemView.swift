@@ -144,9 +144,9 @@ struct AddToCartSheet: View {
     }
 
     private var canAdd: Bool {
-        for group in (item.modifierGroups ?? []) where group.isRequired {
+        for group in (item.modifierGroups ?? []) where group.isRequired || group.minSelections > 0 {
             let picked = (selection[group.id] ?? []).count
-            if picked < max(group.minSelections, 1) { return false }
+            if picked < max(group.minSelections, group.isRequired ? 1 : 0) { return false }
         }
         return true
     }

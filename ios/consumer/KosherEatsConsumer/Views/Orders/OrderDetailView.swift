@@ -341,6 +341,9 @@ struct OrderDetailView: View {
     private func priceBreakdown(order: Order) -> some View {
         VStack(spacing: 10) {
             SummaryRow(label: "Subtotal", value: order.subtotalFormatted)
+            if order.discount > 0 {
+                SummaryRow(label: "Savings", value: order.discountFormatted)
+            }
             SummaryRow(label: "Delivery Fee", value: order.deliveryFeeFormatted)
             SummaryRow(label: "Service Fee", value: order.serviceFeeFormatted)
             SummaryRow(label: "Tax", value: order.taxFormatted)
