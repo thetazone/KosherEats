@@ -162,6 +162,31 @@ private fun OrderSummaryCard(order: Order) {
             Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = SurfaceDarkBorder)
             Spacer(Modifier.height(10.dp))
+
+            // Driver tip mirrors iOS, which reads `courierTip`; fall back to the
+            // legacy `tip` field for orders that predate the courier_tip split.
+            val tip = if (order.courierTip > 0) order.courierTip else order.tip
+            // The persisted Order carries no discount field; derive one only when
+            // the line components overshoot the charged total, so a discounted
+            // order's breakdown still reconciles to its total (display-only).
+            val components = order.subtotal + order.deliveryFee + order.serviceFee + order.tax + tip
+            val discount = (components - order.total).coerceAtLeast(0)
+
+            SummaryRow("Subtotal", order.subtotal.formatPrice())
+            if (discount > 0) {
+                // Mirrors iOS OrderConfirmationView's "Savings" row ("-$X.XX").
+                SummaryRow("Savings", "-${discount.formatPrice()}", valueColor = SuccessGreen)
+            }
+            SummaryRow("Delivery fee", order.deliveryFee.formatPrice())
+            SummaryRow("Service fee", order.serviceFee.formatPrice())
+            SummaryRow("Tax", order.tax.formatPrice())
+            if (tip > 0) {
+                SummaryRow("Driver Tip", tip.formatPrice())
+            }
+
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = SurfaceDarkBorder)
+            Spacer(Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Total", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text(
@@ -172,5 +197,20 @@ private fun OrderSummaryCard(order: Order) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SummaryRow(
+    label: String,
+    value: String,
+    valueColor: androidx.compose.ui.graphics.Color = TextSecondary,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, color = TextSecondary, fontSize = 13.sp)
+        Text(value, color = valueColor, fontSize = 13.sp)
     }
 }

@@ -428,7 +428,8 @@ private fun PriceBreakdown(order: Order) {
         ) {
             SummaryRow("Subtotal", order.subtotal.formatPrice())
             if (discount > 0) {
-                SummaryRow("Deal discount", "-${discount.formatPrice()}", valueColor = SuccessGreen)
+                // Mirrors iOS OrderDetailView's "Savings" row (value formatted "-$X.XX").
+                SummaryRow("Savings", "-${discount.formatPrice()}", valueColor = SuccessGreen)
             }
             SummaryRow("Delivery Fee", order.deliveryFee.formatPrice())
             SummaryRow("Service Fee", order.serviceFee.formatPrice())

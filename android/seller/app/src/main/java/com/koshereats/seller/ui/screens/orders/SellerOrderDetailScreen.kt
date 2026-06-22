@@ -428,6 +428,10 @@ fun SellerOrderDetailScreen(
 
                         // Totals
                         PriceRow("Subtotal", order.subtotal)
+                        if (order.discount > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            SavingsRow("Savings", order.discount)
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Delivery Fee", order.deliveryFee)
                         Spacer(modifier = Modifier.height(4.dp))
@@ -510,6 +514,30 @@ private fun PriceRow(label: String, amount: Int) {
             text = amount.formatPrice(),
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
+        )
+    }
+}
+
+/**
+ * A discount/savings line, rendered as a negative amount ("-$X.XX") and tinted
+ * success-green so the breakdown rows still sum to order.total. [amount] is the
+ * positive discount amount in cents. Mirrors iOS savingsRow.
+ */
+@Composable
+private fun SavingsRow(label: String, amount: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = SuccessGreen,
+        )
+        Text(
+            text = "-${amount.formatPrice()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SuccessGreen,
         )
     }
 }

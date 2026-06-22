@@ -96,9 +96,16 @@ fun MenuItemSheet(
     val unitPrice = menuItem.price + extrasPrice()
     val totalPrice = unitPrice * quantity
 
-    val requiredGroupsValid = modifierGroups.all { group ->
-        !group.isRequired || selections[group.id]?.isNotEmpty() == true
-    }
+    // A group must be satisfied if the seller flagged it required OR set a
+    // positive minimum. The floor is max(minSelections, 1 when required) so a
+    // required group still needs at least one pick even if minSelections is 0.
+    val requiredGroupsValid = modifierGroups
+        .filter { it.isRequired || it.minSelections > 0 }
+        .all { group ->
+            val picked = selections[group.id]?.size ?: 0
+            val floor = maxOf(group.minSelections, if (group.isRequired) 1 else 0)
+            picked >= floor
+        }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -165,10 +172,17 @@ fun MenuItemSheet(
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
                     )
-                    if (group.isRequired) {
+                    // Mandatory when required OR a positive minimum is set; keeps
+                    // the badge in sync with the disabled Add button. Surface the
+                    // minimum when it's > 1 so the user knows how many picks Add needs.
+                    if (group.isRequired || group.minSelections > 0) {
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "Required",
+                            text = if (group.minSelections > 1) {
+                                "Choose at least ${group.minSelections}"
+                            } else {
+                                "Required"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = ErrorRed,
                         )

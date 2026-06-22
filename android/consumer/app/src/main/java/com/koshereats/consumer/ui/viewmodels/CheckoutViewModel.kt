@@ -3,6 +3,7 @@ package com.koshereats.consumer.ui.viewmodels
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -101,6 +102,17 @@ class CheckoutViewModel @Inject constructor(
         // Mirror AddressViewModel's persisted selection so checkout honors the
         // address the user picked in the Home "Deliver to" header.
         val SELECTED_ADDRESS_ID = stringPreferencesKey("selected_address_id")
+        // Holds the PaymentIntent id the client has confirmed (card charged) but
+        // for which it has not yet confirmed an order exists server-side. Set
+        // immediately after the charge, BEFORE createOrder, and cleared once an
+        // order is known to exist (createOrder returned, recovery found it, or
+        // reconcile resolved it). While set, the charge path refuses to confirm a
+        // NEW PaymentIntent — charging again would double-charge the customer for
+        // an order we never recovered. Survives process death (DataStore).
+        val INFLIGHT_PAYMENT_INTENT = stringPreferencesKey("inflight_payment_intent")
+        // Post-charge recovery backoff: 0.5s / 1s / 2s, riding out brief
+        // replication / commit lag before surfacing an error to the user.
+        val RECOVERY_DELAYS_MS = longArrayOf(500L, 1000L, 2000L)
     }
 
     private val _uiState = MutableStateFlow(CheckoutUiState())
@@ -177,6 +189,11 @@ class CheckoutViewModel @Inject constructor(
         _restaurantId = effectiveRestaurantId
         _appliedDealId = effectiveDealId
         viewModelScope.launch {
+            // If a prior PaymentIntent was charged but never confirmed as an order (app
+            // died between the charge and a known-good order), reconcile it now. A recovered
+            // order surfaces via placedOrder so the screen can route the user to it instead
+            // of letting them re-pay.
+            reconcileInflightOrder()
             loadAddresses()
             if (localCart.isNotEmpty()) {
                 // If the sync fails the server cart is empty (rollback) or partial
@@ -502,18 +519,29 @@ class CheckoutViewModel @Inject constructor(
         // Stub orders must use a unique stub intent so the idempotency guard doesn't
         // collapse multiple stub orders placed in the same VM session into one.
         _uiState.update { it.copy(isProcessing = true) }
-        if (bundle.isStub) {
-            presentedBundle = null
-            finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}", paidBundle = bundle)
-            return
+        // Never confirm a NEW PaymentIntent while a prior charged-but-unrecovered one is
+        // still pending. passesInflightGuard() first tries to reconcile it (the order may
+        // exist now); if it still can't be resolved it blocks (and resets isProcessing)
+        // so we don't double-charge for an order we never recovered. This is async, so the
+        // rest of the present/finalize flow runs inside the launched coroutine.
+        viewModelScope.launch {
+            if (!passesInflightGuard()) {
+                presentedBundle = null
+                return@launch
+            }
+            if (bundle.isStub) {
+                presentedBundle = null
+                finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}", paidBundle = bundle)
+                return@launch
+            }
+            // Non-stub orders need a valid Stripe payment intent secret to present the sheet.
+            if (!bundle.paymentIntentSecret.contains("_secret_")) {
+                presentedBundle = null
+                _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment is not configured. Please refresh and try again.") }
+                return@launch
+            }
+            _uiState.update { it.copy(pendingPaymentSheet = bundle) }
         }
-        // Non-stub orders need a valid Stripe payment intent secret to present the sheet.
-        if (!bundle.paymentIntentSecret.contains("_secret_")) {
-            presentedBundle = null
-            _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment is not configured. Please refresh and try again.") }
-            return
-        }
-        _uiState.update { it.copy(pendingPaymentSheet = bundle) }
     }
 
     fun consumePendingPaymentSheet() {
@@ -581,7 +609,17 @@ class CheckoutViewModel @Inject constructor(
             return
         }
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
+        // Stub orders carry a synthetic intent and never charge a real card, so there
+        // is nothing to recover and nothing to persist for them.
+        val isStubIntent = paymentIntentId.startsWith("stub_intent")
         viewModelScope.launch {
+            // The card was just charged for THIS PaymentIntent. Persist it BEFORE
+            // createOrder so that if the app dies (crash / kill) between the charge and a
+            // known-good order, the next launch can reconcile it via reconcileInflightOrder()
+            // instead of silently dropping a paid order.
+            if (!isStubIntent) {
+                persistInflightPI(paymentIntentId)
+            }
             val scheduledFor = state.scheduledFor?.let { local ->
                 local.atZone(ZoneId.systemDefault())
                     .toOffsetDateTime()
@@ -604,6 +642,9 @@ class CheckoutViewModel @Inject constructor(
                         ),
                     )
                     if (resp.isSuccessful) {
+                        // createOrder is idempotent on a duplicate payment_intent_id, so a
+                        // successful return always means the order exists — clear the marker.
+                        if (!isStubIntent) clearInflightPI()
                         _uiState.update {
                             it.copy(isProcessing = false, placedOrder = resp.body())
                         }
@@ -616,9 +657,20 @@ class CheckoutViewModel @Inject constructor(
                         val existing = fetchMostRecentOrder()
                         val matches = existing != null && existing.restaurantId == _restaurantId
                         if (matches) {
+                            if (!isStubIntent) clearInflightPI()
                             _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
                         } else {
+                            // The order exists server-side (409) but we couldn't confirm the
+                            // match. recoverOrder() below (in the failure path) is by-PI scoped,
+                            // so prefer it: clear only once we positively recover it.
                             _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
+                            if (!isStubIntent) {
+                                val recovered = recoverOrder(paymentIntentId)
+                                if (recovered != null) {
+                                    clearInflightPI()
+                                    _uiState.update { it.copy(errorMessage = null, placedOrder = recovered) }
+                                }
+                            }
                         }
                         return@launch
                     } else {
@@ -636,7 +688,20 @@ class CheckoutViewModel @Inject constructor(
                     }
                 }
             }
-            // All 3 attempts failed
+            // createOrder failed AFTER the charge. The order may still have been created
+            // (request reached the DB but the response was lost, or a transient failure on a
+            // later replay). Recover by looking it up directly by PaymentIntent id with a few
+            // backoff retries before surfacing an error. Stub mode has no real PI to recover.
+            if (!isStubIntent) {
+                val recovered = recoverOrder(paymentIntentId)
+                if (recovered != null) {
+                    clearInflightPI()
+                    _uiState.update { it.copy(isProcessing = false, placedOrder = recovered) }
+                    return@launch
+                }
+                // No order found. Leave the in-flight marker set so a later reconcile / next
+                // launch can still recover it once the backend catches up.
+            }
             _uiState.update {
                 it.copy(
                     isProcessing = false,
@@ -644,6 +709,119 @@ class CheckoutViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    // ── In-flight PaymentIntent idempotency recovery ──────────────────────
+
+    /** Reads the persisted charged-but-unrecovered PaymentIntent id, or null. */
+    private suspend fun readInflightPI(): String? = try {
+        dataStore.data.first()[INFLIGHT_PAYMENT_INTENT]
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        Log.e("CheckoutViewModel", "readInflightPI failed", e)
+        null
+    }
+
+    /** Persists [pi] as the in-flight PaymentIntent BEFORE createOrder so a
+     *  crash/kill between the charge and a known-good order can be reconciled
+     *  on the next launch instead of silently dropping a paid order. */
+    private suspend fun persistInflightPI(pi: String) {
+        try {
+            dataStore.edit { it[INFLIGHT_PAYMENT_INTENT] = pi }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("CheckoutViewModel", "persistInflightPI failed", e)
+        }
+    }
+
+    /** Clears the in-flight marker once the order is known to exist. */
+    private suspend fun clearInflightPI() {
+        try {
+            dataStore.edit { it.remove(INFLIGHT_PAYMENT_INTENT) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("CheckoutViewModel", "clearInflightPI failed", e)
+        }
+    }
+
+    /**
+     * Post-charge recovery: look the order up by the PaymentIntent id the client
+     * just confirmed, retrying with backoff (0.5s / 1s / 2s) to ride out a brief
+     * replication / commit lag. Returns the order if found, or null if every
+     * attempt 404s or errors. A 404 means "no order for this user yet"; any other
+     * error is also treated as "not yet recovered" and retried.
+     */
+    private suspend fun recoverOrder(paymentIntentId: String): Order? {
+        for ((attempt, delayMs) in RECOVERY_DELAYS_MS.withIndex()) {
+            if (attempt > 0) delay(delayMs)
+            try {
+                val resp = api.getOrderByPaymentIntent(paymentIntentId)
+                if (resp.isSuccessful) {
+                    val order = resp.body()
+                    if (order != null) return order
+                }
+                // Non-2xx (e.g. 404 = not created yet) — fall through and retry.
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("CheckoutViewModel", "recoverOrder attempt ${attempt + 1} failed", e)
+            }
+        }
+        return null
+    }
+
+    /**
+     * Called on checkout-screen resume and bootstrap. If a PaymentIntent was
+     * charged but never confirmed as an order (the app died between the charge
+     * and a known-good order), look it up and, if it now exists server-side,
+     * clear the marker and surface the recovered order. Leaves the marker in
+     * place when the lookup 404s so a later attempt can still recover it.
+     * Returns the recovered order, if any, so a caller can route the user to it.
+     */
+    suspend fun reconcileInflightOrder(): Order? {
+        val pi = readInflightPI() ?: return null
+        try {
+            val resp = api.getOrderByPaymentIntent(pi)
+            if (resp.isSuccessful) {
+                val order = resp.body()
+                if (order != null) {
+                    clearInflightPI()
+                    _uiState.update { it.copy(placedOrder = order) }
+                    return order
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("CheckoutViewModel", "reconcileInflightOrder lookup failed", e)
+        }
+        return null
+    }
+
+    /** Public entry point for the composable to reconcile on screen resume. */
+    fun reconcileOnResume() {
+        viewModelScope.launch { reconcileInflightOrder() }
+    }
+
+    /**
+     * Top-of-charge-path guard. Returns true when it is safe to confirm a NEW
+     * PaymentIntent. When a prior charged-but-unrecovered PaymentIntent is still
+     * persisted it first tries to reconcile it (clearing the marker if the order
+     * now exists); if it still can't be resolved it blocks the new charge and
+     * surfaces an error so we never double-charge the customer.
+     */
+    private suspend fun passesInflightGuard(): Boolean {
+        if (readInflightPI() == null) return true
+        reconcileInflightOrder()
+        if (readInflightPI() == null) return true
+        _uiState.update {
+            it.copy(
+                isProcessing = false,
+                pendingPaymentSheet = null,
+                errorMessage = "Your previous payment is still being confirmed. Please check your orders before trying again.",
+            )
+        }
+        return false
     }
 
     private suspend fun fetchMostRecentOrder(): Order? = try {
