@@ -80,6 +80,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.Restaurant
+import com.koshereats.seller.data.util.Money
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -1013,10 +1014,7 @@ private fun centsToDollarString(cents: Int): String =
     if (cents == 0) "" else String.format(java.util.Locale.US, "%.2f", cents / 100.0)
 
 /** Dollars in the inputs -> integer cents on the wire (delivery_fee / min_order are INTEGER cents). */
-private fun dollarStringToCents(dollars: String): Int {
-    val parsed = dollars.trim().toDoubleOrNull() ?: 0.0
-    return Math.round(parsed * 100).toInt()
-}
+private fun dollarStringToCents(dollars: String): Int = Money.parseCents(dollars) ?: 0
 
 /** Keeps digits and a single decimal point so dollar fields stay parseable. */
 private fun sanitizeDecimal(input: String): String {

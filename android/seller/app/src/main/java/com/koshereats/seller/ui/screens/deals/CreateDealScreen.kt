@@ -74,6 +74,7 @@ import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.DiscountType
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.formatPrice
+import com.koshereats.seller.data.util.Money
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.SuccessGreen
@@ -737,11 +738,7 @@ private fun filterDollarCents(input: String): String {
     }
 }
 
-private fun dollarsToCents(dollars: String): Int {
-    if (dollars.isBlank()) return 0
-    val amount = dollars.toDoubleOrNull() ?: return 0
-    return (amount * 100).roundToInt()
-}
+private fun dollarsToCents(dollars: String): Int = Money.parseCents(dollars) ?: 0
 
 private val uploadClient = OkHttpClient.Builder()
     .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)

@@ -19,6 +19,7 @@ import com.koshereats.consumer.data.models.CreateOrderRequest
 import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.models.PaymentSheetBundle
 import com.koshereats.consumer.data.models.PaymentSheetRequest
+import com.koshereats.consumer.data.util.Money
 import com.koshereats.consumer.BuildConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -434,8 +435,11 @@ class CheckoutViewModel @Inject constructor(
             TipChoice.None -> 0
             is TipChoice.Percent -> (subtotal * choice.fraction).roundToInt()
             TipChoice.Custom -> {
-                val dollars = state.customTipText.toDoubleOrNull() ?: 0.0
-                (dollars.coerceIn(0.0, 1000.0) * 100).roundToInt()
+                // Route user-entered tip text through Money.parseCents so a comma
+                // decimal ("12,50") parses as 1250¢ instead of 0. Clamp preserved
+                // (0..$1000 -> 0..100000¢).
+                val cents = Money.parseCents(state.customTipText) ?: 0
+                cents.coerceIn(0, 100_000)
             }
         }
         return tip.coerceAtLeast(0)

@@ -10,8 +10,8 @@ import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.PresignResponse
+import com.koshereats.seller.data.util.Money
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -294,7 +294,7 @@ class OnboardingViewModel @Inject constructor(
                 var failedCount = 0
                 for ((categoryName, categoryItems) in grouped) {
                     val sellableItems = categoryItems.filter {
-                        val p = ((it.priceDollars.toDoubleOrNull() ?: 0.0) * 100).roundToInt()
+                        val p = Money.parseCents(it.priceDollars) ?: 0
                         p > 0 && it.name.isNotBlank()
                     }
                     if (sellableItems.isEmpty()) continue
@@ -317,7 +317,7 @@ class OnboardingViewModel @Inject constructor(
                     for (item in sellableItems) {
                         val itemKey = "$categoryName:${item.name.trim()}"
                         if (itemKey in createdItemKeys) continue
-                        val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).roundToInt()
+                        val priceCents = Money.parseCents(item.priceDollars) ?: 0
                         val itemResponse = runCancellable {
                             apiService.createMenuItemWithCategory(
                                 CreateMenuItemBody(

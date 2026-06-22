@@ -73,8 +73,8 @@ import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.ModifierOptionRequest
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import com.koshereats.seller.data.models.formatPrice
+import com.koshereats.seller.data.util.Money
 import java.util.Locale
-import kotlin.math.roundToInt
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -495,19 +495,19 @@ fun MenuItemFormScreen(
                         viewModel.setError("Item name is required")
                         return@Button
                     }
-                    val dollars = price.toDoubleOrNull() ?: 0.0
+                    val priceCents = Money.parseCents(price) ?: 0
                     if (!isPareve && !isDairy && !isMeat) {
                         viewModel.setError("Select a Kosher type (Meat, Dairy, or Pareve)")
                         return@Button
                     }
-                    if (dollars <= 0) {
+                    if (priceCents <= 0) {
                         viewModel.setError("Price must be greater than \$0.00")
                         return@Button
                     }
                     val request = UpdateMenuItemRequest(
                         name = name.trim(),
                         description = description.trim(),
-                        price = (dollars * 100.0).roundToInt(),
+                        price = priceCents,
                         categoryId = selectedCategoryId.ifBlank { null },
                         imageUrl = imageUrl.trim(),
                         isKosherPareve = isPareve,
@@ -877,7 +877,7 @@ private fun ModifierGroupDialog(
                             ModifierOptionRequest(
                                 id = opt.id,
                                 name = opt.name.trim(),
-                                priceDelta = (((opt.priceDelta.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 999.99)) * 100).roundToInt(),
+                                priceDelta = (Money.parseCents(opt.priceDelta) ?: 0).coerceIn(0, 99999),
                                 isDefault = opt.isDefault,
                                 isAvailable = opt.isAvailable,
                                 sortOrder = i,
