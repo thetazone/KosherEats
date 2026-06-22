@@ -1,0 +1,6 @@
+# Go build artifacts (none normally committed)
+/poc/worker/worker
+/poc/starter/starter
+/payout/demo/demo
+/campaign/demo/demo
+*.test
