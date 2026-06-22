@@ -100,6 +100,11 @@ struct CheckoutView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             vm.appliedDealId = cartVM.dealIdForCheckout
+            // Recover any order that was charged but never confirmed (app died
+            // between the charge and a known-good order). Clears the in-flight
+            // marker if the order now exists; otherwise it stays set and the
+            // charge path's guard blocks a second charge.
+            await vm.reconcileInflightOrder()
             await vm.loadAddresses()
             await vm.refreshBundle()
             if vm.selectedAddress == nil && vm.fulfillmentType == "delivery" {
