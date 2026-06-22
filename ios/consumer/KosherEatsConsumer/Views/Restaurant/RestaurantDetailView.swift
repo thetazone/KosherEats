@@ -338,7 +338,7 @@ struct RestaurantDetailView: View {
     /// Formats integer cents as a localized dollar string, matching the
     /// `*Formatted` helpers used across the cart models.
     private func format(_ cents: Int) -> String {
-        "$\(String(format: "%.2f", Double(max(cents, 0)) / 100))"
+        Money.dollars(max(cents, 0))
     }
 
     // MARK: - Menu

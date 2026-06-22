@@ -680,8 +680,8 @@ struct RestaurantSettingsView: View {
         restaurant.zipCode = zipCode
         // Dollars in the text fields → cents on the wire, matching the
         // backend contract (delivery_fee / min_order are INTEGER cents).
-        restaurant.deliveryFee = Int(((Double(deliveryFee) ?? 0) * 100).rounded())
-        restaurant.minOrder = Int(((Double(minOrder) ?? 0) * 100).rounded())
+        restaurant.deliveryFee = CurrencyFormat.parseCents(deliveryFee) ?? 0
+        restaurant.minOrder = CurrencyFormat.parseCents(minOrder) ?? 0
         guard let parsedMin = Int(estDeliveryMin), parsedMin > 0 else {
             errorMessage = "Estimated minimum delivery time must be a number."
             isSaving = false

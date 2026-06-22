@@ -141,7 +141,7 @@ struct CartView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.keTextPrimary)
                 Spacer()
-                Text("$\(String(format: "%.2f", Double(cartVM.discountedSubtotal) / 100))")
+                Text(Money.dollars(cartVM.discountedSubtotal))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.kePrimary)
             }
@@ -165,7 +165,7 @@ struct CartView: View {
                     HStack {
                         Text("Checkout")
                         Spacer()
-                        Text("$\(String(format: "%.2f", Double(cartVM.discountedSubtotal) / 100))")
+                        Text(Money.dollars(cartVM.discountedSubtotal))
                     }
                 }
                 .buttonStyle(KEPrimaryButtonStyle())

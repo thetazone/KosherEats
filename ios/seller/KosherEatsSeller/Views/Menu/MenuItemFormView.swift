@@ -340,7 +340,7 @@ struct MenuItemFormView: View {
     }
 
     private var canSave: Bool {
-        let priceCents = Int(round((Double(priceText) ?? 0) * 100))
+        let priceCents = CurrencyFormat.parseCents(priceText) ?? 0
         return !name.trimmingCharacters(in: .whitespaces).isEmpty &&
             !selectedCategoryId.isEmpty &&
             priceCents > 0 && priceCents <= 999_999 &&
@@ -360,7 +360,7 @@ struct MenuItemFormView: View {
     private func submit() {
         guard !isSubmitting else { return }
         // priceText is dollars as typed; convert to cents.
-        let priceCents = Int(round((Double(priceText) ?? 0) * 100))
+        let priceCents = CurrencyFormat.parseCents(priceText) ?? 0
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
 
         isSubmitting = true

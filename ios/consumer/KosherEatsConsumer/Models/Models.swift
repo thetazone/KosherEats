@@ -223,11 +223,11 @@ struct Restaurant: Codable, Identifiable {
     var updatedAt: Date
 
     var deliveryFeeFormatted: String {
-        deliveryFee == 0 ? "Free Delivery" : "$\(String(format: "%.2f", Double(deliveryFee) / 100))"
+        deliveryFee == 0 ? "Free Delivery" : Money.dollars(deliveryFee)
     }
 
     var minOrderFormatted: String {
-        "$\(String(format: "%.2f", Double(minOrder) / 100))"
+        Money.dollars(minOrder)
     }
 
     var deliveryTimeFormatted: String {
@@ -334,7 +334,7 @@ struct MenuItem: Codable, Identifiable {
     var modifierGroups: [ModifierGroup]?
 
     var priceFormatted: String {
-        "$\(String(format: "%.2f", Double(max(price, 0)) / 100))"
+        Money.dollars(max(price, 0))
     }
 
     var kashrusType: String {
@@ -447,7 +447,7 @@ struct Cart: Codable, Identifiable {
     var subtotal: Int
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
+        Money.dollars(max(subtotal, 0))
     }
 
     var itemCount: Int {
@@ -472,7 +472,7 @@ struct CartItem: Codable, Identifiable {
     var selectedModifiers: [SelectedModifier]?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(price * quantity, 0)) / 100))"
+        Money.dollars(max(price * quantity, 0))
     }
 
     /// "Large • Extra hummus • Extra tahini" summary for the cart row.
@@ -561,23 +561,23 @@ struct Order: Codable, Identifiable {
     var deliveredAt: Date?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(total, 0)) / 100))"
+        Money.dollars(max(total, 0))
     }
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
+        Money.dollars(max(subtotal, 0))
     }
 
     var deliveryFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(max(deliveryFee, 0)) / 100))"
+        Money.dollars(max(deliveryFee, 0))
     }
 
     var serviceFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(max(serviceFee, 0)) / 100))"
+        Money.dollars(max(serviceFee, 0))
     }
 
     var taxFormatted: String {
-        "$\(String(format: "%.2f", Double(max(tax, 0)) / 100))"
+        Money.dollars(max(tax, 0))
     }
 
     /// Deal discount in cents (0 when no deal applied).
@@ -626,7 +626,7 @@ struct OrderItem: Codable, Identifiable {
     var selectedModifiers: [SelectedModifier]?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(price * quantity, 0)) / 100))"
+        Money.dollars(max(price * quantity, 0))
     }
 
     var modifierSummary: String? {
@@ -811,7 +811,7 @@ struct Deal: Codable, Identifiable {
 
     var minOrderFormatted: String? {
         guard let min = minOrderAmount, min > 0 else { return nil }
-        return "$\(String(format: "%.2f", Double(min) / 100))"
+        return Money.dollars(min)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -837,4 +837,27 @@ struct Deal: Codable, Identifiable {
 
 struct APIErrorResponse: Codable {
     let error: String
+}
+
+/// Centralized dollars <-> cents conversion — single source of truth for parsing
+/// user-entered dollar strings into integer cents and rendering cents back to
+/// the canonical "$X.XX" string. Routing every conversion through here makes the
+/// recurring comma-decimal bug structurally impossible.
+enum Money {
+    /// Parse a user-entered dollar string into integer cents. Normalizes a comma
+    /// decimal ("4,10"), strips non [0-9.], rejects >1 dot, rounds (not truncates,
+    /// so 4.10 -> 410¢ not 409¢). nil on empty/invalid.
+    static func parseCents(_ dollars: String) -> Int? {
+        let filtered = dollars.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
+        if filtered.isEmpty { return nil }
+        if filtered.components(separatedBy: ".").count > 2 { return nil }
+        guard let value = Double(filtered) else { return nil }
+        return Int((value * 100).rounded())
+    }
+
+    /// Canonical "$X.XX" rendering — byte-identical to the inline
+    /// `"$\(String(format: "%.2f", Double(cents) / 100))"` used everywhere.
+    static func dollars(_ cents: Int) -> String {
+        "$\(String(format: "%.2f", Double(cents) / 100))"
+    }
 }

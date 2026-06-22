@@ -148,12 +148,11 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         case .none: return 0
         case .percent(let bps): return (subtotal * bps) / 10_000
         case .custom:
-            let dollars = max(0, Double(customTipText) ?? 0)
-            // Round, don't truncate: binary float makes many exact-cent inputs
-            // land just below the integer (4.10 * 100 == 409.9999…) and Int()
-            // truncates toward zero, so $4.10 would become 409¢. Rounding keeps
-            // the charged tip equal to what the user typed.
-            return min(Int((dollars * 100).rounded()), Self.maxTipCents)
+            // customTipText is already comma-normalized / digit-filtered by
+            // updateCustomTip; Money.parseCents reproduces the same parse and
+            // rounds (not truncates) so exact-cent inputs like $4.10 stay 410¢.
+            let cents = Money.parseCents(customTipText) ?? 0
+            return min(max(0, cents), Self.maxTipCents)
         }
     }
 

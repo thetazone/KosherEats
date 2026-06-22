@@ -197,7 +197,7 @@ final class SellerOnboardingViewModel: ObservableObject {
                     continue
                 }
                 for draft in drafts {
-                    let cents = Int(round((Double(draft.priceDollars.replacingOccurrences(of: ",", with: ".")) ?? 0) * 100))
+                    let cents = CurrencyFormat.parseCents(draft.priceDollars) ?? 0
                     guard cents > 0, !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else {
                         failedItemCount += 1
                         continue

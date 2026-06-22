@@ -140,7 +140,7 @@ struct AddToCartSheet: View {
     }
 
     private var totalPrice: String {
-        "$\(String(format: "%.2f", Double(unitPrice * quantity) / 100))"
+        Money.dollars(unitPrice * quantity)
     }
 
     private var canAdd: Bool {

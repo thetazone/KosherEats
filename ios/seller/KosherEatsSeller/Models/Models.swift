@@ -17,6 +17,32 @@ enum CurrencyFormat {
     static func string(fromCents cents: Int) -> String {
         formatter.string(from: NSNumber(value: Double(cents) / 100)) ?? "$0.00"
     }
+
+    /// Canonical cents → "$X.XX" display string. Alias of `string(fromCents:)`
+    /// so display is byte-identical to the app's existing currency output.
+    static func dollars(_ cents: Int) -> String {
+        string(fromCents: cents)
+    }
+
+    /// Canonical dollars-string → cents parse. Normalizes comma-decimal
+    /// locales (',' → '.'), strips any character outside [0-9.], rejects
+    /// strings with more than one decimal point, and rounds to the nearest
+    /// cent. Returns nil for empty/invalid input.
+    ///
+    /// This is the single source of truth for every dollars→cents conversion
+    /// in the seller app, making the recurring comma-decimal money bug
+    /// structurally impossible. The normalize/strip/round behavior mirrors the
+    /// per-field fixes that previously lived inline at each parse site.
+    static func parseCents(_ dollars: String) -> Int? {
+        let normalized = dollars
+            .replacingOccurrences(of: ",", with: ".")
+            .filter { $0.isNumber || $0 == "." }
+        if normalized.isEmpty { return nil }
+        // Reject more than one decimal point — an ambiguous/invalid amount.
+        if normalized.filter({ $0 == "." }).count > 1 { return nil }
+        guard let d = Double(normalized) else { return nil }
+        return Int((d * 100).rounded())
+    }
 }
 
 // MARK: - Enums

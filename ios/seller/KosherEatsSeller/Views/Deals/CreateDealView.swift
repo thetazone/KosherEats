@@ -201,11 +201,11 @@ struct CreateDealView: View {
         if discountType == .bogo {
             value = 0
         } else if discountType == .fixed {
-            guard let dollars = Double(discountValue.replacingOccurrences(of: ",", with: ".")), dollars > 0 else {
+            guard let dollars = Double(discountValue.replacingOccurrences(of: ",", with: ".")), dollars > 0,
+                  let cents = CurrencyFormat.parseCents(discountValue) else {
                 localError = "Enter a valid discount value"
                 return
             }
-            let cents = Int(round(dollars * 100))
             if cents > 10000 {
                 localError = "Fixed discount cannot exceed $100"
                 return
@@ -236,8 +236,9 @@ struct CreateDealView: View {
         let minOrderCents: Int?
         if minOrderAmount.isEmpty {
             minOrderCents = nil
-        } else if let mo = Double(minOrderAmount.replacingOccurrences(of: ",", with: ".")), mo > 0 {
-            minOrderCents = Int(round(mo * 100))
+        } else if let mo = Double(minOrderAmount.replacingOccurrences(of: ",", with: ".")), mo > 0,
+                  let cents = CurrencyFormat.parseCents(minOrderAmount) {
+            minOrderCents = cents
         } else {
             localError = "Enter a valid minimum order amount"
             return

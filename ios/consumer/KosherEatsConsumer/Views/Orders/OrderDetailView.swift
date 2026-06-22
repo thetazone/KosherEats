@@ -348,7 +348,7 @@ struct OrderDetailView: View {
             SummaryRow(label: "Service Fee", value: order.serviceFeeFormatted)
             SummaryRow(label: "Tax", value: order.taxFormatted)
             if let tip = order.courierTip, tip > 0 {
-                SummaryRow(label: "Driver Tip", value: "$\(String(format: "%.2f", Double(tip) / 100))")
+                SummaryRow(label: "Driver Tip", value: Money.dollars(tip))
             }
 
             Divider().background(Color.keDivider)
