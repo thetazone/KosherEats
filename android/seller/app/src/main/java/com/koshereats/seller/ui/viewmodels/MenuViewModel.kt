@@ -81,22 +81,33 @@ class MenuViewModel @Inject constructor(
         importPollJob = viewModelScope.launch {
             var wasInProgress = false
             while (true) {
-                val latest = try {
-                    val response = apiService.listMenuImports()
-                    if (response.isSuccessful) response.body()?.firstOrNull() else null
+                val response = try {
+                    apiService.listMenuImports()
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     null
                 }
-                _state.update { it.copy(latestImport = latest) }
+                val fetched = response?.isSuccessful == true
+                val latest = if (fetched) response!!.body()?.firstOrNull() else null
 
-                val inProgress = latest?.isInProgress == true
-                if (wasInProgress && !inProgress) {
-                    // Import just finished (done/failed) — pull in any new items.
-                    loadMenuItems(_state.value.selectedCategory)
+                if (fetched) {
+                    // Only mutate banner state on a real answer; a transient
+                    // failure must not clear an in-flight import's banner.
+                    _state.update { it.copy(latestImport = latest) }
+                    val inProgress = latest?.isInProgress == true
+                    if (wasInProgress && !inProgress) {
+                        // Import just finished (done/failed) — pull in any new items.
+                        loadMenuItems(_state.value.selectedCategory)
+                    }
+                    wasInProgress = inProgress
+                    // Stop only once we've confirmed nothing is in flight.
+                    if (!inProgress) break
+                } else if (!wasInProgress) {
+                    // First/idle poll failed and nothing was ever mid-flight:
+                    // preserve the original startup-exit behavior (no idle polling).
+                    break
                 }
-                wasInProgress = inProgress
-                if (!inProgress) break
+                // Otherwise an import was mid-flight: keep the banner, delay, retry.
                 delay(IMPORT_POLL_INTERVAL_MS)
             }
         }

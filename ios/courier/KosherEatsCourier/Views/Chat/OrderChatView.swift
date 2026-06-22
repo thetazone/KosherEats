@@ -107,7 +107,7 @@ struct OrderChatView: View {
             // Merge by ID to avoid clobbering optimistically-appended just-sent messages
             let serverIDs = Set(serverMessages.map(\.id))
             let pending = messages.filter { !serverIDs.contains($0.id) }
-            messages = serverMessages + pending
+            messages = (serverMessages + pending).sorted { $0.createdAt < $1.createdAt }
             errorMessage = nil
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

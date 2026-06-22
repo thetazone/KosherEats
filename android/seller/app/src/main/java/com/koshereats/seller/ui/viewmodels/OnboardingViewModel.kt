@@ -346,7 +346,7 @@ class OnboardingViewModel @Inject constructor(
                         add("Created $createdCount of ${createdCount + failedCount} items — use Update Menu to add the rest.")
                     }
                     if (importFailed) {
-                        add("We couldn't start your UberEats import — you can retry it from the Menu tab.")
+                        add("We couldn't start your UberEats import — you can re-run the import from onboarding.")
                     }
                 }
                 val partialError = parts.takeIf { it.isNotEmpty() }?.joinToString(" ")

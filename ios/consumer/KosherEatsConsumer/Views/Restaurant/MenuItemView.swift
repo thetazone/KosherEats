@@ -418,12 +418,12 @@ private struct ModifierGroupSection: View {
                     }
                 }
                 Spacer()
-                Text(group.isRequired ? String(localized: "Required") : rangeLabel)
+                Text(isMandatory ? requiredLabel : rangeLabel)
                     .font(.caption.bold())
-                    .foregroundColor(group.isRequired ? .kePrimary : .keTextMuted)
+                    .foregroundColor(isMandatory ? .kePrimary : .keTextMuted)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background((group.isRequired ? Color.kePrimary : Color.keTextMuted).opacity(0.15))
+                    .background((isMandatory ? Color.kePrimary : Color.keTextMuted).opacity(0.15))
                     .cornerRadius(4)
             }
 
@@ -444,6 +444,19 @@ private struct ModifierGroupSection: View {
             .background(Color.keCard)
             .cornerRadius(Theme.cornerRadiusMedium)
         }
+    }
+
+    /// Mirrors AddToCartSheet.canAdd's gate: a group is mandatory if the seller
+    /// flagged it required OR set a positive minimum. Keeps the badge in sync
+    /// with the disabled Add button so a min'd "optional" group isn't a dead-end.
+    private var isMandatory: Bool { group.isRequired || group.minSelections > 0 }
+
+    /// Required badge text. When a minimum > 1 is set, advertise it so the user
+    /// knows how many picks are needed before Add enables.
+    private var requiredLabel: String {
+        group.minSelections > 1
+            ? String(localized: "Choose at least \(group.minSelections)")
+            : String(localized: "Required")
     }
 
     private var rangeLabel: String {

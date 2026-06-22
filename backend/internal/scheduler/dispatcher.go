@@ -884,7 +884,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID, p.id)
 	if err == nil {
-		_, uerr := d.db.Exec(ctx, `
+		ct, uerr := d.db.Exec(ctx, `
 			UPDATE courier_payout_queue
 			   SET status = 'completed',
 			       completed_at = NOW(),
@@ -899,6 +899,29 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 				slog.String("payout_id", p.id),
 				slog.String("order_id", p.orderID),
 				slog.String("error", uerr.Error()))
+			return
+		}
+		if ct.RowsAffected() == 0 {
+			// The reaper reset this row to 'pending' (assuming a crash) while the
+			// transfer was actually still in flight and has now succeeded. The
+			// completion UPDATE matched nothing. The transfer is DONE (and the
+			// Stripe idempotency key prevents a double pay on any re-claim), so
+			// reconcile the row to completed and log for visibility.
+			slog.Warn("payout-sweep: transfer succeeded but row was reaped mid-flight; reconciling to completed",
+				slog.String("payout_id", p.id),
+				slog.String("order_id", p.orderID))
+			if _, rerr := d.db.Exec(ctx, `
+				UPDATE courier_payout_queue
+				   SET status = 'completed',
+				       completed_at = NOW(),
+				       attempt_count = attempt_count + 1,
+				       last_error = '',
+				       updated_at = NOW()
+				 WHERE id = $1 AND status IN ('pending','processing')`, p.id); rerr != nil {
+				slog.Error("payout-sweep: reconcile of reaped-but-completed row failed",
+					slog.String("payout_id", p.id),
+					slog.String("error", rerr.Error()))
+			}
 			return
 		}
 		slog.Info("payout-sweep: transfer succeeded",

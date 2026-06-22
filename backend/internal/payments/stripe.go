@@ -178,7 +178,13 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 		log.Printf("[stripe stub] verify payment_intent=%s user=%s amount=%d", paymentIntentID, userID, expectedAmountCents)
 		return nil
 	}
-	pi, err := paymentintent.Get(paymentIntentID, nil)
+	// Expand the latest charge so we can inspect its refund state. A fully
+	// refunded PaymentIntent KEEPS status 'succeeded' (the refund lives on the
+	// Charge, not the PI), so without this a PI that the orphan sweep already
+	// refunded would still pass verification and create a free order.
+	params := &stripe.PaymentIntentParams{}
+	params.AddExpand("latest_charge")
+	pi, err := paymentintent.Get(paymentIntentID, params)
 	if err != nil {
 		return fmt.Errorf("retrieve payment intent: %w", err)
 	}
@@ -187,6 +193,9 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 	}
 	if pi.Amount != int64(expectedAmountCents) {
 		return fmt.Errorf("payment amount mismatch: got %d, expected %d", pi.Amount, expectedAmountCents)
+	}
+	if ch := pi.LatestCharge; ch != nil && (ch.Refunded || ch.AmountRefunded > 0) {
+		return fmt.Errorf("payment intent has been refunded")
 	}
 	return nil
 }
