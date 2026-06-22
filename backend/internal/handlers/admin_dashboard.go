@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"html"
 	"net/http"
@@ -24,7 +25,7 @@ func (h *Handler) adminKeyOK(r *http.Request) (string, bool) {
 	if key == "" {
 		return "", false // dashboard disabled
 	}
-	return key, r.URL.Query().Get("key") == key
+	return key, subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("key")), []byte(key)) == 1
 }
 
 // AdminRestaurantsPage — GET /admin/restaurants?key=<ADMIN_DASHBOARD_KEY>
@@ -110,6 +111,11 @@ func (h *Handler) AdminRestaurantDecision(w http.ResponseWriter, r *http.Request
 		`SELECT approval_status FROM restaurants WHERE id = $1`, restID).Scan(&prev); err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		writeAdminPage(w, "Not found", `<p>Restaurant not found.</p>`)
+		return
+	}
+	if prev != "pending" {
+		w.WriteHeader(http.StatusConflict)
+		writeAdminPage(w, "Already decided", fmt.Sprintf("<p>This application was already <b>%s</b>.</p>", html.EscapeString(prev)))
 		return
 	}
 	isActive := status == "approved"
