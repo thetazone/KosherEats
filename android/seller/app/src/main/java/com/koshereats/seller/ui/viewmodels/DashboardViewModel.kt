@@ -118,9 +118,16 @@ class DashboardViewModel @Inject constructor(
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                // Cancel the sleeping backoff and restart immediately on reconnect.
-                pollingJob?.cancel()
-                launchPollingJob()
+                // onAvailable fires on a ConnectivityManager binder/handler thread, but every
+                // other pollingJob mutation (start/stop/restaurant-switch) runs on Main. Hop to
+                // viewModelScope (Main.immediate) so all reads/writes of pollingJob serialize on
+                // one thread — otherwise a cross-thread cancel/relaunch can orphan a poll loop.
+                viewModelScope.launch {
+                    if (!isPollingActive) return@launch
+                    // Cancel the sleeping backoff and restart immediately on reconnect.
+                    pollingJob?.cancel()
+                    launchPollingJob()
+                }
             }
         }
         networkCallback = cb

@@ -87,7 +87,7 @@ fun MenuItemSheet(
         for (group in modifierGroups) {
             val selected = selections[group.id] ?: continue
             for (opt in group.modifiers) {
-                if (opt.id in selected && opt.priceDelta > 0) total += opt.priceDelta
+                if (opt.id in selected) total += opt.priceDelta
             }
         }
         return total
@@ -215,9 +215,9 @@ fun MenuItemSheet(
                             color = TextWhite,
                             modifier = Modifier.weight(1f),
                         )
-                        if (option.priceDelta > 0) {
+                        if (option.priceDelta != 0) {
                             Text(
-                                text = "+${option.priceDelta.formatPrice()}",
+                                text = (if (option.priceDelta > 0) "+" else "") + option.priceDelta.formatPrice(),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextTertiary,
                             )

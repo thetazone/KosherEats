@@ -410,10 +410,12 @@ export default function CartPage() {
   }
 
   const subtotal = cart?.subtotal ?? 0;
-  // Display estimates mirror backend CreatePaymentIntent so the preview
-  // matches the authoritative number returned from /payments/intent.
-  const deliveryFee = 399;
-  const serviceFee = Math.round(subtotal * 0.15);
+  // Preview estimates must match what CreatePaymentIntent actually charges
+  // for the default (no restaurant_id/address) intent that beginCheckout
+  // requests: delivery falls back to deliveryFeeFallbackCents (599) and the
+  // service fee is always 0. See backend/internal/handlers/payments.go.
+  const deliveryFee = 599;
+  const serviceFee = 0;
   const tax = Math.round(subtotal * 0.09);
   const displayTotal = intent?.total ?? subtotal + deliveryFee + serviceFee + tax;
 

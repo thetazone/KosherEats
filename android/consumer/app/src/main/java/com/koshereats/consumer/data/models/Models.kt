@@ -667,7 +667,7 @@ data class Deal(
     val discountBadge: String
         get() = when (discountType) {
             DiscountType.PERCENTAGE -> "$discountValue% Off"
-            DiscountType.FIXED -> "$${"%.2f".format(discountValue / 100.0)} Off"
+            DiscountType.FIXED -> "${discountValue.formatPrice()} Off"
             DiscountType.BOGO -> "BOGO"
             DiscountType.UNKNOWN -> ""
         }

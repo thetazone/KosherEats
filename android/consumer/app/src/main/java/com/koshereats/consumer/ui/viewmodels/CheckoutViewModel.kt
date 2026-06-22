@@ -410,9 +410,9 @@ class CheckoutViewModel @Inject constructor(
         _uiState.update { it.copy(scheduledFor = value, errorMessage = null) }
     }
 
-    private fun currentTipCents(): Int {
+    private fun currentTipCents(subtotalCents: Int): Int {
         val state = _uiState.value
-        val subtotal = state.bundle?.subtotal ?: _localSubtotalCents
+        val subtotal = subtotalCents
         val tip = when (val choice = state.tipChoice) {
             TipChoice.None -> 0
             is TipChoice.Percent -> (subtotal * choice.fraction).roundToInt()
@@ -436,13 +436,19 @@ class CheckoutViewModel @Inject constructor(
         if (_uiState.value.isProcessing) return
         // Always discard the in-flight payment sheet bundle here; otherwise an old bundle
         // could be presented to Stripe right after the user changed tip/address.
+        // Capture the authoritative subtotal (prior bundle if present, else the synced
+        // local cart) BEFORE nulling the bundle — otherwise currentTipCents() would see
+        // bundle == null and always fall back to _localSubtotalCents, making the server
+        // subtotal a dead branch (and zeroing percent tips on process-death recovery
+        // where _localSubtotalCents is 0).
+        val tipBase = _uiState.value.bundle?.subtotal ?: _localSubtotalCents
         _uiState.update { it.copy(isLoadingBundle = true, bundle = null, errorMessage = null, pendingPaymentSheet = null) }
         try {
             val address = _uiState.value.selectedAddress
             val state = _uiState.value
             val resp = api.createPaymentSheet(
                 PaymentSheetRequest(
-                    tip = if (state.fulfillmentType == "pickup") 0 else currentTipCents(),
+                    tip = if (state.fulfillmentType == "pickup") 0 else currentTipCents(tipBase),
                     restaurantId = _restaurantId,
                     deliveryAddress = if (state.fulfillmentType == "pickup") "" else address?.formatted.orEmpty(),
                     fulfillmentType = state.fulfillmentType,

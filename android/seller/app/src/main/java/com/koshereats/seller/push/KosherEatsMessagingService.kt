@@ -41,18 +41,13 @@ class KosherEatsMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
-        // Persist locally FIRST so the token survives API-call failures and can
-        // be retried on next app launch via PushBootstrap.
-        getSharedPreferences("fcm_prefs", Context.MODE_PRIVATE)
-            .edit()
-            .putString("fcm_token", token)
-            .apply()
-
+        // Best-effort push to the backend. If this fails it's non-fatal: the next
+        // login / session-restore calls PushBootstrap.registerCurrentToken(), which
+        // re-fetches the live FCM token from Firebase and re-registers it.
         scope.launch {
             try {
                 apiService.registerDevice(RegisterDeviceRequest(token = token))
             } catch (t: Throwable) {
-                // Non-fatal — next app open retries via PushBootstrap.
                 android.util.Log.w("KosherEatsMessagingService", "onNewToken registerDevice failed: ${t.message}")
             }
         }
