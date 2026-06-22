@@ -143,6 +143,12 @@ struct KosherEatsSellerApp: App {
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
             }
+            .onChange(of: authVM.isAuthenticated) { _, isAuth in
+                // Re-arm the "Not now" escape hatch on logout so a fresh
+                // login (e.g. a different account) can re-present the
+                // ProfileCompletionSheet when it genuinely needs completion.
+                if !isAuth { profileSheetDismissed = false }
+            }
         }
     }
 }

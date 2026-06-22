@@ -209,7 +209,7 @@ actor APIService {
                 if !retried, refreshToken != nil {
                     let refreshed = await performTokenRefresh()
                     if refreshed {
-                        return try await request(method, path: path, body: body, retried: true)
+                        return try await request(method, path: path, body: body, headers: headers, retried: true)
                     }
                 }
                 throw APIError.unauthorized
@@ -728,10 +728,13 @@ actor APIService {
 
         var components = URLComponents()
         components.queryItems = query
-        // URLComponents percent-encodes the value for us; `+` in an ISO8601
-        // timezone offset is query-safe, but leave it to URLComponents so the
-        // status filter and cursor are escaped consistently.
-        let path = "/seller/orders" + (components.query.map { "?\($0)" } ?? "")
+        // URLComponents leaves `+` unencoded in query values, but Go's
+        // r.URL.Query() decodes a bare `+` to a space, so an RFC3339 cursor
+        // offset (e.g. +00:00) would fail to parse and 400 the page. Escape `+`
+        // to %2B on the FINAL encoded query string — any real `%` is already
+        // %25 here, so there is no double-encoding.
+        let rawQuery = components.query.map { $0.replacingOccurrences(of: "+", with: "%2B") }
+        let path = "/seller/orders" + (rawQuery.map { "?\($0)" } ?? "")
         return try await request("GET", path: await sellerPath(path))
     }
 

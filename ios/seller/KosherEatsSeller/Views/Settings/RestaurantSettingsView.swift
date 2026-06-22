@@ -109,7 +109,7 @@ struct RestaurantSettingsView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: deliveryFee) { _, val in
-                                            var filtered = val.filter { $0.isNumber || $0 == "." }
+                                            var filtered = val.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
                                             // Keep only the first decimal point
                                             if let first = filtered.firstIndex(of: ".") {
                                                 let afterDot = filtered.index(after: first)
@@ -137,7 +137,7 @@ struct RestaurantSettingsView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: minOrder) { _, val in
-                                            var filtered = val.filter { $0.isNumber || $0 == "." }
+                                            var filtered = val.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
                                             // Keep only the first decimal point
                                             if let first = filtered.firstIndex(of: ".") {
                                                 let afterDot = filtered.index(after: first)
@@ -662,8 +662,12 @@ struct RestaurantSettingsView: View {
         // would silently flip the restaurant open/closed on every Save.
         // NOTE: the cleaner fix is a partial-update payload that omits is_open
         // entirely (tracked in companionEditsNeeded for APIService).
-        if let fresh = try? await APIService.shared.getRestaurant() {
-            restaurant = fresh
+        do {
+            restaurant = try await APIService.shared.getRestaurant()
+        } catch {
+            errorMessage = "Couldn't refresh your restaurant — check your connection and try again."
+            isSaving = false
+            return
         }
 
         restaurant.name = name

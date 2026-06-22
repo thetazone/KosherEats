@@ -416,7 +416,10 @@ class OrdersViewModel: ObservableObject {
                 .filter { inFlightOrderIDs.contains($0.id) }
                 .map { ($0.id, $0) }
         )
-        orders = fresh.map { inFlightOrders[$0.id] ?? $0 }
+        var merged = fresh.map { inFlightOrders[$0.id] ?? $0 }
+        let freshIDs = Set(fresh.map(\.id))
+        merged.append(contentsOf: inFlightOrders.values.filter { !freshIDs.contains($0.id) })
+        orders = merged
         applyFilter()
     }
 }

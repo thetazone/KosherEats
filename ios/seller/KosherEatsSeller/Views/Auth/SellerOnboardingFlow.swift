@@ -197,8 +197,11 @@ final class SellerOnboardingViewModel: ObservableObject {
                     continue
                 }
                 for draft in drafts {
-                    let cents = Int(round((Double(draft.priceDollars) ?? 0) * 100))
-                    guard cents > 0, !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+                    let cents = Int(round((Double(draft.priceDollars.replacingOccurrences(of: ",", with: ".")) ?? 0) * 100))
+                    guard cents > 0, !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else {
+                        failedItemCount += 1
+                        continue
+                    }
                     let req = CreateMenuItemRequest(
                         categoryId: category.id,
                         name: draft.name.trimmingCharacters(in: .whitespaces),
@@ -1190,6 +1193,20 @@ private struct AddMenuItemForm: View {
 
             HStack(spacing: 12) {
                 onboardingField("Price ($)", text: $priceText, keyboard: .decimalPad)
+                    .onChange(of: priceText) { _, newValue in
+                        // Normalize comma-decimal locales (e.g. "12,50") and strip
+                        // any stray characters, collapsing duplicate dots. Mirrors
+                        // MenuItemFormView's price field fix.
+                        var normalized = newValue
+                            .replacingOccurrences(of: ",", with: ".")
+                            .filter { $0.isNumber || $0 == "." }
+                        if let firstDot = normalized.firstIndex(of: ".") {
+                            let afterFirstDot = normalized.index(after: firstDot)
+                            normalized = String(normalized[..<afterFirstDot])
+                                + normalized[afterFirstDot...].replacingOccurrences(of: ".", with: "")
+                        }
+                        if normalized != priceText { priceText = normalized }
+                    }
                 categoryPicker
             }
 
@@ -1218,7 +1235,7 @@ private struct AddMenuItemForm: View {
                     if name.trimmingCharacters(in: .whitespaces).isEmpty {
                         error = "Name is required"; return
                     }
-                    if (Double(priceText) ?? 0) <= 0 {
+                    if (Double(priceText.replacingOccurrences(of: ",", with: ".")) ?? 0) <= 0 {
                         error = "Enter a valid price"; return
                     }
                     if !isMeat && !isDairy && !isPareve {

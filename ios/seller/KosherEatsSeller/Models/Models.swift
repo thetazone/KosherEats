@@ -3,13 +3,14 @@ import SwiftUI
 
 // MARK: - Currency Formatting
 
-/// Locale-aware currency formatter for cents → display string.
-/// Uses the device locale so "$12.34" renders correctly in all regions.
+/// USD currency formatter for cents → display string.
+/// Forces en_US formatting so "$12.34" renders consistently regardless of device locale.
 enum CurrencyFormat {
     private static let formatter: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
+        f.locale = Locale(identifier: "en_US")
         return f
     }()
 
@@ -40,6 +41,12 @@ enum KosherCertification: String, Codable, CaseIterable, Identifiable {
     case Badatz
     case ChofK = "Chof-K"
     case other
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = KosherCertification(rawValue: raw) ?? .other
+    }
 
     var id: String { rawValue }
 
@@ -139,7 +146,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         // `.pickedUp` belongs here too: the seller needs to see orders that
         // have left the kitchen but aren't delivered yet, otherwise they lose
         // visibility into deliveries en route once the courier grabs the bag.
-        case .pending, .accepted, .preparing, .ready, .pickedUp:
+        case .scheduled, .pending, .accepted, .preparing, .ready, .pickedUp:
             return true
         default:
             return false
@@ -245,6 +252,43 @@ struct Restaurant: Codable, Identifiable {
         case isOpen = "is_open"
         case isActive = "is_active"
         case approvalStatus = "approval_status"
+    }
+}
+
+extension Restaurant {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        ownerId = try c.decode(String.self, forKey: .ownerId)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decode(String.self, forKey: .description)
+        imageUrl = try c.decode(String.self, forKey: .imageUrl)
+        coverImageUrl = try c.decodeIfPresent(String.self, forKey: .coverImageUrl)
+        logoUrl = try c.decodeIfPresent(String.self, forKey: .logoUrl)
+        phone = try c.decode(String.self, forKey: .phone)
+        email = try c.decode(String.self, forKey: .email)
+        street = try c.decode(String.self, forKey: .street)
+        city = try c.decode(String.self, forKey: .city)
+        state = try c.decode(String.self, forKey: .state)
+        zipCode = try c.decode(String.self, forKey: .zipCode)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        kosherCertification = try c.decode(KosherCertification.self, forKey: .kosherCertification)
+        certifyingAgency = try c.decode(String.self, forKey: .certifyingAgency)
+        isCholovYisroel = try c.decode(Bool.self, forKey: .isCholovYisroel)
+        isPasYisroel = try c.decode(Bool.self, forKey: .isPasYisroel)
+        isGlattKosher = try c.decode(Bool.self, forKey: .isGlattKosher)
+        kosherCertificateUrl = try c.decodeIfPresent(String.self, forKey: .kosherCertificateUrl)
+        cuisineType = try c.decodeIfPresent([String].self, forKey: .cuisineType) ?? []
+        rating = try c.decode(Double.self, forKey: .rating)
+        reviewCount = try c.decode(Int.self, forKey: .reviewCount)
+        deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
+        minOrder = try c.decode(Int.self, forKey: .minOrder)
+        estDeliveryMin = try c.decode(Int.self, forKey: .estDeliveryMin)
+        estDeliveryMax = try c.decode(Int.self, forKey: .estDeliveryMax)
+        isOpen = try c.decode(Bool.self, forKey: .isOpen)
+        isActive = try c.decode(Bool.self, forKey: .isActive)
+        approvalStatus = try c.decodeIfPresent(String.self, forKey: .approvalStatus)
     }
 }
 

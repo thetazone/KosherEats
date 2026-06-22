@@ -265,8 +265,16 @@ class MenuViewModel: ObservableObject {
         importPollTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.importPollTask = nil }
-            guard let job = await self.fetchLatestImport(), job.isInProgress else { return }
+            guard let job = await self.fetchLatestImport() else { return }
             self.activeImport = job
+            if !job.isInProgress {
+                // Import already finished before the Menu tab opened — surface the
+                // result banner once, reload to show imported items, hold, then clear.
+                await self.load()
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if self.activeImport?.id == job.id { self.activeImport = nil }
+                return
+            }
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if Task.isCancelled { return }

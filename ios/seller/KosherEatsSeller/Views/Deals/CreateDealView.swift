@@ -30,7 +30,7 @@ struct CreateDealView: View {
         guard !title.isEmpty, title.count <= 100 else { return false }
         if discountType != .bogo {
             if discountType == .fixed {
-                guard let v = Double(discountValue), v > 0 else { return false }
+                guard let v = Double(discountValue.replacingOccurrences(of: ",", with: ".")), v > 0 else { return false }
             } else {
                 guard let v = Int(discountValue), v > 0 else { return false }
                 if v > 100 { return false }
@@ -201,7 +201,7 @@ struct CreateDealView: View {
         if discountType == .bogo {
             value = 0
         } else if discountType == .fixed {
-            guard let dollars = Double(discountValue), dollars > 0 else {
+            guard let dollars = Double(discountValue.replacingOccurrences(of: ",", with: ".")), dollars > 0 else {
                 localError = "Enter a valid discount value"
                 return
             }
@@ -233,6 +233,16 @@ struct CreateDealView: View {
             return
         }
 
+        let minOrderCents: Int?
+        if minOrderAmount.isEmpty {
+            minOrderCents = nil
+        } else if let mo = Double(minOrderAmount.replacingOccurrences(of: ",", with: ".")), mo > 0 {
+            minOrderCents = Int(round(mo * 100))
+        } else {
+            localError = "Enter a valid minimum order amount"
+            return
+        }
+
         if let selectedImage {
             isUploading = true
             do {
@@ -252,7 +262,7 @@ struct CreateDealView: View {
             menuItemId: isGeneralDeal ? nil : selectedMenuItem?.id,
             discountType: discountType,
             discountValue: value,
-            minOrderAmount: minOrderAmount.isEmpty ? nil : Int(round((Double(minOrderAmount) ?? 0) * 100)),
+            minOrderAmount: minOrderCents,
             startsAt: nil,
             expiresAt: Self.isoFormatter.string(from: expiresAt)
         )

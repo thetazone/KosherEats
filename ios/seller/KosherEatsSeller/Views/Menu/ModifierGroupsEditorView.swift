@@ -326,7 +326,7 @@ struct ModifierGroupEditorView: View {
                 TextField("0.00", text: Binding(
                     get: { String(format: "%.2f", Double(opt.priceDelta) / 100) },
                     set: { newVal in
-                        let filtered = newVal.filter { $0.isNumber || $0 == "." }
+                        let filtered = newVal.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
                         let cents = max(0, Int(round((Double(filtered) ?? 0) * 100)))
                         binding.wrappedValue.priceDelta = cents
                     }
