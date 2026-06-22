@@ -176,6 +176,10 @@ func main() {
 		r.Use(apiLimiter.PerUser)
 		r.Post("/", h.CreateOrder)
 		r.Get("/", h.ListOrders)
+		// Idempotent client recovery: look up an order by the PaymentIntent
+		// the client just confirmed. Static segment so chi matches it ahead of
+		// the /{id} wildcard at this level.
+		r.Get("/by-payment-intent/{pi}", h.GetOrderByPaymentIntent)
 		r.Get("/{id}", h.GetOrder)
 		r.Patch("/{id}/cancel", h.CancelOrder)
 		r.Post("/{id}/rating", h.RateOrder)

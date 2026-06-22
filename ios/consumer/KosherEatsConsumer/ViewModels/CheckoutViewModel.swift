@@ -239,6 +239,13 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         // card is charged, never after (see placeOrder).
         guard scheduledTimeIsValid() else { return }
 
+        // Never confirm a NEW PaymentIntent while a prior charged-but-
+        // unrecovered PaymentIntent is still pending. Try to reconcile it
+        // first (the order may exist now); if it still can't be resolved,
+        // refuse to charge again so we don't double-charge for an order we
+        // never recovered.
+        guard await passesInflightGuard() else { return }
+
         if bundle.isStub {
             paymentSucceeded = true
             return
@@ -322,6 +329,11 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         // card is charged, never after (see placeOrder).
         guard scheduledTimeIsValid() else { return }
 
+        // Never confirm a NEW PaymentIntent while a prior charged-but-
+        // unrecovered PaymentIntent is still pending — see the PaymentSheet
+        // path for the rationale. Keeps the Apple Pay path consistent.
+        guard await passesInflightGuard() else { return }
+
         if bundle.isStub {
             // Mirror the PaymentSheet dev-stub behaviour so reviewers without
             // real Stripe keys still get through the flow.
@@ -395,6 +407,27 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
     // MARK: - Order creation
 
+    /// UserDefaults key holding the PaymentIntent id the client has just
+    /// confirmed (the card is charged) but for which it has not yet confirmed
+    /// an order exists server-side. It is set immediately after the charge,
+    /// before createOrder, and cleared once an order is known to exist (either
+    /// createOrder returned, recovery found it, or reconcileInflightOrder
+    /// resolved it). While it is set, the charge path refuses to confirm a
+    /// NEW PaymentIntent — charging again would double-charge the customer for
+    /// an order we never recovered.
+    private static let inflightPaymentIntentKey = "inflight_payment_intent"
+
+    private var persistedInflightPI: String? {
+        get { UserDefaults.standard.string(forKey: Self.inflightPaymentIntentKey) }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: Self.inflightPaymentIntentKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.inflightPaymentIntentKey)
+            }
+        }
+    }
+
     func placeOrder(address: Address?, bundle: APIService.PaymentSheetBundle) async -> Order? {
         guard !isProcessing else { return nil }
 
@@ -419,54 +452,109 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             // In stub mode we don't have a real payment intent id; the backend
             // tolerates an empty string.
             let paymentIntentId = bundle.isStub ? "stub_intent" : try extractIntentId(from: bundle.paymentIntentSecret)
-            // Retry createOrder up to 3 times — the card is already charged,
-            // so dropping the order on a transient network failure is worse
-            // than a duplicate-order guard on the backend (idempotent via
-            // payment_intent_id unique constraint).
-            var lastError: Error?
-            for attempt in 0..<3 {
-                do {
-                    return try await api.createOrder(
-                        deliveryAddress: addressString,
-                        lat: lat,
-                        lng: lng,
-                        paymentIntentId: paymentIntentId,
-                        tip: bundle.tip,
-                        scheduledFor: scheduledFor,
-                        fulfillmentType: fulfillmentType,
-                        appliedDealId: appliedDealId
-                    )
-                } catch let APIError.httpError(code, _) where code == 409 {
-                    // Duplicate payment_intent_id — the order was already created
-                    // on a previous attempt whose response was lost. Fetch it.
-                    if let orders = try? await api.listOrders(),
-                       let existing = orders.first(where: { $0.stripePaymentID == paymentIntentId }) {
-                        return existing
-                    }
-                    lastError = NSError(
-                        domain: "Checkout",
-                        code: -3,
-                        userInfo: [
-                            NSLocalizedDescriptionKey: "Payment was received, but we couldn't recover the created order. Please retry or contact support."
-                        ]
-                    )
-                } catch {
-                    lastError = error
-                    if attempt < 2 {
-                        let delaySec = min(pow(2.0, Double(attempt)), 30)
-                        try? await Task.sleep(nanoseconds: UInt64(delaySec) * 1_000_000_000)
-                    }
-                }
+
+            // The card was just charged for THIS PaymentIntent. Persist it
+            // BEFORE createOrder so that if the app dies (crash / kill) between
+            // the charge and a known-good order, the next launch can reconcile
+            // it via reconcileInflightOrder() instead of silently dropping a
+            // paid order. Skip stub mode — no real charge to recover.
+            if !bundle.isStub {
+                persistedInflightPI = paymentIntentId
             }
-            paymentSucceeded = false
-            orderCreationFailed = true
-            errorMessage = lastError?.localizedDescription ?? "Order creation failed"
-            return nil
+
+            do {
+                let order = try await api.createOrder(
+                    deliveryAddress: addressString,
+                    lat: lat,
+                    lng: lng,
+                    paymentIntentId: paymentIntentId,
+                    tip: bundle.tip,
+                    scheduledFor: scheduledFor,
+                    fulfillmentType: fulfillmentType,
+                    appliedDealId: appliedDealId
+                )
+                // createOrder is idempotent on a duplicate payment_intent_id
+                // (backend returns 200 with the existing user-scoped order), so
+                // a successful return here always means the order exists. Clear
+                // the in-flight marker.
+                if !bundle.isStub { persistedInflightPI = nil }
+                return order
+            } catch {
+                // createOrder failed AFTER the charge. The order may still have
+                // been created (request reached the DB but the response was
+                // lost, or a transient failure on a later replay). Recover by
+                // looking the order up directly by PaymentIntent id with a few
+                // backoff retries before surfacing an error. Stub mode has no
+                // real PI to recover against, so fall straight through to the
+                // error path.
+                if !bundle.isStub,
+                   let recovered = await recoverOrder(paymentIntentId: paymentIntentId) {
+                    paymentSucceeded = true
+                    persistedInflightPI = nil
+                    return recovered
+                }
+                // No order found. Leave persistedInflightPI set so a later
+                // reconcile / next launch can still recover it once the backend
+                // catches up; surface a retryable error to the user.
+                paymentSucceeded = false
+                orderCreationFailed = true
+                errorMessage = error.localizedDescription
+                return nil
+            }
         } catch {
+            // extractIntentId threw — we never charged a real PI here, so there
+            // is nothing to recover and nothing to persist.
             paymentSucceeded = false
             errorMessage = error.localizedDescription
             return nil
         }
+    }
+
+    /// Post-charge recovery: look the order up by the PaymentIntent id the
+    /// client just confirmed, retrying with backoff (0.5s / 1s / 2s) to ride
+    /// out a brief replication / commit lag. Returns the order if found, or nil
+    /// if every attempt 404s or errors. A 404 means "no order for this user
+    /// yet"; any other error is also treated as "not yet recovered" and retried.
+    private func recoverOrder(paymentIntentId: String) async -> Order? {
+        let delaysNanos: [UInt64] = [500_000_000, 1_000_000_000, 2_000_000_000]
+        for (attempt, delay) in delaysNanos.enumerated() {
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            if let order = try? await api.getOrderByPaymentIntent(paymentIntentId) {
+                return order
+            }
+        }
+        return nil
+    }
+
+    /// Called on checkout-screen appear and app launch. If a PaymentIntent was
+    /// charged but never confirmed as an order (the app died between the charge
+    /// and a known-good order), look it up and, if it now exists server-side,
+    /// clear the marker. Leaves the marker in place when the lookup 404s so a
+    /// later attempt can still recover it. Returns the recovered order, if any,
+    /// so a caller can route the user to it.
+    @discardableResult
+    func reconcileInflightOrder() async -> Order? {
+        guard let pi = persistedInflightPI else { return nil }
+        if let order = try? await api.getOrderByPaymentIntent(pi) {
+            persistedInflightPI = nil
+            return order
+        }
+        return nil
+    }
+
+    /// Top-of-charge-path guard. Returns true when it is safe to confirm a NEW
+    /// PaymentIntent. When a prior charged-but-unrecovered PaymentIntent is
+    /// still persisted it first tries to reconcile it (clearing the marker if
+    /// the order now exists); if it still can't be resolved it blocks the new
+    /// charge and surfaces an error so we never double-charge the customer.
+    private func passesInflightGuard() async -> Bool {
+        guard persistedInflightPI != nil else { return true }
+        await reconcileInflightOrder()
+        if persistedInflightPI == nil { return true }
+        errorMessage = "Your previous payment is still being confirmed. Please check your orders before trying again."
+        return false
     }
 
     /// PaymentIntent client secrets are `pi_xxxxxx_secret_yyyy`. We only

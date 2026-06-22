@@ -640,6 +640,16 @@ class APIService: ObservableObject {
         try await request(method: "GET", path: "/orders/\(id)", authenticated: true)
     }
 
+    /// Recover the order created for a given Stripe PaymentIntent. Used as an
+    /// idempotent fallback when `createOrder` fails to return after a confirmed
+    /// payment (e.g. network drop): the client retries with the PaymentIntent id
+    /// it just confirmed. The backend scopes the lookup to the calling user and
+    /// returns the full Order (with order_items) or 404 if none exists.
+    func getOrderByPaymentIntent(_ pi: String) async throws -> Order {
+        let encoded = pi.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pi
+        return try await request(method: "GET", path: "/orders/by-payment-intent/\(encoded)", authenticated: true)
+    }
+
     func cancelOrder(id: String) async throws -> Order {
         try await request(method: "PATCH", path: "/orders/\(id)/cancel", authenticated: true)
     }
