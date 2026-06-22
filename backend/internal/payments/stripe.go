@@ -34,6 +34,17 @@ type Client struct {
 	enabled bool
 }
 
+// orphanMarkerKey / orphanMarkerValue is the metadata stamp we put on every
+// consumer-checkout PaymentIntent we create (see CreatePaymentSheet). It's the
+// "created-by-us" marker the orphan-payment reconcile sweep uses to be sure a
+// charged-but-unmatched PaymentIntent is ours before refunding it. Listing the
+// PaymentIntents API can't filter by metadata server-side, so the sweep filters
+// on this stamp client-side and refuses to touch anything that lacks it.
+const (
+	orphanMarkerKey   = "kosher_eats_checkout"
+	orphanMarkerValue = "1"
+)
+
 // looksLikeRealStripeKey filters out the "sk_test_your_stripe_secret_key"
 // placeholders commonly left in .env.example files. Any real Stripe secret
 // key starts with "sk_" and contains either "_live_" or "_test_" followed
@@ -199,6 +210,80 @@ func (c *Client) RefundPaymentIntent(paymentIntentID string) error {
 	return err
 }
 
+// OrphanCandidate is a slim projection of a SUCCEEDED PaymentIntent we created
+// that the orphan-payment reconcile sweep evaluates. AlreadyRefunded is derived
+// from the expanded latest charge so the sweep never re-refunds a PI we (or a
+// human in the dashboard) already refunded.
+type OrphanCandidate struct {
+	PaymentIntentID string
+	UserID          string
+	AmountCents     int
+	CreatedUnix     int64
+	AlreadyRefunded bool
+}
+
+// ListOrphanCandidates returns the SUCCEEDED PaymentIntents we created whose
+// `created` timestamp falls within [olderThan, youngerThan] ago. The window is
+// bounded on both ends on purpose: `olderThan` (a grace period) keeps us from
+// racing a checkout that's mid-flight (PI confirmed, CreateOrder about to land),
+// and `youngerThan` bounds the scan so we don't page through all of Stripe's
+// history every minute.
+//
+// It only returns PaymentIntents carrying our orphan marker metadata, so a
+// caller can refund a candidate knowing it's clearly ours. The latest charge is
+// expanded inline so AlreadyRefunded is populated without an extra API call.
+//
+// In dev stub mode (no Stripe key) this returns nil — the sweep no-ops.
+func (c *Client) ListOrphanCandidates(olderThan, youngerThan time.Duration) ([]OrphanCandidate, error) {
+	if !c.enabled {
+		return nil, nil
+	}
+
+	now := time.Now()
+	gteUnix := now.Add(-youngerThan).Unix() // lower bound: not older than youngerThan
+	lteUnix := now.Add(-olderThan).Unix()   // upper bound: at least olderThan old
+
+	params := &stripe.PaymentIntentListParams{
+		CreatedRange: &stripe.RangeQueryParams{
+			GreaterThanOrEqual: gteUnix,
+			LesserThanOrEqual:  lteUnix,
+		},
+	}
+	// Expand the latest charge so we can read its refund state without a
+	// per-PaymentIntent round trip.
+	params.AddExpand("data.latest_charge")
+	params.Limit = stripe.Int64(100)
+
+	var out []OrphanCandidate
+	it := paymentintent.List(params)
+	for it.Next() {
+		pi := it.PaymentIntent()
+		// Only ours: must carry the marker we stamp in CreatePaymentSheet.
+		if pi.Metadata == nil || pi.Metadata[orphanMarkerKey] != orphanMarkerValue {
+			continue
+		}
+		// Only clean, fully-captured successes are refund candidates.
+		if pi.Status != stripe.PaymentIntentStatusSucceeded {
+			continue
+		}
+		refunded := false
+		if ch := pi.LatestCharge; ch != nil {
+			refunded = ch.Refunded || ch.AmountRefunded > 0
+		}
+		out = append(out, OrphanCandidate{
+			PaymentIntentID: pi.ID,
+			UserID:          pi.Metadata["user_id"],
+			AmountCents:     int(pi.Amount),
+			CreatedUnix:     pi.Created,
+			AlreadyRefunded: refunded,
+		})
+	}
+	if err := it.Err(); err != nil {
+		return nil, fmt.Errorf("list payment intents: %w", err)
+	}
+	return out, nil
+}
+
 // TransferToCourier sends `amountCents` to the courier's Connect account.
 // Called when an order is marked delivered. In prod this is a Stripe Transfer
 // which debits the platform balance and credits the connected account. In
@@ -343,7 +428,10 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
 		SetupFutureUsage:   stripe.String("off_session"),
 		Params: stripe.Params{
-			Metadata: map[string]string{"user_id": userID},
+			Metadata: map[string]string{
+				"user_id":       userID,
+				orphanMarkerKey: orphanMarkerValue,
+			},
 		},
 	})
 	if err != nil {

@@ -78,6 +78,23 @@ const payoutBatchLimit = 20
 // something structural is wrong — human intervention beats infinite retry.
 const maxPayoutAttempts = 6
 
+// orphanPaymentGrace is how long a SUCCEEDED checkout PaymentIntent may exist
+// before the orphan-payment sweep considers it for a refund. This must be
+// comfortably longer than the place-order round trip so we never refund a PI
+// whose CreateOrder is just slow to land — the idempotent place-order fix
+// guarantees the order will be written; this sweep only catches the case where
+// it never was (client crashed after charge, network dropped mid-create, etc.).
+const orphanPaymentGrace = 20 * time.Minute
+
+// orphanPaymentLookback bounds how far back the sweep scans Stripe. PIs older
+// than this are out of scope — bounding the window keeps each scan cheap and
+// avoids paging through all historical PaymentIntents every tick.
+const orphanPaymentLookback = 24 * time.Hour
+
+// orphanRefundBatchLimit caps refunds issued per sweep so a backlog (e.g. after
+// a long API outage) can't fire a burst of refund calls at Stripe in one tick.
+const orphanRefundBatchLimit = 20
+
 // payoutProcessingTimeout is how long a row may sit in 'processing' before the
 // reaper assumes the API instance that claimed it crashed mid-transfer and
 // resets it to 'pending' for another attempt. The Stripe idempotency key
@@ -134,7 +151,89 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 	d.sweepScheduled(ctx)
 	d.sweepAutoDispatch(ctx)
 	d.sweepStaleRejection(ctx)
+	d.sweepOrphanPayments(ctx)
 	d.sweepCourierPayouts(ctx)
+}
+
+// sweepOrphanPayments is the charged-but-no-order safety net that sits behind
+// the place-order idempotency fix. Normally every successful checkout charge
+// (a SUCCEEDED PaymentIntent) becomes an order whose orders.stripe_payment_id
+// points back at the PI (enforced unique by the 034 index). If a customer is
+// charged but CreateOrder never runs — app killed right after PaymentSheet
+// confirms, a dropped connection, a crash — that money would sit charged with
+// nothing delivered. This sweep finds such orphans and refunds them.
+//
+// Conservative by construction:
+//   - Stub mode: ListOrphanCandidates returns nil when Stripe is disabled, so
+//     this whole sweep no-ops without a key.
+//   - Only PaymentIntents carrying our orphan marker metadata are even returned,
+//     so we never touch a charge some other integration created.
+//   - Only PIs older than orphanPaymentGrace are considered, so a slow-but-
+//     successful place-order is never refunded out from under itself.
+//   - We re-check the DB for a matching orders.stripe_payment_id right before
+//     refunding (closes the gap between the Stripe list and now), and skip any
+//     PI Stripe already reports as refunded (idempotent — no double refund).
+func (d *Dispatcher) sweepOrphanPayments(ctx context.Context) {
+	if d.stripe == nil {
+		return
+	}
+
+	candidates, err := d.stripe.ListOrphanCandidates(orphanPaymentGrace, orphanPaymentLookback)
+	if err != nil {
+		slog.Error("orphan-payment: list candidates failed",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	refunded := 0
+	for _, c := range candidates {
+		if refunded >= orphanRefundBatchLimit {
+			slog.Warn("orphan-payment: batch limit reached, remaining candidates deferred to next sweep",
+				slog.Int("limit", orphanRefundBatchLimit))
+			break
+		}
+
+		// Idempotency: never re-refund. Stripe is the source of truth here, so
+		// even a refund issued manually in the dashboard is respected.
+		if c.AlreadyRefunded {
+			continue
+		}
+
+		// Does an order already point at this PaymentIntent? If so it's not an
+		// orphan — the charge produced an order as intended. This re-read also
+		// closes the race where CreateOrder landed between the Stripe list call
+		// and now.
+		var orderID string
+		err := d.db.QueryRow(ctx,
+			`SELECT id FROM orders WHERE stripe_payment_id = $1`,
+			c.PaymentIntentID,
+		).Scan(&orderID)
+		if err == nil {
+			// Matched an order — not orphaned, leave it alone.
+			continue
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("orphan-payment: order lookup failed, skipping to be safe",
+				slog.String("payment_intent", c.PaymentIntentID),
+				slog.String("error", err.Error()))
+			continue
+		}
+
+		// No order, clearly ours, past the grace window, not yet refunded:
+		// refund the customer.
+		if err := d.stripe.RefundPaymentIntent(c.PaymentIntentID); err != nil {
+			slog.Error("orphan-payment: refund failed, will retry next sweep",
+				slog.String("payment_intent", c.PaymentIntentID),
+				slog.String("user_id", c.UserID),
+				slog.String("error", err.Error()))
+			continue
+		}
+		refunded++
+		slog.Warn("orphan-payment: refunded charged-but-no-order PaymentIntent",
+			slog.String("payment_intent", c.PaymentIntentID),
+			slog.String("user_id", c.UserID),
+			slog.Int("amount_cents", c.AmountCents))
+	}
 }
 
 // scheduledOrder is the projection needed to promote a scheduled order and

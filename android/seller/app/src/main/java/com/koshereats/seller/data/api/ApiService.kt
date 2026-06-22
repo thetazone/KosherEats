@@ -134,6 +134,24 @@ interface ApiService {
         @Body body: Map<String, Boolean>,
     ): Response<MenuItem>
 
+    // --- Menu import (UberEats) ---
+
+    /**
+     * Enqueue an async menu import from an UberEats store URL. Returns the
+     * 202 job row; the actual scrape+import is drained out-of-process.
+     */
+    @POST("seller/menu/imports")
+    suspend fun createMenuImport(
+        @Body body: CreateMenuImportBody,
+    ): Response<MenuImport>
+
+    /** Recent import jobs for the active restaurant, newest first. */
+    @GET("seller/menu/imports")
+    suspend fun listMenuImports(): Response<List<MenuImport>>
+
+    @GET("seller/menu/imports/{id}")
+    suspend fun getMenuImport(@Path("id") id: String): Response<MenuImport>
+
     @POST("seller/menu/items/{itemId}/modifier-groups")
     suspend fun createModifierGroup(
         @Path("itemId") itemId: String,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
+import com.koshereats.seller.data.models.CreateMenuImportBody
 import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class OnboardingStep { BASICS, ADDRESS, KOSHER, MENU, REVIEW }
+enum class OnboardingStep { IMPORT, BASICS, ADDRESS, KOSHER, MENU, REVIEW }
 
 data class OnboardingMenuItem(
     val name: String = "",
@@ -32,7 +33,11 @@ data class OnboardingMenuItem(
 )
 
 data class OnboardingState(
-    val step: OnboardingStep = OnboardingStep.BASICS,
+    val step: OnboardingStep = OnboardingStep.IMPORT,
+    // Import (UberEats) — captured on the IMPORT step; blank == skipped. The
+    // import job is created after the restaurant exists (in submit()); until
+    // then this only drives the "we'll import your menu" hints/banner.
+    val ubereatsImportUrl: String = "",
     // Basics
     val restaurantName: String = "",
     val description: String = "",
@@ -58,7 +63,13 @@ data class OnboardingState(
     val isSubmitting: Boolean = false,
     val isComplete: Boolean = false,
     val error: String? = null,
-)
+) {
+    /**
+     * True when the seller pasted an import link — relaxes the manual detail
+     * fields (address/phone/picture) since the import worker fills them in.
+     */
+    val isImporting: Boolean get() = ubereatsImportUrl.isNotBlank()
+}
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
@@ -74,6 +85,25 @@ class OnboardingViewModel @Inject constructor(
     private var createdRestaurantId: String? = null
     private val createdCategoryIds = mutableMapOf<String, String>()
     private val createdItemKeys = mutableSetOf<String>()
+    // True once the UberEats import job has been enqueued, so a retry after a
+    // partial menu-item failure doesn't kick off a second import.
+    private var menuImportEnqueued = false
+
+    /**
+     * Records the seller's choice on the IMPORT step. An empty [url] means they
+     * skipped the import (manual entry); a non-empty value pre-fills a
+     * provisional restaurant name from the store slug so Basics isn't blank.
+     */
+    fun updateImport(url: String, provisionalName: String = "") {
+        _state.value = _state.value.copy(
+            ubereatsImportUrl = url,
+            restaurantName = if (url.isNotBlank() && _state.value.restaurantName.isBlank()) {
+                provisionalName
+            } else {
+                _state.value.restaurantName
+            },
+        )
+    }
 
     fun updateBasics(
         name: String,
@@ -131,6 +161,7 @@ class OnboardingViewModel @Inject constructor(
 
     fun nextStep() {
         val next = when (_state.value.step) {
+            OnboardingStep.IMPORT -> OnboardingStep.BASICS
             OnboardingStep.BASICS -> OnboardingStep.ADDRESS
             OnboardingStep.ADDRESS -> OnboardingStep.KOSHER
             OnboardingStep.KOSHER -> OnboardingStep.MENU
@@ -142,7 +173,8 @@ class OnboardingViewModel @Inject constructor(
 
     fun previousStep() {
         val prev = when (_state.value.step) {
-            OnboardingStep.BASICS -> return
+            OnboardingStep.IMPORT -> return
+            OnboardingStep.BASICS -> OnboardingStep.IMPORT
             OnboardingStep.ADDRESS -> OnboardingStep.BASICS
             OnboardingStep.KOSHER -> OnboardingStep.ADDRESS
             OnboardingStep.MENU -> OnboardingStep.KOSHER
@@ -172,7 +204,9 @@ class OnboardingViewModel @Inject constructor(
             _state.value = s.copy(error = "Restaurant name is required", step = OnboardingStep.BASICS)
             return
         }
-        if (s.pictureUrl.isBlank()) {
+        // When importing, the worker fills in the cover photo from UberEats, so
+        // a blank picture is allowed here (mirrors iOS submit()'s isImporting guard).
+        if (s.pictureUrl.isBlank() && !s.isImporting) {
             _state.value = s.copy(error = "Restaurant picture is required", step = OnboardingStep.BASICS)
             return
         }
@@ -215,6 +249,7 @@ class OnboardingViewModel @Inject constructor(
                         isPasYisroel = s.isPasYisroel,
                         isGlattKosher = s.isGlattKosher,
                         kosherCertificateUrl = s.kosherCertificateUrl,
+                        fromImport = s.isImporting,
                     )
 
                     val restResponse = apiService.createRestaurant(req)
@@ -233,6 +268,22 @@ class OnboardingViewModel @Inject constructor(
                 // for all category/menu-item writes below instead of falling back to
                 // the backend's undefined "first restaurant" ordering.
                 restaurantId?.let { NetworkModule.cachedRestaurantId = it }
+
+                // Kick off the UberEats menu import if the seller pasted a link on
+                // the IMPORT step. Best-effort: the restaurant now exists so the job
+                // attaches to it; a failure here is surfaced in the final message but
+                // doesn't undo the restaurant. The scrape+import is drained server-side.
+                var importFailed = false
+                if (s.isImporting && !menuImportEnqueued) {
+                    val importResponse = runCancellable {
+                        apiService.createMenuImport(CreateMenuImportBody(sourceUrl = s.ubereatsImportUrl))
+                    }
+                    if (importResponse?.isSuccessful == true) {
+                        menuImportEnqueued = true
+                    } else {
+                        importFailed = true
+                    }
+                }
 
                 val grouped = s.menuItems.groupBy {
                     it.category.name.lowercase().replace('_', ' ')
@@ -290,9 +341,15 @@ class OnboardingViewModel @Inject constructor(
                     }
                 }
 
-                val partialError = if (failedCount > 0) {
-                    "Created $createdCount of ${createdCount + failedCount} items — use Update Menu to add the rest."
-                } else null
+                val parts = buildList {
+                    if (failedCount > 0) {
+                        add("Created $createdCount of ${createdCount + failedCount} items — use Update Menu to add the rest.")
+                    }
+                    if (importFailed) {
+                        add("We couldn't start your UberEats import — you can retry it from the Menu tab.")
+                    }
+                }
+                val partialError = parts.takeIf { it.isNotEmpty() }?.joinToString(" ")
                 _state.value = _state.value.copy(isSubmitting = false, isComplete = true, error = partialError)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e

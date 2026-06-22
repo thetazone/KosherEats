@@ -385,9 +385,15 @@ actor APIService {
     struct MessageResponse: Decodable { let message: String }
 
     /// Email a 6-digit reset code. The backend always 200s (no account-enumeration).
+    ///
+    /// Sends role="seller" + vertical="kosher" — the same scope this app uses
+    /// for /login — so the reset targets the seller-side account, not a consumer
+    /// account that happens to share the email. The account key is
+    /// (email, role, vertical), not email alone.
     @discardableResult
     func forgotPassword(email: String) async throws -> MessageResponse {
-        try await request("POST", path: "/auth/password/forgot", body: ["email": email])
+        try await request("POST", path: "/auth/password/forgot",
+                          body: ["email": email, "role": "seller", "vertical": "kosher"])
     }
 
     func resetPassword(email: String, code: String, newPassword: String) async throws -> MessageResponse {
@@ -395,13 +401,16 @@ actor APIService {
             let email: String
             let code: String
             let newPassword: String
+            let role: String
+            let vertical: String
             enum CodingKeys: String, CodingKey {
-                case email, code
+                case email, code, role, vertical
                 case newPassword = "new_password"
             }
         }
         return try await request("POST", path: "/auth/password/reset",
-                                 body: Body(email: email, code: code, newPassword: newPassword))
+                                 body: Body(email: email, code: code, newPassword: newPassword,
+                                            role: "seller", vertical: "kosher"))
     }
 
     /// Returns the currently authenticated user. Used on cold start to restore

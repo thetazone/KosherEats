@@ -35,8 +35,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.AlertDialog
@@ -74,6 +78,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -160,6 +165,7 @@ fun OnboardingScreen(
             title = {
                 Text(
                     text = when (state.step) {
+                        OnboardingStep.IMPORT -> "Import Menu"
                         OnboardingStep.BASICS -> "Restaurant Details"
                         OnboardingStep.ADDRESS -> "Address"
                         OnboardingStep.KOSHER -> "Kosher Certification"
@@ -171,7 +177,7 @@ fun OnboardingScreen(
                 )
             },
             navigationIcon = {
-                if (state.step != OnboardingStep.BASICS) {
+                if (state.step != OnboardingStep.IMPORT) {
                     IconButton(onClick = { viewModel.previousStep() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = TextWhite)
                     }
@@ -222,6 +228,7 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
+                OnboardingStep.IMPORT -> ImportStep(state, viewModel)
                 OnboardingStep.BASICS -> BasicsStep(state, viewModel)
                 OnboardingStep.ADDRESS -> AddressStep(state, viewModel)
                 OnboardingStep.KOSHER -> KosherStep(state, viewModel)
@@ -244,6 +251,217 @@ private fun fieldColors() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = SurfaceDark,
     unfocusedContainerColor = SurfaceDark,
 )
+
+// ─── Step 0: Import Menu (UberEats) ──────────────────────
+
+@Composable
+private fun ImportStep(
+    state: com.koshereats.seller.ui.viewmodels.OnboardingState,
+    viewModel: OnboardingViewModel,
+) {
+    val clipboard = LocalClipboardManager.current
+    var urlText by rememberSaveable { mutableStateOf(state.ubereatsImportUrl) }
+    var consent by rememberSaveable { mutableStateOf(false) }
+    var localError by rememberSaveable { mutableStateOf<String?>(null) }
+    val colors = fieldColors()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Spacer(Modifier.height(4.dp))
+
+        Icon(
+            Icons.Filled.Download,
+            contentDescription = null,
+            tint = Orange,
+            modifier = Modifier.size(34.dp),
+        )
+        Text(
+            "Already on UberEats?",
+            style = MaterialTheme.typography.titleLarge,
+            color = TextWhite,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            "Paste your UberEats store link and we'll build your full menu — items, " +
+                "prices, and photos — for you. No adding items one by one.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMuted,
+        )
+
+        Text(
+            "UberEats store link",
+            style = MaterialTheme.typography.labelMedium,
+            color = TextMuted,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = urlText,
+                onValueChange = { urlText = it },
+                placeholder = { Text("https://www.ubereats.com/store/…", maxLines = 1) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                colors = colors,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedButton(
+                onClick = {
+                    clipboard.getText()?.text?.let { urlText = it.trim() }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                modifier = Modifier.height(56.dp),
+            ) {
+                Icon(Icons.Filled.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Paste")
+            }
+        }
+        Text(
+            "In the UberEats app: open your store → Share → Copy link, then paste it here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+        )
+
+        // Authorization consent
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(SurfaceDark)
+                .clickable { consent = !consent }
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Checkbox(
+                checked = consent,
+                onCheckedChange = { consent = it },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Orange,
+                    uncheckedColor = TextMuted,
+                    checkmarkColor = TextWhite,
+                ),
+            )
+            Text(
+                "I'm authorized to manage this restaurant and consent to importing its menu from UberEats.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+
+        localError?.let {
+            Text(it, color = ErrorRed, style = MaterialTheme.typography.bodySmall)
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = {
+                val normalized = normalizedUberEatsUrl(urlText)
+                if (normalized == null) {
+                    localError = "Enter a valid UberEats store link (an ubereats.com address)."
+                    return@Button
+                }
+                if (!consent) {
+                    localError = "Please confirm you're authorized to import this menu."
+                    return@Button
+                }
+                localError = null
+                viewModel.updateImport(normalized, provisionalNameFromUrl(normalized))
+                viewModel.nextStep()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Orange, contentColor = TextWhite),
+        ) {
+            Text("Import my menu", fontWeight = FontWeight.SemiBold)
+        }
+
+        TextButton(
+            onClick = {
+                viewModel.updateImport("")
+                viewModel.nextStep()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Skip — I'll add items manually", color = TextMuted)
+        }
+
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Shared "we'll import this from UberEats" hint chip used across import-aware steps. */
+@Composable
+private fun ImportHint(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Orange.copy(alpha = 0.1f))
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = Orange,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(text, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+    }
+}
+
+// Lenient parse: accepts links without a scheme; requires an ubereats.com host.
+// Mirrors iOS ImportMenuStepView.normalizedUberEatsURL.
+private fun normalizedUberEatsUrl(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    val withScheme = if (
+        trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        trimmed
+    } else {
+        "https://$trimmed"
+    }
+    val host = try {
+        java.net.URI(withScheme).host?.lowercase()
+    } catch (e: Exception) {
+        null
+    } ?: return null
+    return if (host == "ubereats.com" || host.endsWith(".ubereats.com")) withScheme else null
+}
+
+// Derive a readable provisional name from the store slug (.../store/<slug>/<id>):
+// "pizza-kids-n-action" -> "Pizza Kids N Action". The import worker overwrites it.
+private fun provisionalNameFromUrl(urlString: String): String {
+    val path = try {
+        java.net.URI(urlString).path
+    } catch (e: Exception) {
+        null
+    } ?: return ""
+    val parts = path.split('/').filter { it.isNotEmpty() }
+    val i = parts.indexOf("store")
+    if (i < 0 || i + 1 >= parts.size) return ""
+    return parts[i + 1].split('-')
+        .filter { it.isNotEmpty() }
+        .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+}
 
 // ─── Step 1: Basics ──────────────────────────────────────
 
@@ -315,6 +533,13 @@ private fun BasicsStep(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Spacer(Modifier.height(4.dp))
+
+        if (state.isImporting) {
+            ImportHint(
+                "Importing from UberEats — we'll fill in your address, phone, cuisine, and a photo. " +
+                    "Just add your name + email here, and your kosher certificate next.",
+            )
+        }
 
         // ─── Required: Restaurant Picture (the hero/cover photo) ───
         Text(
@@ -492,7 +717,9 @@ private fun BasicsStep(
                     viewModel.setError("Restaurant name is required")
                     return@Button
                 }
-                if (phone.isBlank()) {
+                // When importing, the worker fills phone + cover photo from
+                // UberEats, so only the name + email are required here.
+                if (!state.isImporting && phone.isBlank()) {
                     viewModel.setError("Phone is required")
                     return@Button
                 }
@@ -500,7 +727,7 @@ private fun BasicsStep(
                     viewModel.setError("Valid email is required")
                     return@Button
                 }
-                if (pictureUrl.isBlank()) {
+                if (!state.isImporting && pictureUrl.isBlank()) {
                     viewModel.setError("Restaurant picture is required")
                     return@Button
                 }
@@ -548,6 +775,13 @@ private fun AddressStep(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Spacer(Modifier.height(4.dp))
+
+        if (state.isImporting) {
+            ImportHint(
+                "We'll import your address from UberEats — leave this blank to use it, " +
+                    "or fill it in to override.",
+            )
+        }
 
         OutlinedTextField(
             value = street,
@@ -602,7 +836,13 @@ private fun AddressStep(
 
         Button(
             onClick = {
-                if (street.isBlank() || city.isBlank() || stateVal.isBlank() || zipCode.isBlank()) {
+                val allBlank = street.isBlank() && city.isBlank() &&
+                    stateVal.isBlank() && zipCode.isBlank()
+                // When importing we fill the address from UberEats, so an all-blank
+                // address is fine; a partially-filled one must still be complete.
+                if (!(state.isImporting && allBlank) &&
+                    (street.isBlank() || city.isBlank() || stateVal.isBlank() || zipCode.isBlank())
+                ) {
                     viewModel.setError("All address fields are required")
                     return@Button
                 }
@@ -877,6 +1117,31 @@ private fun MenuStep(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Spacer(Modifier.height(4.dp))
+
+        if (state.isImporting) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Orange.copy(alpha = 0.1f))
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = Orange,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "We'll import your UberEats menu after you finish setup. " +
+                        "Add any extra items here in the meantime.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+            }
+        }
 
         Text(
             "Add your menu items so they're ready when you launch.",
@@ -1283,7 +1548,26 @@ private fun ReviewStep(
         }
 
         ReviewSection("Menu (${state.menuItems.size} items)") {
-            if (state.menuItems.isEmpty()) {
+            if (state.isImporting) {
+                Row(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.Download,
+                        contentDescription = null,
+                        tint = Orange,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        "Your UberEats menu will be imported after you submit.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextWhite,
+                    )
+                }
+            }
+            if (state.menuItems.isEmpty() && !state.isImporting) {
                 Text(
                     "No menu items added. You can add them later from the Menu tab.",
                     style = MaterialTheme.typography.bodySmall,

@@ -20,10 +20,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -63,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.koshereats.seller.data.models.MenuImport
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.SellerMenuCategory
 import com.koshereats.seller.data.models.formatPrice
@@ -147,6 +151,16 @@ fun MenuManagementScreen(
                     text = "${state.items.size} items",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
+                )
+            }
+
+            // Import-status banner — mirrors iOS's Menu-tab import banner. Shows
+            // progress while an UberEats import is in flight, then a dismissible
+            // success/failure summary.
+            state.latestImport?.let { import ->
+                ImportStatusBanner(
+                    import = import,
+                    onDismiss = { viewModel.dismissImportBanner() },
                 )
             }
 
@@ -312,6 +326,85 @@ fun MenuManagementScreen(
                         item { Spacer(modifier = Modifier.height(80.dp)) }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportStatusBanner(
+    import: MenuImport,
+    onDismiss: () -> Unit,
+) {
+    val inProgress = import.isInProgress
+    val failed = import.status == "failed"
+    val tint = when {
+        failed -> ErrorRed
+        inProgress -> Orange
+        else -> SuccessGreen
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = 0.12f))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (inProgress) {
+            CircularProgressIndicator(
+                color = tint,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
+            )
+        } else {
+            Icon(
+                if (failed) Icons.Filled.ErrorOutline else Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            val title = when {
+                failed -> "Menu import failed"
+                inProgress -> "Importing your UberEats menu…"
+                else -> "Menu import complete"
+            }
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextWhite,
+            )
+            val subtitle = when {
+                failed -> import.error?.takeIf { it.isNotBlank() }
+                    ?: "Something went wrong. You can re-run the import from onboarding."
+                inProgress -> if (import.itemsCreated > 0) {
+                    "${import.itemsCreated} items added so far — this can take a few minutes."
+                } else {
+                    "This can take a few minutes. Items will appear here automatically."
+                }
+                else -> "${import.itemsCreated} items added from UberEats."
+            }
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        // Finished imports are dismissible; an in-flight one is not (it clears
+        // itself once polling sees it complete).
+        if (!inProgress) {
+            IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Dismiss",
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }

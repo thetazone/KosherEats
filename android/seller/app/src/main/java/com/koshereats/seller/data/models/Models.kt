@@ -359,7 +359,37 @@ data class CreateRestaurantRequest(
     @Json(name = "is_pas_yisroel") val isPasYisroel: Boolean = false,
     @Json(name = "is_glatt_kosher") val isGlattKosher: Boolean = false,
     @Json(name = "kosher_certificate_url") val kosherCertificateUrl: String = "",
+    // Relaxes backend validation of the manual detail fields when the seller
+    // pasted an UberEats link on the import step — the import worker fills in
+    // address/phone/cuisine/photo. Mirrors iOS CreateRestaurantBody.fromImport.
+    @Json(name = "from_import") val fromImport: Boolean = false,
 )
+
+// --- Menu import (UberEats) ---
+
+@JsonClass(generateAdapter = true)
+data class CreateMenuImportBody(
+    val source: String = "ubereats",
+    @Json(name = "source_url") val sourceUrl: String,
+)
+
+/**
+ * An async menu-import job. The scrape+import is drained server-side; the app
+ * polls [ApiService.listMenuImports] and shows a banner while [isInProgress].
+ * Mirrors iOS `MenuImport`.
+ */
+@JsonClass(generateAdapter = true)
+data class MenuImport(
+    val id: String,
+    val status: String, // pending | running | done | failed
+    @Json(name = "source_url") val sourceUrl: String? = null,
+    @Json(name = "items_total") val itemsTotal: Int = 0,
+    @Json(name = "items_created") val itemsCreated: Int = 0,
+    val error: String? = null,
+) {
+    /** True while the import is still in flight (drives the "importing…" banner). */
+    val isInProgress: Boolean get() = status == "pending" || status == "running"
+}
 
 @JsonClass(generateAdapter = true)
 data class CreateDealRequest(

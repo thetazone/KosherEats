@@ -414,6 +414,45 @@ class APIService: ObservableObject {
         clearToken()
     }
 
+    // MARK: - Password reset
+    //
+    // forgotPassword/resetPassword send role="consumer" + vertical="kosher" —
+    // the same scope this app uses for /login — so the backend targets the
+    // exact consumer account when an email also has a seller-side account.
+    // Without this, the reset could land on the wrong row (email is unique
+    // per (email, role, vertical), not globally).
+
+    struct MessageResponse: Decodable { let message: String }
+
+    @discardableResult
+    func forgotPassword(email: String) async throws -> MessageResponse {
+        struct Body: Encodable {
+            let email: String
+            let role: String
+            let vertical: String
+        }
+        return try await request(method: "POST", path: "/auth/password/forgot",
+                                 body: Body(email: email, role: "consumer", vertical: "kosher"))
+    }
+
+    @discardableResult
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> MessageResponse {
+        struct Body: Encodable {
+            let email: String
+            let code: String
+            let newPassword: String
+            let role: String
+            let vertical: String
+            enum CodingKeys: String, CodingKey {
+                case email, code, role, vertical
+                case newPassword = "new_password"
+            }
+        }
+        return try await request(method: "POST", path: "/auth/password/reset",
+                                 body: Body(email: email, code: code, newPassword: newPassword,
+                                            role: "consumer", vertical: "kosher"))
+    }
+
     // MARK: - Restaurants
 
     func listRestaurants() async throws -> [Restaurant] {
