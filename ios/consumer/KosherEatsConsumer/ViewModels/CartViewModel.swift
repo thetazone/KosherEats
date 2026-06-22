@@ -148,10 +148,14 @@ class CartViewModel: ObservableObject {
     func loadCart() async {
         guard api.isAuthenticated else { return }
         errorMessage = nil
+        let gen = cartGeneration
         do {
-            cart = try await api.getCart()
+            let result = try await api.getCart()
+            guard cartGeneration == gen else { return }
+            cart = result
             reconcileAppliedDeal()
         } catch let APIError.httpError(code, _) where code == 404 {
+            guard cartGeneration == gen else { return }
             cart = nil
             reconcileAppliedDeal()
         } catch {
@@ -322,12 +326,16 @@ class CartViewModel: ObservableObject {
             updateLocalQuantity(itemID: itemID, quantity: quantity)
             return
         }
+        let gen = cartGeneration
         do {
+            let result: Cart
             if quantity <= 0 {
-                cart = try await api.removeCartItem(id: itemID)
+                result = try await api.removeCartItem(id: itemID)
             } else {
-                cart = try await api.updateCartItem(id: itemID, quantity: quantity)
+                result = try await api.updateCartItem(id: itemID, quantity: quantity)
             }
+            guard cartGeneration == gen else { return }
+            cart = result
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -338,8 +346,11 @@ class CartViewModel: ObservableObject {
             updateLocalQuantity(itemID: itemID, quantity: 0)
             return
         }
+        let gen = cartGeneration
         do {
-            cart = try await api.removeCartItem(id: itemID)
+            let result = try await api.removeCartItem(id: itemID)
+            guard cartGeneration == gen else { return }
+            cart = result
         } catch {
             errorMessage = error.localizedDescription
         }

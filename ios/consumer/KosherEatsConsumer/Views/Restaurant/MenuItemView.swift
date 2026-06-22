@@ -428,14 +428,15 @@ private struct ModifierGroupSection: View {
             }
 
             VStack(spacing: 0) {
-                ForEach(group.modifiers.sorted(by: { $0.sortOrder < $1.sortOrder })) { mod in
+                let sortedModifiers = group.modifiers.sorted { $0.sortOrder < $1.sortOrder }
+                ForEach(sortedModifiers) { mod in
                     ModifierRow(
                         modifier: mod,
                         isSelected: selected.contains(mod.id),
                         style: group.isSingleSelect ? .radio : .checkbox,
                         action: { toggle(mod) },
                     )
-                    if mod.id != group.modifiers.last?.id {
+                    if mod.id != sortedModifiers.last?.id {
                         Divider().background(Color.keDivider)
                     }
                 }

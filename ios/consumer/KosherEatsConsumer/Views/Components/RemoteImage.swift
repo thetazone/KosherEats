@@ -154,7 +154,13 @@ final class RemoteImageLoader: ObservableObject {
             let (data, _) = try await Self.session.data(for: request)
             // Ensure the request hasn't been superseded by a newer URL.
             guard currentURL == urlString else { return }
-            if let image = Self.downsample(data: data, maxPixelSize: Self.maxPixelSize) {
+            let scale = UIScreen.main.scale
+            let image = await Task.detached(priority: .userInitiated) {
+                Self.downsample(data: data, maxPixelSize: Self.maxPixelSize, scale: scale)
+            }.value
+            // Re-check after the off-main decode in case a newer URL superseded us.
+            guard currentURL == urlString else { return }
+            if let image {
                 Self.decoded.setObject(image, forKey: key)
                 state = .success(image)
             } else {
@@ -168,12 +174,12 @@ final class RemoteImageLoader: ObservableObject {
 
     /// Decodes image data into a downsampled UIImage using ImageIO, so we never
     /// hold a full-resolution bitmap for a small on-screen frame.
-    private nonisolated static func downsample(data: Data, maxPixelSize: CGFloat) -> UIImage? {
+    private nonisolated static func downsample(data: Data, maxPixelSize: CGFloat, scale: CGFloat) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
             return nil
         }
-        let scaledMax = maxPixelSize * UIScreen.main.scale
+        let scaledMax = maxPixelSize * scale
         let downsampleOptions = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,

@@ -99,7 +99,7 @@ struct CheckoutView: View {
         .navigationTitle("Checkout")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            vm.appliedDealId = cartVM.appliedDeal?.id
+            vm.appliedDealId = cartVM.dealIdForCheckout
             await vm.loadAddresses()
             await vm.refreshBundle()
             if vm.selectedAddress == nil && vm.fulfillmentType == "delivery" {

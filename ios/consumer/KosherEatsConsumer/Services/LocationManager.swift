@@ -86,6 +86,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         MainActor.assumeIsolated {
             authorizationStatus = status
             if status == .authorizedWhenInUse || status == .authorizedAlways {
+                wasUpdatingBeforeBackground = true
                 manager.startUpdatingLocation()
             }
         }

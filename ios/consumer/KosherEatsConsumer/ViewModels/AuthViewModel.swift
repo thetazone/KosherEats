@@ -156,7 +156,10 @@ class AuthViewModel: ObservableObject {
             onSuccess: { [weak self] token, firstName, lastName, nonce in
                 guard let self else { return }
                 Task { @MainActor in
-                    defer { self.isSocialSignInInFlight = false }
+                    defer {
+                        self.isSocialSignInInFlight = false
+                        self.appleSignInDelegate = nil
+                    }
                     await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName, nonce: nonce)
                 }
             },
@@ -164,6 +167,7 @@ class AuthViewModel: ObservableObject {
                 Task { @MainActor in
                     self?.isSocialSignInInFlight = false
                     self?.errorMessage = message
+                    self?.appleSignInDelegate = nil
                 }
             }
         )
@@ -178,8 +182,10 @@ class AuthViewModel: ObservableObject {
 
     func signInWithGoogle() {
         guard !isSocialSignInInFlight else { return }
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        guard let rootVC = activeScene?.windows.first(where: \.isKeyWindow)?.rootViewController
+                ?? activeScene?.windows.first?.rootViewController else {
             errorMessage = "Cannot find root view controller"
             return
         }

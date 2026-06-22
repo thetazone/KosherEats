@@ -62,6 +62,12 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             if fulfillmentType == "pickup" {
                 tipSelection = .none
                 customTipText = ""
+            } else if oldValue == "pickup", tipSelection == .none {
+                // Returning to delivery FROM pickup (which zeroed the tip): restore
+                // the default so a delivery -> pickup -> delivery toggle doesn't
+                // silently charge $0. Gated on oldValue == "pickup" so a deliberate
+                // "no tip" chosen while already in delivery is never overridden.
+                tipSelection = .percent(1800)
             }
             Task { @MainActor [weak self] in
                 await self?.refreshBundle()
@@ -124,7 +130,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// clamped to "" so the user can't enter a negative tip.
     func updateCustomTip(_ text: String) {
         if text.isEmpty { customTipText = text; return }
-        let filtered = text.filter { $0.isNumber || $0 == "." }
+        let filtered = text.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
         if filtered.components(separatedBy: ".").count > 2 { return }
         if let value = Double(filtered), value > Double(Self.maxTipCents) / 100.0 {
             errorMessage = "Maximum tip is $\(Self.maxTipCents / 100)"

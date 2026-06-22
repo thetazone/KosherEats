@@ -12,6 +12,11 @@ final class OrderTrackingViewModel: ObservableObject {
     private var pollGeneration = 0
     private var locationStreamTask: Task<Void, Never>?
 
+    /// One-shot guard: prevents a courier_location SSE event storm from firing a
+    /// full getOrder() refresh on every event while the order's `courier` is still
+    /// nil (assignment window / payload omits courier). Reset once a courier attaches.
+    private var didRequestCourierAttach = false
+
     /// NotificationCenter observer reference so we can unhook on stop().
     /// Without this, every push triggers an immediate refresh — meant — but
     /// stale VMs (deinit'd tracking screens) would keep firing fetches.
@@ -60,6 +65,7 @@ final class OrderTrackingViewModel: ObservableObject {
             // overwrite lat/lng with an older server-side snapshot.
             if var fetchedCourier = fetched.courier,
                let existingCourier = order?.courier,
+               fetchedCourier.id == existingCourier.id,
                existingCourier.lat != 0 || existingCourier.lng != 0 {
                 fetchedCourier.lat = existingCourier.lat
                 fetchedCourier.lng = existingCourier.lng
@@ -119,6 +125,7 @@ final class OrderTrackingViewModel: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 var sawAuthFailure = false
+                var streamFailed = false
                 do {
                     let stream = self.api.streamOrderLocation(id: self.orderID)
                     for try await event in stream {
@@ -135,15 +142,21 @@ final class OrderTrackingViewModel: ObservableObject {
                             courier.lng = event.lng
                             currentOrder.courier = courier
                             self.order = currentOrder
+                            self.didRequestCourierAttach = false
                             DeliveryActivityManager.shared.update(order: currentOrder)
-                        } else if self.order?.courier == nil {
+                        } else if self.order?.courier == nil && !self.didRequestCourierAttach {
                             // First SSE event arrived before poll attached the courier
                             // object — force a refresh so subsequent events can apply.
+                            // One-shot: don't re-fire on every event if the refresh
+                            // still returns a nil courier (assignment window). The flag
+                            // resets above once a courier actually attaches.
+                            self.didRequestCourierAttach = true
                             await self.refresh()
                         }
                     }
                 } catch APIError.unauthorized {
                     sawAuthFailure = true
+                    streamFailed = true
                     let refreshed = try? await self.api.performTokenRefresh()
                     if refreshed != true {
                         self.errorMessage = "Session expired. Please log in again."
@@ -151,10 +164,20 @@ final class OrderTrackingViewModel: ObservableObject {
                     }
                 } catch {
                     self.errorMessage = error.localizedDescription
+                    streamFailed = true
                 }
 
                 if Task.isCancelled { break }
                 if !(self.order?.status.isActive ?? true) { break }
+
+                if !streamFailed {
+                    // Clean server close (load-balancer recycle / terminal-state
+                    // handoff) on a still-active order — not a failure. Reset the
+                    // backoff and reconnect after a short fixed delay.
+                    consecutiveFailures = 0
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s
+                    continue
+                }
 
                 consecutiveFailures += 1
                 let delaySeconds: Double

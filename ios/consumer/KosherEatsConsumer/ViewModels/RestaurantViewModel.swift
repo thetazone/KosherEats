@@ -9,11 +9,18 @@ class RestaurantViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let api = APIService.shared
+    private var loadGeneration = 0
+    private var dealsTask: Task<[Deal], Never>?
 
     func load(restaurantID: String) async {
+        loadGeneration &+= 1
+        let gen = loadGeneration
+
         isLoading = true
         errorMessage = nil
 
+        // Cancel any deals fetch from a prior, now-superseded load.
+        dealsTask?.cancel()
         // Fetch deals separately so a failure doesn't cancel the
         // restaurant + menu structured concurrency group.
         let dealsTask = Task<[Deal], Never> {
@@ -26,6 +33,7 @@ class RestaurantViewModel: ObservableObject {
                 return []
             }
         }
+        self.dealsTask = dealsTask
 
         do {
             async let restTask = api.getRestaurant(id: restaurantID)
@@ -33,16 +41,21 @@ class RestaurantViewModel: ObservableObject {
 
             let rest = try await restTask
             let menu = try await menuTask
+            let fetchedDeals = await dealsTask.value.filter { $0.isActive }
 
+            guard gen == loadGeneration else { return }
             restaurant = rest
             menuCategories = menu.sorted { $0.sortOrder < $1.sortOrder }
-            deals = await dealsTask.value.filter { $0.isActive }
+            deals = fetchedDeals
         } catch {
+            let fetchedDeals = await dealsTask.value.filter { $0.isActive }
+            guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
             // Still surface any deals that arrived despite the error.
-            deals = await dealsTask.value.filter { $0.isActive }
+            deals = fetchedDeals
         }
 
+        guard gen == loadGeneration else { return }
         isLoading = false
     }
 }

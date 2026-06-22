@@ -429,7 +429,8 @@ class APIService: ObservableObject {
     }
 
     func searchRestaurants(query: String) async throws -> [Restaurant] {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query
         return try await request(method: "GET", path: "/restaurants/search?q=\(encoded)")
     }
 
@@ -694,11 +695,13 @@ class APIService: ObservableObject {
                 var req = URLRequest(url: url)
                 req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
                 req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                // Backend sends a comment ping every 15s. 60s gives us 4 pings
-                // of headroom before declaring the connection dead. The old
+                // Backend sends a comment ping every 25s (sseHeartbeatInterval in
+                // orders.go). timeoutInterval acts as a no-activity timeout that
+                // resets on each received byte, so 90s gives ~3 missed pings of
+                // headroom before declaring the connection dead. The old
                 // greatestFiniteMagnitude meant a silent cellular drop would
                 // freeze the courier pin until the user backgrounded the app.
-                req.timeoutInterval = 60
+                req.timeoutInterval = 90
 
                 do {
                     let (bytes, response) = try await URLSession.shared.bytes(for: req)

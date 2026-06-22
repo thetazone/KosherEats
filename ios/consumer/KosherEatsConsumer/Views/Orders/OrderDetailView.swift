@@ -180,7 +180,9 @@ struct OrderDetailView: View {
         .cornerRadius(Theme.cornerRadiusLarge)
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Order status: \(order.status.displayName), step \(order.status.stepIndex + 1) of 6")
+        .accessibilityLabel(order.status.stepIndex >= 0
+            ? "Order status: \(order.status.displayName), step \(order.status.stepIndex + 1) of 6"
+            : "Order status: \(order.status.displayName)")
     }
 
     private func progressSteps(currentStep: Int, fulfillmentType: String = "delivery") -> some View {

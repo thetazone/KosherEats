@@ -227,7 +227,7 @@ struct Restaurant: Codable, Identifiable {
     }
 
     var minOrderFormatted: String {
-        "$\(String(format: "%.0f", Double(minOrder) / 100))"
+        "$\(String(format: "%.2f", Double(minOrder) / 100))"
     }
 
     var deliveryTimeFormatted: String {
@@ -261,6 +261,44 @@ struct Restaurant: Codable, Identifiable {
         case isActive = "is_active"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+}
+
+extension Restaurant {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        ownerID = try c.decode(String.self, forKey: .ownerID)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decode(String.self, forKey: .description)
+        imageURL = try c.decode(String.self, forKey: .imageURL)
+        coverImageURL = try c.decodeIfPresent(String.self, forKey: .coverImageURL)
+        logoURL = try c.decodeIfPresent(String.self, forKey: .logoURL)
+        phone = try c.decode(String.self, forKey: .phone)
+        email = try c.decode(String.self, forKey: .email)
+        street = try c.decode(String.self, forKey: .street)
+        city = try c.decode(String.self, forKey: .city)
+        state = try c.decode(String.self, forKey: .state)
+        zipCode = try c.decode(String.self, forKey: .zipCode)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        kosherCertification = try c.decode(KosherCertification.self, forKey: .kosherCertification)
+        certifyingAgency = try c.decodeIfPresent(String.self, forKey: .certifyingAgency) ?? ""
+        isCholovYisroel = try c.decode(Bool.self, forKey: .isCholovYisroel)
+        isPasYisroel = try c.decode(Bool.self, forKey: .isPasYisroel)
+        isGlattKosher = try c.decode(Bool.self, forKey: .isGlattKosher)
+        kosherCertificateUrl = try c.decodeIfPresent(String.self, forKey: .kosherCertificateUrl)
+        cuisineType = try c.decodeIfPresent([String].self, forKey: .cuisineType) ?? []
+        rating = try c.decode(Double.self, forKey: .rating)
+        reviewCount = try c.decode(Int.self, forKey: .reviewCount)
+        deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
+        minOrder = try c.decode(Int.self, forKey: .minOrder)
+        estDeliveryMin = try c.decode(Int.self, forKey: .estDeliveryMin)
+        estDeliveryMax = try c.decode(Int.self, forKey: .estDeliveryMax)
+        isOpen = try c.decode(Bool.self, forKey: .isOpen)
+        isActive = try c.decode(Bool.self, forKey: .isActive)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 }
 

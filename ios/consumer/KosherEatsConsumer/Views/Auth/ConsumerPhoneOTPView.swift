@@ -129,8 +129,12 @@ struct ConsumerPhoneOTPView: View {
     private func submit() async {
         guard code.count == 4, !authVM.isLoading else { return }
         _ = await authVM.verifyPhoneLogin(phone: phoneE164, code: code)
-        // Allow re-submit if verification failed (e.g. wrong code).
-        if !authVM.isAuthenticated { hasAutoSubmitted = false }
+        // On a failed verification, clear the stale digits so the user can retype
+        // a fresh code instead of an edit re-firing auto-submit with the same wrong code.
+        if !authVM.isAuthenticated {
+            code = ""
+            hasAutoSubmitted = false
+        }
     }
 
     private func resend() async {
