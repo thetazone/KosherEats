@@ -38,6 +38,7 @@ import (
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
+	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
 
@@ -83,7 +84,17 @@ type Dispatcher struct {
 	stripe   *payments.Client
 	uber     *uberdirect.Client
 	doordash *doordash.Client
+
+	// payoutStarter, when non-nil and Enabled(), switches the courier-payout
+	// sweep from direct Stripe transfers to a Temporal reconcile: each due row
+	// kicks off (or dedups into) a payout workflow that owns the transfer.
+	// Nil/disabled keeps the legacy direct-transfer behavior unchanged.
+	payoutStarter *payout.Starter
 }
+
+// SetPayoutStarter injects the Temporal payout starter. Passing a nil starter
+// (the default) leaves the dispatcher in legacy direct-transfer mode.
+func (d *Dispatcher) SetPayoutStarter(s *payout.Starter) { d.payoutStarter = s }
 
 func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
 	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd}
@@ -662,6 +673,30 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		due = append(due, p)
 	}
 	rows.Close()
+
+	// Temporal reconcile mode: when a payout starter is wired in and enabled,
+	// never move money directly here. For each due/pending row, kick off (or
+	// dedup into, via USE_EXISTING) a payout workflow that owns the transfer.
+	// The queue row + this reconcile guarantee every pending order eventually
+	// gets a workflow even if an earlier Start was missed. When the starter is
+	// nil/disabled this branch is skipped and the legacy direct-transfer sweep
+	// below runs exactly as before.
+	if d.payoutStarter.Enabled() {
+		for _, p := range due {
+			if err := d.payoutStarter.Start(ctx, payout.PayoutInput{
+				OrderID:         p.orderID,
+				CourierID:       p.courierID,
+				StripeConnectID: p.connectID,
+				AmountCents:     p.amountCents,
+			}); err != nil {
+				slog.Error("payout-sweep: temporal start failed, will retry next sweep",
+					slog.String("payout_id", p.id),
+					slog.String("order_id", p.orderID),
+					slog.String("error", err.Error()))
+			}
+		}
+		return
+	}
 
 	for _, p := range due {
 		d.tryPayout(ctx, p)

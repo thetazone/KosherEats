@@ -79,6 +79,19 @@ type Config struct {
 	// Tax rate as a whole-number percentage (e.g. 9 = 9%). Defaults to 9
 	// if TAX_RATE_PERCENT is not set.
 	TaxRatePercent int
+
+	// Temporal (durable courier payout sweep). DISABLED unless HostPort is
+	// non-empty: when empty we never dial a Temporal client, inject a nil
+	// *payout.Starter, and the legacy direct-transfer sweep runs unchanged.
+	Temporal TemporalConfig
+}
+
+// TemporalConfig holds the connection settings for the payout workflow worker.
+// An empty HostPort means Temporal is disabled (the default).
+type TemporalConfig struct {
+	HostPort  string // TEMPORAL_HOSTPORT, e.g. "localhost:7233". Empty → disabled.
+	Namespace string // TEMPORAL_NAMESPACE, default "default"
+	TaskQueue string // TEMPORAL_TASK_QUEUE, default "payout-task-queue"
 }
 
 func Load() *Config {
@@ -137,6 +150,12 @@ func Load() *Config {
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
 
 		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
+
+		Temporal: TemporalConfig{
+			HostPort:  getEnv("TEMPORAL_HOSTPORT", ""),
+			Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
+			TaskQueue: getEnv("TEMPORAL_TASK_QUEUE", "payout-task-queue"),
+		},
 	}
 }
 

@@ -18,7 +18,10 @@ import (
 	"github.com/koshereats/backend/internal/database"
 	"github.com/koshereats/backend/internal/handlers"
 	kemiddleware "github.com/koshereats/backend/internal/middleware"
+	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/scheduler"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 	"golang.org/x/time/rate"
 )
 
@@ -416,7 +419,45 @@ func main() {
 	//       aren't stuck watching a dead order.
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 	defer schedulerCancel()
-	scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash()).Start(schedulerCtx)
+	dispatcher := scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash())
+
+	// ── Temporal durable payouts (DISABLED unless TEMPORAL_HOSTPORT is set) ──
+	// When off we never dial a client, never start a worker, and inject a nil
+	// *payout.Starter — so the handler + scheduler keep their legacy
+	// direct-transfer behavior, byte-for-byte. When on, courier payouts route
+	// through a Temporal workflow for exactly-once transfers.
+	var (
+		temporalClient client.Client
+		payoutWorker   = (worker.Worker)(nil)
+	)
+	if cfg.Temporal.HostPort != "" {
+		tc, err := client.Dial(client.Options{
+			HostPort:  cfg.Temporal.HostPort,
+			Namespace: cfg.Temporal.Namespace,
+		})
+		if err != nil {
+			log.Fatalf("failed to dial temporal: %v", err)
+		}
+		temporalClient = tc
+
+		acts := payout.NewActivities(h.Stripe(), db.Pool)
+		w := payout.NewWorker(tc, cfg.Temporal.TaskQueue, acts)
+		if err := w.Start(); err != nil {
+			log.Fatalf("failed to start temporal worker: %v", err)
+		}
+		payoutWorker = w
+
+		starter := &payout.Starter{Client: tc, TaskQueue: cfg.Temporal.TaskQueue}
+		h.SetPayoutStarter(starter)
+		dispatcher.SetPayoutStarter(starter)
+
+		logger.Info("temporal payouts enabled",
+			slog.String("host_port", cfg.Temporal.HostPort),
+			slog.String("namespace", cfg.Temporal.Namespace),
+			slog.String("task_queue", cfg.Temporal.TaskQueue))
+	}
+
+	dispatcher.Start(schedulerCtx)
 
 	go func() {
 		logger.Info("server starting", slog.String("port", cfg.Port))
@@ -438,5 +479,17 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server shutdown error", slog.String("error", err.Error()))
 	}
+
+	// Drain in-flight payout activities before exit (only when Temporal was
+	// enabled). Stop() blocks until running activities finish, then we close
+	// the client. No-ops entirely when disabled (nil worker + nil client).
+	if payoutWorker != nil {
+		logger.Info("stopping temporal payout worker")
+		payoutWorker.Stop()
+	}
+	if temporalClient != nil {
+		temporalClient.Close()
+	}
+
 	logger.Info("shutdown complete")
 }
