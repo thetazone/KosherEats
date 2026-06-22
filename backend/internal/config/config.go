@@ -92,18 +92,22 @@ type TemporalConfig struct {
 	HostPort  string // TEMPORAL_HOSTPORT, e.g. "localhost:7233". Empty → disabled.
 	Namespace string // TEMPORAL_NAMESPACE, default "default"
 	TaskQueue string // TEMPORAL_TASK_QUEUE, default "payout-task-queue"
+	// Cloud auth (leave all empty for a local/insecure dev server):
+	APIKey  string // TEMPORAL_API_KEY — Temporal Cloud API key (enables TLS). Preferred.
+	TLSCert string // TEMPORAL_TLS_CERT — path to client cert for mTLS (alternative to API key)
+	TLSKey  string // TEMPORAL_TLS_KEY — path to client key for mTLS
 }
 
 func Load() *Config {
 	return &Config{
-		Port:             getEnv("PORT", "8080"),
-		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/koshereats?sslmode=disable"),
-		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:        getEnv("JWT_SECRET", ""),
+		Port:                 getEnv("PORT", "8080"),
+		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/koshereats?sslmode=disable"),
+		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:            getEnv("JWT_SECRET", ""),
 		StripeSecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
 		StripePublishableKey: getEnv("STRIPE_PUBLISHABLE_KEY", ""),
 		StripeWebhookSec:     getEnv("STRIPE_WEBHOOK_SECRET", ""),
-		WebURL:           getEnv("WEB_URL", "http://localhost:3000"),
+		WebURL:               getEnv("WEB_URL", "http://localhost:3000"),
 
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
@@ -155,6 +159,9 @@ func Load() *Config {
 			HostPort:  getEnv("TEMPORAL_HOSTPORT", ""),
 			Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
 			TaskQueue: getEnv("TEMPORAL_TASK_QUEUE", "payout-task-queue"),
+			APIKey:    getEnv("TEMPORAL_API_KEY", ""),
+			TLSCert:   getEnv("TEMPORAL_TLS_CERT", ""),
+			TLSKey:    getEnv("TEMPORAL_TLS_KEY", ""),
 		},
 	}
 }

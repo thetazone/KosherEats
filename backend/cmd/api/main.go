@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"log/slog"
 	"net/http"
@@ -431,10 +432,24 @@ func main() {
 		payoutWorker   = (worker.Worker)(nil)
 	)
 	if cfg.Temporal.HostPort != "" {
-		tc, err := client.Dial(client.Options{
+		opts := client.Options{
 			HostPort:  cfg.Temporal.HostPort,
 			Namespace: cfg.Temporal.Namespace,
-		})
+		}
+		// Temporal Cloud auth. API key (preferred) or mTLS client cert both
+		// require TLS; a local/insecure dev server sets neither and dials plain.
+		switch {
+		case cfg.Temporal.APIKey != "":
+			opts.Credentials = client.NewAPIKeyStaticCredentials(cfg.Temporal.APIKey)
+			opts.ConnectionOptions = client.ConnectionOptions{TLS: &tls.Config{}}
+		case cfg.Temporal.TLSCert != "" && cfg.Temporal.TLSKey != "":
+			cert, cerr := tls.LoadX509KeyPair(cfg.Temporal.TLSCert, cfg.Temporal.TLSKey)
+			if cerr != nil {
+				log.Fatalf("temporal: load mTLS cert/key: %v", cerr)
+			}
+			opts.ConnectionOptions = client.ConnectionOptions{TLS: &tls.Config{Certificates: []tls.Certificate{cert}}}
+		}
+		tc, err := client.Dial(opts)
 		if err != nil {
 			log.Fatalf("failed to dial temporal: %v", err)
 		}
