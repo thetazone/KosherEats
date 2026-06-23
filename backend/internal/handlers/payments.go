@@ -297,7 +297,16 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	// INSERT affects no rows we've already processed this event — ACK 200 and
 	// run no side effects again. We do this AFTER signature verification so an
 	// unsigned/forged payload can never poison the ledger.
-	ct, err := h.db.Pool.Exec(r.Context(),
+	tx, err := h.db.Pool.Begin(r.Context())
+	if err != nil {
+		slog.Error("StripeWebhook: failed to begin tx",
+			slog.String("event_id", event.ID), slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
+	ct, err := tx.Exec(r.Context(),
 		`INSERT INTO stripe_webhook_events (event_id, type) VALUES ($1, $2)
 		 ON CONFLICT (event_id) DO NOTHING`, event.ID, string(event.Type))
 	if err != nil {
@@ -328,7 +337,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		ready := account.PayoutsEnabled && account.DetailsSubmitted
-		if _, err := h.db.Pool.Exec(r.Context(),
+		if _, err := tx.Exec(r.Context(),
 			`UPDATE courier_profiles SET payout_ready = $1, updated_at = NOW()
 			 WHERE stripe_connect_id = $2`, ready, account.ID); err != nil {
 			slog.Error("StripeWebhook: failed to update payout_ready",
@@ -393,6 +402,13 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			"Stripe charge refunded",
 			refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded),
 		)
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Error("StripeWebhook: failed to commit event",
+			slog.String("event_id", event.ID), slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)

@@ -212,10 +212,20 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 		return
 	}
 	// Release the lock on the same connection before it returns to the pool.
+	// If the unlock fails (ctx cancelled on shutdown, network blip), the session
+	// still holds the advisory lock; returning that connection to the pool would
+	// orphan the lock and silently disable every future sweep until the conn is
+	// recycled (up to MaxConnLifetime). Close the underlying connection instead
+	// so the lock dies with it — the deferred Release then sees a closed conn and
+	// destroys it rather than reusing the poisoned one. Use a fresh background
+	// context so teardown isn't skipped when the scheduler ctx is already cancelled.
 	defer func() {
 		if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, sweepAdvisoryLockKey); err != nil {
-			slog.Error("sweep: pg_advisory_unlock failed",
+			slog.Error("sweep: pg_advisory_unlock failed, closing connection to drop orphaned lock",
 				slog.String("error", err.Error()))
+			closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = conn.Conn().Close(closeCtx)
 		}
 	}()
 
@@ -304,10 +314,6 @@ func (d *Dispatcher) sweepOrphanPayments(ctx context.Context) {
 			slog.String("payment_intent", c.PaymentIntentID),
 			slog.String("user_id", c.UserID),
 			slog.Int("amount_cents", c.AmountCents))
-		d.alert("Auto-refund: charged-but-no-order PaymentIntent",
-			fmt.Sprintf("The orphan-payment sweep refunded a charge that never became an order.\n\n"+
-				"PaymentIntent: %s\nUser: %s\nAmount (cents): %d\n",
-				c.PaymentIntentID, c.UserID, c.AmountCents))
 	}
 }
 

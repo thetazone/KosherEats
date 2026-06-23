@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/http"
 	"sync"
@@ -40,6 +41,10 @@ type RateLimiter struct {
 	// `max` requests per `window`.
 	window time.Duration
 	max    int
+	// redisPrefix namespaces the Redis counter per limiter instance so
+	// limiters with different max/window never share a counter. Empty for
+	// the in-memory-only limiter (set in NewRedisRateLimiter).
+	redisPrefix string
 }
 
 type visitor struct {
@@ -89,6 +94,7 @@ func NewRedisRateLimiter(client *redis.Client, r rate.Limit, b int, ttl time.Dur
 	if rl.window <= 0 {
 		rl.window = time.Second
 	}
+	rl.redisPrefix = fmt.Sprintf("rl:%d:%d:", rl.max, int(rl.window.Seconds()))
 	return rl
 }
 
@@ -141,18 +147,18 @@ func (rl *RateLimiter) allowRedis(key string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	rkey := "rl:" + key
+	rkey := rl.redisPrefix + key
 	count, err := rl.redis.Incr(ctx, rkey).Result()
 	if err != nil {
 		return false, err
 	}
-	if count == 1 {
-		// First hit in this window: arm the TTL so the counter self-resets.
-		// A failed EXPIRE here would leave the key permanently incrementing,
-		// so treat it as a Redis error and let the caller fall back.
-		if err := rl.redis.Expire(ctx, rkey, rl.window).Err(); err != nil {
-			return false, err
-		}
+	// Arm the TTL whenever the key has none (ExpireNX = EXPIRE ... NX). This
+	// covers the first hit of a window AND self-heals a key orphaned by a
+	// prior failed EXPIRE, so a TTL-less counter can never climb forever and
+	// permanently 429 the key. A key that already has a TTL is left untouched.
+	// A failed EXPIRE is treated as a Redis error so the caller fails open.
+	if err := rl.redis.ExpireNX(ctx, rkey, rl.window).Err(); err != nil {
+		return false, err
 	}
 	return count <= int64(rl.max), nil
 }

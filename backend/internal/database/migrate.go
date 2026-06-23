@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // RunMigrations walks the given directory and applies any .sql files whose
@@ -39,8 +40,25 @@ func (db *DB) RunMigrations(ctx context.Context, dir string) error {
 	}
 	defer conn.Release()
 
-	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLockKey); err != nil {
-		return fmt.Errorf("acquire migration advisory lock: %w", err)
+	// Bound lock acquisition so a wedged-but-alive peer (a stuck migration /
+	// hung connection still holding the session lock) surfaces a clear error
+	// instead of hanging startup forever. pg_try_advisory_lock returns
+	// immediately; poll until we get it or the deadline passes.
+	lockCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	for {
+		var got bool
+		if err := conn.QueryRow(lockCtx, `SELECT pg_try_advisory_lock($1)`, migrationAdvisoryLockKey).Scan(&got); err != nil {
+			return fmt.Errorf("acquire migration advisory lock: %w", err)
+		}
+		if got {
+			break
+		}
+		select {
+		case <-lockCtx.Done():
+			return fmt.Errorf("could not acquire migration advisory lock within 60s (held by another instance): %w", lockCtx.Err())
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 	defer func() {
 		if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLockKey); err != nil {

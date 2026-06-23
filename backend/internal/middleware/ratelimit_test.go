@@ -78,7 +78,7 @@ func TestRedisBackedEnforcesWindow(t *testing.T) {
 	}
 
 	// Long window + a unique key so the test is deterministic and isolated.
-	key := "rl:1.1.1.1"
+	key := "rl:3:300:1.1.1.1"
 	client.Del(context.Background(), key)
 	defer client.Del(context.Background(), key)
 
@@ -113,5 +113,49 @@ func TestRedisBackedEnforcesWindow(t *testing.T) {
 	rl2 := NewRedisRateLimiter(client, rate.Limit(0.01), 3, time.Minute)
 	if again := hit(rl2); again != 0 {
 		t.Fatalf("redis limiter across restart: expected 0 additional allowed, got %d", again)
+	}
+}
+
+// TestDifferentLimitersDoNotShareCounter verifies that two Redis-backed
+// limiters with different max on the same IP keep independent counters
+// (regression guard: previously all limiters shared one rl:<ip> key).
+func TestDifferentLimitersDoNotShareCounter(t *testing.T) {
+	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", DialTimeout: 200 * time.Millisecond})
+	defer client.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		t.Skip("redis not reachable at localhost:6379; skipping live test")
+	}
+
+	// strict: max=2, lenient: max=10; both keyed on the same IP.
+	strict := NewRedisRateLimiter(client, rate.Limit(0.01), 2, time.Minute)
+	lenient := NewRedisRateLimiter(client, rate.Limit(0.01), 10, time.Minute)
+	for _, l := range []*RateLimiter{strict, lenient} {
+		client.Del(context.Background(), l.redisPrefix+"9.9.9.9")
+		defer client.Del(context.Background(), l.redisPrefix+"9.9.9.9")
+	}
+
+	hit := func(l *RateLimiter) int {
+		allowed := 0
+		hh := l.PerIP(okHandler)
+		for i := 0; i < 8; i++ {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = "9.9.9.9:1234"
+			hh.ServeHTTP(rec, req)
+			if rec.Code == http.StatusOK {
+				allowed++
+			}
+		}
+		return allowed
+	}
+
+	// Exhaust the strict limiter first; it must NOT consume the lenient budget.
+	if got := hit(strict); got != 2 {
+		t.Fatalf("strict limiter: expected 2 allowed, got %d", got)
+	}
+	if got := hit(lenient); got != 8 {
+		t.Fatalf("lenient limiter must be independent of strict: expected 8 allowed, got %d", got)
 	}
 }
