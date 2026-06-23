@@ -37,6 +37,7 @@ import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.DividerColor
+import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.StatusAccepted
 import com.koshereats.seller.ui.theme.StatusCancelled
@@ -131,13 +132,17 @@ fun ActiveOrderCard(
                         )
                     }
                 }
-                val mins = minutesAgo
-                if (mins != null) {
-                    Text(
-                        text = if (mins < 1) "just now" else "${mins}m ago",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
-                    )
+                if (order.status == OrderStatus.PENDING) {
+                    PendingCountdown(createdAt = order.createdAt)
+                } else {
+                    val mins = minutesAgo
+                    if (mins != null) {
+                        Text(
+                            text = if (mins < 1) "just now" else "${mins}m ago",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextMuted,
+                        )
+                    }
                 }
             }
 
@@ -158,6 +163,7 @@ fun ActiveOrderCard(
                 val activatesAt = remember(order.scheduledFor) {
                     runCatching {
                         java.time.ZonedDateTime.parse(order.scheduledFor)
+                            .withZoneSameInstant(java.time.ZoneId.systemDefault())
                             .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, h:mm a"))
                     }.getOrElse { order.scheduledFor }
                 }
@@ -185,6 +191,58 @@ fun ActiveOrderCard(
             }
         }
     }
+}
+
+/**
+ * Live, per-second countdown to the backend's auto-reject deadline for a pending
+ * order. Mirrors iOS PendingCountdown and the backend's pendingOrderTTL
+ * (scheduler/dispatcher.go): after 10 minutes in 'pending' the order is
+ * auto-rejected and the customer refunded, so the seller needs to see how close
+ * they are. Flips to the error color in the final 2 minutes. Renders nothing if
+ * createdAt can't be parsed, matching the iOS nil-date guard.
+ */
+@Composable
+private fun PendingCountdown(createdAt: String) {
+    val placedAt = remember(createdAt) {
+        runCatching { Instant.parse(createdAt) }
+            .recoverCatching { java.time.OffsetDateTime.parse(createdAt).toInstant() }
+            .getOrNull()
+    } ?: return
+
+    val ttlSeconds = 10L * 60L
+    val urgentThresholdSeconds = 2L * 60L
+
+    val elapsedSeconds by produceState(
+        initialValue = Duration.between(placedAt, Instant.now()).seconds.coerceAtLeast(0L),
+        key1 = placedAt,
+    ) {
+        while (true) {
+            value = Duration.between(placedAt, Instant.now()).seconds.coerceAtLeast(0L)
+            delay(1_000L)
+        }
+    }
+
+    val remaining = (ttlSeconds - elapsedSeconds).coerceAtLeast(0L)
+    val expired = remaining <= 0L
+    val urgent = remaining <= urgentThresholdSeconds
+
+    val label = if (expired) {
+        "Auto-rejecting…"
+    } else {
+        "Respond in ${formatMmSs(remaining)} • pending ${formatMmSs(elapsedSeconds)}"
+    }
+
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = if (urgent) ErrorRed else StatusPending,
+        fontWeight = FontWeight.SemiBold,
+    )
+}
+
+private fun formatMmSs(seconds: Long): String {
+    val s = seconds.coerceAtLeast(0L)
+    return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 }
 
 @Composable

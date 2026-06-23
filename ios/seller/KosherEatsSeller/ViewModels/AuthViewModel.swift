@@ -13,9 +13,15 @@ enum AppleSignInNonce {
         let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
         var result = ""
         var remaining = 32
+        var rng = SystemRandomNumberGenerator()
         while remaining > 0 {
-            var random: UInt8 = 0
-            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            // SystemRandomNumberGenerator is a CSPRNG that cannot fail, so the
+            // rejection-sampled byte is always cryptographically random. The
+            // old SecRandomCopyBytes path discarded its OSStatus — on the
+            // (vanishingly rare) failure the byte stayed 0, passed this
+            // `< charset.count` check, and appended charset[0] ('0'), which
+            // could degenerate the nonce to a predictable all-'0' string.
+            let random = UInt8.random(in: 0...255, using: &rng)
             if random < charset.count {
                 result.append(charset[Int(random)])
                 remaining -= 1
@@ -37,6 +43,13 @@ class AuthViewModel: ObservableObject {
     private let tokenKey = "ke_seller_token"
     private let refreshTokenKey = "ke_seller_refresh_token"
     private var restoreTask: Task<Void, Never>?
+    /// Observer for `.sessionExpired`, posted by OrdersViewModel (and any other
+    /// authenticated caller) when an API call fails `.unauthorized` after the
+    /// refresh attempt is exhausted — i.e. the refresh token expired/was revoked
+    /// mid-session. We flip the app back to the login screen instead of leaving
+    /// the seller staring at a stale list behind a misleading "can't reach
+    /// server" banner. Mirrors Android's NetworkModule.sessionExpired collector.
+    private var sessionExpiredObserver: NSObjectProtocol?
 
     // Only seller/admin accounts can access the seller dashboard. Consumer
     // accounts (created via Apple/Google social login on this app) are still
@@ -50,6 +63,23 @@ class AuthViewModel: ObservableObject {
     }
 
     init() {
+        // Listen for mid-session token death. OrdersViewModel (the busiest
+        // authenticated surface) posts `.sessionExpired` when an API call 401s
+        // after the refresh attempt is spent. Without this observer the post
+        // was a no-op and the seller was stranded — now we clear tokens and
+        // route to login. `object: nil` so any future poster is also handled.
+        sessionExpiredObserver = NotificationCenter.default.addObserver(
+            forName: .sessionExpired,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // The closure can run off the @MainActor isolation boundary, so
+            // hop back onto it before touching @Published state.
+            Task { @MainActor [weak self] in
+                self?.handleSessionExpired()
+            }
+        }
+
         // APIService.init() pre-loads tokens from Keychain synchronously, so
         // they are set before any concurrent API call can fire. This Task only
         // needs to validate the token and restore the user profile.
@@ -70,6 +100,12 @@ class AuthViewModel: ObservableObject {
                     KeychainHelper.delete(forKey: self.refreshTokenKey)
                     await APIService.shared.setToken(nil)
                     await APIService.shared.setRefreshToken(nil)
+                    // Clear the persisted restaurant selection too — same as
+                    // logout(). The refresh token expired/was revoked, so this
+                    // account's session is dead; on a shared counter device the
+                    // next account to sign in must not inherit account A's
+                    // `?restaurant_id=` on every /seller/* call.
+                    SelectedRestaurant.shared.set(nil)
                     self.isAuthenticated = false
                 } catch {
                     // Network / server errors on launch: don't unilaterally log
@@ -80,6 +116,24 @@ class AuthViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    deinit {
+        if let sessionExpiredObserver {
+            NotificationCenter.default.removeObserver(sessionExpiredObserver)
+        }
+    }
+
+    /// Mid-session session death (refresh token expired/revoked). Tears the
+    /// session down the same way `logout()` does — best-effort APNs unregister
+    /// while still authenticated, clear tokens, flip to the login screen — but
+    /// surfaces a "your session expired" message so the seller understands why
+    /// they're being asked to sign in again rather than seeing a bare login
+    /// screen. Idempotent: a no-op once already logged out.
+    private func handleSessionExpired() {
+        guard isAuthenticated || user != nil else { return }
+        logout()
+        errorMessage = "Your session expired — please sign in again."
     }
 
     func login(email: String, password: String) async {
@@ -354,20 +408,38 @@ class AuthViewModel: ObservableObject {
         restoreTask = nil
         KeychainHelper.delete(forKey: tokenKey)
         KeychainHelper.delete(forKey: refreshTokenKey)
+
+        // Unregister the APNs device token, then clear the in-memory bearer
+        // token. Ordering matters: the backend /devices/unregister call is
+        // authenticated and keys the delete on (user_id, token, app), so it
+        // must fire while APIService still holds the token — hence the
+        // `await unregisterIfPossible()` BEFORE `setToken(nil)`. Unlike
+        // Android's FCM deleteToken(), the APNs token stays valid after logout,
+        // so without this a logged-out device keeps receiving the seller's
+        // order/chat pushes until another account logs in on the same phone
+        // (e.g. a staff member's phone after they leave the business).
+        // Best-effort inside PushNotifications: a failure is logged, not fatal.
         Task {
+            await PushNotifications.shared.unregisterIfPossible()
             await APIService.shared.setToken(nil)
             await APIService.shared.setRefreshToken(nil)
         }
+
         user = nil
         isAuthenticated = false
         SelectedRestaurant.shared.set(nil)
-        PushNotifications.shared.pendingToken = nil
     }
 
     func deleteAccount() async {
         isLoading = true
         errorMessage = nil
         do {
+            // Unregister the device token while still authenticated, before the
+            // account (and its device_tokens rows) are gone server-side. The
+            // DELETE /user/account below also cascades device_tokens, but doing
+            // the explicit unregister first keeps the local registered-hex state
+            // consistent and mirrors logout()/Android's deleteToken ordering.
+            await PushNotifications.shared.unregisterIfPossible()
             try await APIService.shared.deleteAccount()
             logout()
         } catch {

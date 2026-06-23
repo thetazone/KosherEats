@@ -84,6 +84,7 @@ fun CheckoutScreen(
     localCart: List<CartItem>,
     restaurantId: String,
     appliedDealId: String? = null,
+    scheduledFor: java.time.LocalDateTime? = null,
     onBack: () -> Unit,
     onOrderPlaced: (Order) -> Unit,
     vm: CheckoutViewModel = hiltViewModel(),
@@ -92,9 +93,11 @@ fun CheckoutScreen(
     val context = LocalContext.current
 
     // Re-fire when restaurantId or first cart-item ID changes so a late-arriving
-    // rehydrated cart (after process death) is not silently dropped.
+    // rehydrated cart (after process death) is not silently dropped. Seed the
+    // checkout's scheduled time from the cart's chosen value so the delivery slot
+    // picked on the cart screen actually reaches CreateOrderRequest.
     LaunchedEffect(restaurantId, localCart.firstOrNull()?.id) {
-        vm.bootstrap(localCart, restaurantId, appliedDealId)
+        vm.bootstrap(localCart, restaurantId, appliedDealId, scheduledFor)
     }
 
     // Stripe PaymentSheet
@@ -533,7 +536,7 @@ private fun TipSelectorCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TipChoice.presets.forEach { preset ->
                     val selected = when {
-                        tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.fraction == preset.fraction
+                        tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.bps == preset.bps
                         else -> tipChoice == preset
                     }
                     Box(

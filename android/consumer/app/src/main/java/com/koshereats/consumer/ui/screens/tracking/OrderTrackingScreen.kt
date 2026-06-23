@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
@@ -84,11 +85,29 @@ fun OrderTrackingScreen(
     orderId: String,
     onBack: () -> Unit,
     onChat: (String) -> Unit,
+    onRate: (String) -> Unit = {},
     vm: OrderTrackingViewModel = hiltViewModel(),
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Auto-prompt for a courier rating once the order is delivered with a courier
+    // and no prior rating (mirrors iOS OrderTrackingView.maybePromptForRating).
+    // rememberSaveable so a config change / re-emit of the same DELIVERED state
+    // doesn't re-trigger the navigation after the user has been sent to rate.
+    var ratingPrompted by rememberSaveable(orderId) { mutableStateOf(false) }
+    LaunchedEffect(state.order?.status, state.order?.courier?.id, state.order?.courierRating) {
+        val o = state.order ?: return@LaunchedEffect
+        if (!ratingPrompted &&
+            o.status == OrderStatus.DELIVERED &&
+            o.courier != null &&
+            o.courierRating == null
+        ) {
+            ratingPrompted = true
+            onRate(orderId)
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(orderId, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -130,15 +149,23 @@ fun OrderTrackingScreen(
                 if (state.isLoading) {
                     CircularProgressIndicator(color = Orange)
                 } else {
-                    Text(
-                        text = state.errorMessage ?: stringResource(R.string.tracking_load_error),
-                        color = TextMuted,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = state.errorMessage ?: stringResource(R.string.tracking_load_error),
+                            color = TextMuted,
+                        )
+                        TextButton(onClick = { vm.start(orderId) }) {
+                            Text(stringResource(R.string.action_retry), color = Orange)
+                        }
+                    }
                 }
             }
         } else {
             TrackingMap(order = order, modifier = Modifier.fillMaxWidth().height(340.dp))
-            StatusHeader(status = order.status)
+            StatusHeader(status = order.status, estimatedDeliveryTime = order.estimatedDeliveryTime)
 
             state.errorMessage?.let { msg ->
                 Row(
@@ -243,7 +270,7 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StatusHeader(status: OrderStatus) {
+private fun StatusHeader(status: OrderStatus, estimatedDeliveryTime: String?) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -262,8 +289,37 @@ private fun StatusHeader(status: OrderStatus) {
             Spacer(Modifier.height(4.dp))
             Text(text = subtext, color = TextTertiary, fontSize = 12.sp)
         }
+        // ETA, shown for active non-pending statuses once the backend has
+        // populated an estimate (mirrors iOS OrderTrackingView's ETA header).
+        if (status.isActive && status != OrderStatus.PENDING && status != OrderStatus.SCHEDULED) {
+            formatEta(estimatedDeliveryTime)?.let { eta ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "ETA: $eta",
+                    color = Orange,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
         Spacer(Modifier.height(12.dp))
         ProgressBar(status = status)
+    }
+}
+
+/**
+ * Formats an RFC-3339 estimated-delivery timestamp as a local `h:mm a` clock
+ * string. Returns null when the value is missing or unparseable so the ETA row
+ * is simply omitted rather than crashing or showing a raw timestamp.
+ */
+private fun formatEta(iso: String?): String? {
+    if (iso.isNullOrBlank()) return null
+    return try {
+        val local = java.time.OffsetDateTime.parse(iso)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+        java.time.format.DateTimeFormatter.ofPattern("h:mm a").format(local)
+    } catch (_: Throwable) {
+        null
     }
 }
 

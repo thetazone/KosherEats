@@ -2,82 +2,11 @@
 
 import { Header } from "@/components/layout/Header";
 import { RestaurantCard } from "@/components/restaurant/RestaurantCard";
-import { useState } from "react";
+import { restaurants as restaurantsApi } from "@/lib/api";
+import type { Restaurant } from "@/types";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const CERTIFICATIONS = ["All", "OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
-
-const MOCK_RESULTS = [
-  {
-    id: "1",
-    name: "Jerusalem Grill",
-    image_url: "",
-    kosher_certification: "OU",
-    cuisine_type: ["Israeli", "Middle Eastern"],
-    rating: 4.8,
-    review_count: 324,
-    delivery_fee: 399,
-    est_delivery_min: 25,
-    est_delivery_max: 40,
-    is_glatt_kosher: true,
-    is_open: true,
-  },
-  {
-    id: "2",
-    name: "Shalom Sushi",
-    image_url: "",
-    kosher_certification: "OK",
-    cuisine_type: ["Japanese", "Sushi"],
-    rating: 4.6,
-    review_count: 189,
-    delivery_fee: 499,
-    est_delivery_min: 30,
-    est_delivery_max: 45,
-    is_glatt_kosher: false,
-    is_open: true,
-  },
-  {
-    id: "3",
-    name: "Kosher Burger Co.",
-    image_url: "",
-    kosher_certification: "Star-K",
-    cuisine_type: ["American", "Burgers"],
-    rating: 4.5,
-    review_count: 412,
-    delivery_fee: 299,
-    est_delivery_min: 20,
-    est_delivery_max: 35,
-    is_glatt_kosher: true,
-    is_open: true,
-  },
-  {
-    id: "5",
-    name: "Pita Palace",
-    image_url: "",
-    kosher_certification: "OU",
-    cuisine_type: ["Israeli", "Fast Food"],
-    rating: 4.3,
-    review_count: 156,
-    delivery_fee: 349,
-    est_delivery_min: 15,
-    est_delivery_max: 30,
-    is_glatt_kosher: true,
-    is_open: true,
-  },
-  {
-    id: "6",
-    name: "Cholent House",
-    image_url: "",
-    kosher_certification: "cRc",
-    cuisine_type: ["Jewish", "Traditional"],
-    rating: 4.7,
-    review_count: 89,
-    delivery_fee: 449,
-    est_delivery_min: 35,
-    est_delivery_max: 50,
-    is_glatt_kosher: true,
-    is_open: false,
-  },
-];
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -85,14 +14,47 @@ export default function SearchPage() {
   const [glattOnly, setGlattOnly] = useState(false);
   const [sortBy, setSortBy] = useState<"rating" | "delivery_time" | "delivery_fee">("rating");
 
-  let filtered = MOCK_RESULTS;
-  if (query) {
-    filtered = filtered.filter(
-      (r) =>
-        r.name.toLowerCase().includes(query.toLowerCase()) ||
-        r.cuisine_type.some((c) => c.toLowerCase().includes(query.toLowerCase()))
-    );
-  }
+  const [results, setResults] = useState<Restaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Guards against a slow earlier request overwriting a newer one's results.
+  const requestSeq = useRef(0);
+
+  // Fetch the real discovery results for the current query. An empty/whitespace
+  // query lists everything; a non-empty query hits the search endpoint (which
+  // 400s on an empty `q`, so we must branch here rather than always searching).
+  const loadResults = useCallback(async (q: string) => {
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const trimmed = q.trim();
+      const data = (trimmed
+        ? await restaurantsApi.search(trimmed)
+        : await restaurantsApi.list()) as Restaurant[];
+      if (seq !== requestSeq.current) return; // a newer request superseded this one
+      setResults(data);
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      setLoadError(err instanceof Error ? err.message : "Failed to load restaurants");
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
+  }, []);
+
+  // Debounce query input (~300ms) so we don't fire a request per keystroke.
+  // This also drives the initial load: it runs on mount with an empty query,
+  // which lists every restaurant.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      void loadResults(query);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query, loadResults]);
+
+  // Client-side refinement over the REAL results from the API.
+  let filtered = results;
   if (selectedCert !== "All") {
     filtered = filtered.filter((r) => r.kosher_certification === selectedCert);
   }
@@ -100,7 +62,7 @@ export default function SearchPage() {
     filtered = filtered.filter((r) => r.is_glatt_kosher);
   }
 
-  filtered.sort((a, b) => {
+  filtered = [...filtered].sort((a, b) => {
     if (sortBy === "rating") return b.rating - a.rating;
     if (sortBy === "delivery_time") return a.est_delivery_min - b.est_delivery_min;
     return a.delivery_fee - b.delivery_fee;
@@ -168,25 +130,52 @@ export default function SearchPage() {
           </select>
         </div>
 
-        {/* Results */}
-        <div className="mb-4 text-dark-400 text-sm">
-          {filtered.length} restaurant{filtered.length !== 1 ? "s" : ""} found
-        </div>
-
-        {filtered.length === 0 ? (
+        {loading ? (
+          <>
+            <div className="mb-4 text-dark-400 text-sm">Searching restaurants…</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="card overflow-hidden animate-pulse">
+                  <div className="h-48 bg-dark-800" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-5 w-2/3 bg-dark-800 rounded" />
+                    <div className="h-4 w-1/2 bg-dark-800 rounded" />
+                    <div className="h-4 w-1/3 bg-dark-800 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : loadError ? (
           <div className="card p-12 text-center">
-            <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <h2 className="text-xl font-bold mb-2">No results found</h2>
-            <p className="text-dark-400">Try adjusting your search or filters.</p>
+            <h2 className="text-xl font-bold mb-2">Couldn&apos;t load restaurants</h2>
+            <p className="text-dark-400 mb-6">{loadError}</p>
+            <button onClick={() => loadResults(query)} className="btn-primary inline-block">
+              Retry
+            </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((restaurant) => (
-              <RestaurantCard key={restaurant.id} restaurant={restaurant} />
-            ))}
-          </div>
+          <>
+            <div className="mb-4 text-dark-400 text-sm">
+              {filtered.length} restaurant{filtered.length !== 1 ? "s" : ""} found
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="card p-12 text-center">
+                <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <h2 className="text-xl font-bold mb-2">No results found</h2>
+                <p className="text-dark-400">Try adjusting your search or filters.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filtered.map((restaurant) => (
+                  <RestaurantCard key={restaurant.id} restaurant={restaurant} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
     </>

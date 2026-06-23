@@ -15,8 +15,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,9 +34,13 @@ import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
 import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.Restaurant
+import com.koshereats.consumer.data.models.formatPrice
+import com.koshereats.consumer.ui.components.CholovYisroelBadge
 import com.koshereats.consumer.ui.components.GlattBadge
 import com.koshereats.consumer.ui.components.KosherBadge
+import com.koshereats.consumer.ui.components.PasYisroelBadge
 import com.koshereats.consumer.ui.theme.*
+import java.util.Locale
 
 @Composable
 fun RestaurantCard(
@@ -126,6 +133,12 @@ fun RestaurantCard(
                     if (restaurant.isGlattKosher) {
                         GlattBadge()
                     }
+                    if (restaurant.isCholovYisroel) {
+                        CholovYisroelBadge()
+                    }
+                    if (restaurant.isPasYisroel) {
+                        PasYisroelBadge()
+                    }
 
                     val cuisines = restaurant.cuisineTypes
                         .mapNotNull { it?.displayName }
@@ -140,6 +153,53 @@ fun RestaurantCard(
                             modifier = Modifier.weight(1f, fill = false),
                         )
                     }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Decision-driving metadata, matching the iOS list card:
+                // star rating + review count, estimated delivery window, and
+                // delivery fee (free delivery highlighted in green).
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = KosherStar,
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.1f", restaurant.rating),
+                            color = TextWhite,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "(${restaurant.reviewCount})",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                        )
+                    }
+
+                    Text(
+                        text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
+                        color = TextSecondary,
+                        fontSize = 13.sp,
+                    )
+
+                    val freeDelivery = restaurant.deliveryFee == 0
+                    Text(
+                        text = if (freeDelivery) "Free Delivery" else restaurant.deliveryFee.formatPrice(),
+                        color = if (freeDelivery) SuccessGreen else TextSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
                 }
             }
         }

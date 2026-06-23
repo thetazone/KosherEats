@@ -25,13 +25,30 @@ class DashboardViewModel: ObservableObject {
     /// Generation counter so a slow fetch started against Restaurant A can't
     /// overwrite state after the seller switches to Restaurant B.
     private var loadGeneration = 0
+    /// Id of the restaurant the currently-displayed `stats` belong to, and
+    /// whether we've ever loaded. Used to avoid blowing away last-good stats on
+    /// every pull-to-refresh: we only zero `stats` when the seller actually
+    /// switched restaurants (mirrors the Android `lastFetchedRestaurantId`
+    /// guard). Otherwise a refresh briefly flashed "$0.00 / 0 orders" until the
+    /// network returned.
+    private var statsRestaurantId: String?
+    private var hasLoadedStatsOnce = false
 
     func load() async {
         loadGeneration &+= 1
         let gen = loadGeneration
         isLoading = true
         errorMessage = nil
-        stats = DashboardStats()
+        // Only reset stats when the selected restaurant actually changed (or on
+        // the very first load). On a same-restaurant refresh we keep the
+        // last-good numbers visible — fetchStats overwrites them in place once
+        // it returns — so the cards never flash zeros mid-service.
+        let currentRestaurantId = SelectedRestaurant.shared.id
+        if !hasLoadedStatsOnce || statsRestaurantId != currentRestaurantId {
+            stats = DashboardStats()
+        }
+        hasLoadedStatsOnce = true
+        statsRestaurantId = currentRestaurantId
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.fetchActiveOrders(generation: gen) }
@@ -111,7 +128,13 @@ class DashboardViewModel: ObservableObject {
             self.activeOrders = filtered
             // Keep the shared VM in sync so Dashboard→OrderDetail
             // navigations can find the order via syncOrderFromVM().
-            sharedOrdersVM.orders = orders
+            // Route through mergeFresh so the dashboard's 30s timer (and
+            // load()) can't stomp an accept/reject/prepare/ready mutation
+            // that's mid-flight in the shared VM — same in-flight guard the
+            // OrdersViewModel poll loop uses. A direct `orders =` assignment
+            // here bypassed that guard and could revert an optimistic update
+            // the seller is watching in SellerOrderDetailView.
+            sharedOrdersVM.mergeFresh(orders)
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription

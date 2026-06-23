@@ -3,6 +3,9 @@ import SwiftUI
 struct MenuItemView: View {
     let item: MenuItem
     let restaurantID: String
+    /// Name of the restaurant this item belongs to. Used to phrase the
+    /// cross-restaurant cart-switch confirmation; nil degrades to generic copy.
+    var restaurantName: String? = nil
     @EnvironmentObject var cartVM: CartViewModel
     @State private var showAddSheet = false
 
@@ -73,7 +76,7 @@ struct MenuItemView: View {
         .accessibilityLabel("\(item.name), \(item.priceFormatted)\(item.isAvailable ? "" : ", unavailable")")
         .accessibilityHint(item.isAvailable ? String(localized: "Double tap to customize and add to cart") : "")
         .sheet(isPresented: $showAddSheet) {
-            AddToCartSheet(item: item, restaurantID: restaurantID)
+            AddToCartSheet(item: item, restaurantID: restaurantID, restaurantName: restaurantName)
         }
     }
 }
@@ -113,6 +116,8 @@ struct KashrusTypeIndicator: View {
 struct AddToCartSheet: View {
     let item: MenuItem
     let restaurantID: String
+    /// Name of this item's restaurant, surfaced in the cart-switch confirmation.
+    var restaurantName: String? = nil
     @EnvironmentObject var cartVM: CartViewModel
     @Environment(\.dismiss) var dismiss
 
@@ -120,6 +125,10 @@ struct AddToCartSheet: View {
     @State private var notes = ""
     /// Selected modifier ids keyed by group id.
     @State private var selection: [String: Set<String>] = [:]
+    /// Add-to-cart error surfaced inline so the user sees it before the sheet
+    /// closes. CartView's alert is the only other renderer of cart errors and
+    /// it isn't on screen while this sheet is up.
+    @State private var inlineError: String?
 
     private var unitPrice: Int {
         let deltas = (item.modifierGroups ?? []).flatMap { group in
@@ -131,13 +140,13 @@ struct AddToCartSheet: View {
     }
 
     private var totalPrice: String {
-        "$\(String(format: "%.2f", Double(unitPrice * quantity) / 100))"
+        Money.dollars(unitPrice * quantity)
     }
 
     private var canAdd: Bool {
-        for group in (item.modifierGroups ?? []) where group.isRequired {
+        for group in (item.modifierGroups ?? []) where group.isRequired || group.minSelections > 0 {
             let picked = (selection[group.id] ?? []).count
-            if picked < max(group.minSelections, 1) { return false }
+            if picked < max(group.minSelections, group.isRequired ? 1 : 0) { return false }
         }
         return true
     }
@@ -222,6 +231,66 @@ struct AddToCartSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .alert(
+            cartVM.pendingRestaurantSwitch?.alertTitle ?? "",
+            isPresented: Binding(
+                get: { cartVM.pendingRestaurantSwitch != nil },
+                set: { presented in
+                    // The system clears the binding when either alert button is
+                    // tapped; if it went false without us consuming the pending
+                    // switch (e.g. a swipe-to-dismiss), treat it as a cancel so
+                    // the existing cart is left untouched.
+                    if !presented, cartVM.pendingRestaurantSwitch != nil {
+                        cartVM.cancelPendingRestaurantSwitch()
+                    }
+                }
+            ),
+            presenting: cartVM.pendingRestaurantSwitch
+        ) { _ in
+            Button(String(localized: "Start New Cart"), role: .destructive) {
+                Task {
+                    inlineError = nil
+                    if let err = await cartVM.confirmPendingRestaurantSwitch() {
+                        inlineError = err
+                    } else {
+                        dismiss()
+                    }
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                cartVM.cancelPendingRestaurantSwitch()
+            }
+        } message: { pending in
+            Text(pending.alertMessage)
+        }
+    }
+
+    /// Routes the add through the ViewModel's restaurant-switch guard. If the
+    /// add would discard a cart from a different restaurant the ViewModel stashes
+    /// the request and publishes `pendingRestaurantSwitch`, which drives the
+    /// confirmation alert; in that case we keep the sheet open. Otherwise the add
+    /// proceeds immediately: we dismiss on success, or keep the sheet open and
+    /// surface the error inline so the user isn't left thinking it worked.
+    private func submitAdd() async {
+        inlineError = nil
+        let err = await cartVM.requestAddItem(
+            menuItemID: item.id,
+            quantity: quantity,
+            notes: notes.isEmpty ? nil : notes,
+            restaurantID: restaurantID,
+            restaurantName: restaurantName,
+            modifierIDs: allSelectedIDs,
+            itemName: item.name,
+            unitPrice: item.price,
+            selectedModifiers: resolvedModifiers
+        )
+        // Awaiting confirmation: leave the sheet up so the alert can present.
+        guard cartVM.pendingRestaurantSwitch == nil else { return }
+        if let err {
+            inlineError = err
+        } else {
+            dismiss()
+        }
     }
 
     private var header: some View {
@@ -260,6 +329,23 @@ struct AddToCartSheet: View {
         VStack(spacing: 0) {
             Divider().background(Color.keDivider)
             VStack(spacing: 12) {
+                if let inlineError {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.keError)
+                        Text(inlineError)
+                            .font(.footnote)
+                            .foregroundColor(.keError)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.keError.opacity(0.12))
+                    .cornerRadius(Theme.cornerRadiusSmall)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(inlineError)
+                }
+
                 HStack(spacing: 24) {
                     Button {
                         if quantity > 1 { quantity -= 1 }
@@ -288,19 +374,7 @@ struct AddToCartSheet: View {
                 }
 
                 Button {
-                    Task {
-                        await cartVM.addItem(
-                            menuItemID: item.id,
-                            quantity: quantity,
-                            notes: notes.isEmpty ? nil : notes,
-                            restaurantID: restaurantID,
-                            modifierIDs: allSelectedIDs,
-                            itemName: item.name,
-                            unitPrice: item.price,
-                            selectedModifiers: resolvedModifiers
-                        )
-                        dismiss()
-                    }
+                    Task { await submitAdd() }
                 } label: {
                     if cartVM.isLoading {
                         ProgressView()
@@ -344,24 +418,25 @@ private struct ModifierGroupSection: View {
                     }
                 }
                 Spacer()
-                Text(group.isRequired ? String(localized: "Required") : rangeLabel)
+                Text(isMandatory ? requiredLabel : rangeLabel)
                     .font(.caption.bold())
-                    .foregroundColor(group.isRequired ? .kePrimary : .keTextMuted)
+                    .foregroundColor(isMandatory ? .kePrimary : .keTextMuted)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background((group.isRequired ? Color.kePrimary : Color.keTextMuted).opacity(0.15))
+                    .background((isMandatory ? Color.kePrimary : Color.keTextMuted).opacity(0.15))
                     .cornerRadius(4)
             }
 
             VStack(spacing: 0) {
-                ForEach(group.modifiers.sorted(by: { $0.sortOrder < $1.sortOrder })) { mod in
+                let sortedModifiers = group.modifiers.sorted { $0.sortOrder < $1.sortOrder }
+                ForEach(sortedModifiers) { mod in
                     ModifierRow(
                         modifier: mod,
                         isSelected: selected.contains(mod.id),
                         style: group.isSingleSelect ? .radio : .checkbox,
                         action: { toggle(mod) },
                     )
-                    if mod.id != group.modifiers.last?.id {
+                    if mod.id != sortedModifiers.last?.id {
                         Divider().background(Color.keDivider)
                     }
                 }
@@ -369,6 +444,19 @@ private struct ModifierGroupSection: View {
             .background(Color.keCard)
             .cornerRadius(Theme.cornerRadiusMedium)
         }
+    }
+
+    /// Mirrors AddToCartSheet.canAdd's gate: a group is mandatory if the seller
+    /// flagged it required OR set a positive minimum. Keeps the badge in sync
+    /// with the disabled Add button so a min'd "optional" group isn't a dead-end.
+    private var isMandatory: Bool { group.isRequired || group.minSelections > 0 }
+
+    /// Required badge text. When a minimum > 1 is set, advertise it so the user
+    /// knows how many picks are needed before Add enables.
+    private var requiredLabel: String {
+        group.minSelections > 1
+            ? String(localized: "Choose at least \(group.minSelections)")
+            : String(localized: "Required")
     }
 
     private var rangeLabel: String {

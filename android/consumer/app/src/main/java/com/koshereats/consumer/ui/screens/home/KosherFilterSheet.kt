@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BakeryDining
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Button
@@ -144,7 +145,7 @@ fun KosherFilterSheet(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "Select one that works for you",
+                        text = "Select any that work for you",
                         color = TextTertiary,
                         fontSize = 14.sp,
                     )
@@ -162,7 +163,7 @@ fun KosherFilterSheet(
                                 cert = cert,
                                 selected = cert in certs,
                                 onToggle = {
-                                    certs = if (cert in certs) emptySet() else setOf(cert)
+                                    certs = if (cert in certs) certs - cert else certs + cert
                                 },
                             )
                         }
@@ -303,7 +304,7 @@ private fun CertCard(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Radio circle
+        // Checkbox circle (multi-select — any combination of certs may be chosen)
         Box(
             modifier = Modifier
                 .size(22.dp)
@@ -317,11 +318,11 @@ private fun CertCard(
             contentAlignment = Alignment.Center,
         ) {
             if (selected) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(TextWhite),
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = TextWhite,
+                    modifier = Modifier.size(14.dp),
                 )
             }
         }

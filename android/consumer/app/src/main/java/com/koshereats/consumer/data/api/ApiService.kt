@@ -182,6 +182,16 @@ interface ApiService {
     @GET("orders/{id}")
     suspend fun getOrder(@Path("id") orderId: String): Response<Order>
 
+    /**
+     * Recover the order created for a given Stripe PaymentIntent. Idempotent
+     * fallback when [createOrder] fails to return after a confirmed payment
+     * (e.g. network drop): the client retries with the PaymentIntent id it just
+     * confirmed. Backend scopes the lookup to the calling user and returns the
+     * full Order (with order_items) or 404 if none exists yet.
+     */
+    @GET("orders/by-payment-intent/{pi}")
+    suspend fun getOrderByPaymentIntent(@Path("pi") paymentIntentId: String): Response<Order>
+
     @PATCH("orders/{id}/cancel")
     suspend fun cancelOrder(@Path("id") orderId: String): Response<Order>
 

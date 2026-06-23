@@ -3,6 +3,9 @@ import SwiftUI
 struct OrderDetailView: View {
     let orderID: String
     @StateObject private var vm = OrderViewModel()
+    /// Gates the destructive cancel behind a confirmation dialog so a single
+    /// accidental tap can't irreversibly cancel a paid order.
+    @State private var showCancelConfirmation = false
 
     var body: some View {
         ZStack {
@@ -67,15 +70,42 @@ struct OrderDetailView: View {
                         // Price breakdown
                         priceBreakdown(order: order)
 
-                        // Cancel button
-                        if order.status == .pending || order.status == .accepted {
-                            Button {
-                                Task { await vm.cancelOrder(id: order.id) }
+                        // Cancel button. `.scheduled` is included so a customer
+                        // who booked dinner in advance can cancel and be refunded
+                        // in-app. NOTE: the backend CancelOrder whitelist
+                        // (orders.go: status IN (pending, accepted)) currently does
+                        // NOT include models.OrderScheduled, so a scheduled-order
+                        // cancel returns 400 until that companion change lands —
+                        // see backendFollowups. Until then the failure surfaces
+                        // gracefully via the error alert below rather than silently
+                        // hiding the action.
+                        if order.status == .scheduled || order.status == .pending || order.status == .accepted {
+                            Button(role: .destructive) {
+                                showCancelConfirmation = true
                             } label: {
-                                Text("Cancel Order")
+                                if vm.isCancelling {
+                                    ProgressView()
+                                        .frame(maxWidth: .infinity)
+                                } else {
+                                    Text("Cancel Order")
+                                }
                             }
                             .buttonStyle(KESecondaryButtonStyle())
+                            .disabled(vm.isCancelling)
                             .padding(.horizontal)
+                            .confirmationDialog(
+                                String(localized: "Cancel this order?"),
+                                isPresented: $showCancelConfirmation,
+                                titleVisibility: .visible
+                            ) {
+                                Button(String(localized: "Cancel Order"), role: .destructive) {
+                                    Haptics.impact(.medium)
+                                    Task { await vm.cancelOrder(id: order.id) }
+                                }
+                                Button(String(localized: "Keep Order"), role: .cancel) {}
+                            } message: {
+                                Text(String(localized: "This can't be undone. You'll be refunded to your original payment method."))
+                            }
                         }
 
                         // Order ID
@@ -94,6 +124,18 @@ struct OrderDetailView: View {
         }
         .navigationTitle("Order Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            String(localized: "Couldn't cancel order"),
+            isPresented: Binding(
+                get: { vm.cancelError != nil },
+                set: { if !$0 { vm.cancelError = nil } }
+            ),
+            presenting: vm.cancelError
+        ) { _ in
+            Button(String(localized: "OK"), role: .cancel) { vm.cancelError = nil }
+        } message: { message in
+            Text(message)
+        }
         .task {
             await vm.loadOrder(id: orderID)
             if vm.currentOrder?.status.isActive == true {
@@ -138,7 +180,9 @@ struct OrderDetailView: View {
         .cornerRadius(Theme.cornerRadiusLarge)
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Order status: \(order.status.displayName), step \(order.status.stepIndex + 1) of 6")
+        .accessibilityLabel(order.status.stepIndex >= 0
+            ? "Order status: \(order.status.displayName), step \(order.status.stepIndex + 1) of 6"
+            : "Order status: \(order.status.displayName)")
     }
 
     private func progressSteps(currentStep: Int, fulfillmentType: String = "delivery") -> some View {
@@ -297,11 +341,14 @@ struct OrderDetailView: View {
     private func priceBreakdown(order: Order) -> some View {
         VStack(spacing: 10) {
             SummaryRow(label: "Subtotal", value: order.subtotalFormatted)
+            if order.discount > 0 {
+                SummaryRow(label: "Savings", value: order.discountFormatted)
+            }
             SummaryRow(label: "Delivery Fee", value: order.deliveryFeeFormatted)
             SummaryRow(label: "Service Fee", value: order.serviceFeeFormatted)
             SummaryRow(label: "Tax", value: order.taxFormatted)
             if let tip = order.courierTip, tip > 0 {
-                SummaryRow(label: "Driver Tip", value: "$\(String(format: "%.2f", Double(tip) / 100))")
+                SummaryRow(label: "Driver Tip", value: Money.dollars(tip))
             }
 
             Divider().background(Color.keDivider)

@@ -42,13 +42,20 @@ final class SelectedRestaurant: ObservableObject {
     }
 
     /// Appends ?restaurant_id=xxx to a path if a selection is set.
-    /// Uses `.urlQueryAllowed` because the id is a query-parameter value,
-    /// not a URL path segment. This correctly encodes characters like `&`,
-    /// `=`, and `+` that are meaningful in a query string context.
+    /// Builds the value with URLComponents/URLQueryItem so the id is escaped
+    /// as a query-parameter *value*. Note `URLComponents.query` does NOT
+    /// percent-encode `&`, `=`, or `+` (they are all legal in a query); use
+    /// `.percentEncodedQuery` and escape `+`->%2B explicitly below.
     func appendQuery(to path: String) -> String {
-        guard let id = id,
-              let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return path }
+        guard let id = id else { return path }
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "restaurant_id", value: id)]
+        // URLComponents.query leaves `+` literal and only `.percentEncodedQuery`
+        // escapes `&`/`=`; Go's url.Query() decodes a bare `+` to a space. Use the
+        // percent-encoded query and escape `+`->%2B (mirrors getOrders()). Any real
+        // `%` is already `%25` here, so there is no double-encoding.
+        guard let encodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") else { return path }
         let sep = path.contains("?") ? "&" : "?"
-        return "\(path)\(sep)restaurant_id=\(encoded)"
+        return "\(path)\(sep)\(encodedQuery)"
     }
 }

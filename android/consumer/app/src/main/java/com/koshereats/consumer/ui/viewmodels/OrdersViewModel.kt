@@ -48,13 +48,29 @@ class OrdersViewModel @Inject constructor(
                     }
                     is Resource.Success -> {
                         _uiState.update { state ->
-                            val newItems = if (page == 1) result.data else state.orders + result.data
+                            // Defensive dedupe: the backend paginates by cursor/limit and
+                            // currently ignores the page/per_page params the client sends, so a
+                            // "next page" can return rows we already hold. Appending blind would
+                            // produce duplicate ids and crash the LazyColumn (key = { it.id }).
+                            val newItems = if (page == 1) {
+                                result.data
+                            } else {
+                                (state.orders + result.data).distinctBy { it.id }
+                            }
+                            // If a follow-up page added no genuinely new rows, there is nothing
+                            // more to load — stop, so we don't loop re-fetching the same batch.
+                            val addedNew = newItems.size > state.orders.size
+                            val hasMore = if (page == 1) {
+                                result.data.size >= ApiPaging.ORDERS_PAGE_SIZE
+                            } else {
+                                addedNew && result.data.size >= ApiPaging.ORDERS_PAGE_SIZE
+                            }
                             state.copy(
                                 orders = newItems,
                                 isLoading = false,
                                 isRefreshing = false,
                                 currentPage = page,
-                                hasMore = result.data.size >= ApiPaging.ORDERS_PAGE_SIZE,
+                                hasMore = hasMore,
                             )
                         }
                     }

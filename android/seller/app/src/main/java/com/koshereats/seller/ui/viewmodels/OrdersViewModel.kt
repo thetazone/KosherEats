@@ -1,10 +1,16 @@
 package com.koshereats.seller.ui.viewmodels
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
@@ -61,6 +67,13 @@ class OrdersViewModel @Inject constructor(
     private var isFirstPoll = true
     @Volatile private var isPollingActive = false
 
+    // New-order alert state (mirrors iOS playNewOrderAlert). Pending IDs already seen, so we
+    // only ring on genuinely new tickets; seeded on the first successful poll without alerting.
+    private var knownPendingIds: Set<String> = emptySet()
+    private var hasSeededPending = false
+    // Timestamp of the last audible alert; debounces multiple new pendings in one poll tick.
+    private var lastAlertElapsedMs = 0L
+
     init {
         loadOrders()
         viewModelScope.launch {
@@ -69,6 +82,11 @@ class OrdersViewModel @Inject constructor(
                 // cannot land into the freshly-cleared state.
                 pollingJob?.cancel()
                 pollingJob = null
+                // Reset new-order alert tracking: the next poll re-seeds against the new
+                // restaurant's pending tickets so switching restaurants never rings on
+                // pre-existing orders.
+                knownPendingIds = emptySet()
+                hasSeededPending = false
                 _state.value = OrdersState()
                 loadOrders()
                 if (isPollingActive) launchPollingJob()
@@ -124,9 +142,16 @@ class OrdersViewModel @Inject constructor(
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                // Cancel the sleeping backoff and restart immediately on reconnect.
-                pollingJob?.cancel()
-                launchPollingJob()
+                // onAvailable fires on a ConnectivityManager binder/handler thread, but every
+                // other pollingJob mutation (start/stop/restaurant-switch) runs on Main. Hop to
+                // viewModelScope (Main.immediate) so all reads/writes of pollingJob serialize on
+                // one thread — otherwise a cross-thread cancel/relaunch can orphan a poll loop.
+                viewModelScope.launch {
+                    if (!isPollingActive) return@launch
+                    // Cancel the sleeping backoff and restart immediately on reconnect.
+                    pollingJob?.cancel()
+                    launchPollingJob()
+                }
             }
         }
         networkCallback = cb
@@ -210,6 +235,19 @@ class OrdersViewModel @Inject constructor(
             // orders belong to the previous restaurant and would briefly leak in.
             val restaurantStillMatches = NetworkModule.cachedRestaurantId == restaurantAtStart
             if (response.isSuccessful && restaurantStillMatches) {
+                // Brand-new pending detection mirrors iOS: compare the freshly fetched page-1
+                // pending IDs against the set we've already seen. On the very first poll after
+                // launch/restaurant-switch we only seed the set (no alert) so pre-existing
+                // tickets don't ring. Computed outside _state.update so the update lambda stays
+                // side-effect-free and re-runnable.
+                val freshPending = (response.body() ?: emptyList())
+                    .filter { it.status == OrderStatus.PENDING }
+                    .map { it.id }
+                    .toSet()
+                val brandNewPending = if (hasSeededPending) freshPending - knownPendingIds else emptySet()
+                knownPendingIds = freshPending
+                hasSeededPending = true
+                if (brandNewPending.isNotEmpty()) alertNewOrder()
                 _state.update { current ->
                     if (current.selectedFilter == filterAtStart && current.currentPage >= pageAtStart) {
                         val newOrders = response.body() ?: current.orders
@@ -267,6 +305,38 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    // Audible + haptic alert on a brand-new pending ticket, the Android counterpart of iOS's
+    // playNewOrderAlert. Counter phones are often on silent, so this is independent of the FCM
+    // notification path (which can be permission-denied or backgrounded). Debounced to 2s so
+    // several new pendings landing in one poll tick don't stack overlapping rings.
+    private fun alertNewOrder() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastAlertElapsedMs < 2_000L) return
+        lastAlertElapsedMs = now
+        runCatching {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            RingtoneManager.getRingtone(context, uri)?.apply {
+                audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                play()
+            }
+        }
+        runCatching {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            }
+            // Distinctive triple buzz, echoing iOS's triple-ping cadence (minSdk 26 → always O+).
+            val pattern = longArrayOf(0, 200, 150, 200, 150, 200)
+            vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        }
+    }
+
     fun loadOrders(status: OrderStatus? = null) {
         loadJob?.cancel()
         loadMoreJob?.cancel()
@@ -284,9 +354,15 @@ class OrdersViewModel @Inject constructor(
                 val response = apiService.getOrders(status = statusStr, page = 1, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     val body = response.body() ?: emptyList()
+                    // The backend ignores the `status` query param, so it returns the newest
+                    // PAGE_SIZE orders of ALL statuses. Filter client-side so the selected chip
+                    // shows only matching orders immediately (matching pollSilently's merge).
+                    val filtered = if (status != null) body.filter { it.status == status } else body
                     _state.update { it.copy(
-                        orders = body,
+                        orders = filtered,
                         isLoading = false,
+                        // hasMorePages keys on the raw (unfiltered) page size: a full page means
+                        // the server may hold older rows beyond this window worth paging into.
                         hasMorePages = body.size == PAGE_SIZE,
                         currentPage = 1,
                     ) }
@@ -322,10 +398,25 @@ class OrdersViewModel @Inject constructor(
                         if (current.selectedFilter != filterAtStart) {
                             current.copy(isLoadingMore = false)
                         } else {
+                            // De-dup by id before appending: SellerOrdersScreen renders with
+                            // items(key = { it.id }) and Compose crashes on duplicate keys. Dupes
+                            // arise because the backend pagination ignores `page` (it only honors
+                            // `cursor`), so each load-more returns the same newest window, and even
+                            // with real cursor paging the OFFSET window shifts as new orders arrive.
+                            val existingIds = current.orders.map { it.id }.toSet()
+                            val unseen = body.filter { it.id !in existingIds }
+                            // Apply the status filter client-side — the backend ignores `status`.
+                            val unseenFiltered = if (filterAtStart != null) {
+                                unseen.filter { it.status == filterAtStart }
+                            } else unseen
                             current.copy(
-                                orders = current.orders + body,
+                                orders = current.orders + unseenFiltered,
                                 currentPage = pageToLoad,
-                                hasMorePages = body.size == PAGE_SIZE,
+                                // Terminate pagination when the page brought no unseen ids: the
+                                // server returned a window we already hold, so paging further would
+                                // loop forever fetching duplicates. A full page of new ids means
+                                // more may remain.
+                                hasMorePages = unseen.isNotEmpty() && body.size == PAGE_SIZE,
                                 isLoadingMore = false,
                             )
                         }
@@ -469,16 +560,6 @@ class OrdersViewModel @Inject constructor(
             return
         }
         doOrderApiCall(orderId) { apiService.rejectOrder(orderId, mapOf("reason" to reason)) }
-    }
-
-    fun cancelInProgress(orderId: String) {
-        val order = _state.value.selectedOrder?.takeIf { it.id == orderId }
-            ?: _state.value.orders.find { it.id == orderId }
-        if (order?.status != OrderStatus.ACCEPTED && order?.status != OrderStatus.PREPARING) {
-            _state.update { it.copy(error = "Can only cancel an accepted or preparing order") }
-            return
-        }
-        doOrderApiCall(orderId) { apiService.cancelOrder(orderId) }
     }
 
     private fun doOrderApiCall(orderId: String, call: suspend () -> Response<Order>) {
@@ -626,6 +707,10 @@ class OrdersViewModel @Inject constructor(
                                 if (order.id in current.pendingOrderIds)
                                     current.orders.find { it.id == order.id } ?: order
                                 else order
+                            // The backend ignores `status`; filter client-side so a refreshed
+                            // filtered view shows only matching orders (consistent with loadOrders).
+                            }.let { list ->
+                                if (filterAtStart != null) list.filter { it.status == filterAtStart } else list
                             }
                             current.copy(
                                 orders = orders,

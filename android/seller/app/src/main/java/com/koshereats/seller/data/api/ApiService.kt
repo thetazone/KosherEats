@@ -79,10 +79,10 @@ interface ApiService {
         @Body body: Map<String, String?>,
     ): Response<Order>
 
-    @PATCH("seller/orders/{orderId}/cancel")
-    suspend fun cancelOrder(
-        @Path("orderId") orderId: String,
-    ): Response<Order>
+    // NOTE: There is intentionally no seller `cancel` endpoint. The backend only
+    // exposes /cancel under the consumer order group (CancelOrder), not under
+    // /seller/orders. Sellers terminate an order via /reject (PENDING only). The
+    // Cancel-in-progress affordance was removed from the UI because it 404'd.
 
     @PATCH("seller/orders/{orderId}/pickup")
     suspend fun sellerPickupOrder(
@@ -133,6 +133,24 @@ interface ApiService {
         @Path("itemId") itemId: String,
         @Body body: Map<String, Boolean>,
     ): Response<MenuItem>
+
+    // --- Menu import (UberEats) ---
+
+    /**
+     * Enqueue an async menu import from an UberEats store URL. Returns the
+     * 202 job row; the actual scrape+import is drained out-of-process.
+     */
+    @POST("seller/menu/imports")
+    suspend fun createMenuImport(
+        @Body body: CreateMenuImportBody,
+    ): Response<MenuImport>
+
+    /** Recent import jobs for the active restaurant, newest first. */
+    @GET("seller/menu/imports")
+    suspend fun listMenuImports(): Response<List<MenuImport>>
+
+    @GET("seller/menu/imports/{id}")
+    suspend fun getMenuImport(@Path("id") id: String): Response<MenuImport>
 
     @POST("seller/menu/items/{itemId}/modifier-groups")
     suspend fun createModifierGroup(
@@ -201,8 +219,8 @@ interface ApiService {
     @POST("devices/register")
     suspend fun registerDevice(@Body body: RegisterDeviceRequest): Response<Map<String, String>>
 
-    @DELETE("devices/{token}")
-    suspend fun unregisterDevice(@Path("token") token: String): Response<Unit>
+    @POST("devices/unregister")
+    suspend fun unregisterDevice(@Body body: RegisterDeviceRequest): Response<Unit>
 
     // --- POS Integrations ---
 

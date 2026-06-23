@@ -124,14 +124,15 @@ struct DeliveryMapView: View {
                     Task {
                         didDeliver = true
                         await vm.deliver(liveOrder)
-                        if vm.errorMessage != nil { didDeliver = false }
+                        if vm.active.contains(where: { $0.id == order.id }) { didDeliver = false }
                     }
                 }
             }
             Button("Skip & Deliver") {
                 Task {
+                    didDeliver = true
                     await vm.deliver(liveOrder)
-                    if !vm.active.contains(where: { $0.id == order.id }) { didDeliver = true }
+                    if vm.active.contains(where: { $0.id == order.id }) { didDeliver = false }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -153,7 +154,7 @@ struct DeliveryMapView: View {
                     let proofURL = try await uploadImageWithTimeout(image)
                     didDeliver = true
                     await vm.deliver(liveOrder, proofURL: proofURL)
-                    if vm.errorMessage != nil { didDeliver = false }
+                    if vm.active.contains(where: { $0.id == order.id }) { didDeliver = false }
                 } catch is UploadTimedOut {
                     guard !Task.isCancelled else { return }
                     uploadError = "Photo upload timed out. You can retry or skip."
@@ -177,7 +178,7 @@ struct DeliveryMapView: View {
                         let proofURL = try await uploadImageWithTimeout(image)
                         didDeliver = true
                         await vm.deliver(liveOrder, proofURL: proofURL)
-                        if vm.errorMessage != nil { didDeliver = false }
+                        if vm.active.contains(where: { $0.id == order.id }) { didDeliver = false }
                     } catch is UploadTimedOut {
                         uploadError = "Photo upload timed out. You can retry or skip."
                     } catch {
@@ -188,8 +189,9 @@ struct DeliveryMapView: View {
             Button("Skip & Deliver") {
                 uploadError = nil
                 Task {
+                    didDeliver = true
                     await vm.deliver(liveOrder)
-                    if !vm.active.contains(where: { $0.id == order.id }) { didDeliver = true }
+                    if vm.active.contains(where: { $0.id == order.id }) { didDeliver = false }
                 }
             }
             Button("Cancel", role: .cancel) {

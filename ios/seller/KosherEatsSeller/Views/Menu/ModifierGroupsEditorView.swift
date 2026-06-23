@@ -169,6 +169,11 @@ struct ModifierGroupEditorView: View {
     var onSaved: (ModifierGroup) -> Void
     var onDeleted: ((String) -> Void)? = nil
 
+    /// Prefix for client-only ids assigned to not-yet-saved options so each row
+    /// has a stable, unique SwiftUI identity. Stripped back to `nil` before the
+    /// request is sent so the backend treats them as inserts.
+    private static let newOptionIDPrefix = "new-"
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String = ""
@@ -231,6 +236,7 @@ struct ModifierGroupEditorView: View {
                             }
                             Button {
                                 options.append(Modifier(
+                                    id: Self.newOptionIDPrefix + UUID().uuidString,
                                     groupId: existing?.id ?? "",
                                     name: "",
                                     priceDelta: 0,
@@ -320,8 +326,7 @@ struct ModifierGroupEditorView: View {
                 TextField("0.00", text: Binding(
                     get: { String(format: "%.2f", Double(opt.priceDelta) / 100) },
                     set: { newVal in
-                        let filtered = newVal.filter { $0.isNumber || $0 == "." }
-                        let cents = max(0, Int(round((Double(filtered) ?? 0) * 100)))
+                        let cents = max(0, CurrencyFormat.parseCents(newVal) ?? 0)
                         binding.wrappedValue.priceDelta = cents
                     }
                 ))
@@ -333,9 +338,10 @@ struct ModifierGroupEditorView: View {
             }
 
             Button {
-                if let idx = options.firstIndex(where: { $0.id == opt.id || ($0.id.isEmpty && $0.name == opt.name) }) {
-                    options.remove(at: idx)
-                }
+                // Every row now has a unique id (server id, or a local "new-"
+                // id for unsaved options), so matching by id removes exactly
+                // the tapped row.
+                options.removeAll { $0.id == opt.id }
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundColor(.keError)
@@ -385,9 +391,12 @@ struct ModifierGroupEditorView: View {
             maxSelections: maxSelections,
             sortOrder: sortOrder,
             modifiers: options.enumerated().map { (idx, opt) in
-                // Send blank id for new options so the backend inserts them.
-                ModifierOptionRequest(
-                    id: opt.id.isEmpty ? nil : opt.id,
+                // Send nil id for new options (blank, or a client-only "new-"
+                // id) so the backend inserts them rather than failing to update
+                // a non-existent row.
+                let isNew = opt.id.isEmpty || opt.id.hasPrefix(Self.newOptionIDPrefix)
+                return ModifierOptionRequest(
+                    id: isNew ? nil : opt.id,
                     name: opt.name,
                     priceDelta: opt.priceDelta,
                     isDefault: opt.isDefault,

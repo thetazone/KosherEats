@@ -120,6 +120,27 @@ actor APIService {
     /// Fly.io cold-starts or momentary unavailability.
     private let maxRetries = 1
 
+    /// Whether a method may be auto-retried after a transient failure that can
+    /// occur *after* the backend committed the write (timeout, connection-lost,
+    /// 502/503/504). GET/PUT/DELETE are idempotent by HTTP semantics, and the
+    /// seller PATCH state transitions are guarded by the backend state machine
+    /// (re-applying them is a no-op/400), so they are safe to replay. POST is
+    /// not — replaying it would duplicate the created resource.
+    private func canRetryNonIdempotent(_ method: String) -> Bool {
+        method != "POST"
+    }
+
+    /// Decides whether a `URLError` should trigger a retry for the given
+    /// method. `.notConnectedToInternet` means the request never left the
+    /// device, so no server-side effect is possible — safe to retry for any
+    /// method, including POST. `.timedOut`/`.networkConnectionLost` can land
+    /// after the backend committed the write, so they are only retried for
+    /// idempotent methods.
+    private func shouldRetry(_ error: URLError, isIdempotent: Bool) -> Bool {
+        if error.code == .notConnectedToInternet { return true }
+        return isIdempotent && [.timedOut, .networkConnectionLost].contains(error.code)
+    }
+
     private func request<T: Decodable>(
         _ method: String,
         path: String,
@@ -149,13 +170,19 @@ actor APIService {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
+        // Only idempotent methods may be auto-retried after a transient failure
+        // or 5xx that can land *after* the backend committed the write — see
+        // canRetryNonIdempotent / shouldRetry. POST is still retried when the
+        // request never left the device (.notConnectedToInternet).
+        let isIdempotent = canRetryNonIdempotent(method)
+
         var lastError: Error = APIError.networkError("Unknown error")
         for attempt in 0...maxRetries {
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await session.data(for: req)
             } catch let urlError as URLError where attempt < maxRetries &&
-                [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+                shouldRetry(urlError, isIdempotent: isIdempotent) {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 continue
             } catch {
@@ -166,8 +193,10 @@ actor APIService {
                 throw APIError.invalidResponse
             }
 
-            // Retry on transient server errors (cold-start 502/503/504)
-            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+            // Retry on transient server errors (cold-start 502/503/504), but
+            // only for idempotent methods — a 502/504 can land after the write
+            // committed, so retrying a POST risks a duplicate.
+            if isIdempotent, [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
                 try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
                 continue
             }
@@ -180,7 +209,7 @@ actor APIService {
                 if !retried, refreshToken != nil {
                     let refreshed = await performTokenRefresh()
                     if refreshed {
-                        return try await request(method, path: path, body: body, retried: true)
+                        return try await request(method, path: path, body: body, headers: headers, retried: true)
                     }
                 }
                 throw APIError.unauthorized
@@ -268,13 +297,19 @@ actor APIService {
             req.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
+        // Only idempotent methods may be auto-retried after a transient failure
+        // or 5xx that can land *after* the backend committed the write — see
+        // canRetryNonIdempotent / shouldRetry. POST is still retried when the
+        // request never left the device (.notConnectedToInternet).
+        let isIdempotent = canRetryNonIdempotent(method)
+
         var lastError: Error = APIError.networkError("Unknown error")
         for attempt in 0...maxRetries {
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await session.data(for: req)
             } catch let urlError as URLError where attempt < maxRetries &&
-                [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+                shouldRetry(urlError, isIdempotent: isIdempotent) {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 continue
             } catch {
@@ -285,8 +320,10 @@ actor APIService {
                 throw APIError.invalidResponse
             }
 
-            // Retry on transient server errors (cold-start 502/503/504)
-            if [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
+            // Retry on transient server errors (cold-start 502/503/504), but
+            // only for idempotent methods — a 502/504 can land after the write
+            // committed, so retrying a POST risks a duplicate.
+            if isIdempotent, [502, 503, 504].contains(httpResponse.statusCode), attempt < maxRetries {
                 try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5s
                 continue
             }
@@ -341,6 +378,39 @@ actor APIService {
     func checkEmail(_ email: String) async throws -> EmailCheckResponse {
         let body = ["email": email, "role": "seller"]
         return try await request("POST", path: "/auth/email/check", body: body)
+    }
+
+    // MARK: - Password reset
+
+    struct MessageResponse: Decodable { let message: String }
+
+    /// Email a 6-digit reset code. The backend always 200s (no account-enumeration).
+    ///
+    /// Sends role="seller" + vertical="kosher" — the same scope this app uses
+    /// for /login — so the reset targets the seller-side account, not a consumer
+    /// account that happens to share the email. The account key is
+    /// (email, role, vertical), not email alone.
+    @discardableResult
+    func forgotPassword(email: String) async throws -> MessageResponse {
+        try await request("POST", path: "/auth/password/forgot",
+                          body: ["email": email, "role": "seller", "vertical": "kosher"])
+    }
+
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> MessageResponse {
+        struct Body: Encodable {
+            let email: String
+            let code: String
+            let newPassword: String
+            let role: String
+            let vertical: String
+            enum CodingKeys: String, CodingKey {
+                case email, code, role, vertical
+                case newPassword = "new_password"
+            }
+        }
+        return try await request("POST", path: "/auth/password/reset",
+                                 body: Body(email: email, code: code, newPassword: newPassword,
+                                            role: "seller", vertical: "kosher"))
     }
 
     /// Returns the currently authenticated user. Used on cold start to restore
@@ -452,6 +522,7 @@ actor APIService {
         let isCholovYisroel: Bool
         let isPasYisroel: Bool
         let isGlattKosher: Bool
+        var fromImport: Bool = false
 
         enum CodingKeys: String, CodingKey {
             case name, description, phone, email, street, city, state
@@ -465,6 +536,7 @@ actor APIService {
             case isCholovYisroel = "is_cholov_yisroel"
             case isPasYisroel = "is_pas_yisroel"
             case isGlattKosher = "is_glatt_kosher"
+            case fromImport = "from_import"
         }
     }
 
@@ -514,6 +586,33 @@ actor APIService {
 
     func deleteCategory(id: String) async throws {
         try await requestVoid("DELETE", path: await sellerPath("/seller/menu/categories/\(id)"))
+    }
+
+    // MARK: - Menu import
+
+    struct CreateMenuImportBody: Encodable {
+        let source: String
+        let sourceURL: String
+        enum CodingKeys: String, CodingKey {
+            case source
+            case sourceURL = "source_url"
+        }
+    }
+
+    /// Enqueue an async menu import from an UberEats store URL. Returns the
+    /// 202 job row; the actual scrape+import is drained out-of-process.
+    func createMenuImport(sourceURL: String) async throws -> MenuImport {
+        try await request("POST", path: await sellerPath("/seller/menu/imports"),
+                          body: CreateMenuImportBody(source: "ubereats", sourceURL: sourceURL))
+    }
+
+    /// Recent import jobs for the active restaurant, newest first.
+    func listMenuImports() async throws -> [MenuImport] {
+        try await request("GET", path: await sellerPath("/seller/menu/imports"))
+    }
+
+    func getMenuImport(id: String) async throws -> MenuImport {
+        try await request("GET", path: await sellerPath("/seller/menu/imports/\(id)"))
     }
 
     // MARK: - POS Integrations
@@ -615,12 +714,36 @@ actor APIService {
 
     // MARK: - Orders
 
-    func getOrders(status: String? = nil) async throws -> [Order] {
-        var path = "/seller/orders"
-        if let s = status,
-           let encoded = s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-            path += "?status=\(encoded)"
-        }
+    /// Fetches seller orders.
+    ///
+    /// The backend caps each page at 50 by default (max 100) and exposes
+    /// `created_at` cursor pagination. We request the maximum page size so that
+    /// active tickets can't silently fall off a busy night's list, and surface
+    /// `cursor` so callers can page through `Completed`/`All` history with a
+    /// load-more affordance. Pass the oldest fetched order's `created_at`
+    /// (RFC3339 with fractional seconds) as `cursor` to fetch the next page.
+    ///
+    /// - Parameters:
+    ///   - status: optional status filter (e.g. the active set) so active
+    ///     orders are fetched independently of the recency cap.
+    ///   - limit: page size (clamped server-side to 1...100). Defaults to the
+    ///     backend maximum.
+    ///   - cursor: `created_at` of the last order from the previous page;
+    ///     returns orders strictly older than it.
+    func getOrders(status: String? = nil, limit: Int = 100, cursor: String? = nil) async throws -> [Order] {
+        var query: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let status { query.append(URLQueryItem(name: "status", value: status)) }
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+
+        var components = URLComponents()
+        components.queryItems = query
+        // URLComponents leaves `+` unencoded in query values, but Go's
+        // r.URL.Query() decodes a bare `+` to a space, so an RFC3339 cursor
+        // offset (e.g. +00:00) would fail to parse and 400 the page. Escape `+`
+        // to %2B on the FINAL encoded query string — any real `%` is already
+        // %25 here, so there is no double-encoding.
+        let rawQuery = components.query.map { $0.replacingOccurrences(of: "+", with: "%2B") }
+        let path = "/seller/orders" + (rawQuery.map { "?\($0)" } ?? "")
         return try await request("GET", path: await sellerPath(path))
     }
 
@@ -700,6 +823,18 @@ actor APIService {
     func registerDevice(token: String, platform: String, app: String) async throws {
         struct Body: Encodable { let token: String; let platform: String; let app: String }
         try await requestVoid("POST", path: "/devices/register",
+                              body: Body(token: token, platform: platform, app: app))
+    }
+
+    /// Removes this device's APNs token from the backend so a logged-out phone
+    /// stops receiving the previous user's order/chat pushes. Must run while the
+    /// bearer token is still set — the backend keys the delete on
+    /// (user_id, token, app), so AuthViewModel calls this BEFORE clearing tokens.
+    /// Mirrors Android's `ApiService.unregisterDevice` + the `/devices/unregister`
+    /// route in cmd/api/main.go.
+    func unregisterDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid("POST", path: "/devices/unregister",
                               body: Body(token: token, platform: platform, app: app))
     }
 }

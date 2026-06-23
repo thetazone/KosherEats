@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.models.*
 import com.koshereats.consumer.data.session.SessionManager
@@ -72,7 +73,15 @@ data class CartUiState(
 }
 
 private data class CartSnapshot(
+    // Explicit JSON keys keep the persisted snapshot stable across app updates.
+    // CartSnapshot lives in ui.viewmodels, which the proguard keep rules don't
+    // cover, so in minified release builds R8 obfuscates these field names. Gson
+    // uses the field name as the JSON key by default, so without @SerializedName
+    // the persisted key would be mapping-dependent (e.g. "a"/"b") and a different
+    // R8 mapping after an update would fail to deserialize the old snapshot.
+    @SerializedName("carts")
     val carts: Map<String, Cart>,
+    @SerializedName("active_restaurant_id")
     val activeRestaurantId: String?,
 )
 
@@ -159,7 +168,7 @@ class CartViewModel @Inject constructor(
         restaurantName: String,
         restaurantImageUrl: String? = null,
         quantity: Int = 1,
-        selectedCustomizations: List<SelectedCustomization> = emptyList(),
+        selectedModifiers: List<SelectedModifier> = emptyList(),
         specialInstructions: String? = null,
     ) {
         _uiState.update { state ->
@@ -173,13 +182,13 @@ class CartViewModel @Inject constructor(
                 id = UUID.randomUUID().toString(),
                 menuItem = menuItem,
                 quantity = quantity.coerceIn(1, 99),
-                selectedCustomizations = selectedCustomizations,
+                selectedModifiers = selectedModifiers,
                 specialInstructions = specialInstructions?.trim()?.take(500)?.takeIf { it.isNotBlank() },
             )
 
-            val existingIndex = if (selectedCustomizations.isEmpty()) {
+            val existingIndex = if (selectedModifiers.isEmpty()) {
                 currentCart.items.indexOfFirst {
-                    it.menuItem.id == menuItem.id && it.selectedCustomizations.isEmpty()
+                    it.menuItem.id == menuItem.id && it.selectedModifiers.isEmpty()
                 }
             } else -1
 
@@ -204,6 +213,58 @@ class CartViewModel @Inject constructor(
             )
         }
         persistSnapshot()
+    }
+
+    /**
+     * Re-add every line item from a past [order] to that restaurant's cart, then
+     * make it the active cart so the caller can route straight to it (mirrors iOS
+     * CartViewModel.reorder). The cart is local-only on Android — checkout syncs it
+     * to the server, which re-validates each menu_item_id / modifier_id — so an item
+     * that the restaurant has since removed simply fails at the prepare-cart step
+     * rather than here. Returns false if the order carried nothing re-addable.
+     */
+    fun reorder(order: Order): Boolean {
+        val reAddable = order.items.filter { it.menuItemId.isNotBlank() }
+        if (reAddable.isEmpty()) return false
+
+        _uiState.update { state ->
+            val baseCart = state.carts[order.restaurantId] ?: Cart(
+                restaurantId = order.restaurantId,
+                restaurantName = order.restaurantName,
+                restaurantImageUrl = order.restaurantImageUrl,
+            )
+            val newItems = reAddable.map { oi ->
+                val modifiers = oi.selectedModifiers
+                // OrderItem.price is per-unit incl. modifier deltas; recover the base
+                // item price so CartItem.totalPrice (= (base + deltas) * qty) matches.
+                val basePrice = (oi.price - modifiers.sumOf { it.priceDelta }).coerceAtLeast(0)
+                CartItem(
+                    id = UUID.randomUUID().toString(),
+                    menuItem = MenuItem(
+                        id = oi.menuItemId,
+                        restaurantId = order.restaurantId,
+                        name = oi.name,
+                        price = basePrice,
+                    ),
+                    quantity = oi.quantity.coerceIn(1, 99),
+                    selectedModifiers = modifiers,
+                    specialInstructions = oi.specialInstructions
+                        ?.trim()?.take(500)?.takeIf { it.isNotBlank() },
+                )
+            }
+            val updatedCart = baseCart.copy(
+                restaurantId = order.restaurantId,
+                restaurantName = order.restaurantName,
+                restaurantImageUrl = order.restaurantImageUrl ?: baseCart.restaurantImageUrl,
+                items = baseCart.items + newItems,
+            )
+            state.copy(
+                carts = state.carts + (order.restaurantId to updatedCart),
+                activeRestaurantId = order.restaurantId,
+            )
+        }
+        persistSnapshot()
+        return true
     }
 
     fun removeItem(cartItemId: String) {

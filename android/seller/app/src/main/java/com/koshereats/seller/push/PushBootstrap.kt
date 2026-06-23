@@ -92,8 +92,12 @@ object PushBootstrap {
         // Fetch the token first; we need it to tell the backend which device to remove.
         try {
             val token = FirebaseMessaging.getInstance().token.await()
-            api.unregisterDevice(token)
-            Log.i(TAG, "FCM token unregistered from backend")
+            val response = api.unregisterDevice(RegisterDeviceRequest(token = token))
+            if (response.isSuccessful) {
+                Log.i(TAG, "FCM token unregistered from backend")
+            } else {
+                Log.w(TAG, "FCM backend unregister failed: HTTP ${response.code()}")
+            }
         } catch (t: Throwable) {
             Log.w(TAG, "FCM backend unregister failed: ${t.message}")
         }

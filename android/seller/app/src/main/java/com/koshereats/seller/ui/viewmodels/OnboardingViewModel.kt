@@ -4,13 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
+import com.koshereats.seller.data.models.CreateMenuImportBody
 import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateRestaurantRequest
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.MenuCategory
 import com.koshereats.seller.data.models.PresignResponse
+import com.koshereats.seller.data.util.Money
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class OnboardingStep { BASICS, ADDRESS, KOSHER, MENU, REVIEW }
+enum class OnboardingStep { IMPORT, BASICS, ADDRESS, KOSHER, MENU, REVIEW }
 
 data class OnboardingMenuItem(
     val name: String = "",
@@ -32,7 +33,11 @@ data class OnboardingMenuItem(
 )
 
 data class OnboardingState(
-    val step: OnboardingStep = OnboardingStep.BASICS,
+    val step: OnboardingStep = OnboardingStep.IMPORT,
+    // Import (UberEats) — captured on the IMPORT step; blank == skipped. The
+    // import job is created after the restaurant exists (in submit()); until
+    // then this only drives the "we'll import your menu" hints/banner.
+    val ubereatsImportUrl: String = "",
     // Basics
     val restaurantName: String = "",
     val description: String = "",
@@ -58,7 +63,13 @@ data class OnboardingState(
     val isSubmitting: Boolean = false,
     val isComplete: Boolean = false,
     val error: String? = null,
-)
+) {
+    /**
+     * True when the seller pasted an import link — relaxes the manual detail
+     * fields (address/phone/picture) since the import worker fills them in.
+     */
+    val isImporting: Boolean get() = ubereatsImportUrl.isNotBlank()
+}
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
@@ -67,6 +78,32 @@ class OnboardingViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(OnboardingState())
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
+
+    // Idempotency state so a retry after a partial failure resumes rather than
+    // re-POSTing. Once the restaurant is created we never create it again; once a
+    // category is created we reuse its id; once an item is created we skip it.
+    private var createdRestaurantId: String? = null
+    private val createdCategoryIds = mutableMapOf<String, String>()
+    private val createdItemKeys = mutableSetOf<String>()
+    // True once the UberEats import job has been enqueued, so a retry after a
+    // partial menu-item failure doesn't kick off a second import.
+    private var menuImportEnqueued = false
+
+    /**
+     * Records the seller's choice on the IMPORT step. An empty [url] means they
+     * skipped the import (manual entry); a non-empty value pre-fills a
+     * provisional restaurant name from the store slug so Basics isn't blank.
+     */
+    fun updateImport(url: String, provisionalName: String = "") {
+        _state.value = _state.value.copy(
+            ubereatsImportUrl = url,
+            restaurantName = if (url.isNotBlank() && _state.value.restaurantName.isBlank()) {
+                provisionalName
+            } else {
+                _state.value.restaurantName
+            },
+        )
+    }
 
     fun updateBasics(
         name: String,
@@ -124,6 +161,7 @@ class OnboardingViewModel @Inject constructor(
 
     fun nextStep() {
         val next = when (_state.value.step) {
+            OnboardingStep.IMPORT -> OnboardingStep.BASICS
             OnboardingStep.BASICS -> OnboardingStep.ADDRESS
             OnboardingStep.ADDRESS -> OnboardingStep.KOSHER
             OnboardingStep.KOSHER -> OnboardingStep.MENU
@@ -135,7 +173,8 @@ class OnboardingViewModel @Inject constructor(
 
     fun previousStep() {
         val prev = when (_state.value.step) {
-            OnboardingStep.BASICS -> return
+            OnboardingStep.IMPORT -> return
+            OnboardingStep.BASICS -> OnboardingStep.IMPORT
             OnboardingStep.ADDRESS -> OnboardingStep.BASICS
             OnboardingStep.KOSHER -> OnboardingStep.ADDRESS
             OnboardingStep.MENU -> OnboardingStep.KOSHER
@@ -165,7 +204,9 @@ class OnboardingViewModel @Inject constructor(
             _state.value = s.copy(error = "Restaurant name is required", step = OnboardingStep.BASICS)
             return
         }
-        if (s.pictureUrl.isBlank()) {
+        // When importing, the worker fills in the cover photo from UberEats, so
+        // a blank picture is allowed here (mirrors iOS submit()'s isImporting guard).
+        if (s.pictureUrl.isBlank() && !s.isImporting) {
             _state.value = s.copy(error = "Restaurant picture is required", step = OnboardingStep.BASICS)
             return
         }
@@ -186,38 +227,63 @@ class OnboardingViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                val req = CreateRestaurantRequest(
-                    name = s.restaurantName.trim(),
-                    description = s.description.trim(),
-                    imageUrl = s.pictureUrl,
-                    logoUrl = s.logoUrl,
-                    phone = s.phone.trim(),
-                    email = s.email.trim(),
-                    street = s.street.trim(),
-                    city = s.city.trim(),
-                    state = s.state.trim(),
-                    zipCode = s.zipCode.trim(),
-                    kosherCertification = s.certification,
-                    certifyingAgency = s.certifyingAgency.trim(),
-                    isCholovYisroel = s.isCholovYisroel,
-                    isPasYisroel = s.isPasYisroel,
-                    isGlattKosher = s.isGlattKosher,
-                    kosherCertificateUrl = s.kosherCertificateUrl,
-                )
-
-                val restResponse = apiService.createRestaurant(req)
-                if (!restResponse.isSuccessful) {
-                    _state.value = _state.value.copy(
-                        isSubmitting = false,
-                        error = "Failed to create restaurant. Please try again.",
+                // Create the restaurant only once. On a retry after a partial
+                // failure, createdRestaurantId is already set, so we skip the POST
+                // (preventing a duplicate restaurant) and resume from menu creation.
+                var restaurantId = createdRestaurantId
+                if (restaurantId == null) {
+                    val req = CreateRestaurantRequest(
+                        name = s.restaurantName.trim(),
+                        description = s.description.trim(),
+                        imageUrl = s.pictureUrl,
+                        logoUrl = s.logoUrl,
+                        phone = s.phone.trim(),
+                        email = s.email.trim(),
+                        street = s.street.trim(),
+                        city = s.city.trim(),
+                        state = s.state.trim(),
+                        zipCode = s.zipCode.trim(),
+                        kosherCertification = s.certification,
+                        certifyingAgency = s.certifyingAgency.trim(),
+                        isCholovYisroel = s.isCholovYisroel,
+                        isPasYisroel = s.isPasYisroel,
+                        isGlattKosher = s.isGlattKosher,
+                        kosherCertificateUrl = s.kosherCertificateUrl,
+                        fromImport = s.isImporting,
                     )
-                    return@launch
+
+                    val restResponse = apiService.createRestaurant(req)
+                    if (!restResponse.isSuccessful) {
+                        _state.value = _state.value.copy(
+                            isSubmitting = false,
+                            error = "Failed to create restaurant. Please try again.",
+                        )
+                        return@launch
+                    }
+                    restaurantId = restResponse.body()?.id
+                    createdRestaurantId = restaurantId
                 }
 
-                // Pin the new restaurant ID so the sellerRestaurantInterceptor targets it
+                // Pin the restaurant ID so the sellerRestaurantInterceptor targets it
                 // for all category/menu-item writes below instead of falling back to
                 // the backend's undefined "first restaurant" ordering.
-                restResponse.body()?.id?.let { NetworkModule.cachedRestaurantId = it }
+                restaurantId?.let { NetworkModule.cachedRestaurantId = it }
+
+                // Kick off the UberEats menu import if the seller pasted a link on
+                // the IMPORT step. Best-effort: the restaurant now exists so the job
+                // attaches to it; a failure here is surfaced in the final message but
+                // doesn't undo the restaurant. The scrape+import is drained server-side.
+                var importFailed = false
+                if (s.isImporting && !menuImportEnqueued) {
+                    val importResponse = runCancellable {
+                        apiService.createMenuImport(CreateMenuImportBody(sourceUrl = s.ubereatsImportUrl))
+                    }
+                    if (importResponse?.isSuccessful == true) {
+                        menuImportEnqueued = true
+                    } else {
+                        importFailed = true
+                    }
+                }
 
                 val grouped = s.menuItems.groupBy {
                     it.category.name.lowercase().replace('_', ' ')
@@ -227,38 +293,63 @@ class OnboardingViewModel @Inject constructor(
                 var createdCount = 0
                 var failedCount = 0
                 for ((categoryName, categoryItems) in grouped) {
-                    val catResponse = apiService.createCategory(mapOf("name" to categoryName))
-                    val categoryId = if (catResponse.isSuccessful) catResponse.body()?.id else null
-                    if (categoryId == null) {
-                        failedCount += categoryItems.count {
-                            val p = ((it.priceDollars.toDoubleOrNull() ?: 0.0) * 100).roundToInt()
-                            p > 0 && it.name.isNotBlank()
+                    val sellableItems = categoryItems.filter {
+                        val p = Money.parseCents(it.priceDollars) ?: 0
+                        p > 0 && it.name.isNotBlank()
+                    }
+                    if (sellableItems.isEmpty()) continue
+
+                    // Reuse a category created on an earlier attempt instead of
+                    // POSTing a duplicate; create it only if not yet recorded.
+                    val categoryId = createdCategoryIds[categoryName] ?: run {
+                        val catResponse = runCancellable {
+                            apiService.createCategory(mapOf("name" to categoryName))
                         }
+                        val newId = if (catResponse?.isSuccessful == true) catResponse.body()?.id else null
+                        if (newId != null) createdCategoryIds[categoryName] = newId
+                        newId
+                    }
+                    if (categoryId == null) {
+                        failedCount += sellableItems.count { "$categoryName:${it.name.trim()}" !in createdItemKeys }
                         continue
                     }
 
-                    for (item in categoryItems) {
-                        val priceCents = ((item.priceDollars.toDoubleOrNull() ?: 0.0) * 100).roundToInt()
-                        if (priceCents <= 0 || item.name.isBlank()) continue
-                        val itemResponse = apiService.createMenuItemWithCategory(
-                            CreateMenuItemBody(
-                                categoryId = categoryId,
-                                name = item.name.trim(),
-                                description = item.description.trim(),
-                                price = priceCents,
-                                imageUrl = item.imageUrl,
-                                isMeat = item.isMeat,
-                                isDairy = item.isDairy,
-                                isKosherPareve = item.isPareve,
-                            ),
-                        )
-                        if (itemResponse.isSuccessful) createdCount++ else failedCount++
+                    for (item in sellableItems) {
+                        val itemKey = "$categoryName:${item.name.trim()}"
+                        if (itemKey in createdItemKeys) continue
+                        val priceCents = Money.parseCents(item.priceDollars) ?: 0
+                        val itemResponse = runCancellable {
+                            apiService.createMenuItemWithCategory(
+                                CreateMenuItemBody(
+                                    categoryId = categoryId,
+                                    name = item.name.trim(),
+                                    description = item.description.trim(),
+                                    price = priceCents,
+                                    imageUrl = item.imageUrl,
+                                    isMeat = item.isMeat,
+                                    isDairy = item.isDairy,
+                                    isKosherPareve = item.isPareve,
+                                ),
+                            )
+                        }
+                        if (itemResponse?.isSuccessful == true) {
+                            createdItemKeys += itemKey
+                            createdCount++
+                        } else {
+                            failedCount++
+                        }
                     }
                 }
 
-                val partialError = if (failedCount > 0) {
-                    "Created $createdCount of ${createdCount + failedCount} items — use Update Menu to add the rest."
-                } else null
+                val parts = buildList {
+                    if (failedCount > 0) {
+                        add("Created $createdCount of ${createdCount + failedCount} items — use Update Menu to add the rest.")
+                    }
+                    if (importFailed) {
+                        add("We couldn't start your UberEats import — you can re-run the import from onboarding.")
+                    }
+                }
+                val partialError = parts.takeIf { it.isNotEmpty() }?.joinToString(" ")
                 _state.value = _state.value.copy(isSubmitting = false, isComplete = true, error = partialError)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -267,6 +358,22 @@ class OnboardingViewModel @Inject constructor(
                     error = "Connection error: ${e.message}",
                 )
             }
+        }
+    }
+
+    /**
+     * Runs a single network call, returning null when it throws (a blip on one
+     * category/item must not abort the whole menu loop — it's counted as a
+     * partial failure). CancellationException is rethrown so coroutine
+     * cancellation stays cooperative.
+     */
+    private suspend fun <T> runCancellable(block: suspend () -> T): T? {
+        return try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
         }
     }
 }

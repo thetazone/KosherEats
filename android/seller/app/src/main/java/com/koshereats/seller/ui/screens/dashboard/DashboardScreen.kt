@@ -37,6 +37,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,7 +55,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.koshereats.seller.data.models.formatPriceWhole
+import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.StatusAccepted
@@ -85,9 +88,35 @@ fun DashboardScreen(
         }
     }
 
-    DisposableEffect(Unit) {
-        viewModel.startPolling()
-        onDispose { viewModel.stopPolling() }
+    // Open/Closed toggle failures land in authState.toggleError. The switch's
+    // checked state is bound to restaurant.isOpen (which the ViewModel leaves
+    // untouched on failure), so it already reverts on its own — here we just
+    // surface the error so the failure isn't silent.
+    LaunchedEffect(authState.toggleError) {
+        authState.toggleError?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            authViewModel.clearToggleError()
+        }
+    }
+
+    // Gate polling on the activity lifecycle, not just composition: pressing Home
+    // (ON_STOP) must tear down the 30s poll loop so we don't keep hitting the
+    // network while backgrounded; ON_START resumes it. onDispose covers navigation
+    // away from the screen. Mirrors the consumer Chat/OrderTracking pattern.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewModel.startPolling()
+                Lifecycle.Event.ON_STOP -> viewModel.stopPolling()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.stopPolling()
+        }
     }
 
     if (showPicker) {
@@ -228,7 +257,7 @@ fun DashboardScreen(
                     )
                     StatCard(
                         title = "Revenue",
-                        value = state.stats.todayRevenue.formatPriceWhole(),
+                        value = state.stats.todayRevenue.formatPrice(),
                         icon = Icons.Filled.AttachMoney,
                         iconTint = SuccessGreen,
                         modifier = Modifier.weight(1f),

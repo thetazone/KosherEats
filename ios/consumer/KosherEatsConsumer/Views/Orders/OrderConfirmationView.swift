@@ -260,11 +260,14 @@ struct OrderConfirmationView: View {
     private var priceCard: some View {
         VStack(spacing: 8) {
             priceRow("Subtotal", order.subtotalFormatted)
+            if order.discount > 0 {
+                priceRow("Savings", order.discountFormatted)
+            }
             priceRow("Delivery fee", order.deliveryFeeFormatted)
             priceRow("Service fee", order.serviceFeeFormatted)
             priceRow("Tax", order.taxFormatted)
             if let tip = order.courierTip, tip > 0 {
-                priceRow("Driver Tip", "$\(String(format: "%.2f", Double(tip) / 100))")
+                priceRow("Driver Tip", Money.dollars(tip))
             }
 
             Divider().background(Color.keDivider)

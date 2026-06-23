@@ -1,7 +1,7 @@
 import SwiftUI
 import PhotosUI
 
-// 5-step onboarding wizard that mirrors the Android seller flow
+// 6-step onboarding wizard that mirrors the Android seller flow
 // (android/seller/.../onboarding/OnboardingScreen.kt). Replaces the older
 // monolithic CreateRestaurantView + post-create OnboardingMenuBuilderView
 // pair. Single ObservableObject holds all state; each step reads/writes
@@ -12,13 +12,14 @@ import PhotosUI
 // MARK: - Step model
 
 enum OnboardingStep: Int, CaseIterable {
-    case basics, address, kosher, menu, review
+    case importMenu, basics, address, kosher, menu, review
 
     var title: String {
         switch self {
         case .basics: return "Restaurant Details"
         case .address: return "Address"
         case .kosher: return "Kosher Certification"
+        case .importMenu: return "Import Menu"
         case .menu: return "Menu Items"
         case .review: return "Review & Submit"
         }
@@ -42,11 +43,30 @@ private let onboardingMenuCategories = [
     "Sides", "Desserts", "Drinks",
 ]
 
+// Full state names → USPS 2-letter code. Stored as the abbreviation in
+// vm.stateField (the backend wants "NY"), but sellers pick the full name from a
+// dropdown — most people don't know the abbreviations.
+private let usStates: [(name: String, code: String)] = [
+    ("Alabama", "AL"), ("Alaska", "AK"), ("Arizona", "AZ"), ("Arkansas", "AR"),
+    ("California", "CA"), ("Colorado", "CO"), ("Connecticut", "CT"), ("Delaware", "DE"),
+    ("District of Columbia", "DC"), ("Florida", "FL"), ("Georgia", "GA"), ("Hawaii", "HI"),
+    ("Idaho", "ID"), ("Illinois", "IL"), ("Indiana", "IN"), ("Iowa", "IA"),
+    ("Kansas", "KS"), ("Kentucky", "KY"), ("Louisiana", "LA"), ("Maine", "ME"),
+    ("Maryland", "MD"), ("Massachusetts", "MA"), ("Michigan", "MI"), ("Minnesota", "MN"),
+    ("Mississippi", "MS"), ("Missouri", "MO"), ("Montana", "MT"), ("Nebraska", "NE"),
+    ("Nevada", "NV"), ("New Hampshire", "NH"), ("New Jersey", "NJ"), ("New Mexico", "NM"),
+    ("New York", "NY"), ("North Carolina", "NC"), ("North Dakota", "ND"), ("Ohio", "OH"),
+    ("Oklahoma", "OK"), ("Oregon", "OR"), ("Pennsylvania", "PA"), ("Rhode Island", "RI"),
+    ("South Carolina", "SC"), ("South Dakota", "SD"), ("Tennessee", "TN"), ("Texas", "TX"),
+    ("Utah", "UT"), ("Vermont", "VT"), ("Virginia", "VA"), ("Washington", "WA"),
+    ("West Virginia", "WV"), ("Wisconsin", "WI"), ("Wyoming", "WY"),
+]
+
 // MARK: - ViewModel
 
 @MainActor
 final class SellerOnboardingViewModel: ObservableObject {
-    @Published var step: OnboardingStep = .basics
+    @Published var step: OnboardingStep = .importMenu
 
     // Basics
     @Published var name = ""
@@ -70,12 +90,27 @@ final class SellerOnboardingViewModel: ObservableObject {
     @Published var isGlattKosher = false
     @Published var kosherCertificateUrl = ""
 
+    // Import (UberEats) — captured on the importMenu step; empty == skipped.
+    // The actual import job is created after the restaurant exists (wired in a
+    // later slice); for now this drives the "we'll import your menu" banner on
+    // the Menu step and is reviewed on the Review step.
+    @Published var ubereatsImportUrl = ""
+    /// True when the seller pasted an import link — relaxes the manual detail
+    /// fields (address/phone/picture) since the import worker fills them in.
+    var isImporting: Bool { !ubereatsImportUrl.isEmpty }
+
     // Menu
     @Published var menuItems: [OnboardingMenuDraft] = []
 
     // UI
     @Published var isSubmitting = false
     @Published var errorMessage: String?
+    // Set when the restaurant is created but one or more drafted menu items
+    // failed to persist. We hold the seller on the review step showing the
+    // warning instead of immediately calling onComplete — otherwise the flow
+    // is torn down for the "You're all set!" screen before the warning ever
+    // renders a frame, and the seller never learns items were dropped.
+    @Published var createdWithFailures: Restaurant?
 
     func nextStep() {
         guard let next = OnboardingStep(rawValue: step.rawValue + 1) else { return }
@@ -99,7 +134,7 @@ final class SellerOnboardingViewModel: ObservableObject {
 
     func submit(onComplete: @escaping (Restaurant) -> Void) async {
         guard !isSubmitting else { return }
-        if pictureUrl.isEmpty {
+        if pictureUrl.isEmpty && !isImporting {
             errorMessage = "Restaurant picture is required"
             step = .basics
             return
@@ -129,11 +164,25 @@ final class SellerOnboardingViewModel: ObservableObject {
             cuisineType: [],
             isCholovYisroel: isCholovYisroel,
             isPasYisroel: isPasYisroel,
-            isGlattKosher: isGlattKosher
+            isGlattKosher: isGlattKosher,
+            fromImport: isImporting
         )
 
         do {
             let created = try await APIService.shared.createRestaurant(body)
+
+            // Kick off the UberEats menu import if the seller pasted a link on
+            // the Import step. Best-effort: the restaurant now exists so the job
+            // attaches to it; a failure here is surfaced on the review step but
+            // doesn't undo the restaurant. The scrape+import is drained server-side.
+            var importFailed = false
+            if !ubereatsImportUrl.isEmpty {
+                do {
+                    _ = try await APIService.shared.createMenuImport(sourceURL: ubereatsImportUrl)
+                } catch {
+                    importFailed = true
+                }
+            }
 
             // Persist drafted menu items grouped by category, same shape as
             // Android's OnboardingViewModel.submit().
@@ -148,8 +197,11 @@ final class SellerOnboardingViewModel: ObservableObject {
                     continue
                 }
                 for draft in drafts {
-                    let cents = Int(round((Double(draft.priceDollars) ?? 0) * 100))
-                    guard cents > 0, !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+                    let cents = CurrencyFormat.parseCents(draft.priceDollars) ?? 0
+                    guard cents > 0, !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else {
+                        failedItemCount += 1
+                        continue
+                    }
                     let req = CreateMenuItemRequest(
                         categoryId: category.id,
                         name: draft.name.trimmingCharacters(in: .whitespaces),
@@ -170,10 +222,23 @@ final class SellerOnboardingViewModel: ObservableObject {
             }
 
             isSubmitting = false
-            if failedItemCount > 0 {
-                errorMessage = "\(failedItemCount) menu item\(failedItemCount == 1 ? "" : "s") couldn't be saved. You can re-add them from the Menu tab."
+            if failedItemCount > 0 || importFailed {
+                // Hold on the review step so the seller actually sees this; the
+                // "Continue to Dashboard" button (shown while createdWithFailures
+                // is set) calls onComplete once they've acknowledged it.
+                var parts: [String] = []
+                if failedItemCount > 0 {
+                    parts.append("\(failedItemCount) menu item\(failedItemCount == 1 ? "" : "s") couldn't be saved.")
+                }
+                if importFailed {
+                    parts.append("We couldn't start your UberEats import.")
+                }
+                parts.append("You can fix this from the Menu tab.")
+                errorMessage = parts.joined(separator: " ")
+                createdWithFailures = created
+            } else {
+                onComplete(created)
             }
-            onComplete(created)
         } catch {
             isSubmitting = false
             errorMessage = error.localizedDescription
@@ -200,6 +265,7 @@ struct SellerOnboardingFlow: View {
                 case .basics: BasicsStepView(vm: vm)
                 case .address: AddressStepView(vm: vm)
                 case .kosher: KosherStepView(vm: vm)
+                case .importMenu: ImportMenuStepView(vm: vm)
                 case .menu: MenuStepView(vm: vm)
                 case .review: ReviewStepView(vm: vm, onComplete: onComplete)
                 }
@@ -211,6 +277,7 @@ struct SellerOnboardingFlow: View {
         }
         .background(Color.keBackground.ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: vm.step)
+        .onAppear { applyDebugInitialStep() }
         .confirmationDialog(
             "Use a different account?",
             isPresented: $showSignOutConfirm,
@@ -225,7 +292,7 @@ struct SellerOnboardingFlow: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            if vm.step != .basics {
+            if vm.step.rawValue > 0 {
                 Button {
                     vm.previousStep()
                 } label: {
@@ -295,6 +362,24 @@ struct SellerOnboardingFlow: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
+
+    // DEBUG-only: jump to a step when launched via `-keOnboardingStep <case>`,
+    // so any onboarding screen can be screenshotted in the simulator. No-op in release.
+    private func applyDebugInitialStep() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-keOnboardingStep"), i + 1 < args.count else { return }
+        switch args[i + 1] {
+        case "basics": vm.step = .basics
+        case "address": vm.step = .address
+        case "kosher": vm.step = .kosher
+        case "importMenu": vm.step = .importMenu
+        case "menu": vm.step = .menu
+        case "review": vm.step = .review
+        default: break
+        }
+        #endif
+    }
 }
 
 // MARK: - Step 1: Basics
@@ -316,6 +401,9 @@ private struct BasicsStepView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
+                if vm.isImporting {
+                    importHint("Importing from UberEats — we'll fill in your address, phone, cuisine, and a photo. Just add your name + email here, and your kosher certificate next.")
+                }
                 Text("Restaurant Picture *")
                     .font(.subheadline.bold())
                     .foregroundColor(.keTextPrimary)
@@ -363,6 +451,17 @@ private struct BasicsStepView: View {
                 }
                 if let pictureError {
                     Text(pictureError).font(.caption).foregroundColor(.keError)
+                }
+                if pictureImage != nil {
+                    Button {
+                        pictureItem = nil
+                        pictureImage = nil
+                        vm.pictureUrl = ""
+                    } label: {
+                        Label("Remove picture", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                            .foregroundColor(.keError)
+                    }
                 }
 
                 Spacer().frame(height: 4)
@@ -414,6 +513,17 @@ private struct BasicsStepView: View {
                 if let logoError {
                     Text(logoError).font(.caption).foregroundColor(.keError)
                 }
+                if logoImage != nil {
+                    Button {
+                        logoItem = nil
+                        logoImage = nil
+                        vm.logoUrl = ""
+                    } label: {
+                        Label("Remove logo", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                            .foregroundColor(.keError)
+                    }
+                }
 
                 onboardingField("Restaurant Name", text: $vm.name)
                 onboardingField("Description (optional)", text: $vm.restaurantDescription, axis: .vertical)
@@ -429,7 +539,7 @@ private struct BasicsStepView: View {
                         vm.errorMessage = "Restaurant name is required"
                         return
                     }
-                    if vm.phone.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if !vm.isImporting && vm.phone.trimmingCharacters(in: .whitespaces).isEmpty {
                         vm.errorMessage = "Phone is required"
                         return
                     }
@@ -437,7 +547,7 @@ private struct BasicsStepView: View {
                         vm.errorMessage = "Valid email is required"
                         return
                     }
-                    if vm.pictureUrl.isEmpty {
+                    if !vm.isImporting && vm.pictureUrl.isEmpty {
                         vm.errorMessage = "Restaurant picture is required"
                         return
                     }
@@ -495,17 +605,37 @@ private struct BasicsStepView: View {
 private struct AddressStepView: View {
     @ObservedObject var vm: SellerOnboardingViewModel
 
+    private var statePicker: some View {
+        Menu {
+            ForEach(usStates, id: \.code) { st in
+                Button("\(st.name) (\(st.code))") { vm.stateField = st.code }
+            }
+        } label: {
+            HStack {
+                Text(usStates.first(where: { $0.code == vm.stateField })?.name ?? "State")
+                    .foregroundColor(vm.stateField.isEmpty ? .keTextMuted : .keTextPrimary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .foregroundColor(.keTextMuted)
+                    .font(.caption)
+            }
+            .padding()
+            .background(Color.keSurface)
+            .cornerRadius(10)
+        }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
+                if vm.isImporting {
+                    importHint("We'll import your address from UberEats — leave this blank to use it, or fill it in to override.")
+                }
                 onboardingField("Street Address", text: $vm.street)
                 onboardingField("City", text: $vm.city)
                 HStack(spacing: 12) {
-                    onboardingField("State", text: $vm.stateField)
-                        .onChange(of: vm.stateField) { _, v in
-                            if v.count > 2 { vm.stateField = String(v.prefix(2)).uppercased() }
-                            else { vm.stateField = v.uppercased() }
-                        }
+                    statePicker
                     onboardingField("Zip Code", text: $vm.zipCode, keyboard: .numberPad)
                 }
 
@@ -514,17 +644,25 @@ private struct AddressStepView: View {
                 }
 
                 continueButton {
-                    if vm.street.trimmingCharacters(in: .whitespaces).isEmpty ||
-                       vm.city.trimmingCharacters(in: .whitespaces).isEmpty ||
-                       vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty ||
-                       vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
-                        vm.errorMessage = "All address fields are required"
-                        return
-                    }
-                    let digits = vm.zipCode.filter { $0.isNumber }
-                    if digits.count != 5 {
-                        vm.errorMessage = "ZIP code must be 5 digits"
-                        return
+                    let allBlank = vm.street.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                   vm.city.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                   vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty &&
+                                   vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty
+                    // When importing we fill the address from UberEats, so an
+                    // all-blank address is fine; a partial one must still be valid.
+                    if !(vm.isImporting && allBlank) {
+                        if vm.street.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           vm.city.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           vm.stateField.trimmingCharacters(in: .whitespaces).isEmpty ||
+                           vm.zipCode.trimmingCharacters(in: .whitespaces).isEmpty {
+                            vm.errorMessage = "All address fields are required"
+                            return
+                        }
+                        let digits = vm.zipCode.filter { $0.isNumber }
+                        if digits.count != 5 {
+                            vm.errorMessage = "ZIP code must be 5 digits"
+                            return
+                        }
                     }
                     vm.nextStep()
                 }
@@ -616,6 +754,17 @@ private struct KosherStepView: View {
                 if let certError {
                     Text(certError).font(.caption).foregroundColor(.keError)
                 }
+                if certImage != nil {
+                    Button {
+                        certItem = nil
+                        certImage = nil
+                        vm.kosherCertificateUrl = ""
+                    } label: {
+                        Label("Remove certificate photo", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                            .foregroundColor(.keError)
+                    }
+                }
 
                 Text("Additional Certifications")
                     .font(.subheadline.bold())
@@ -687,7 +836,166 @@ private struct KosherStepView: View {
     }
 }
 
-// MARK: - Step 4: Menu
+// MARK: - Step 4: Import Menu
+
+private struct ImportMenuStepView: View {
+    @ObservedObject var vm: SellerOnboardingViewModel
+
+    @State private var urlText = ""
+    @State private var consent = false
+    @State private var localError: String?
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Image(systemName: "tray.and.arrow.down.fill")
+                        .font(.system(size: 34))
+                        .foregroundColor(.kePrimary)
+                    Text("Already on UberEats?")
+                        .font(.title3.bold())
+                        .foregroundColor(.keTextPrimary)
+                    Text("Paste your UberEats store link and we'll build your full menu — items, prices, and photos — for you. No adding items one by one.")
+                        .font(.subheadline)
+                        .foregroundColor(.keTextSecondary)
+                }
+                .padding(.top, 4)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("UberEats store link")
+                        .font(.caption.bold())
+                        .foregroundColor(.keTextSecondary)
+                    HStack(spacing: 8) {
+                        ZStack(alignment: .leading) {
+                            if urlText.isEmpty {
+                                Text(verbatim: "https://www.ubereats.com/store/…")
+                                    .foregroundColor(.keTextMuted)
+                                    .lineLimit(1)
+                            }
+                            TextField("", text: $urlText)
+                                .keyboardType(.URL)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .foregroundColor(.keTextPrimary)
+                        }
+                        .padding()
+                        .background(Color.keSurface)
+                        .cornerRadius(10)
+                        Button {
+                            if let s = UIPasteboard.general.string {
+                                urlText = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                        } label: {
+                            Text("Paste")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.kePrimary)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 48)
+                                .background(Color.kePrimary.opacity(0.1))
+                                .cornerRadius(10)
+                        }
+                        .accessibilityLabel("Paste link from clipboard")
+                    }
+                    Text("In the UberEats app: open your store → Share → Copy link, then paste it here.")
+                        .font(.caption)
+                        .foregroundColor(.keTextMuted)
+                }
+
+                Button {
+                    consent.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: consent ? "checkmark.square.fill" : "square")
+                            .foregroundColor(consent ? .kePrimary : .keTextMuted)
+                            .font(.system(size: 20))
+                        Text("I'm authorized to manage this restaurant and consent to importing its menu from UberEats.")
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .background(Color.keCard)
+                    .cornerRadius(12)
+                }
+                .accessibilityLabel("Authorization consent")
+                .accessibilityValue(consent ? "checked" : "unchecked")
+
+                if let localError {
+                    Text(localError).font(.caption).foregroundColor(.keError)
+                }
+
+                continueButton(label: "Import my menu") {
+                    guard let normalized = normalizedUberEatsURL(urlText) else {
+                        localError = "Enter a valid UberEats store link (an ubereats.com address)."
+                        return
+                    }
+                    guard consent else {
+                        localError = "Please confirm you're authorized to import this menu."
+                        return
+                    }
+                    vm.ubereatsImportUrl = normalized
+                    // Pre-fill a provisional name from the store slug so Basics
+                    // isn't blank; the import worker overwrites with the exact name.
+                    if vm.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                        vm.name = provisionalName(from: normalized)
+                    }
+                    localError = nil
+                    vm.nextStep()
+                }
+
+                Button {
+                    vm.ubereatsImportUrl = ""
+                    vm.nextStep()
+                } label: {
+                    Text("Skip — I'll add items manually")
+                        .font(.subheadline)
+                        .foregroundColor(.keTextMuted)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+
+                Spacer().frame(height: 32)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .adaptiveContentWidth(560)
+        }
+        .onAppear {
+            // If the seller copied their UberEats link, drop it in so a missed
+            // paste doesn't push them to skip the import.
+            if urlText.isEmpty, let clip = UIPasteboard.general.string,
+               normalizedUberEatsURL(clip) != nil {
+                urlText = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+    }
+
+    // Lenient parse: accepts links without a scheme; requires an ubereats.com host.
+    private func normalizedUberEatsURL(_ raw: String) -> String? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        let lower = s.lowercased()
+        if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") {
+            s = "https://" + s
+        }
+        guard let url = URL(string: s), let host = url.host?.lowercased() else { return nil }
+        guard host == "ubereats.com" || host.hasSuffix(".ubereats.com") else { return nil }
+        return s
+    }
+
+    // Derive a readable provisional name from the store slug in the URL
+    // (.../store/<slug>/<id>): "pizza-kids-n-action" -> "Pizza Kids N Action".
+    private func provisionalName(from urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return "" }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard let i = parts.firstIndex(of: "store"), i + 1 < parts.count else { return "" }
+        return parts[i + 1].split(separator: "-")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+}
+
+// MARK: - Step 5: Menu
 
 private struct MenuStepView: View {
     @ObservedObject var vm: SellerOnboardingViewModel
@@ -696,6 +1004,19 @@ private struct MenuStepView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 12) {
+                if !vm.ubereatsImportUrl.isEmpty {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.kePrimary)
+                        Text("We'll import your UberEats menu after you finish setup. Add any extra items here in the meantime.")
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .background(Color.kePrimary.opacity(0.1))
+                    .cornerRadius(12)
+                }
                 Text("Add your menu items so they're ready when you launch.")
                     .font(.subheadline)
                     .foregroundColor(.keTextSecondary)
@@ -872,6 +1193,20 @@ private struct AddMenuItemForm: View {
 
             HStack(spacing: 12) {
                 onboardingField("Price ($)", text: $priceText, keyboard: .decimalPad)
+                    .onChange(of: priceText) { _, newValue in
+                        // Normalize comma-decimal locales (e.g. "12,50") and strip
+                        // any stray characters, collapsing duplicate dots. Mirrors
+                        // MenuItemFormView's price field fix.
+                        var normalized = newValue
+                            .replacingOccurrences(of: ",", with: ".")
+                            .filter { $0.isNumber || $0 == "." }
+                        if let firstDot = normalized.firstIndex(of: ".") {
+                            let afterFirstDot = normalized.index(after: firstDot)
+                            normalized = String(normalized[..<afterFirstDot])
+                                + normalized[afterFirstDot...].replacingOccurrences(of: ".", with: "")
+                        }
+                        if normalized != priceText { priceText = normalized }
+                    }
                 categoryPicker
             }
 
@@ -900,7 +1235,7 @@ private struct AddMenuItemForm: View {
                     if name.trimmingCharacters(in: .whitespaces).isEmpty {
                         error = "Name is required"; return
                     }
-                    if (Double(priceText) ?? 0) <= 0 {
+                    if (Double(priceText.replacingOccurrences(of: ",", with: ".")) ?? 0) <= 0 {
                         error = "Enter a valid price"; return
                     }
                     if !isMeat && !isDairy && !isPareve {
@@ -963,7 +1298,7 @@ private struct AddMenuItemForm: View {
     }
 }
 
-// MARK: - Step 5: Review
+// MARK: - Step 6: Review
 
 private struct ReviewStepView: View {
     @ObservedObject var vm: SellerOnboardingViewModel
@@ -999,7 +1334,19 @@ private struct ReviewStepView: View {
                 }
 
                 reviewSection("Menu (\(vm.menuItems.count) items)") {
-                    if vm.menuItems.isEmpty {
+                    if !vm.ubereatsImportUrl.isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                                .foregroundColor(.kePrimary)
+                                .font(.caption)
+                            Text("Your UberEats menu will be imported after you submit.")
+                                .foregroundColor(.keTextPrimary)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.caption)
+                        .padding(.vertical, 2)
+                    }
+                    if vm.menuItems.isEmpty && vm.ubereatsImportUrl.isEmpty {
                         Text("No menu items added. You can add them later from the Menu tab.")
                             .font(.caption)
                             .foregroundColor(.keTextSecondary)
@@ -1021,22 +1368,38 @@ private struct ReviewStepView: View {
                     Text(err).font(.caption).foregroundColor(.keError)
                 }
 
-                Button {
-                    Task { await vm.submit(onComplete: onComplete) }
-                } label: {
-                    Group {
-                        if vm.isSubmitting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("Submit for Review").font(.headline)
-                        }
+                if let created = vm.createdWithFailures {
+                    // Restaurant is already created and submitted — only some
+                    // menu items failed. Don't let them re-submit; let them
+                    // acknowledge the warning above and move on.
+                    Button {
+                        onComplete(created)
+                    } label: {
+                        Text("Continue to Dashboard")
+                            .font(.headline)
+                            .foregroundColor(.keTextOnAccent)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(Color.kePrimary)
+                            .cornerRadius(14)
                     }
-                    .foregroundColor(.keTextOnAccent)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(vm.isSubmitting ? Color.kePrimary.opacity(0.4) : Color.kePrimary)
-                    .cornerRadius(14)
+                } else {
+                    Button {
+                        Task { await vm.submit(onComplete: onComplete) }
+                    } label: {
+                        Group {
+                            if vm.isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("Submit for Review").font(.headline)
+                            }
+                        }
+                        .foregroundColor(.keTextOnAccent)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(vm.isSubmitting ? Color.kePrimary.opacity(0.4) : Color.kePrimary)
+                        .cornerRadius(14)
+                    }
+                    .disabled(vm.isSubmitting)
                 }
-                .disabled(vm.isSubmitting)
 
                 Spacer().frame(height: 40)
             }
@@ -1086,6 +1449,21 @@ private struct ReviewStepView: View {
 
 // MARK: - Shared helpers
 
+private func importHint(_ text: String) -> some View {
+    HStack(alignment: .top, spacing: 8) {
+        Image(systemName: "sparkles")
+            .foregroundColor(.kePrimary)
+            .font(.caption)
+        Text(text)
+            .font(.caption)
+            .foregroundColor(.keTextSecondary)
+        Spacer(minLength: 0)
+    }
+    .padding(10)
+    .background(Color.kePrimary.opacity(0.1))
+    .cornerRadius(10)
+}
+
 private func onboardingField(
     _ placeholder: String,
     text: Binding<String>,
@@ -1096,9 +1474,11 @@ private func onboardingField(
         .keyboardType(keyboard)
         .textInputAutocapitalization(keyboard == .emailAddress ? .never : .sentences)
         .foregroundColor(.keTextPrimary)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .background(Color.keSurface)
         .cornerRadius(10)
+        .contentShape(Rectangle())
 }
 
 private func continueButton(

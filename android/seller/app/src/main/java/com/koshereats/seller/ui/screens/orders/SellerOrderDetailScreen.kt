@@ -36,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -75,6 +76,7 @@ import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.viewmodels.AuthViewModel
 import com.koshereats.seller.ui.viewmodels.OrdersViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -83,12 +85,18 @@ fun SellerOrderDetailScreen(
     orderId: String,
     onBack: () -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val authState by authViewModel.state.collectAsStateWithLifecycle()
     val order = state.selectedOrder
     val context = LocalContext.current
+    // The restaurant's delivery_mode (from AuthViewModel restaurant state). When
+    // "restaurant", the restaurant self-delivers — no platform courier will ever
+    // pick up — so the seller must drive ready→picked_up→delivered themselves.
+    val deliveryMode = authState.restaurant?.deliveryMode ?: "platform"
     var showRejectConfirm by remember { mutableStateOf(false) }
-    var showCancelConfirm by remember { mutableStateOf(false) }
+    var rejectReason by remember { mutableStateOf("") }
 
     LaunchedEffect(orderId) {
         viewModel.clearMessages()
@@ -123,40 +131,34 @@ fun SellerOrderDetailScreen(
         AlertDialog(
             onDismissRequest = { showRejectConfirm = false },
             title = { Text("Reject Order?", color = TextWhite) },
-            text = { Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted) },
+            text = {
+                Column {
+                    Text("This will cancel the customer's order. This cannot be undone.", color = TextMuted)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = rejectReason,
+                        onValueChange = { rejectReason = it },
+                        label = { Text("Reason (optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     showRejectConfirm = false
-                    viewModel.rejectPending(orderId)
+                    viewModel.rejectPending(orderId, rejectReason.trim().ifBlank { null })
+                    rejectReason = ""
                 }) {
                     Text("Reject Order", color = ErrorRed)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showRejectConfirm = false }) {
-                    Text("Cancel", color = TextWhite)
-                }
-            },
-            containerColor = SurfaceDark,
-        )
-    }
-
-    if (showCancelConfirm) {
-        AlertDialog(
-            onDismissRequest = { showCancelConfirm = false },
-            title = { Text("Cancel Order?", color = TextWhite) },
-            text = { Text("The customer will be notified that their order has been cancelled.", color = TextMuted) },
-            confirmButton = {
                 TextButton(onClick = {
-                    showCancelConfirm = false
-                    viewModel.cancelInProgress(orderId)
+                    showRejectConfirm = false
+                    rejectReason = ""
                 }) {
-                    Text("Cancel Order", color = ErrorRed)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCancelConfirm = false }) {
-                    Text("Keep Order", color = TextWhite)
+                    Text("Cancel", color = TextWhite)
                 }
             },
             containerColor = SurfaceDark,
@@ -212,11 +214,23 @@ fun SellerOrderDetailScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "Failed to load order details. Please go back and try again.",
-                    color = ErrorRed,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(horizontal = 24.dp),
-                )
+                ) {
+                    Text(
+                        text = "Failed to load order details. Please try again.",
+                        color = ErrorRed,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { viewModel.loadOrderDetail(orderId) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                    ) {
+                        Text("Retry", fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
             return
         }
@@ -375,6 +389,19 @@ fun SellerOrderDetailScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = TextWhite,
                                         )
+                                        // Customer-selected (and paid-for) modifiers — the kitchen
+                                        // needs these to prepare the order correctly. Mirrors iOS's
+                                        // modifierSummary ("Large • Extra hummus").
+                                        val modifierSummary = item.selectedModifiers
+                                            ?.takeIf { it.isNotEmpty() }
+                                            ?.joinToString(" • ") { it.name }
+                                        if (modifierSummary != null) {
+                                            Text(
+                                                text = modifierSummary,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextSecondary,
+                                            )
+                                        }
                                         if (item.specialInstructions.isNotBlank()) {
                                             Text(
                                                 text = item.specialInstructions,
@@ -401,6 +428,10 @@ fun SellerOrderDetailScreen(
 
                         // Totals
                         PriceRow("Subtotal", order.subtotal)
+                        if (order.discount > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            SavingsRow("Savings", order.discount)
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         PriceRow("Delivery Fee", order.deliveryFee)
                         Spacer(modifier = Modifier.height(4.dp))
@@ -438,6 +469,7 @@ fun SellerOrderDetailScreen(
                 OrderActionButtons(
                     status = order.status,
                     isPickup = order.isPickup,
+                    isSelfDelivery = deliveryMode == "restaurant",
                     scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
@@ -452,8 +484,13 @@ fun SellerOrderDetailScreen(
                     onComplete = {
                         viewModel.updateOrderStatus(orderId, OrderStatus.COMPLETED)
                     },
+                    onSelfPickup = {
+                        viewModel.sellerPickupOrder(orderId)
+                    },
+                    onSelfDeliver = {
+                        viewModel.sellerDeliverOrder(orderId)
+                    },
                     onCancel = { showRejectConfirm = true },
-                    onCancelInProgress = { showCancelConfirm = true },
                 )
             }
 
@@ -481,18 +518,44 @@ private fun PriceRow(label: String, amount: Int) {
     }
 }
 
+/**
+ * A discount/savings line, rendered as a negative amount ("-$X.XX") and tinted
+ * success-green so the breakdown rows still sum to order.total. [amount] is the
+ * positive discount amount in cents. Mirrors iOS savingsRow.
+ */
+@Composable
+private fun SavingsRow(label: String, amount: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = SuccessGreen,
+        )
+        Text(
+            text = "-${amount.formatPrice()}",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SuccessGreen,
+        )
+    }
+}
+
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
     isPickup: Boolean,
+    isSelfDelivery: Boolean,
     scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
     onStartPreparing: () -> Unit,
     onMarkReady: () -> Unit,
     onComplete: () -> Unit,
+    onSelfPickup: () -> Unit,
+    onSelfDeliver: () -> Unit,
     onCancel: () -> Unit,
-    onCancelInProgress: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -582,17 +645,6 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                OutlinedButton(
-                    onClick = onCancelInProgress,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
-                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -609,17 +661,6 @@ private fun OrderActionButtons(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
                     }
-                }
-                OutlinedButton(
-                    onClick = onCancelInProgress,
-                    enabled = !isUpdating,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed),
-                ) {
-                    Icon(Icons.Filled.Cancel, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cancel Order", fontWeight = FontWeight.SemiBold, color = ErrorRed)
                 }
             }
             OrderStatus.READY -> {
@@ -639,6 +680,24 @@ private fun OrderActionButtons(
                             Text("Complete Order", fontWeight = FontWeight.SemiBold)
                         }
                     }
+                } else if (isSelfDelivery) {
+                    // Restaurant self-delivers: no platform courier will ever pick this up,
+                    // so the seller drives ready→picked_up themselves.
+                    Button(
+                        onClick = onSelfPickup,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusAccepted),
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Mark Picked Up (self-delivery)", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 } else {
                     Button(
                         onClick = {},
@@ -654,24 +713,43 @@ private fun OrderActionButtons(
                 }
             }
             OrderStatus.PICKED_UP -> {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Out for Delivery",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = StatusAccepted,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "The courier has picked up this order and is en route to the customer.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted,
-                        )
+                if (isSelfDelivery) {
+                    // Restaurant self-delivers: seller drives picked_up→delivered themselves.
+                    Button(
+                        onClick = onSelfDeliver,
+                        enabled = !isUpdating,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(color = TextWhite, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Mark Delivered", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Out for Delivery",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = StatusAccepted,
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "The courier has picked up this order and is en route to the customer.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
                     }
                 }
             }

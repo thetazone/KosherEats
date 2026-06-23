@@ -8,30 +8,32 @@ import (
 	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/config"
 	"github.com/koshereats/backend/internal/database"
+	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/email"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
-	"github.com/koshereats/backend/internal/sms"
-	"github.com/koshereats/backend/internal/doordash"
+	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/pos"
 	"github.com/koshereats/backend/internal/pos/clover"
+	"github.com/koshereats/backend/internal/sms"
 	"github.com/koshereats/backend/internal/storage"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
 
 type Handler struct {
-	db       *database.DB
-	cfg      *config.Config
-	notify   *notify.Notifier
-	stripe   *payments.Client
-	storage  *storage.Client
-	checkr   *background.Checkr
-	location *broker.Broker
-	sms      *sms.Client
-	email    *email.Client
-	uber        *uberdirect.Client
-	doordash    *doordash.Client
-	posRegistry *pos.Registry
+	db            *database.DB
+	cfg           *config.Config
+	notify        *notify.Notifier
+	stripe        *payments.Client
+	storage       *storage.Client
+	checkr        *background.Checkr
+	location      *broker.Broker
+	sms           *sms.Client
+	email         *email.Client
+	uber          *uberdirect.Client
+	doordash      *doordash.Client
+	posRegistry   *pos.Registry
+	payoutStarter *payout.Starter
 }
 
 func New(db *database.DB, cfg *config.Config) *Handler {
@@ -56,12 +58,17 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 		doordash: doordash.New(doordash.Config{
 			DeveloperID: cfg.DoorDashDeveloperID,
 			KeyID:       cfg.DoorDashKeyID,
-			SigningKey:   cfg.DoorDashSigningKey,
+			SigningKey:  cfg.DoorDashSigningKey,
 			WebhookSec:  cfg.DoorDashWebhookSec,
 		}),
 		posRegistry: pos.NewRegistry(db.Pool, clover.New()),
 	}
 }
+
+// SetPayoutStarter injects the Temporal payout-workflow starter. When nil (the
+// default), payout starts are disabled and the legacy direct-transfer sweep
+// remains the sole payout path — a nil *payout.Starter is a safe no-op.
+func (h *Handler) SetPayoutStarter(s *payout.Starter) { h.payoutStarter = s }
 
 // Notifier exposes the shared push-notification facade so background workers
 // (like the scheduler's auto-dispatch sweep) can fire the same semantic events
@@ -79,6 +86,13 @@ func (h *Handler) UberDirect() *uberdirect.Client { return h.uber }
 // DoorDash exposes the DoorDash Drive client for the scheduler's external
 // dispatch fallback chain.
 func (h *Handler) DoorDash() *doordash.Client { return h.doordash }
+
+// Alerter builds an admin anomaly alerter from the configured AdminAlertEmail
+// and the shared email client, so the scheduler can alert on auto-refunds and
+// permanently failed payouts using the same address/transport as the handler.
+func (h *Handler) Alerter() *notify.Alerter {
+	return notify.NewAlerter(h.cfg.AdminAlertEmail, h.email)
+}
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

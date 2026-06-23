@@ -64,8 +64,8 @@ import com.koshereats.consumer.ui.viewmodels.OrdersViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersScreen(
-    onOrderClick: (String) -> Unit,
-    onReorderClick: (String) -> Unit,
+    onOrderClick: (Order) -> Unit,
+    onReorderClick: (Order) -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -139,8 +139,8 @@ fun OrdersScreen(
                     items(uiState.orders, key = { it.id }) { order ->
                         OrderCard(
                             order = order,
-                            onClick = { onOrderClick(order.id) },
-                            onReorder = { onReorderClick(order.restaurantId) },
+                            onClick = { onOrderClick(order) },
+                            onReorder = { onReorderClick(order) },
                         )
                     }
 
@@ -191,7 +191,7 @@ private fun OrderCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Order #${order.orderNumber}",
+                        text = "Order #${order.id.take(8)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = TextTertiary,
                     )

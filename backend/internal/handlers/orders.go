@@ -155,7 +155,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		// No courier means no tip lane; ignore any client-supplied value.
 		tip = 0
 	}
-	if tip > discountedSubtotal {
+	if tip > subtotal {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}
@@ -189,10 +189,10 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(r.Context(),
 		`INSERT INTO orders (user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, scheduled_for, fulfillment_type,
-		 applied_deal_id, discount_amount)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		 applied_deal_id, discount_amount, discount_cents)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
 		 ON CONFLICT (stripe_payment_id) WHERE stripe_payment_id != '' DO NOTHING
-		 RETURNING id, user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
+		 RETURNING id, user_id, restaurant_id, status, subtotal, discount_cents, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, est_delivery_time,
 		 fulfillment_type, created_at, updated_at`,
 		user["user_id"], cart.RestaurantID, initialStatus,
@@ -201,12 +201,24 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		fulfillmentType,
 		dealIDArg, discount,
 	).Scan(&order.ID, &order.UserID, &order.RestaurantID, &order.Status,
-		&order.Subtotal, &order.DeliveryFee, &order.ServiceFee, &order.Tax, &order.Total,
+		&order.Subtotal, &order.Discount, &order.DeliveryFee, &order.ServiceFee, &order.Tax, &order.Total,
 		&order.DeliveryAddress, &order.DeliveryLat, &order.DeliveryLng,
 		&order.StripePaymentID, &order.CourierTip, &order.EstDeliveryTime,
 		&order.FulfillmentType, &order.CreatedAt, &order.UpdatedAt)
 	if err == pgx.ErrNoRows {
-		writeError(w, http.StatusConflict, "order already created for this payment")
+		// Duplicate payment_intent_id — the 034 unique index already has a row
+		// for this PaymentIntent (DO NOTHING returned no row). Treat this as an
+		// idempotent replay: roll back our in-flight transaction and return the
+		// existing order so a retrying client converges on the same result.
+		// User-scoped lookup: the unique index is global, so without the
+		// user_id filter this would be an IDOR.
+		tx.Rollback(r.Context()) //nolint:errcheck
+		existing, loadErr := h.loadOrderByPaymentIntent(r, req.PaymentIntentID, user["user_id"])
+		if loadErr != nil {
+			writeError(w, http.StatusConflict, "order already created for this payment")
+			return
+		}
+		writeJSON(w, http.StatusOK, existing)
 		return
 	}
 	if err != nil {
@@ -285,9 +297,9 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 		}
 		rows, err = h.db.Pool.Query(r.Context(),
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
-			        o.est_delivery_time, o.fulfillment_type, o.created_at, o.updated_at
+			        o.est_delivery_time, o.fulfillment_type, o.stripe_payment_id, o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 			  WHERE o.user_id = $1 AND o.created_at < $2
 			  ORDER BY o.created_at DESC LIMIT $3`,
@@ -295,9 +307,9 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rows, err = h.db.Pool.Query(r.Context(),
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
-			        o.est_delivery_time, o.fulfillment_type, o.created_at, o.updated_at
+			        o.est_delivery_time, o.fulfillment_type, o.stripe_payment_id, o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 			  WHERE o.user_id = $1
 			  ORDER BY o.created_at DESC LIMIT $2`,
@@ -314,9 +326,9 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var o models.Order
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
-			&o.Subtotal, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
+			&o.Subtotal, &o.Discount, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 			&o.CourierTip, &o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
-			&o.EstDeliveryTime, &o.FulfillmentType, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&o.EstDeliveryTime, &o.FulfillmentType, &o.StripePaymentID, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			continue
 		}
 		orders = append(orders, o)
@@ -376,6 +388,56 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, order)
 }
 
+// GetOrderByPaymentIntent looks up an order by the Stripe PaymentIntent the
+// client just confirmed, scoped to the calling user. Used as an idempotent
+// recovery path when the client confirmed payment but lost the CreateOrder
+// response (network drop, app kill). Returns the full order with items, or
+// 404 if no such order exists for this user.
+func (h *Handler) GetOrderByPaymentIntent(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	pi := chi.URLParam(r, "pi")
+
+	order, err := h.loadOrderByPaymentIntent(r, pi, user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusNotFound, "order not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, order)
+}
+
+// loadOrderByPaymentIntent resolves an order id from a PaymentIntent id
+// (user-scoped — the 034 unique index on stripe_payment_id is global, so the
+// user_id filter prevents an IDOR), then loads the full order with courier
+// info and line items via the same helpers GetOrder uses. Returns an error
+// when no order matches for this user.
+func (h *Handler) loadOrderByPaymentIntent(r *http.Request, paymentIntentID, userID string) (*models.Order, error) {
+	if paymentIntentID == "" {
+		return nil, pgx.ErrNoRows
+	}
+	var orderID string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT id FROM orders WHERE stripe_payment_id = $1 AND user_id = $2`,
+		paymentIntentID, userID,
+	).Scan(&orderID); err != nil {
+		return nil, err
+	}
+
+	order, err := h.loadOrderWithCourier(r, orderID, "user_id", userID)
+	if err != nil {
+		return nil, err
+	}
+	order.Items, err = h.loadOrderItems(r, orderID)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
 // loadOrderItems fetches the line items for an order, including the
 // selected_modifiers JSONB snapshot. Used by both consumer GetOrder and
 // seller GetSellerOrder.
@@ -416,7 +478,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 	if scope == "user_id" {
 		query = `
 			SELECT o.id, o.user_id, o.restaurant_id, rest.name, rest.lat, rest.lng, o.status,
-			       o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			       o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			       o.delivery_address, o.delivery_lat, o.delivery_lng,
 			       o.stripe_payment_id, o.est_delivery_time,
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
@@ -439,7 +501,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 	} else { // seller scope — scopeValue is the owner's user id
 		query = `
 			SELECT o.id, o.user_id, o.restaurant_id, rest.name, rest.lat, rest.lng, o.status,
-			       o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			       o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			       o.delivery_address, o.delivery_lat, o.delivery_lng,
 			       o.stripe_payment_id, o.est_delivery_time,
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
@@ -475,7 +537,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 
 	err := h.db.Pool.QueryRow(r.Context(), query, orderID, scopeValue).Scan(
 		&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.RestaurantLat, &o.RestaurantLng, &o.Status,
-		&o.Subtotal, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
+		&o.Subtotal, &o.Discount, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 		&o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
 		&o.StripePaymentID, &o.EstDeliveryTime,
 		&courierID, &o.ClaimedAt, &o.PickedUpAt, &o.DeliveredAt,
@@ -737,7 +799,7 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 		}
 		rows, err = h.db.Pool.Query(r.Context(),
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.est_delivery_time,
 			        o.fulfillment_type, o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
@@ -747,7 +809,7 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 	} else {
 		rows, err = h.db.Pool.Query(r.Context(),
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-			        o.subtotal, o.delivery_fee, o.service_fee, o.tax, o.total,
+			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.est_delivery_time,
 			        o.fulfillment_type, o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
@@ -766,7 +828,7 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var o models.Order
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
-			&o.Subtotal, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
+			&o.Subtotal, &o.Discount, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 			&o.CourierTip, &o.DeliveryAddress, &o.EstDeliveryTime,
 			&o.FulfillmentType, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			continue

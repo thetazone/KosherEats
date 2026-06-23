@@ -36,12 +36,45 @@ struct RestaurantSettingsView: View {
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
 
+    @State private var isLoading = false
+    /// The restaurant id the form was last populated from. We only repopulate
+    /// when the loaded restaurant is different (first load, or the seller
+    /// switched restaurants) — never on a plain tab re-appearance — so a seller
+    /// mid-edit who flips to Dashboard and back doesn't lose unsaved changes.
+    @State private var populatedRestaurantId: String?
+
     var body: some View {
         NavigationStack {
         ZStack {
             Color.keBackground.ignoresSafeArea()
 
             ScrollView {
+              if dashVM.restaurant == nil && (isLoading || dashVM.isLoading) {
+                ProgressView("Loading settings...")
+                    .tint(.kePrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 80)
+              } else if dashVM.restaurant == nil {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 32))
+                        .foregroundColor(.keError)
+                        .accessibilityHidden(true)
+                    Text(errorMessage ?? dashVM.errorMessage ?? "Couldn't load your restaurant settings.")
+                        .font(.subheadline)
+                        .foregroundColor(.keError)
+                        .multilineTextAlignment(.center)
+                    Button("Retry") {
+                        Task { await reload() }
+                    }
+                    .font(.subheadline.bold())
+                    .foregroundColor(.kePrimary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+                .padding(.top, 80)
+                .accessibilityElement(children: .combine)
+              } else {
                 VStack(spacing: 24) {
                     // Restaurant Info
                     settingsSection("Restaurant Info", icon: "storefront.fill") {
@@ -76,7 +109,7 @@ struct RestaurantSettingsView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: deliveryFee) { _, val in
-                                            var filtered = val.filter { $0.isNumber || $0 == "." }
+                                            var filtered = val.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
                                             // Keep only the first decimal point
                                             if let first = filtered.firstIndex(of: ".") {
                                                 let afterDot = filtered.index(after: first)
@@ -104,7 +137,7 @@ struct RestaurantSettingsView: View {
                                         .keyboardType(.decimalPad)
                                         .foregroundColor(.keTextPrimary)
                                         .onChange(of: minOrder) { _, val in
-                                            var filtered = val.filter { $0.isNumber || $0 == "." }
+                                            var filtered = val.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
                                             // Keep only the first decimal point
                                             if let first = filtered.firstIndex(of: ".") {
                                                 let afterDot = filtered.index(after: first)
@@ -228,14 +261,26 @@ struct RestaurantSettingsView: View {
                             .disabled(isUploadingCert)
                             .onChange(of: certPickerItem) { _, newItem in
                                 Task {
+                                    guard newItem != nil else { return }
                                     guard let data = try? await newItem?.loadTransferable(type: Data.self),
-                                          let image = UIImage(data: data) else { return }
+                                          let image = UIImage(data: data) else {
+                                        errorMessage = "Couldn't read the selected image. Try a different photo."
+                                        return
+                                    }
+                                    // Remember the current state so a failed upload doesn't
+                                    // leave the just-picked (unsaved) image showing as if it's
+                                    // the live certificate — Save would then persist the OLD url.
+                                    let previousImage = certImage
+                                    let previousUrl = kosherCertificateUrl
                                     certImage = image
                                     isUploadingCert = true
+                                    errorMessage = nil
                                     do {
                                         kosherCertificateUrl = try await UploadService.shared.uploadImage(image, kind: .certificate)
                                     } catch {
-                                        errorMessage = "Certificate upload failed"
+                                        certImage = previousImage
+                                        kosherCertificateUrl = previousUrl
+                                        errorMessage = "Certificate upload failed. Please try again."
                                     }
                                     isUploadingCert = false
                                 }
@@ -374,6 +419,19 @@ struct RestaurantSettingsView: View {
                 }
                 .padding()
                 .adaptiveContentWidth(700)
+              } // else (restaurant loaded)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+                }
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -389,8 +447,7 @@ struct RestaurantSettingsView: View {
             .background(Color.keBackground)
         }
         .task {
-            await dashVM.load()
-            populateFields()
+            await reload()
         }
         .alert("Log Out", isPresented: $showLogoutConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -512,8 +569,24 @@ struct RestaurantSettingsView: View {
         .padding(.horizontal, 4)
     }
 
+    /// Loads the restaurant, then populates the form only when it's a *new*
+    /// restaurant (first load or the seller switched restaurants). This keeps
+    /// `.task` (which re-fires every time the Settings tab re-appears in the
+    /// TabView) from wiping unsaved edits when the seller hops to another tab
+    /// and back.
+    private func reload() async {
+        isLoading = true
+        await dashVM.load()
+        isLoading = false
+        guard let r = dashVM.restaurant else { return }
+        if populatedRestaurantId != r.id {
+            populateFields()
+        }
+    }
+
     private func populateFields() {
         guard let r = dashVM.restaurant else { return }
+        populatedRestaurantId = r.id
         name = r.name
         description = r.description
         phone = r.phone
@@ -535,7 +608,13 @@ struct RestaurantSettingsView: View {
     }
 
     private func save() async {
-        guard var restaurant = dashVM.restaurant else { return }
+        guard var restaurant = dashVM.restaurant else {
+            // The restaurant never loaded (cold start / network blip). Don't
+            // let Save look dead — surface a retry path instead of returning
+            // silently.
+            errorMessage = "Couldn't load your restaurant — pull down or tap Retry, then save again."
+            return
+        }
 
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
@@ -574,6 +653,23 @@ struct RestaurantSettingsView: View {
         isSaving = true
         errorMessage = nil
 
+        // Re-fetch the current server state right before saving so we don't PUT
+        // a stale `is_open` (or any other field this form doesn't edit). This
+        // Settings screen owns its own DashboardViewModel, so the dashboard's
+        // open/closed toggle — which writes through a *different* VM — won't be
+        // reflected in our snapshot. updateRestaurant() PUTs the whole object,
+        // and the backend COALESCE-writes is_open from it, so a stale value here
+        // would silently flip the restaurant open/closed on every Save.
+        // NOTE: the cleaner fix is a partial-update payload that omits is_open
+        // entirely (tracked in companionEditsNeeded for APIService).
+        do {
+            restaurant = try await APIService.shared.getRestaurant()
+        } catch {
+            errorMessage = "Couldn't refresh your restaurant — check your connection and try again."
+            isSaving = false
+            return
+        }
+
         restaurant.name = name
         restaurant.description = description
         restaurant.phone = phone
@@ -584,8 +680,8 @@ struct RestaurantSettingsView: View {
         restaurant.zipCode = zipCode
         // Dollars in the text fields → cents on the wire, matching the
         // backend contract (delivery_fee / min_order are INTEGER cents).
-        restaurant.deliveryFee = Int(((Double(deliveryFee) ?? 0) * 100).rounded())
-        restaurant.minOrder = Int(((Double(minOrder) ?? 0) * 100).rounded())
+        restaurant.deliveryFee = CurrencyFormat.parseCents(deliveryFee) ?? 0
+        restaurant.minOrder = CurrencyFormat.parseCents(minOrder) ?? 0
         guard let parsedMin = Int(estDeliveryMin), parsedMin > 0 else {
             errorMessage = "Estimated minimum delivery time must be a number."
             isSaving = false

@@ -76,6 +76,7 @@ class AuthViewModel @Inject constructor(
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
     init {
+        scrubLegacyPlaintextTokens()
         checkAuthStatus()
         viewModelScope.launch {
             sessionManager.logoutEvent.collect {
@@ -298,7 +299,8 @@ class AuthViewModel @Inject constructor(
                     }
                     PushBootstrap.registerCurrentToken(apiService)
                 } else {
-                    android.util.Log.w("AuthViewModel", "socialLogin ${response.code()}: ${response.errorBody()?.string()}")
+                    val raw = response.errorBody()?.string().orEmpty()
+                    android.util.Log.w("AuthViewModel", "socialLogin failed: ${response.code()}, len=${raw.length}")
                     val msg = when (response.code()) {
                         401 -> "Authentication failed — please try again"
                         409 -> "An account with this email already exists"
@@ -537,6 +539,30 @@ class AuthViewModel @Inject constructor(
         tokenProvider.persistNewTokens(token, refreshToken)
         dataStore.edit { prefs ->
             prefs[PrefsKeys.USER_ID] = userId
+        }
+    }
+
+    /**
+     * One-time, unconditional cleanup of credentials left over from pre-migration
+     * builds that stored the access/refresh tokens in cleartext in the unencrypted
+     * "koshereats_prefs" DataStore. Tokens now live only in EncryptedSharedPreferences
+     * (see [TokenProvider]); these legacy plaintext keys are never read anymore, but
+     * an upgraded device would otherwise keep a valid refresh token in cleartext on
+     * disk indefinitely (until an explicit logout/401 ran [clearAuth]). Runs on every
+     * launch and is a no-op once the keys are gone. USER_ID is left intact — it is
+     * non-sensitive and still in active use.
+     */
+    private fun scrubLegacyPlaintextTokens() {
+        viewModelScope.launch {
+            try {
+                dataStore.edit { prefs ->
+                    prefs.remove(PrefsKeys.AUTH_TOKEN)
+                    prefs.remove(PrefsKeys.REFRESH_TOKEN)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                android.util.Log.w("AuthViewModel", "legacy token scrub failed (non-fatal): ${e.message}")
+            }
         }
     }
 

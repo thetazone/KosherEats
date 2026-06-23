@@ -333,8 +333,32 @@ fun HomeScreen(
                 } else {
                     if (uiState.searchResults.isEmpty()) {
                         item {
-                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                Text("No restaurants found", color = TextMuted, style = MaterialTheme.typography.bodyLarge)
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                val searchError = uiState.error
+                                if (searchError != null) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            "Search failed — check your connection",
+                                            color = TextMuted,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        OutlinedButton(
+                                            onClick = { viewModel.search(uiState.searchQuery) },
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Orange),
+                                        ) {
+                                            Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Retry")
+                                        }
+                                    }
+                                } else {
+                                    Text("No restaurants found", color = TextMuted, style = MaterialTheme.typography.bodyLarge)
+                                }
                             }
                         }
                     } else {
@@ -459,7 +483,10 @@ fun HomeScreen(
                 currentCholovYisroel = uiState.filterCholovYisroelOnly,
                 currentPasYisroel = uiState.filterPasYisroelOnly,
                 currentCertifications = uiState.filterCertifications,
-                allRestaurants = uiState.allRestaurants,
+                // Preview counts must be computed over the full, unfiltered population
+                // (rawRestaurants) — counting over the already-filtered feed
+                // (allRestaurants) under-reports when relaxing an active filter.
+                allRestaurants = uiState.rawRestaurants,
                 onDismiss = { showFilterSheet = false },
                 onApply = { g, c, p, certs ->
                     viewModel.applyKosherFilters(g, c, p, certs)

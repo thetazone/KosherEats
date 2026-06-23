@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only overlay. Replaces the main (release) network_security_config for debug
+  builds so the Android emulator loopback (10.0.2.2 == host localhost) can be reached
+  over cleartext HTTP — the dev default in BuildConfig.BASE_URL. This file ships only
+  in the debug build type, so release APK/AABs keep cleartext fully disabled.
+
+  Note: when android:networkSecurityConfig is set on the application, it takes
+  precedence over android:usesCleartextTraffic, so the loopback exemption must live
+  here rather than relying on the debug manifest's usesCleartextTraffic flag alone.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Allow cleartext only for the Android emulator loopback used in debug builds. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

@@ -5,6 +5,19 @@ struct SellerOrdersView: View {
     @ObservedObject private var selectedRestaurant = SelectedRestaurant.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
 
+    /// Programmatic navigation stack. Holds the id of the order whose detail
+    /// is currently pushed (one level deep — we never stack two detail
+    /// screens). Driving navigation by id rather than by `NavigationLink`
+    /// destination lets a push deep link open a specific ticket.
+    @State private var navPath: [String] = []
+
+    /// Order id carried by a tapped order push (`.orderDeepLinkRequested`)
+    /// that we haven't been able to navigate to yet — typically because the
+    /// app cold-launched from the push and `vm.orders` is still empty. Held
+    /// here until `vm.load()` resolves it, at which point `resolveDeepLink()`
+    /// pushes the detail and clears this.
+    @State private var pendingDeepLinkOrderID: String?
+
     // Order cards stack vertically on iPhone (single column) but show in a
     // 2-column grid on iPad so reviewers see more orders at a glance.
     private var orderGridColumns: [GridItem] {
@@ -33,7 +46,7 @@ struct SellerOrdersView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             ZStack {
                 Color.keBackground.ignoresSafeArea()
 
@@ -79,7 +92,7 @@ struct SellerOrdersView: View {
                         ScrollView {
                             LazyVGrid(columns: orderGridColumns, spacing: 12) {
                                 ForEach(vm.filteredOrders) { order in
-                                    NavigationLink(destination: SellerOrderDetailView(vm: vm, order: order)) {
+                                    NavigationLink(value: order.id) {
                                         OrderRowView(order: order)
                                     }
                                     .buttonStyle(.plain)
@@ -93,6 +106,17 @@ struct SellerOrdersView: View {
             }
             .navigationTitle("Orders")
             .navigationBarTitleDisplayMode(.large)
+            // Resolve a pushed order id to its detail screen. The Order is read
+            // out of vm.orders (kept fresh by the poll loop); the detail view
+            // re-fetches by id if the in-memory copy is stale or missing.
+            .navigationDestination(for: String.self) { orderID in
+                if let order = vm.orders.first(where: { $0.id == orderID }) {
+                    SellerOrderDetailView(vm: vm, order: order)
+                } else {
+                    // Cold-launch / not-yet-loaded: detail view fetches by id.
+                    SellerOrderDetailView(vm: vm, orderID: orderID)
+                }
+            }
             .refreshable {
                 Haptics.impact(.light)
                 await vm.load()
@@ -100,7 +124,42 @@ struct SellerOrdersView: View {
             .task(id: selectedRestaurant.id) {
                 await vm.loadAndAutoRefresh()
             }
+            // A push tap posts `.orderDeepLinkRequested` with the order_id.
+            // Capture it, then try to navigate; if the list hasn't loaded yet
+            // (cold launch from the push), `resolveDeepLink` kicks a load and
+            // the .onReceive(vm.$orders) below retries once the fetch lands.
+            .onReceive(NotificationCenter.default.publisher(for: .orderDeepLinkRequested)) { note in
+                guard let orderID = note.userInfo?[PushEvents.orderIDKey] as? String,
+                      !orderID.isEmpty else { return }
+                pendingDeepLinkOrderID = orderID
+                resolveDeepLink()
+            }
+            // Retry resolving a pending deep link whenever orders change — this
+            // is what closes the cold-launch race: the push arrives before the
+            // first fetch completes, so we can't navigate until vm.orders fills.
+            .onReceive(vm.$orders) { _ in
+                resolveDeepLink()
+            }
         }
+    }
+
+    /// Pushes the detail screen for a pending deep-link order id. The detail
+    /// view resolves the order by id (fetching if needed), so we navigate as
+    /// soon as we have an id — but we first kick a `load()` if the list is
+    /// empty so a cold launch from a push still ends up showing the ticket
+    /// list underneath the pushed detail. Idempotent: clears the pending id
+    /// and won't double-push the same order already on top of the stack.
+    private func resolveDeepLink() {
+        guard let orderID = pendingDeepLinkOrderID else { return }
+        if navPath.last == orderID {
+            pendingDeepLinkOrderID = nil
+            return
+        }
+        if vm.orders.isEmpty && !vm.isLoading {
+            Task { await vm.load() }
+        }
+        navPath = [orderID]
+        pendingDeepLinkOrderID = nil
     }
 
     // MARK: - Filter Tabs

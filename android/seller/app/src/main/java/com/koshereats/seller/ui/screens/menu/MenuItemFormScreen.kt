@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,8 +32,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -74,8 +73,8 @@ import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.ModifierOptionRequest
 import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import com.koshereats.seller.data.models.formatPrice
+import com.koshereats.seller.data.util.Money
 import java.util.Locale
-import kotlin.math.roundToInt
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -101,7 +100,7 @@ import okio.BufferedSink
 import okio.source
 import java.io.ByteArrayOutputStream
 
-private data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true)
+private data class OptionEntry(val id: String? = null, var name: String = "", var priceDelta: String = "0.00", var isAvailable: Boolean = true, var isDefault: Boolean = false)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,10 +123,6 @@ fun MenuItemFormScreen(
     var isPareve by rememberSaveable { mutableStateOf(false) }
     var isDairy by rememberSaveable { mutableStateOf(false) }
     var isMeat by rememberSaveable { mutableStateOf(false) }
-    var spiceLevel by rememberSaveable { mutableStateOf("") }
-    var prepTime by rememberSaveable { mutableStateOf("15") }
-    var caloriesInput by rememberSaveable { mutableStateOf("") }
-    var allergensStr by rememberSaveable { mutableStateOf("") }
     var categoryExpanded by rememberSaveable { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isUploadingImage by remember { mutableStateOf(false) }
@@ -171,10 +166,6 @@ fun MenuItemFormScreen(
             isPareve = item.isKosherPareve
             isDairy = item.isDairy
             isMeat = item.isMeat
-            spiceLevel = if (item.spiceLevel > 0) item.spiceLevel.toString() else ""
-            prepTime = item.preparationTime.toString()
-            caloriesInput = item.calories?.toString() ?: ""
-            allergensStr = item.allergens.joinToString(",")
             formInitialized = true
         } ?: run {
             // Only mark initialized for new items; for edit, wait until selectedItem arrives.
@@ -187,10 +178,6 @@ fun MenuItemFormScreen(
                 isPareve = false
                 isDairy = false
                 isMeat = false
-                spiceLevel = ""
-                prepTime = "15"
-                caloriesInput = ""
-                allergensStr = ""
                 formInitialized = true
             }
         }
@@ -284,6 +271,7 @@ fun MenuItemFormScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -410,96 +398,6 @@ fun MenuItemFormScreen(
                 }
             }
 
-            // Spice level (optional)
-            OutlinedTextField(
-                value = spiceLevel,
-                onValueChange = { v ->
-                    val n = v.filter { it.isDigit() }
-                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 5) spiceLevel = n
-                },
-                label = { Text("Spice Level (0-5, optional)") },
-                singleLine = true,
-                enabled = formInitialized || !isEditing,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // Prep time
-            OutlinedTextField(
-                value = prepTime,
-                onValueChange = { v ->
-                    val n = v.filter { it.isDigit() }
-                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 120) prepTime = n
-                },
-                label = { Text("Prep Time (min, 1–120)") },
-                singleLine = true,
-                enabled = formInitialized || !isEditing,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // Calories (optional)
-            OutlinedTextField(
-                value = caloriesInput,
-                onValueChange = { v ->
-                    val n = v.filter { it.isDigit() }
-                    if (n.isEmpty() || (n.toIntOrNull() ?: 0) <= 9999) caloriesInput = n
-                },
-                label = { Text("Calories (optional)") },
-                singleLine = true,
-                enabled = formInitialized || !isEditing,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = textFieldColors,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // Allergens
-            Text(
-                text = "Allergens",
-                style = MaterialTheme.typography.titleSmall,
-                color = TextWhite,
-                fontWeight = FontWeight.SemiBold,
-            )
-            val allergenOptions = listOf("gluten", "dairy", "eggs", "nuts", "peanuts", "soy", "fish", "shellfish")
-            allergenOptions.chunked(4).forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    rowItems.forEach { allergen ->
-                        val isSelected = allergen in allergensStr.split(",")
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                if (formInitialized || !isEditing) {
-                                    val current = allergensStr.split(",").filter { it.isNotBlank() }.toMutableSet()
-                                    if (allergen in current) current.remove(allergen) else current.add(allergen)
-                                    allergensStr = current.joinToString(",")
-                                }
-                            },
-                            label = {
-                                Text(
-                                    allergen.replaceFirstChar { it.uppercase() },
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = SurfaceDark,
-                                labelColor = TextMuted,
-                                selectedContainerColor = Orange.copy(alpha = 0.2f),
-                                selectedLabelColor = Orange,
-                            ),
-                        )
-                    }
-                }
-            }
-
             // Kosher type checkboxes
             Text(
                 text = "Kosher Type",
@@ -597,28 +495,24 @@ fun MenuItemFormScreen(
                         viewModel.setError("Item name is required")
                         return@Button
                     }
-                    val dollars = price.toDoubleOrNull() ?: 0.0
+                    val priceCents = Money.parseCents(price) ?: 0
                     if (!isPareve && !isDairy && !isMeat) {
                         viewModel.setError("Select a Kosher type (Meat, Dairy, or Pareve)")
                         return@Button
                     }
-                    if (dollars <= 0) {
+                    if (priceCents <= 0) {
                         viewModel.setError("Price must be greater than \$0.00")
                         return@Button
                     }
                     val request = UpdateMenuItemRequest(
                         name = name.trim(),
                         description = description.trim(),
-                        price = (dollars * 100.0).roundToInt(),
+                        price = priceCents,
                         categoryId = selectedCategoryId.ifBlank { null },
                         imageUrl = imageUrl.trim(),
                         isKosherPareve = isPareve,
                         isDairy = isDairy,
                         isMeat = isMeat,
-                        spiceLevel = spiceLevel.toIntOrNull(),
-                        preparationTime = prepTime.toIntOrNull()?.coerceIn(1, 120),
-                        calories = caloriesInput.toIntOrNull(),
-                        allergens = allergensStr.split(",").filter { it.isNotBlank() },
                     )
                     if (isEditing && itemId != null) {
                         viewModel.updateMenuItem(itemId, request)
@@ -817,9 +711,20 @@ private fun ModifierGroupDialog(
     var options by remember {
         mutableStateOf(
             existing?.modifiers?.map {
-                OptionEntry(id = it.id, name = it.name, priceDelta = String.format(Locale.US, "%.2f", it.priceDelta / 100.0), isAvailable = it.isAvailable)
+                OptionEntry(id = it.id, name = it.name, priceDelta = String.format(Locale.US, "%.2f", it.priceDelta / 100.0), isAvailable = it.isAvailable, isDefault = it.isDefault)
             } ?: listOf(OptionEntry()),
         )
+    }
+
+    val minValue = minSel.toIntOrNull() ?: 0
+    val maxValue = maxSel.toIntOrNull() ?: 0
+    // Mirror the backend's isValidModifierGroup invariants so the seller gets an
+    // inline reason instead of a generic 400/"Failed to..." after submitting.
+    val selectionError: String? = when {
+        maxValue < 1 -> "Max selections must be at least 1"
+        maxValue < minValue -> "Max selections must be greater than or equal to Min"
+        isRequired && minValue < 1 -> "Required groups need at least 1 selection (set Min to 1 or more)"
+        else -> null
     }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -890,6 +795,14 @@ private fun ModifierGroupDialog(
                         colors = textFieldColors,
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                }
+
+                selectionError?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
 
@@ -964,7 +877,8 @@ private fun ModifierGroupDialog(
                             ModifierOptionRequest(
                                 id = opt.id,
                                 name = opt.name.trim(),
-                                priceDelta = (((opt.priceDelta.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 999.99)) * 100).roundToInt(),
+                                priceDelta = (Money.parseCents(opt.priceDelta) ?: 0).coerceIn(0, 99999),
+                                isDefault = opt.isDefault,
                                 isAvailable = opt.isAvailable,
                                 sortOrder = i,
                             )
@@ -972,7 +886,7 @@ private fun ModifierGroupDialog(
                     )
                     onSave(request)
                 },
-                enabled = groupName.isNotBlank() && options.any { it.name.isNotBlank() },
+                enabled = groupName.isNotBlank() && options.any { it.name.isNotBlank() } && selectionError == null,
             ) {
                 Text("Save", color = Orange)
             }

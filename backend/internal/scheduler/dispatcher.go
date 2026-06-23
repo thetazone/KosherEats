@@ -22,14 +22,17 @@
 //     Replaces the old fire-and-forget goroutine that silently dropped
 //     failed payouts.
 //
-// In-process is fine for a single-instance deploy. If we ever scale to
-// multiple API instances we'll need a distributed lock (Redis or
-// pg_advisory_lock) so only one node runs the sweeps.
+// Multi-instance safe: runAll gates every tick behind a session-level
+// Postgres advisory lock (pg_try_advisory_lock on sweepAdvisoryLockKey), so
+// when several API instances run this loop only the lock holder executes the
+// sweeps on a given tick and the rest skip it. Single-instance deploys are
+// unaffected — the lock is always free.
 package scheduler
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -38,6 +41,7 @@ import (
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
+	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
 
@@ -71,11 +75,45 @@ const staleRejectionBatchLimit = 20
 // want comfortable headroom. 20 keeps us well under a minute in the worst case.
 const payoutBatchLimit = 20
 
+// sweepAdvisoryLockKey is the fixed Postgres advisory-lock key that gates the
+// per-tick sweep run. When the backend runs as multiple instances, only the
+// instance that holds this session-level lock executes runAll on a given tick;
+// the others skip that tick. The key is an arbitrary-but-stable constant
+// ("KESW01" mnemonic) chosen not to collide with the migration lock below.
+const sweepAdvisoryLockKey int64 = 0x4B45_5357_0001
+
 // maxPayoutAttempts is the number of failed transfer attempts before the
 // queue row flips to 'failed_permanent' for admin review. After this many
 // tries, either Stripe has a real problem with the courier's account or
 // something structural is wrong — human intervention beats infinite retry.
 const maxPayoutAttempts = 6
+
+// orphanPaymentGrace is how long a SUCCEEDED checkout PaymentIntent may exist
+// before the orphan-payment sweep considers it for a refund. This must be
+// comfortably longer than the place-order round trip so we never refund a PI
+// whose CreateOrder is just slow to land — the idempotent place-order fix
+// guarantees the order will be written; this sweep only catches the case where
+// it never was (client crashed after charge, network dropped mid-create, etc.).
+const orphanPaymentGrace = 20 * time.Minute
+
+// orphanPaymentLookback bounds how far back the sweep scans Stripe. PIs older
+// than this are out of scope — bounding the window keeps each scan cheap and
+// avoids paging through all historical PaymentIntents every tick.
+const orphanPaymentLookback = 24 * time.Hour
+
+// orphanRefundBatchLimit caps refunds issued per sweep so a backlog (e.g. after
+// a long API outage) can't fire a burst of refund calls at Stripe in one tick.
+const orphanRefundBatchLimit = 20
+
+// payoutProcessingTimeout is how long a row may sit in 'processing' before the
+// reaper assumes the API instance that claimed it crashed mid-transfer and
+// resets it to 'pending' for another attempt. The Stripe idempotency key
+// (the queue row id, passed to TransferToCourier) makes the re-attempt safe:
+// if the transfer actually went through before the crash, Stripe returns the
+// original transfer rather than moving money twice. Keep this comfortably
+// longer than a single Stripe transfer call so we never reap a row that's
+// still being worked.
+const payoutProcessingTimeout = 15 * time.Minute
 
 type Dispatcher struct {
 	db       *pgxpool.Pool
@@ -83,6 +121,37 @@ type Dispatcher struct {
 	stripe   *payments.Client
 	uber     *uberdirect.Client
 	doordash *doordash.Client
+
+	// payoutStarter, when non-nil and Enabled(), switches the courier-payout
+	// sweep from direct Stripe transfers to a Temporal reconcile: each due row
+	// kicks off (or dedups into) a payout workflow that owns the transfer.
+	// Nil/disabled keeps the legacy direct-transfer behavior unchanged.
+	payoutStarter *payout.Starter
+
+	// alerter sends admin anomaly alerts (auto-refunds, permanently failed
+	// payouts). Nil is safe — notify.Alerter.Alert is nil-receiver-safe and
+	// degrades to a logged no-op, so a dispatcher with no alerter wired keeps
+	// its original behavior.
+	alerter *notify.Alerter
+}
+
+// SetPayoutStarter injects the Temporal payout starter. Passing a nil starter
+// (the default) leaves the dispatcher in legacy direct-transfer mode.
+func (d *Dispatcher) SetPayoutStarter(s *payout.Starter) { d.payoutStarter = s }
+
+// SetAlerter injects the admin alerter used for auto-refund and failed-payout
+// anomaly alerts. Optional: a nil alerter (the default) degrades to log-only.
+func (d *Dispatcher) SetAlerter(a *notify.Alerter) { d.alerter = a }
+
+// alert is a nil-safe shim so call sites don't have to guard d.alerter.
+func (d *Dispatcher) alert(subject, body string) {
+	if d.alerter == nil {
+		// Mirror the Alerter no-op so anomalies still surface in logs.
+		slog.Warn("admin-alert (no alerter wired)",
+			slog.String("subject", subject), slog.String("body", body))
+		return
+	}
+	d.alerter.Alert(subject, body)
 }
 
 func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
@@ -110,10 +179,142 @@ func (d *Dispatcher) Start(ctx context.Context) {
 }
 
 func (d *Dispatcher) runAll(ctx context.Context) {
+	// Multi-instance safety: gate the whole sweep behind a session-level
+	// Postgres advisory lock so two API instances can't double-process the
+	// same tick (double-promote scheduled orders, double-assign couriers,
+	// double-refund, etc.). Session advisory locks are per-connection, so we
+	// pin a single pooled connection for the duration: take the lock on that
+	// conn, run every sweep, then release the lock and the conn together.
+	//
+	// pg_try_advisory_lock is non-blocking: if another instance already holds
+	// the lock we get false and skip this tick — the holder is doing the work
+	// and the next tick (or the holder's next tick) covers anything we missed.
+	// In the default single-instance deploy the lock is always free, so this
+	// is behavior-preserving.
+	conn, err := d.db.Acquire(ctx)
+	if err != nil {
+		slog.Error("sweep: acquire conn for advisory lock failed, skipping tick",
+			slog.String("error", err.Error()))
+		return
+	}
+	defer conn.Release()
+
+	var locked bool
+	if err := conn.QueryRow(ctx,
+		`SELECT pg_try_advisory_lock($1)`, sweepAdvisoryLockKey,
+	).Scan(&locked); err != nil {
+		slog.Error("sweep: pg_try_advisory_lock failed, skipping tick",
+			slog.String("error", err.Error()))
+		return
+	}
+	if !locked {
+		slog.Debug("sweep: advisory lock held by another instance, skipping tick")
+		return
+	}
+	// Release the lock on the same connection before it returns to the pool.
+	// If the unlock fails (ctx cancelled on shutdown, network blip), the session
+	// still holds the advisory lock; returning that connection to the pool would
+	// orphan the lock and silently disable every future sweep until the conn is
+	// recycled (up to MaxConnLifetime). Close the underlying connection instead
+	// so the lock dies with it — the deferred Release then sees a closed conn and
+	// destroys it rather than reusing the poisoned one. Use a fresh background
+	// context so teardown isn't skipped when the scheduler ctx is already cancelled.
+	defer func() {
+		if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, sweepAdvisoryLockKey); err != nil {
+			slog.Error("sweep: pg_advisory_unlock failed, closing connection to drop orphaned lock",
+				slog.String("error", err.Error()))
+			closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = conn.Conn().Close(closeCtx)
+		}
+	}()
+
 	d.sweepScheduled(ctx)
 	d.sweepAutoDispatch(ctx)
 	d.sweepStaleRejection(ctx)
+	d.sweepOrphanPayments(ctx)
 	d.sweepCourierPayouts(ctx)
+}
+
+// sweepOrphanPayments is the charged-but-no-order safety net that sits behind
+// the place-order idempotency fix. Normally every successful checkout charge
+// (a SUCCEEDED PaymentIntent) becomes an order whose orders.stripe_payment_id
+// points back at the PI (enforced unique by the 034 index). If a customer is
+// charged but CreateOrder never runs — app killed right after PaymentSheet
+// confirms, a dropped connection, a crash — that money would sit charged with
+// nothing delivered. This sweep finds such orphans and refunds them.
+//
+// Conservative by construction:
+//   - Stub mode: ListOrphanCandidates returns nil when Stripe is disabled, so
+//     this whole sweep no-ops without a key.
+//   - Only PaymentIntents carrying our orphan marker metadata are even returned,
+//     so we never touch a charge some other integration created.
+//   - Only PIs older than orphanPaymentGrace are considered, so a slow-but-
+//     successful place-order is never refunded out from under itself.
+//   - We re-check the DB for a matching orders.stripe_payment_id right before
+//     refunding (closes the gap between the Stripe list and now), and skip any
+//     PI Stripe already reports as refunded (idempotent — no double refund).
+func (d *Dispatcher) sweepOrphanPayments(ctx context.Context) {
+	if d.stripe == nil {
+		return
+	}
+
+	candidates, err := d.stripe.ListOrphanCandidates(orphanPaymentGrace, orphanPaymentLookback)
+	if err != nil {
+		slog.Error("orphan-payment: list candidates failed",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	refunded := 0
+	for _, c := range candidates {
+		if refunded >= orphanRefundBatchLimit {
+			slog.Warn("orphan-payment: batch limit reached, remaining candidates deferred to next sweep",
+				slog.Int("limit", orphanRefundBatchLimit))
+			break
+		}
+
+		// Idempotency: never re-refund. Stripe is the source of truth here, so
+		// even a refund issued manually in the dashboard is respected.
+		if c.AlreadyRefunded {
+			continue
+		}
+
+		// Does an order already point at this PaymentIntent? If so it's not an
+		// orphan — the charge produced an order as intended. This re-read also
+		// closes the race where CreateOrder landed between the Stripe list call
+		// and now.
+		var orderID string
+		err := d.db.QueryRow(ctx,
+			`SELECT id FROM orders WHERE stripe_payment_id = $1`,
+			c.PaymentIntentID,
+		).Scan(&orderID)
+		if err == nil {
+			// Matched an order — not orphaned, leave it alone.
+			continue
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("orphan-payment: order lookup failed, skipping to be safe",
+				slog.String("payment_intent", c.PaymentIntentID),
+				slog.String("error", err.Error()))
+			continue
+		}
+
+		// No order, clearly ours, past the grace window, not yet refunded:
+		// refund the customer.
+		if err := d.stripe.RefundPaymentIntent(c.PaymentIntentID); err != nil {
+			slog.Error("orphan-payment: refund failed, will retry next sweep",
+				slog.String("payment_intent", c.PaymentIntentID),
+				slog.String("user_id", c.UserID),
+				slog.String("error", err.Error()))
+			continue
+		}
+		refunded++
+		slog.Warn("orphan-payment: refunded charged-but-no-order PaymentIntent",
+			slog.String("payment_intent", c.PaymentIntentID),
+			slog.String("user_id", c.UserID),
+			slog.Int("amount_cents", c.AmountCents))
+	}
 }
 
 // scheduledOrder is the projection needed to promote a scheduled order and
@@ -635,17 +836,107 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 	if d.stripe == nil {
 		return
 	}
+
+	// Temporal reconcile mode: when a payout starter is wired in and enabled,
+	// never move money directly here. For each due/pending row, kick off (or
+	// dedup into, via USE_EXISTING) a payout workflow that owns the transfer.
+	// The queue row + this reconcile guarantee every pending order eventually
+	// gets a workflow even if an earlier Start was missed. When the starter is
+	// nil/disabled this branch is skipped and the legacy direct-transfer sweep
+	// below runs exactly as before. The Temporal branch reads pending rows but
+	// leaves them 'pending' — the workflow's ReservePayout activity is what
+	// flips them to 'processing' — so it keeps the original SELECT ... FOR
+	// UPDATE SKIP LOCKED read rather than the legacy atomic claim below.
+	if d.payoutStarter.Enabled() {
+		rows, err := d.db.Query(ctx, `
+			SELECT id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count
+			  FROM courier_payout_queue
+			 WHERE status = 'pending'
+			   AND next_retry_at <= NOW()
+			 ORDER BY next_retry_at ASC
+			 LIMIT $1
+			 FOR UPDATE SKIP LOCKED`,
+			payoutBatchLimit)
+		if err != nil {
+			slog.Error("payout-sweep: load queue failed",
+				slog.String("error", err.Error()))
+			return
+		}
+
+		var due []pendingPayout
+		for rows.Next() {
+			var p pendingPayout
+			if err := rows.Scan(&p.id, &p.orderID, &p.courierID,
+				&p.connectID, &p.amountCents, &p.attemptCount); err != nil {
+				slog.Error("payout-sweep: scan failed",
+					slog.String("error", err.Error()))
+				continue
+			}
+			due = append(due, p)
+		}
+		rows.Close()
+
+		for _, p := range due {
+			if err := d.payoutStarter.Start(ctx, payout.PayoutInput{
+				OrderID:         p.orderID,
+				CourierID:       p.courierID,
+				StripeConnectID: p.connectID,
+				AmountCents:     p.amountCents,
+			}); err != nil {
+				slog.Error("payout-sweep: temporal start failed, will retry next sweep",
+					slog.String("payout_id", p.id),
+					slog.String("order_id", p.orderID),
+					slog.String("error", err.Error()))
+			}
+		}
+		return
+	}
+
+	// --- Legacy direct-transfer path (Temporal disabled) ---
+
+	// Reaper: an instance can crash after claiming a row ('processing') but
+	// before recording the transfer's outcome, stranding it. Reset rows that
+	// have been 'processing' longer than payoutProcessingTimeout back to
+	// 'pending' so the next claim retries them. The Stripe idempotency key
+	// (the row id) prevents a double charge if the original transfer actually
+	// went through before the crash.
+	if ct, err := d.db.Exec(ctx, `
+		UPDATE courier_payout_queue
+		   SET status = 'pending',
+		       updated_at = NOW()
+		 WHERE status = 'processing'
+		   AND updated_at < NOW() - make_interval(secs => $1)`,
+		int(payoutProcessingTimeout.Seconds())); err != nil {
+		slog.Error("payout-sweep: reaper failed to reset stuck rows",
+			slog.String("error", err.Error()))
+	} else if n := ct.RowsAffected(); n > 0 {
+		slog.Warn("payout-sweep: reaped stuck 'processing' rows back to pending",
+			slog.Int64("count", n))
+	}
+
+	// Atomic claim: flip due rows to 'processing' and return them in one
+	// statement, so a row is claimed BEFORE we attempt the Stripe transfer.
+	// This closes the lock-before-transfer gap: previously the row stayed
+	// 'pending' across the (blocking) transfer call, so a crash mid-transfer
+	// left it indistinguishable from never-attempted. FOR UPDATE SKIP LOCKED
+	// in the subquery keeps concurrent sweeps from claiming the same rows.
 	rows, err := d.db.Query(ctx, `
-		SELECT id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count
-		  FROM courier_payout_queue
-		 WHERE status = 'pending'
-		   AND next_retry_at <= NOW()
-		 ORDER BY next_retry_at ASC
-		 LIMIT $1
-		 FOR UPDATE SKIP LOCKED`,
+		UPDATE courier_payout_queue
+		   SET status = 'processing',
+		       updated_at = NOW()
+		 WHERE id IN (
+		   SELECT id
+		     FROM courier_payout_queue
+		    WHERE status = 'pending'
+		      AND next_retry_at <= NOW()
+		    ORDER BY next_retry_at ASC
+		    LIMIT $1
+		    FOR UPDATE SKIP LOCKED
+		 )
+		 RETURNING id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count`,
 		payoutBatchLimit)
 	if err != nil {
-		slog.Error("payout-sweep: load queue failed",
+		slog.Error("payout-sweep: claim queue failed",
 			slog.String("error", err.Error()))
 		return
 	}
@@ -674,14 +965,14 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID, p.id)
 	if err == nil {
-		_, uerr := d.db.Exec(ctx, `
+		ct, uerr := d.db.Exec(ctx, `
 			UPDATE courier_payout_queue
 			   SET status = 'completed',
 			       completed_at = NOW(),
 			       attempt_count = attempt_count + 1,
 			       last_error = '',
 			       updated_at = NOW()
-			 WHERE id = $1`, p.id)
+			 WHERE id = $1 AND status = 'processing'`, p.id)
 		if uerr != nil {
 			// We did the transfer but failed to record completion. Next
 			// sweep would re-attempt — log so we can reconcile manually.
@@ -689,6 +980,29 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 				slog.String("payout_id", p.id),
 				slog.String("order_id", p.orderID),
 				slog.String("error", uerr.Error()))
+			return
+		}
+		if ct.RowsAffected() == 0 {
+			// The reaper reset this row to 'pending' (assuming a crash) while the
+			// transfer was actually still in flight and has now succeeded. The
+			// completion UPDATE matched nothing. The transfer is DONE (and the
+			// Stripe idempotency key prevents a double pay on any re-claim), so
+			// reconcile the row to completed and log for visibility.
+			slog.Warn("payout-sweep: transfer succeeded but row was reaped mid-flight; reconciling to completed",
+				slog.String("payout_id", p.id),
+				slog.String("order_id", p.orderID))
+			if _, rerr := d.db.Exec(ctx, `
+				UPDATE courier_payout_queue
+				   SET status = 'completed',
+				       completed_at = NOW(),
+				       attempt_count = attempt_count + 1,
+				       last_error = '',
+				       updated_at = NOW()
+				 WHERE id = $1 AND status IN ('pending','processing')`, p.id); rerr != nil {
+				slog.Error("payout-sweep: reconcile of reaped-but-completed row failed",
+					slog.String("payout_id", p.id),
+					slog.String("error", rerr.Error()))
+			}
 			return
 		}
 		slog.Info("payout-sweep: transfer succeeded",
@@ -709,6 +1023,11 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 			slog.String("courier_id", p.courierID),
 			slog.Int("attempts", nextAttempt),
 			slog.String("last_error", err.Error()))
+		d.alert("Courier payout failed permanently — admin review required",
+			fmt.Sprintf("A courier payout exhausted all %d attempts and is now failed_permanent.\n\n"+
+				"Payout queue id: %s\nOrder: %s\nCourier: %s\nConnect account: %s\n"+
+				"Amount (cents): %d\nLast error: %s\n",
+				maxPayoutAttempts, p.id, p.orderID, p.courierID, p.connectID, p.amountCents, err.Error()))
 	} else {
 		nextStatus = "pending"
 		backoffSecs = payoutBackoffSecs(nextAttempt)
@@ -726,7 +1045,7 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 		       last_error = $3,
 		       next_retry_at = NOW() + make_interval(secs => $4),
 		       updated_at = NOW()
-		 WHERE id = $5`,
+		 WHERE id = $5 AND status = 'processing'`,
 		nextStatus, nextAttempt, err.Error(), backoffSecs, p.id)
 	if uerr != nil {
 		slog.Error("payout-sweep: failed to record retry state",

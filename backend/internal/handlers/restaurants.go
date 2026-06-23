@@ -28,10 +28,16 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	var rows pgx.Rows
 	var err error
 
-	if lat != "" && lng != "" {
+	latF, errLat := strconv.ParseFloat(lat, 64)
+	lngF, errLng := strconv.ParseFloat(lng, 64)
+	useDistance := lat != "" && lng != "" &&
+		errLat == nil && errLng == nil &&
+		latF >= -90 && latF <= 90 && lngF >= -180 && lngF <= 180
+
+	if useDistance {
 		rows, err = h.db.Pool.Query(r.Context(),
 			baseQuery+` ORDER BY point($2, $3) <-> point(lng, lat) LIMIT 50`,
-			vertical, lng, lat)
+			vertical, lngF, latF)
 	} else {
 		rows, err = h.db.Pool.Query(r.Context(), baseQuery+` ORDER BY rating DESC LIMIT 50`, vertical)
 	}
@@ -99,6 +105,24 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	// Gate the menu on the same visibility rules as GetRestaurant: anonymous or
+	// cross-vertical callers, and pending/rejected/deactivated restaurants, must
+	// not be able to read a menu by guessing the restaurant ID.
+	vertical := verticalFromRequest(r)
+	var visible bool
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM restaurants
+		   WHERE id = $1 AND vertical = $2 AND is_active = true AND approval_status = 'approved')`,
+		id, vertical,
+	).Scan(&visible); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
+	if !visible {
+		writeError(w, http.StatusNotFound, "restaurant not found")
+		return
+	}
 
 	var categories []models.MenuCategory
 	catRows, err := h.db.Pool.Query(r.Context(),

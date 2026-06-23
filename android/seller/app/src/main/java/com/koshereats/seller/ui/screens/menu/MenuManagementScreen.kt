@@ -20,10 +20,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,12 +40,17 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,11 +60,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.koshereats.seller.data.models.MenuImport
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.SellerMenuCategory
 import com.koshereats.seller.data.models.formatPrice
@@ -77,6 +89,32 @@ fun MenuManagementScreen(
     viewModel: MenuViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Local, client-side filter over the already-loaded category items. Mirrors iOS's
+    // .searchable on name/description so a seller can find and 86 one item fast during
+    // a rush instead of scrolling the whole list. No ViewModel round-trip needed.
+    var searchQuery by remember { mutableStateOf("") }
+    val visibleItems = remember(state.items, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) {
+            state.items
+        } else {
+            state.items.filter {
+                it.name.contains(query, ignoreCase = true) ||
+                    it.description.contains(query, ignoreCase = true)
+            }
+        }
+    }
+
+    // Surface action errors (failed toggle/delete) as a transient toast. When the menu
+    // list is already populated, optimistic-update reverts would otherwise be silent.
+    LaunchedEffect(state.error) {
+        if (state.error != null && state.items.isNotEmpty()) {
+            Toast.makeText(context, state.error, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
+    }
 
     val categories: List<Pair<SellerMenuCategory?, String>> =
         listOf(null to "All") + state.categories.map { cat -> cat to cat.name }
@@ -116,6 +154,57 @@ fun MenuManagementScreen(
                 )
             }
 
+            // Import-status banner — mirrors iOS's Menu-tab import banner. Shows
+            // progress while an UberEats import is in flight, then a dismissible
+            // success/failure summary.
+            state.latestImport?.let { import ->
+                ImportStatusBanner(
+                    import = import,
+                    onDismiss = { viewModel.dismissImportBanner() },
+                )
+            }
+
+            // Search
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                placeholder = {
+                    Text("Search menu items", style = MaterialTheme.typography.bodyMedium)
+                },
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null, tint = TextMuted)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                Icons.Filled.Clear,
+                                contentDescription = "Clear search",
+                                tint = TextMuted,
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = TextWhite,
+                    unfocusedTextColor = TextWhite,
+                    cursorColor = Orange,
+                    focusedBorderColor = Orange,
+                    unfocusedBorderColor = SurfaceDark,
+                    focusedContainerColor = SurfaceDark,
+                    unfocusedContainerColor = SurfaceDark,
+                    focusedPlaceholderColor = TextMuted,
+                    unfocusedPlaceholderColor = TextMuted,
+                ),
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Category chips
             Row(
                 modifier = Modifier
@@ -150,48 +239,172 @@ fun MenuManagementScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(color = Orange)
-                }
-            } else if (state.items.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.loadMenuItems(state.selectedCategory) },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                if (state.isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(color = Orange)
+                    }
+                } else if (state.error != null && state.items.isEmpty()) {
+                    // Distinguish a failed load from a genuinely empty menu so a network
+                    // error doesn't masquerade as "No menu items yet".
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "Couldn't load your menu",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextWhite,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = state.error ?: "Please try again",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            TextButton(
+                                onClick = { viewModel.loadMenuItems(state.selectedCategory) },
+                            ) {
+                                Text("Retry", color = Orange)
+                            }
+                        }
+                    }
+                } else if (state.items.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "No menu items yet",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextMuted,
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Tap + to add your first item",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                            )
+                        }
+                    }
+                } else if (visibleItems.isEmpty()) {
+                    // Items exist but the search query matched none of them.
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
-                            text = "No menu items yet",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = TextMuted,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Tap + to add your first item",
+                            text = "No items match \"${searchQuery.trim()}\"",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextMuted,
                         )
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(state.items, key = { it.id }) { item ->
-                        MenuItemCard(
-                            item = item,
-                            isPending = item.id in state.pendingItemIds,
-                            onEdit = { onEditItem(item.id) },
-                            onToggleAvailability = { viewModel.toggleAvailability(item) },
-                            onDelete = { viewModel.deleteMenuItem(item.id) },
-                        )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.padding(horizontal = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(visibleItems, key = { it.id }) { item ->
+                            MenuItemCard(
+                                item = item,
+                                isPending = item.id in state.pendingItemIds,
+                                onEdit = { onEditItem(item.id) },
+                                onToggleAvailability = { viewModel.toggleAvailability(item) },
+                                onDelete = { viewModel.deleteMenuItem(item.id) },
+                            )
+                        }
+                        item { Spacer(modifier = Modifier.height(80.dp)) }
                     }
-                    item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportStatusBanner(
+    import: MenuImport,
+    onDismiss: () -> Unit,
+) {
+    val inProgress = import.isInProgress
+    val failed = import.status == "failed"
+    val tint = when {
+        failed -> ErrorRed
+        inProgress -> Orange
+        else -> SuccessGreen
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(tint.copy(alpha = 0.12f))
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (inProgress) {
+            CircularProgressIndicator(
+                color = tint,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
+            )
+        } else {
+            Icon(
+                if (failed) Icons.Filled.ErrorOutline else Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            val title = when {
+                failed -> "Menu import failed"
+                inProgress -> "Importing your UberEats menu…"
+                else -> "Menu import complete"
+            }
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextWhite,
+            )
+            val subtitle = when {
+                failed -> import.error?.takeIf { it.isNotBlank() }
+                    ?: "Something went wrong. You can re-run the import from onboarding."
+                inProgress -> if (import.itemsCreated > 0) {
+                    "${import.itemsCreated} items added so far — this can take a few minutes."
+                } else {
+                    "This can take a few minutes. Items will appear here automatically."
+                }
+                else -> "${import.itemsCreated} items added from UberEats."
+            }
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+        // Finished imports are dismissible; an in-flight one is not (it clears
+        // itself once polling sees it complete).
+        if (!inProgress) {
+            IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Dismiss",
+                    tint = TextMuted,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }

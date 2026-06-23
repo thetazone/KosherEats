@@ -183,9 +183,14 @@ struct OrderTrackingView: View {
     /// leaves the map on the global fallback until the user pans.
     private func fitCameraIfNeeded(for order: Order) {
         guard !hasFitCamera else { return }
-        var coords: [CLLocationCoordinate2D] = [
-            CLLocationCoordinate2D(latitude: order.deliveryLat, longitude: order.deliveryLng)
-        ]
+        // Mirror the annotation guard: pickup orders carry deliveryLat/Lng of
+        // (0,0), so seeding the bounding region with that coordinate would
+        // span the map from the restaurant to Null Island. Only include the
+        // delivery pin when it's a real coordinate.
+        var coords: [CLLocationCoordinate2D] = []
+        if order.deliveryLat != 0 || order.deliveryLng != 0 {
+            coords.append(CLLocationCoordinate2D(latitude: order.deliveryLat, longitude: order.deliveryLng))
+        }
         if let lat = order.restaurantLat, let lng = order.restaurantLng {
             coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lng))
         }
@@ -361,11 +366,12 @@ struct OrderTrackingView: View {
     }
 
     private func addressCard(for order: Order) -> some View {
-        HStack(alignment: .top, spacing: Theme.spacingSM) {
-            Image(systemName: "house.fill")
+        let isPickup = order.fulfillmentType == "pickup"
+        return HStack(alignment: .top, spacing: Theme.spacingSM) {
+            Image(systemName: isPickup ? "bag.fill" : "house.fill")
                 .foregroundColor(.kePrimary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Delivering to")
+                Text(isPickup ? "Pickup from" : "Delivering to")
                     .font(.caption)
                     .foregroundColor(.keTextTertiary)
                 Text(order.deliveryAddress)

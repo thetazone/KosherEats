@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 interface Restaurant {
   id: string;
@@ -25,6 +26,17 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
       >
         {/* Image */}
         <div className="relative h-48 bg-dark-800 overflow-hidden">
+          {restaurant.image_url ? (
+            <Image
+              src={restaurant.image_url}
+              alt={restaurant.name}
+              fill
+              sizes="(max-width: 768px) 100vw, 33vw"
+              className="object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-900/40 to-dark-800" />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-dark-900/80 to-transparent z-10" />
           {!restaurant.is_open && (
             <div className="absolute inset-0 flex items-center justify-center z-20">
@@ -33,8 +45,6 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
               </span>
             </div>
           )}
-          {/* Placeholder gradient for image */}
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-900/40 to-dark-800" />
 
           {/* Certification badge */}
           <div className="absolute top-3 left-3 z-20">

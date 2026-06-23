@@ -156,7 +156,10 @@ class AuthViewModel: ObservableObject {
             onSuccess: { [weak self] token, firstName, lastName, nonce in
                 guard let self else { return }
                 Task { @MainActor in
-                    defer { self.isSocialSignInInFlight = false }
+                    defer {
+                        self.isSocialSignInInFlight = false
+                        self.appleSignInDelegate = nil
+                    }
                     await self.socialLogin(provider: "apple", token: token, firstName: firstName, lastName: lastName, nonce: nonce)
                 }
             },
@@ -164,6 +167,7 @@ class AuthViewModel: ObservableObject {
                 Task { @MainActor in
                     self?.isSocialSignInInFlight = false
                     self?.errorMessage = message
+                    self?.appleSignInDelegate = nil
                 }
             }
         )
@@ -178,8 +182,10 @@ class AuthViewModel: ObservableObject {
 
     func signInWithGoogle() {
         guard !isSocialSignInInFlight else { return }
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        guard let rootVC = activeScene?.windows.first(where: \.isKeyWindow)?.rootViewController
+                ?? activeScene?.windows.first?.rootViewController else {
             errorMessage = "Cannot find root view controller"
             return
         }
@@ -221,12 +227,25 @@ class AuthViewModel: ObservableObject {
         DeliveryActivityManager.shared.endTracking(finalStatus: "logged_out", displayText: "Session ended")
 
         GIDSignIn.sharedInstance.signOut()
-        api.logout()
+
+        // Unregister this device's APNs token from the *current* user, then clear
+        // the auth token — in that order, because /devices/unregister requires
+        // auth. Without unregistering, the backend keeps mapping this device →
+        // the user who just logged out, so the next account that signs in on the
+        // same device receives the previous user's order-status and chat pushes.
+        // Best-effort: a network failure must never strand the user in a
+        // logged-in state, so the local teardown below still runs synchronously.
+        // The cached APNs token is intentionally NOT cleared (it's device-scoped,
+        // not secret) so the next login re-registers it immediately.
+        Task { [api] in
+            await PushNotifications.shared.unregisterCurrentDeviceToken()
+            api.logout()
+        }
+
         user = nil
         isAuthenticated = false
         isLoading = false
         errorMessage = nil
-        PushNotifications.shared.pendingToken = nil
         AppRouter.shared.clearPendingRoutes()
     }
 

@@ -27,9 +27,14 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
-        intent?.getStringExtra("order_id")?.let {
-            pendingOrderId.value = it
-            intent.removeExtra("order_id")
+        // Only read on a fresh start; after process-death restore the system re-delivers
+        // the original Intent extras (removeExtra only mutated the in-process Intent), which
+        // would re-fire stale notification navigation. onNewIntent handles live deep links.
+        if (savedInstanceState == null) {
+            intent?.getStringExtra("order_id")?.let {
+                pendingOrderId.value = it
+                intent.removeExtra("order_id")
+            }
         }
         setContent {
             KosherEatsTheme {

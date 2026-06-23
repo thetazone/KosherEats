@@ -92,6 +92,12 @@ class OrdersViewModel: ObservableObject {
             guard gen == loadGeneration else { return }
             self.orders = fresh
             applyFilter()
+        } catch APIError.unauthorized {
+            guard gen == loadGeneration else { return }
+            // Session died mid-use (refresh token expired/revoked). Route to
+            // login instead of showing a generic "couldn't load" error the
+            // seller can't act on.
+            notifySessionExpired()
         } catch {
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
@@ -108,15 +114,16 @@ class OrdersViewModel: ObservableObject {
     /// to pull-to-refresh (they'd otherwise miss tickets sitting in the
     /// pending queue).
     ///
-    /// Polling ticks check `loadGeneration` so a restaurant switch (or any
-    /// explicit `load()`) cleanly abandons an in-flight tick rather than
-    /// letting the old restaurant's orders stomp on the new view.
+    /// Each polling tick re-reads `loadGeneration` so an explicit `load()`
+    /// (pull-to-refresh, push, Retry) only drops a stale in-flight tick — it
+    /// does NOT terminate the loop. A restaurant switch tears the whole task
+    /// down via `.task(id:)` cancellation, which is the only thing that ends
+    /// the loop besides the view disappearing.
     func loadAndAutoRefresh(interval: TimeInterval = 15) async {
         configureAudioSession()
         defer { deactivateAudioSession() }
         subscribeToRestaurantChanges()
         await load()
-        let gen = loadGeneration
         // Only seed on first run — preserve across task restarts so orders
         // that arrived while the seller was on another tab still trigger alerts.
         if self.knownPendingIDs.isEmpty {
@@ -126,13 +133,23 @@ class OrdersViewModel: ObservableObject {
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             if Task.isCancelled { break }
-            // Restaurant switched (or an external load() bumped the gen);
-            // abandon this loop — the new load() will start its own.
-            if gen != loadGeneration { break }
+            // Re-read the generation at the top of each tick. An external
+            // load() (push observer, pull-to-refresh, Retry) bumps the gen —
+            // we DON'T break on that, or the loop would die permanently and
+            // new-order alerts would stop. Instead this tick's result is
+            // checked against the gen captured here, so a concurrent load()
+            // only invalidates the in-flight tick rather than terminating the
+            // loop. A restaurant switch tears the whole task down via
+            // `.task(id: selectedRestaurant.id)` cancellation, so the loop
+            // never needs to self-terminate on a gen mismatch.
+            let gen = loadGeneration
             // Silent refresh — no spinner on subsequent ticks.
             do {
                 let fresh = try await APIService.shared.getOrders()
-                guard gen == loadGeneration else { break }
+                // A concurrent load() landed while this tick was in flight —
+                // its fresher result wins, so drop this stale one but keep
+                // polling (the next tick re-reads the bumped gen).
+                guard gen == loadGeneration else { continue }
                 let newPending = Set(fresh.filter { $0.status == .pending }.map(\.id))
                 let brandNew = newPending.subtracting(self.knownPendingIDs)
                 if !brandNew.isEmpty {
@@ -140,17 +157,17 @@ class OrdersViewModel: ObservableObject {
                     Haptics.notify(.warning)
                 }
                 self.knownPendingIDs = newPending
-                let inFlightOrders = Dictionary(
-                    uniqueKeysWithValues: self.orders
-                        .filter { inFlightOrderIDs.contains($0.id) }
-                        .map { ($0.id, $0) }
-                )
-                self.orders = fresh.map { order in
-                    inFlightOrders[order.id] ?? order
-                }
-                applyFilter()
+                mergeFresh(fresh)
                 consecutiveFailures = 0
                 pollHealthError = nil
+            } catch APIError.unauthorized {
+                // The refresh token expired or was revoked mid-session. This is
+                // NOT a network blip — no number of retries will recover it, and
+                // showing "Can't reach server" would be a lie. Hand off to
+                // AuthViewModel (via .sessionExpired) to clear tokens and route
+                // back to the login screen, then stop polling.
+                notifySessionExpired()
+                break
             } catch {
                 consecutiveFailures += 1
                 // Three in a row (~45s of silence) is long enough to be real —
@@ -161,6 +178,26 @@ class OrdersViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Posts `.sessionExpired` so AuthViewModel can clear the stored tokens and
+    /// drop the app back to the login screen with a "your session expired"
+    /// message. Guards against re-posting on every subsequent tick/call once
+    /// we've already kicked the seller out of an authenticated session.
+    ///
+    /// The routing back to login is owned by `AuthViewModel.isAuthenticated`,
+    /// which this view model cannot reach directly — so the actual token
+    /// invalidation + `isAuthenticated = false` flip lives in AuthViewModel's
+    /// `.sessionExpired` observer (registered in its init, calling
+    /// `handleSessionExpired()`). Here we only fire the event and clear the
+    /// misleading "can't reach server" banner.
+    private var didNotifySessionExpired = false
+    private func notifySessionExpired() {
+        guard !didNotifySessionExpired else { return }
+        didNotifySessionExpired = true
+        pollHealthError = nil
+        errorMessage = nil
+        NotificationCenter.default.post(name: .sessionExpired, object: nil)
     }
 
     /// Reload Orders (and reset polling state) whenever the seller picks a
@@ -186,18 +223,29 @@ class OrdersViewModel: ObservableObject {
     /// silent mode (common on a restaurant counter phone) without hijacking
     /// any other audio the device is playing.
     private func configureAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            #if DEBUG
-            print("[audio] failed to configure session: \(error)")
-            #endif
+        // `setActive(true)` is an IPC round-trip to the media server that can
+        // block for tens-to-hundreds of ms — too slow for the main actor,
+        // which this @MainActor VM otherwise runs on. AVAudioSession is
+        // thread-safe, so hop off to a utility task. The session only needs to
+        // be active before the first new-order ping plays, so the async hop
+        // doesn't race anything user-visible.
+        Task.detached(priority: .utility) {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+                try session.setActive(true)
+            } catch {
+                #if DEBUG
+                print("[audio] failed to configure session: \(error)")
+                #endif
+            }
         }
     }
 
     private func deactivateAudioSession() {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Task.detached(priority: .utility) {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     /// Timestamp of the last alert sound. Used to debounce rapid-fire alerts
@@ -353,4 +401,40 @@ class OrdersViewModel: ObservableObject {
         }
         applyFilter()
     }
+
+    /// Replaces the order list with a freshly-fetched batch while preserving
+    /// any order that currently has a mutation in flight. An accept / reject /
+    /// prepare / ready tap optimistically updates the local copy, but a poll
+    /// (this VM's own loop) or the dashboard's 30s timer can land a `fresh`
+    /// batch that still reflects the pre-mutation server state — without this
+    /// guard that stale copy would stomp the optimistic update the seller is
+    /// watching in SellerOrderDetailView. Shared by the poll loop here and by
+    /// DashboardViewModel.fetchActiveOrders via `sharedOrdersVM`.
+    func mergeFresh(_ fresh: [Order]) {
+        let inFlightOrders = Dictionary(
+            uniqueKeysWithValues: orders
+                .filter { inFlightOrderIDs.contains($0.id) }
+                .map { ($0.id, $0) }
+        )
+        var merged = fresh.map { inFlightOrders[$0.id] ?? $0 }
+        let freshIDs = Set(fresh.map(\.id))
+        merged.append(contentsOf: inFlightOrders.values.filter { !freshIDs.contains($0.id) })
+        orders = merged
+        applyFilter()
+    }
+}
+
+// MARK: - Session Notifications
+
+extension Notification.Name {
+    /// Fired when an authenticated API call fails with `.unauthorized` after
+    /// the refresh attempt was exhausted — i.e. the session is dead (refresh
+    /// token expired or revoked mid-session) and no retry can recover it.
+    ///
+    /// AuthViewModel observes this to clear the stored tokens and set
+    /// `isAuthenticated = false`, which routes the app back to
+    /// `SellerLoginView`. Declared here (rather than in PushEvents.swift)
+    /// because this is an auth-lifecycle event, distinct from the order-push
+    /// event bus, and OrdersViewModel is the first site that needs it.
+    static let sessionExpired = Notification.Name("ke.sessionExpired")
 }

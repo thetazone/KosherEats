@@ -49,6 +49,13 @@ struct PhoneOTPView: View {
                             // numeric range instead of truncating to four.
                             let digits = newValue.filter(\.isNumber)
                             if digits != newValue { code = digits }
+                            // Once the user starts entering the code, cancel the
+                            // pending silent auto-resend so we don't burn a second
+                            // Twilio Verify send (billed per send, capped at 5).
+                            if !code.isEmpty {
+                                autoResendTask?.cancel()
+                                autoResendTask = nil
+                            }
                             if code.count > maxCodeLength {
                                 code = String(code.prefix(maxCodeLength))
                             }
@@ -109,7 +116,10 @@ struct PhoneOTPView: View {
         .onAppear {
             codeFieldFocused = true
             autoResendTask = Task {
-                try? await Task.sleep(for: .seconds(15))
+                // SMS delivery + read/type time routinely exceeds 30s, so a short
+                // delay double-sends on most logins. Wait long enough that the
+                // silent resend only fires when delivery has genuinely failed.
+                try? await Task.sleep(for: .seconds(60))
                 if !Task.isCancelled && code.isEmpty {
                     await authVM.silentResendOTP(phone: phoneE164)
                 }

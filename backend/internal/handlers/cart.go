@@ -104,6 +104,10 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "notes cannot exceed 500 characters")
 		return
 	}
+	if req.RestaurantID == "" {
+		writeError(w, http.StatusBadRequest, "restaurant_id is required")
+		return
+	}
 
 	// Get or create cart — if switching restaurants, clear existing cart.
 	// Use a transaction with SELECT FOR UPDATE to prevent TOCTOU races when
@@ -161,7 +165,8 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	// Load base item price.
 	var basePrice int
 	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT price FROM menu_items WHERE id = $1`, req.MenuItemID,
+		`SELECT price FROM menu_items WHERE id = $1 AND restaurant_id = $2 AND is_available = true`,
+		req.MenuItemID, req.RestaurantID,
 	).Scan(&basePrice)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "menu item not found")

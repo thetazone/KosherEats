@@ -34,6 +34,17 @@ type Client struct {
 	enabled bool
 }
 
+// orphanMarkerKey / orphanMarkerValue is the metadata stamp we put on every
+// consumer-checkout PaymentIntent we create (see CreatePaymentSheet). It's the
+// "created-by-us" marker the orphan-payment reconcile sweep uses to be sure a
+// charged-but-unmatched PaymentIntent is ours before refunding it. Listing the
+// PaymentIntents API can't filter by metadata server-side, so the sweep filters
+// on this stamp client-side and refuses to touch anything that lacks it.
+const (
+	orphanMarkerKey   = "kosher_eats_checkout"
+	orphanMarkerValue = "1"
+)
+
 // looksLikeRealStripeKey filters out the "sk_test_your_stripe_secret_key"
 // placeholders commonly left in .env.example files. Any real Stripe secret
 // key starts with "sk_" and contains either "_live_" or "_test_" followed
@@ -167,15 +178,44 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 		log.Printf("[stripe stub] verify payment_intent=%s user=%s amount=%d", paymentIntentID, userID, expectedAmountCents)
 		return nil
 	}
-	pi, err := paymentintent.Get(paymentIntentID, nil)
+	// Expand the latest charge so we can inspect its refund state. A fully
+	// refunded PaymentIntent KEEPS status 'succeeded' (the refund lives on the
+	// Charge, not the PI), so without this a PI that the orphan sweep already
+	// refunded would still pass verification and create a free order.
+	params := &stripe.PaymentIntentParams{}
+	params.AddExpand("latest_charge")
+	pi, err := paymentintent.Get(paymentIntentID, params)
 	if err != nil {
 		return fmt.Errorf("retrieve payment intent: %w", err)
 	}
+	return verifyPI(pi, userID, expectedAmountCents)
+}
+
+// verifyPI is the pure verification core shared by VerifyPaymentSucceeded. It
+// takes an already-retrieved PaymentIntent (with latest_charge expanded) and
+// asserts it succeeded, matches the expected amount, isn't refunded, and — most
+// importantly — belongs to the authenticated caller. Factored out so the
+// ownership guard can be unit-tested against a fabricated *stripe.PaymentIntent
+// without a live Stripe key (the enabled path is otherwise unreachable in stub
+// mode).
+func verifyPI(pi *stripe.PaymentIntent, userID string, expectedAmountCents int) error {
 	if pi.Status != stripe.PaymentIntentStatusSucceeded {
 		return fmt.Errorf("payment intent status is %s, expected succeeded", pi.Status)
 	}
 	if pi.Amount != int64(expectedAmountCents) {
 		return fmt.Errorf("payment amount mismatch: got %d, expected %d", pi.Amount, expectedAmountCents)
+	}
+	if ch := pi.LatestCharge; ch != nil && (ch.Refunded || ch.AmountRefunded > 0) {
+		return fmt.Errorf("payment intent has been refunded")
+	}
+	// Bind the charge to the authenticated caller. Every checkout PI is stamped
+	// with Metadata["user_id"] in CreatePaymentSheet; reject if it is missing or
+	// belongs to a different user. Without this, an attacker who knows a victim's
+	// payment_intent_id (succeeded but whose CreateOrder never landed — the 20m
+	// orphan-sweep window) could POST CreateOrder with the victim's PI and get an
+	// order charged to the victim's card attributed to themselves (cross-user IDOR).
+	if pi.Metadata["user_id"] != userID {
+		return fmt.Errorf("payment intent does not belong to this user")
 	}
 	return nil
 }
@@ -197,6 +237,80 @@ func (c *Client) RefundPaymentIntent(paymentIntentID string) error {
 		PaymentIntent: stripe.String(paymentIntentID),
 	})
 	return err
+}
+
+// OrphanCandidate is a slim projection of a SUCCEEDED PaymentIntent we created
+// that the orphan-payment reconcile sweep evaluates. AlreadyRefunded is derived
+// from the expanded latest charge so the sweep never re-refunds a PI we (or a
+// human in the dashboard) already refunded.
+type OrphanCandidate struct {
+	PaymentIntentID string
+	UserID          string
+	AmountCents     int
+	CreatedUnix     int64
+	AlreadyRefunded bool
+}
+
+// ListOrphanCandidates returns the SUCCEEDED PaymentIntents we created whose
+// `created` timestamp falls within [olderThan, youngerThan] ago. The window is
+// bounded on both ends on purpose: `olderThan` (a grace period) keeps us from
+// racing a checkout that's mid-flight (PI confirmed, CreateOrder about to land),
+// and `youngerThan` bounds the scan so we don't page through all of Stripe's
+// history every minute.
+//
+// It only returns PaymentIntents carrying our orphan marker metadata, so a
+// caller can refund a candidate knowing it's clearly ours. The latest charge is
+// expanded inline so AlreadyRefunded is populated without an extra API call.
+//
+// In dev stub mode (no Stripe key) this returns nil — the sweep no-ops.
+func (c *Client) ListOrphanCandidates(olderThan, youngerThan time.Duration) ([]OrphanCandidate, error) {
+	if !c.enabled {
+		return nil, nil
+	}
+
+	now := time.Now()
+	gteUnix := now.Add(-youngerThan).Unix() // lower bound: not older than youngerThan
+	lteUnix := now.Add(-olderThan).Unix()   // upper bound: at least olderThan old
+
+	params := &stripe.PaymentIntentListParams{
+		CreatedRange: &stripe.RangeQueryParams{
+			GreaterThanOrEqual: gteUnix,
+			LesserThanOrEqual:  lteUnix,
+		},
+	}
+	// Expand the latest charge so we can read its refund state without a
+	// per-PaymentIntent round trip.
+	params.AddExpand("data.latest_charge")
+	params.Limit = stripe.Int64(100)
+
+	var out []OrphanCandidate
+	it := paymentintent.List(params)
+	for it.Next() {
+		pi := it.PaymentIntent()
+		// Only ours: must carry the marker we stamp in CreatePaymentSheet.
+		if pi.Metadata == nil || pi.Metadata[orphanMarkerKey] != orphanMarkerValue {
+			continue
+		}
+		// Only clean, fully-captured successes are refund candidates.
+		if pi.Status != stripe.PaymentIntentStatusSucceeded {
+			continue
+		}
+		refunded := false
+		if ch := pi.LatestCharge; ch != nil {
+			refunded = ch.Refunded || ch.AmountRefunded > 0
+		}
+		out = append(out, OrphanCandidate{
+			PaymentIntentID: pi.ID,
+			UserID:          pi.Metadata["user_id"],
+			AmountCents:     int(pi.Amount),
+			CreatedUnix:     pi.Created,
+			AlreadyRefunded: refunded,
+		})
+	}
+	if err := it.Err(); err != nil {
+		return nil, fmt.Errorf("list payment intents: %w", err)
+	}
+	return out, nil
 }
 
 // TransferToCourier sends `amountCents` to the courier's Connect account.
@@ -343,7 +457,10 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
 		SetupFutureUsage:   stripe.String("off_session"),
 		Params: stripe.Params{
-			Metadata: map[string]string{"user_id": userID},
+			Metadata: map[string]string{
+				"user_id":       userID,
+				orphanMarkerKey: orphanMarkerValue,
+			},
 		},
 	})
 	if err != nil {

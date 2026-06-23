@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/models"
+	// Aliased because DeliverOrder has a local int named `payout`.
+	payoutwf "github.com/koshereats/backend/internal/payout"
 )
 
 // Courier-facing order endpoints: the marketplace loop.
@@ -360,6 +362,27 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit")
 		return
+	}
+
+	// Post-commit, GATED Temporal payout start. Only fires when the same
+	// enqueue condition held above (connectID != "" && payout > 0) AND a
+	// Temporal starter is wired (Enabled() is false on a nil *payout.Starter,
+	// so when Temporal is disabled this branch is skipped and behavior is
+	// byte-for-byte identical to before). Best-effort in the background on a
+	// fresh context.Background() — the request context is done once the
+	// handler returns. A lost start is covered by the reconcile sweep, so the
+	// error is intentionally ignored.
+	if h.payoutStarter.Enabled() && connectID != "" && payout > 0 {
+		courierID := user["user_id"]
+		payoutAmount := payout
+		go func() {
+			_ = h.payoutStarter.Start(context.Background(), payoutwf.PayoutInput{
+				OrderID:         orderID,
+				CourierID:       courierID,
+				StripeConnectID: connectID,
+				AmountCents:     payoutAmount,
+			})
+		}()
 	}
 
 	var consumerID string

@@ -153,6 +153,23 @@ type MenuItem struct {
 	ModifierGroups []ModifierGroup `json:"modifier_groups,omitempty"`
 }
 
+// MenuImport tracks an async menu-import job (e.g. from an UberEats store URL).
+// Created when a seller opts into import during onboarding; an out-of-process
+// worker drains pending rows, scrapes the source, writes menu_items, and
+// updates status + counts here. Read by the app to show import progress.
+type MenuImport struct {
+	ID           string    `json:"id"`
+	RestaurantID string    `json:"restaurant_id"`
+	Source       string    `json:"source"` // "ubereats"
+	SourceURL    string    `json:"source_url"`
+	Status       string    `json:"status"` // pending | running | done | failed
+	ItemsTotal   int       `json:"items_total"`
+	ItemsCreated int       `json:"items_created"`
+	Error        string    `json:"error,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
 // ModifierGroup is a set of selectable options on a menu item — e.g.
 // "Choose your size" (required, exactly 1) or "Add-ons" (optional, up to 5).
 type ModifierGroup struct {
@@ -221,6 +238,10 @@ type Order struct {
 	Status          OrderStatus `json:"status"`
 	Items           []OrderItem `json:"items"`
 	Subtotal        int         `json:"subtotal"`
+	// Discount is the deal discount applied to the subtotal before tax, in
+	// cents (0 when no deal). The totals reconcile as
+	// subtotal - discount + delivery_fee + service_fee + tax + courier_tip == total.
+	Discount        int         `json:"discount"`
 	DeliveryFee     int         `json:"delivery_fee"`
 	ServiceFee      int         `json:"service_fee"`
 	Tax             int         `json:"tax"`

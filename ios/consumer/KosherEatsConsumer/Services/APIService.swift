@@ -53,6 +53,12 @@ class APIService: ObservableObject {
             defer { lock.unlock() }
             return formatter.date(from: string)
         }
+
+        func string(from date: Date) -> String {
+            lock.lock()
+            defer { lock.unlock() }
+            return formatter.string(from: date)
+        }
     }
 
     // URL configuration:
@@ -408,6 +414,45 @@ class APIService: ObservableObject {
         clearToken()
     }
 
+    // MARK: - Password reset
+    //
+    // forgotPassword/resetPassword send role="consumer" + vertical="kosher" —
+    // the same scope this app uses for /login — so the backend targets the
+    // exact consumer account when an email also has a seller-side account.
+    // Without this, the reset could land on the wrong row (email is unique
+    // per (email, role, vertical), not globally).
+
+    struct MessageResponse: Decodable { let message: String }
+
+    @discardableResult
+    func forgotPassword(email: String) async throws -> MessageResponse {
+        struct Body: Encodable {
+            let email: String
+            let role: String
+            let vertical: String
+        }
+        return try await request(method: "POST", path: "/auth/password/forgot",
+                                 body: Body(email: email, role: "consumer", vertical: "kosher"))
+    }
+
+    @discardableResult
+    func resetPassword(email: String, code: String, newPassword: String) async throws -> MessageResponse {
+        struct Body: Encodable {
+            let email: String
+            let code: String
+            let newPassword: String
+            let role: String
+            let vertical: String
+            enum CodingKeys: String, CodingKey {
+                case email, code, role, vertical
+                case newPassword = "new_password"
+            }
+        }
+        return try await request(method: "POST", path: "/auth/password/reset",
+                                 body: Body(email: email, code: code, newPassword: newPassword,
+                                            role: "consumer", vertical: "kosher"))
+    }
+
     // MARK: - Restaurants
 
     func listRestaurants() async throws -> [Restaurant] {
@@ -423,7 +468,8 @@ class APIService: ObservableObject {
     }
 
     func searchRestaurants(query: String) async throws -> [Restaurant] {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query
         return try await request(method: "GET", path: "/restaurants/search?q=\(encoded)")
     }
 
@@ -612,8 +658,35 @@ class APIService: ObservableObject {
         try await request(method: "GET", path: "/orders", authenticated: true)
     }
 
+    /// Keyset-paginated order history. Pass the `createdAt` of the last row from
+    /// the previous page as `cursor` to fetch older orders; nil fetches the
+    /// newest page. The backend expects an RFC3339Nano timestamp and returns up
+    /// to `limit` (max 100) rows in descending created_at order.
+    func listOrders(cursor: Date?, limit: Int = 50) async throws -> [Order] {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            items.append(URLQueryItem(name: "cursor",
+                                      value: APIService.iso8601Fractional.string(from: cursor)))
+        }
+        var components = URLComponents()
+        components.path = "/orders"
+        components.queryItems = items
+        let path = "/orders\(components.percentEncodedQuery.map { "?\($0)" } ?? "")"
+        return try await request(method: "GET", path: path, authenticated: true)
+    }
+
     func getOrder(id: String) async throws -> Order {
         try await request(method: "GET", path: "/orders/\(id)", authenticated: true)
+    }
+
+    /// Recover the order created for a given Stripe PaymentIntent. Used as an
+    /// idempotent fallback when `createOrder` fails to return after a confirmed
+    /// payment (e.g. network drop): the client retries with the PaymentIntent id
+    /// it just confirmed. The backend scopes the lookup to the calling user and
+    /// returns the full Order (with order_items) or 404 if none exists.
+    func getOrderByPaymentIntent(_ pi: String) async throws -> Order {
+        let encoded = pi.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pi
+        return try await request(method: "GET", path: "/orders/by-payment-intent/\(encoded)", authenticated: true)
     }
 
     func cancelOrder(id: String) async throws -> Order {
@@ -671,11 +744,13 @@ class APIService: ObservableObject {
                 var req = URLRequest(url: url)
                 req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
                 req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                // Backend sends a comment ping every 15s. 60s gives us 4 pings
-                // of headroom before declaring the connection dead. The old
+                // Backend sends a comment ping every 25s (sseHeartbeatInterval in
+                // orders.go). timeoutInterval acts as a no-activity timeout that
+                // resets on each received byte, so 90s gives ~3 missed pings of
+                // headroom before declaring the connection dead. The old
                 // greatestFiniteMagnitude meant a silent cellular drop would
                 // freeze the courier pin until the user backgrounded the app.
-                req.timeoutInterval = 60
+                req.timeoutInterval = 90
 
                 do {
                     let (bytes, response) = try await URLSession.shared.bytes(for: req)
@@ -798,6 +873,17 @@ class APIService: ObservableObject {
     func registerDevice(token: String, platform: String, app: String) async throws {
         struct Body: Encodable { let token: String; let platform: String; let app: String }
         try await requestVoid(method: "POST", path: "/devices/register",
+                              body: Body(token: token, platform: platform, app: app),
+                              authenticated: true)
+    }
+
+    /// Detaches this device's APNs token from the current user so the next
+    /// account that signs in on the same install doesn't inherit its pushes.
+    /// Mirrors registerDevice's body; requires auth, so logout must call this
+    /// before clearing the token.
+    func unregisterDevice(token: String, platform: String, app: String) async throws {
+        struct Body: Encodable { let token: String; let platform: String; let app: String }
+        try await requestVoid(method: "POST", path: "/devices/unregister",
                               body: Body(token: token, platform: platform, app: app),
                               authenticated: true)
     }

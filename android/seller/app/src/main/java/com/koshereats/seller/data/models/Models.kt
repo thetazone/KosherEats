@@ -109,7 +109,6 @@ data class Restaurant(
     @Json(name = "kosher_certificate_url") val kosherCertificateUrl: String = "",
     @Json(name = "is_open") val isOpen: Boolean = false,
     @Json(name = "approval_status") val approvalStatus: String = "pending",
-    @Json(name = "opening_hours") val openingHours: Map<String, String> = emptyMap(),
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
     @Json(name = "min_order") val minimumOrder: Int = 0,
     @Json(name = "est_delivery_min") val averagePrepTime: Int = 30,
@@ -156,6 +155,29 @@ data class OrderItem(
 }
 
 @JsonClass(generateAdapter = true)
+data class CourierPublic(
+    val id: String = "",
+    @Json(name = "first_name") val firstName: String = "",
+    val phone: String = "",
+    @Json(name = "avatar_url") val avatarUrl: String = "",
+    @Json(name = "vehicle_type") val vehicleType: String = "",
+    @Json(name = "vehicle_make") val vehicleMake: String = "",
+    @Json(name = "vehicle_model") val vehicleModel: String = "",
+    @Json(name = "vehicle_color") val vehicleColor: String = "",
+    @Json(name = "license_plate") val licensePlate: String = "",
+    val rating: Double = 0.0,
+    @Json(name = "total_deliveries") val totalDeliveries: Int = 0,
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+) {
+    val vehicleSummary: String
+        get() {
+            val parts = listOf(vehicleColor, vehicleMake, vehicleModel).filter { it.isNotBlank() }
+            return if (parts.isEmpty()) vehicleType.replaceFirstChar { it.uppercase() } else parts.joinToString(" ")
+        }
+}
+
+@JsonClass(generateAdapter = true)
 data class Order(
     val id: String = "",
     @Json(name = "restaurant_id") val restaurantId: String = "",
@@ -166,12 +188,14 @@ data class Order(
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
     val tax: Int = 0,
     @Json(name = "service_fee") val serviceFee: Int = 0,
+    val discount: Int = 0,
     @Json(name = "courier_tip") val courierTip: Int = 0,
     val total: Int = 0,
     val status: OrderStatus = OrderStatus.PENDING,
     @Json(name = "fulfillment_type") val fulfillmentType: String = "delivery",
     @Json(name = "customer_name") val customerName: String = "",
     @Json(name = "customer_phone") val customerPhone: String = "",
+    @Json(name = "courier") val courier: CourierPublic? = null,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "scheduled_for") val scheduledFor: String? = null,
@@ -336,7 +360,37 @@ data class CreateRestaurantRequest(
     @Json(name = "is_pas_yisroel") val isPasYisroel: Boolean = false,
     @Json(name = "is_glatt_kosher") val isGlattKosher: Boolean = false,
     @Json(name = "kosher_certificate_url") val kosherCertificateUrl: String = "",
+    // Relaxes backend validation of the manual detail fields when the seller
+    // pasted an UberEats link on the import step — the import worker fills in
+    // address/phone/cuisine/photo. Mirrors iOS CreateRestaurantBody.fromImport.
+    @Json(name = "from_import") val fromImport: Boolean = false,
 )
+
+// --- Menu import (UberEats) ---
+
+@JsonClass(generateAdapter = true)
+data class CreateMenuImportBody(
+    val source: String = "ubereats",
+    @Json(name = "source_url") val sourceUrl: String,
+)
+
+/**
+ * An async menu-import job. The scrape+import is drained server-side; the app
+ * polls [ApiService.listMenuImports] and shows a banner while [isInProgress].
+ * Mirrors iOS `MenuImport`.
+ */
+@JsonClass(generateAdapter = true)
+data class MenuImport(
+    val id: String,
+    val status: String, // pending | running | done | failed
+    @Json(name = "source_url") val sourceUrl: String? = null,
+    @Json(name = "items_total") val itemsTotal: Int = 0,
+    @Json(name = "items_created") val itemsCreated: Int = 0,
+    val error: String? = null,
+) {
+    /** True while the import is still in flight (drives the "importing…" banner). */
+    val isInProgress: Boolean get() = status == "pending" || status == "running"
+}
 
 @JsonClass(generateAdapter = true)
 data class CreateDealRequest(

@@ -74,6 +74,7 @@ import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.DiscountType
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.formatPrice
+import com.koshereats.seller.data.util.Money
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.SuccessGreen
@@ -112,7 +113,10 @@ fun CreateDealScreen(
     val scope = rememberCoroutineScope()
 
     var isGeneralDeal by rememberSaveable { mutableStateOf(true) }
-    var selectedItem by remember { mutableStateOf<MenuItem?>(null) }
+    // Persist only the id across config change / process death; re-resolve the full
+    // MenuItem against the (re)loaded list so a rotation doesn't clear the picker.
+    var selectedItemId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedItem = state.menuItems.firstOrNull { it.id == selectedItemId }
     var title by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var discountType by rememberSaveable { mutableStateOf(DiscountType.PERCENTAGE) }
@@ -133,8 +137,8 @@ fun CreateDealScreen(
         val nowMinutes = nowLocal.hour * 60 + nowLocal.minute
         (nowMinutes + 59) / 30
     }
-    var expiresAtMillis by remember { mutableStateOf<Long?>(todayUtcMidnightMillis) }
-    var selectedHalfHour by remember { mutableIntStateOf(minValidSlot.coerceIn(0, 47)) }
+    var expiresAtMillis by rememberSaveable { mutableStateOf<Long?>(todayUtcMidnightMillis) }
+    var selectedHalfHour by rememberSaveable { mutableIntStateOf(minValidSlot.coerceIn(0, 47)) }
     var imageUrl by rememberSaveable { mutableStateOf("") }
     var isUploadingImage by remember { mutableStateOf(false) }
 
@@ -242,7 +246,7 @@ fun CreateDealScreen(
                     checked = isGeneralDeal,
                     onCheckedChange = {
                         isGeneralDeal = it
-                        if (it) selectedItem = null
+                        if (it) selectedItemId = null
                     },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TextWhite,
@@ -289,7 +293,7 @@ fun CreateDealScreen(
                             Text(currentItem.price.formatPrice(), color = Orange, fontSize = 13.sp)
                         }
                         IconButton(
-                            onClick = { selectedItem = null },
+                            onClick = { selectedItemId = null },
                             modifier = Modifier.size(28.dp),
                         ) {
                             Icon(Icons.Filled.Close, contentDescription = "Remove", tint = TextMuted, modifier = Modifier.size(16.dp))
@@ -310,7 +314,7 @@ fun CreateDealScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { selectedItem = item }
+                                    .clickable { selectedItemId = item.id }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -413,7 +417,7 @@ fun CreateDealScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                DiscountType.entries.forEach { type ->
+                DiscountType.entries.filter { it != DiscountType.UNKNOWN }.forEach { type ->
                     val selected = discountType == type
                     Box(
                         modifier = Modifier
@@ -455,15 +459,11 @@ fun CreateDealScreen(
                         discountValue = if (discountType == DiscountType.FIXED) {
                             filterDollarCents(newVal)
                         } else {
-                            val filtered = newVal.filter { c -> c.isDigit() || c == '.' }
-                            // Allow at most one decimal point and two decimal places
-                            val parts = filtered.split('.')
-                            val cleaned = when {
-                                parts.size > 2 -> parts[0] + "." + parts[1].take(2)
-                                parts.size == 2 -> parts[0] + "." + parts[1].take(2)
-                                else -> filtered
-                            }
-                            if ((cleaned.toDoubleOrNull() ?: 0.0) > 100.0) "100" else cleaned
+                            // Percentage is a whole number (1-100); the deal value is
+                            // stored as an Int, so reject decimals rather than silently
+                            // rounding them at submit time.
+                            val digits = newVal.filter { c -> c.isDigit() }
+                            if ((digits.toIntOrNull() ?: 0) > 100) "100" else digits
                         }
                     },
                     label = {
@@ -624,10 +624,9 @@ fun CreateDealScreen(
                     } ?: return@Button
 
                     val discountValueCents = when (discountType) {
-                        DiscountType.PERCENTAGE -> (discountValue.toDoubleOrNull() ?: 0.0).coerceIn(1.0, 99.0).roundToInt()
+                        DiscountType.PERCENTAGE -> (discountValue.toDoubleOrNull() ?: 0.0).coerceIn(1.0, 100.0).roundToInt()
                         DiscountType.FIXED -> dollarsToCents(discountValue).coerceAtLeast(1)
-                        DiscountType.BOGO -> 0
-                        DiscountType.UNKNOWN -> 0
+                        else -> 0
                     }
 
                     val minOrderCents = dollarsToCents(minOrderAmount).let {
@@ -739,11 +738,7 @@ private fun filterDollarCents(input: String): String {
     }
 }
 
-private fun dollarsToCents(dollars: String): Int {
-    if (dollars.isBlank()) return 0
-    val amount = dollars.toDoubleOrNull() ?: return 0
-    return (amount * 100).roundToInt()
-}
+private fun dollarsToCents(dollars: String): Int = Money.parseCents(dollars) ?: 0
 
 private val uploadClient = OkHttpClient.Builder()
     .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)

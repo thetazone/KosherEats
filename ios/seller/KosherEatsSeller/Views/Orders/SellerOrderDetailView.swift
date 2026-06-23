@@ -17,6 +17,16 @@ struct SellerOrderDetailView: View {
         self._order = State(initialValue: order)
     }
 
+    /// Resolve a detail screen from just an order id — used by the push
+    /// deep link when the order isn't in `vm.orders` yet (cold launch from a
+    /// notification tap). `order` starts nil; the `.task` below fetches by id,
+    /// and `.onReceive(vm.$orders)` fills it once the list loads.
+    init(vm: OrdersViewModel, orderID: String) {
+        self._vm = ObservedObject(wrappedValue: vm)
+        self.orderID = orderID
+        self._order = State(initialValue: nil)
+    }
+
     var body: some View {
         ZStack {
             Color.keBackground.ignoresSafeArea()
@@ -324,6 +334,9 @@ struct SellerOrderDetailView: View {
 
             VStack(spacing: 8) {
                 priceRow("Subtotal", value: order.subtotal)
+                if order.discount > 0 {
+                    savingsRow("Savings", value: order.discount)
+                }
                 priceRow("Delivery Fee", value: order.deliveryFee)
                 priceRow("Service Fee", value: order.serviceFee)
                 priceRow("Tax", value: order.tax)
@@ -559,6 +572,21 @@ struct SellerOrderDetailView: View {
             Text(CurrencyFormat.string(fromCents: value))
                 .font(.subheadline)
                 .foregroundColor(.keTextPrimary)
+        }
+    }
+
+    /// A discount/savings line, rendered as a negative amount (`-$X.XX`) and
+    /// tinted success-green so the breakdown rows still sum to `order.total`.
+    /// `value` is the positive discount amount in cents.
+    private func savingsRow(_ label: String, value: Int) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.keSuccess)
+            Spacer()
+            Text("-\(CurrencyFormat.string(fromCents: value))")
+                .font(.subheadline)
+                .foregroundColor(.keSuccess)
         }
     }
 

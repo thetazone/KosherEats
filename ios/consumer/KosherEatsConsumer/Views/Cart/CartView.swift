@@ -141,7 +141,7 @@ struct CartView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.keTextPrimary)
                 Spacer()
-                Text("$\(String(format: "%.2f", Double(cartVM.discountedSubtotal) / 100))")
+                Text(Money.dollars(cartVM.discountedSubtotal))
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.kePrimary)
             }
@@ -165,7 +165,7 @@ struct CartView: View {
                     HStack {
                         Text("Checkout")
                         Spacer()
-                        Text("$\(String(format: "%.2f", Double(cartVM.discountedSubtotal) / 100))")
+                        Text(Money.dollars(cartVM.discountedSubtotal))
                     }
                 }
                 .buttonStyle(KEPrimaryButtonStyle())
@@ -186,6 +186,20 @@ struct CartView: View {
 struct CartItemRow: View {
     let item: CartItem
     @EnvironmentObject var cartVM: CartViewModel
+
+    /// Optimistic quantity shown in the stepper. `nil` means "no pending local
+    /// edit — trust the cart". Tracking it locally lets rapid taps accumulate
+    /// off the latest *intended* value instead of the stale rendered
+    /// `item.quantity`, so tapping + twice from 1 reliably reaches 3.
+    @State private var pendingQuantity: Int?
+    /// True while a quantity PATCH for this row is in flight. Used to coalesce:
+    /// extra taps update `pendingQuantity`, and a single follow-up request is
+    /// sent with the newest value once the in-flight one returns.
+    @State private var isUpdating = false
+
+    /// Quantity to render — the optimistic value if the user is mid-edit,
+    /// otherwise the server-backed value.
+    private var displayQuantity: Int { pendingQuantity ?? item.quantity }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -221,31 +235,26 @@ struct CartItemRow: View {
             HStack(spacing: 12) {
                 Button {
                     Haptics.impact(.light)
-                    Task {
-                        let newQty = max(0, item.quantity - 1)
-                        await cartVM.updateQuantity(itemID: item.id, quantity: newQty)
-                    }
+                    setQuantity(max(0, displayQuantity - 1))
                 } label: {
-                    Image(systemName: item.quantity <= 1 ? "trash" : "minus")
+                    Image(systemName: displayQuantity <= 1 ? "trash" : "minus")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(item.quantity <= 1 ? .keError : .keTextPrimary)
+                        .foregroundColor(displayQuantity <= 1 ? .keError : .keTextPrimary)
                         .frame(width: 30, height: 30)
                         .background(Color.keCardHover)
                         .cornerRadius(8)
                 }
-                .accessibilityLabel(item.quantity <= 1 ? "Remove item" : "Decrease quantity")
+                .accessibilityLabel(displayQuantity <= 1 ? "Remove item" : "Decrease quantity")
 
-                Text("\(item.quantity)")
+                Text("\(displayQuantity)")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.keTextPrimary)
                     .frame(width: 24)
-                    .accessibilityLabel("\(item.quantity)")
+                    .accessibilityLabel("\(displayQuantity)")
 
                 Button {
                     Haptics.impact(.light)
-                    Task {
-                        await cartVM.updateQuantity(itemID: item.id, quantity: item.quantity + 1)
-                    }
+                    setQuantity(displayQuantity + 1)
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .bold))
@@ -260,6 +269,46 @@ struct CartItemRow: View {
         .padding(14)
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+        // If the server-backed quantity catches up to (or moves past) our
+        // optimistic value while no request is in flight, drop the local
+        // override so we render the source of truth again.
+        .onChange(of: item.quantity) { _, newValue in
+            if !isUpdating, pendingQuantity == newValue { pendingQuantity = nil }
+        }
+    }
+
+    /// Records the new desired quantity optimistically and drives a coalesced,
+    /// serialized PATCH. Concurrent taps only ever leave one request in flight;
+    /// the latest desired value is sent once the prior one resolves.
+    private func setQuantity(_ newQuantity: Int) {
+        pendingQuantity = newQuantity
+        guard !isUpdating else { return }
+        Task { await flushQuantityUpdates() }
+    }
+
+    /// Sends PATCHes one at a time until the optimistic value matches what the
+    /// server last returned, so superseded taps collapse into a single final
+    /// request. On the last successful round we clear the local override.
+    private func flushQuantityUpdates() async {
+        isUpdating = true
+        defer { isUpdating = false }
+
+        while let target = pendingQuantity, target != item.quantity {
+            await cartVM.updateQuantity(itemID: item.id, quantity: target)
+
+            // Bail out if the request failed: the VM surfaced an error and left
+            // the cart unchanged, so reset to the authoritative value rather
+            // than spinning forever on a value the server rejected.
+            if cartVM.errorMessage != nil {
+                pendingQuantity = nil
+                return
+            }
+
+            // The cart now reflects `target` (or removal). If no newer tap came
+            // in while the request was in flight, drop the override.
+            if pendingQuantity == target { pendingQuantity = nil }
+        }
+        pendingQuantity = nil
     }
 }
 

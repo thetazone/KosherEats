@@ -6,6 +6,7 @@ import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.CreateMenuItemBody
 import com.koshereats.seller.data.models.CreateModifierGroupRequest
+import com.koshereats.seller.data.models.MenuImport
 import com.koshereats.seller.data.models.MenuItem
 import com.koshereats.seller.data.models.ModifierGroup
 import com.koshereats.seller.data.models.PresignResponse
@@ -14,6 +15,7 @@ import com.koshereats.seller.data.models.UpdateMenuItemRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +36,9 @@ data class MenuState(
     val deleteSuccess: Boolean = false,
     val pendingItemIds: Set<String> = emptySet(),
     val modifierGroupsLoading: Boolean = false,
+    // Newest menu-import job for the active restaurant; drives the Menu-tab
+    // import-status banner. Null when no import has ever been started.
+    val latestImport: MenuImport? = null,
 )
 
 @HiltViewModel
@@ -45,18 +50,73 @@ class MenuViewModel @Inject constructor(
     val state: StateFlow<MenuState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var importPollJob: Job? = null
 
     init {
         loadMenuItems()
+        pollMenuImports()
         viewModelScope.launch {
             NetworkModule.restaurantChanged.collect {
                 // Cancel any in-flight menu fetch so its response (carrying items from the
                 // previous restaurant) cannot land into the freshly-cleared state.
                 loadJob?.cancel()
                 loadJob = null
+                importPollJob?.cancel()
+                importPollJob = null
                 _state.value = MenuState()
                 loadMenuItems()
+                pollMenuImports()
             }
+        }
+    }
+
+    /**
+     * Polls the import-jobs endpoint and surfaces the newest job as [MenuState.latestImport]
+     * so the Menu tab can show an "importing…" banner. Mirrors iOS's listMenuImports polling.
+     * Stops once the newest job is no longer in progress; reloads the menu when an import
+     * transitions out of flight so freshly-imported items appear without a manual refresh.
+     */
+    fun pollMenuImports() {
+        importPollJob?.cancel()
+        importPollJob = viewModelScope.launch {
+            var wasInProgress = false
+            while (true) {
+                val response = try {
+                    apiService.listMenuImports()
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    null
+                }
+                val fetched = response?.isSuccessful == true
+                val latest = if (fetched) response!!.body()?.firstOrNull() else null
+
+                if (fetched) {
+                    // Only mutate banner state on a real answer; a transient
+                    // failure must not clear an in-flight import's banner.
+                    _state.update { it.copy(latestImport = latest) }
+                    val inProgress = latest?.isInProgress == true
+                    if (wasInProgress && !inProgress) {
+                        // Import just finished (done/failed) — pull in any new items.
+                        loadMenuItems(_state.value.selectedCategory)
+                    }
+                    wasInProgress = inProgress
+                    // Stop only once we've confirmed nothing is in flight.
+                    if (!inProgress) break
+                } else if (!wasInProgress) {
+                    // First/idle poll failed and nothing was ever mid-flight:
+                    // preserve the original startup-exit behavior (no idle polling).
+                    break
+                }
+                // Otherwise an import was mid-flight: keep the banner, delay, retry.
+                delay(IMPORT_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** Dismiss a finished (done/failed) import banner without affecting an in-flight one. */
+    fun dismissImportBanner() {
+        _state.update {
+            if (it.latestImport?.isInProgress == true) it else it.copy(latestImport = null)
         }
     }
 
@@ -95,6 +155,24 @@ class MenuViewModel @Inject constructor(
                     error = "Connection error: ${e.localizedMessage}",
                 ) }
             }
+        }
+    }
+
+    /**
+     * Switches the visible category using the already-loaded menu tree. No network
+     * call and no full-screen spinner — chip taps must be instant and work offline,
+     * since `state.categories` already holds every category and its items.
+     * Use [loadMenuItems] only for explicit refreshes (pull-to-refresh, post-save).
+     */
+    fun selectCategory(category: SellerMenuCategory?) {
+        _state.update { state ->
+            val items = if (category == null) {
+                state.categories.flatMap { it.items }
+            } else {
+                state.categories.firstOrNull { it.id == category.id }?.items
+                    ?: category.items
+            }
+            state.copy(selectedCategory = category, items = items)
         }
     }
 
@@ -409,5 +487,9 @@ class MenuViewModel @Inject constructor(
 
     fun clearMessages() {
         _state.update { it.copy(error = null, saveSuccess = null, itemSaveSuccess = false, deleteSuccess = false) }
+    }
+
+    companion object {
+        private const val IMPORT_POLL_INTERVAL_MS = 5_000L
     }
 }

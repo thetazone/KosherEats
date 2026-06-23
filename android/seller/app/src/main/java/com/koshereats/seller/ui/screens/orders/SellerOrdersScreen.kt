@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.OrderStatus
+import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.screens.dashboard.ActiveOrderCard
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
@@ -145,6 +146,57 @@ fun SellerOrdersScreen(
                         enabled = true,
                         selected = state.selectedFilter == status,
                     ),
+                )
+            }
+        }
+
+        // Today's-sales ticker (mirrors iOS SellerOrdersView.todayTicker): count + subtotal sum of
+        // today's orders, excluding cancelled/rejected. Only shown on the "All" filter, since under a
+        // status filter state.orders is narrowed client-side and would under-report the day's totals.
+        val today = remember(state.orders, state.selectedFilter) {
+            if (state.selectedFilter != null) return@remember null
+            val zone = java.time.ZoneId.systemDefault()
+            val todayDate = java.time.LocalDate.now(zone)
+            val todays = state.orders.filter { order ->
+                if (order.status == OrderStatus.CANCELLED || order.status == OrderStatus.REJECTED) {
+                    return@filter false
+                }
+                val instant = runCatching { java.time.Instant.parse(order.createdAt) }
+                    .recoverCatching { java.time.OffsetDateTime.parse(order.createdAt).toInstant() }
+                    .getOrNull() ?: return@filter false
+                instant.atZone(zone).toLocalDate() == todayDate
+            }
+            if (todays.isEmpty()) null
+            else todays.size to todays.sumOf { it.subtotal }
+        }
+        if (today != null) {
+            val (todayCount, todaySubtotal) = today
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .background(SurfaceDark, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$todayCount orders today",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite,
+                )
+                Text(
+                    text = "•",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                )
+                Text(
+                    text = "${todaySubtotal.formatPrice()} food sales",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Orange,
                 )
             }
         }

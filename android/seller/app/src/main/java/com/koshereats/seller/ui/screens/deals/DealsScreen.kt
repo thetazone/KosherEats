@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,11 +30,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -169,6 +174,35 @@ private fun DealCard(
     deal: Deal,
     onDelete: () -> Unit,
 ) {
+    var showDeactivateConfirm by remember { mutableStateOf(false) }
+
+    if (showDeactivateConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeactivateConfirm = false },
+            title = { Text("Deactivate Deal", color = TextWhite) },
+            text = {
+                Text(
+                    "Deactivate this deal? Customers will no longer see it. This can't be undone.",
+                    color = TextMuted,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeactivateConfirm = false
+                    onDelete()
+                }) {
+                    Text("Deactivate", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeactivateConfirm = false }) {
+                    Text("Cancel", color = TextWhite)
+                }
+            },
+            containerColor = SurfaceDark,
+        )
+    }
+
     val now = ZonedDateTime.now()
     val parsedExpiry = runCatching { ZonedDateTime.parse(deal.expiresAt) }.getOrNull()
     val dateUnknown = parsedExpiry == null
@@ -270,7 +304,7 @@ private fun DealCard(
             }
 
             if (deal.isActive && !isExpired) {
-                IconButton(onClick = onDelete) {
+                IconButton(onClick = { showDeactivateConfirm = true }) {
                     Icon(
                         Icons.Filled.Delete,
                         contentDescription = "Deactivate deal",

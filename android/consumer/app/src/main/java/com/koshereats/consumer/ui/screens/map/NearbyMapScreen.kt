@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -102,23 +103,39 @@ fun NearbyMapScreen(
     var centeredOnUser by remember { mutableStateOf(false) }
     var showLocationRationale by remember { mutableStateOf(false) }
     var showLocationPermanentDenial by remember { mutableStateOf(false) }
+    // Last coordinates a load was issued for, so the error-banner Retry re-runs
+    // the same request instead of falling back to the default viewport.
+    var lastLoadCoords by remember { mutableStateOf(LatLng(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)) }
+
+    fun load(latitude: Double, longitude: Double) {
+        lastLoadCoords = LatLng(latitude, longitude)
+        viewModel.loadNearby(latitude, longitude)
+    }
 
     fun centerOnUser() {
-        if (!hasLocationPermission()) return
-        val client = LocationServices.getFusedLocationProviderClient(context)
-        client.lastLocation.addOnSuccessListener { loc ->
-            if (loc != null) {
-                cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                    LatLng(loc.latitude, loc.longitude),
-                    15f, // ~10 cross streets visible — matches iOS reference
-                )
-                centeredOnUser = true
-                viewModel.loadNearby(loc.latitude, loc.longitude)
-            } else {
-                // lastLocation null on emulators/fresh installs — load with default viewport center
-                viewModel.loadNearby(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
-            }
+        if (!hasLocationPermission()) {
+            load(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
+            return
         }
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        client.lastLocation
+            .addOnSuccessListener { loc ->
+                if (loc != null) {
+                    cameraPositionState.position = CameraPosition.fromLatLngZoom(
+                        LatLng(loc.latitude, loc.longitude),
+                        15f, // ~10 cross streets visible — matches iOS reference
+                    )
+                    centeredOnUser = true
+                    load(loc.latitude, loc.longitude)
+                } else {
+                    // lastLocation null on emulators/fresh installs — load with default viewport center
+                    load(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
+                }
+            }
+            .addOnFailureListener {
+                // fused provider can fail (no GMS, location off) — don't leave the map empty
+                load(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
+            }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -130,7 +147,7 @@ fun NearbyMapScreen(
         if (granted) {
             centerOnUser()
         } else {
-            viewModel.loadNearby(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
+            load(DEFAULT_LATITUDE, DEFAULT_LONGITUDE)
             val needsRationale =
                 activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == true ||
                 activity?.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION) == true
@@ -249,6 +266,61 @@ fun NearbyMapScreen(
                     ) {
                         RestaurantMapPin(restaurant = restaurant)
                     }
+                }
+            }
+
+            if (state.isLoading) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 12.dp)
+                        .shadow(4.dp, RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(SurfaceDarkElevated)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(
+                        color = Orange,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text("Finding kosher spots…", color = TextWhite, fontSize = 13.sp)
+                }
+            }
+
+            if (state.error != null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .shadow(6.dp, RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceDarkElevated)
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = state.error ?: "Couldn't load nearby restaurants",
+                        color = ErrorRed,
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "Retry",
+                        color = Orange,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { load(lastLoadCoords.latitude, lastLoadCoords.longitude) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
                 }
             }
 

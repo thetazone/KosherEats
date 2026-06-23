@@ -99,7 +99,29 @@ class OrderTrackingViewModel @Inject constructor(
         try {
             val resp = api.getOrder(orderId)
             if (resp.isSuccessful) {
-                _uiState.update { it.copy(order = resp.body(), isLoading = false, errorMessage = null) }
+                val fetched = resp.body()
+                _uiState.update { state ->
+                    // SSE is the sole source of courier position. If the stream has
+                    // already placed the courier, don't let a stale poll response
+                    // overwrite lat/lng with an older server-side snapshot (mirrors
+                    // the iOS guard in OrderTrackingViewModel.swift).
+                    val merged = if (fetched != null) {
+                        val existing = state.order?.courier
+                        val fetchedCourier = fetched.courier
+                        if (fetchedCourier != null && existing != null &&
+                            (existing.lat != null || existing.lng != null)
+                        ) {
+                            fetched.copy(
+                                courier = fetchedCourier.copy(lat = existing.lat, lng = existing.lng)
+                            )
+                        } else {
+                            fetched
+                        }
+                    } else {
+                        fetched
+                    }
+                    state.copy(order = merged, isLoading = false, errorMessage = null)
+                }
             } else {
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Couldn't load order (${resp.code()})") }
             }
@@ -150,14 +172,23 @@ class OrderTrackingViewModel @Inject constructor(
                 val request = requestBuilder.build()
                 sseClient.newCall(request).execute().use { response ->
                     if (response.code == 401) {
-                        consecutiveSseUnauthorized++
-                        if (consecutiveSseUnauthorized >= 2) {
-                            setupJob?.cancel(); setupJob = null
-                            pollJob?.cancel(); pollJob = null
-                            streamJob = null
-                            _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
-                            sessionManager.signalLogout()
-                            return@launch
+                        // A 401 here only means the session is truly gone if
+                        // TokenAuthenticator already cleared the tokens (genuine
+                        // RefreshResult.Unauthorized). Transient 401s — a token
+                        // rotation in flight or a refresh that failed for network
+                        // reasons (RefreshResult.Failure leaves tokens intact) —
+                        // must NOT trigger a logout that wipes carts; degrade to
+                        // the retrying path instead.
+                        if (tokenProvider.token == null) {
+                            consecutiveSseUnauthorized++
+                            if (consecutiveSseUnauthorized >= 2) {
+                                setupJob?.cancel(); setupJob = null
+                                pollJob?.cancel(); pollJob = null
+                                streamJob = null
+                                _uiState.update { it.copy(order = null, errorMessage = "Session expired", isLoading = false) }
+                                sessionManager.signalLogout()
+                                return@launch
+                            }
                         }
                         throw RuntimeException("SSE 401 — will retry after backoff")
                     }

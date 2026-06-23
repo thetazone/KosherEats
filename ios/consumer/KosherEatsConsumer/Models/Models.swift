@@ -22,9 +22,21 @@ enum KosherCertification: String, Codable, CaseIterable {
     case crc = "cRc"
     case badatz = "Badatz"
     case chofK = "Chof-K"
+    /// Catch-all for any certification value the backend stores outside the
+    /// canonical set. The column is a free-form VARCHAR with no CHECK
+    /// constraint and normalizeKosherCertification passes unknown values
+    /// through unchanged, so without a fallback a single non-canonical row
+    /// (e.g. "ou", a future agency) throws DecodingError and blanks the
+    /// entire restaurant list. Mirrors the OrderStatus/DiscountType pattern.
     case other
 
     var displayName: String { rawValue }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = KosherCertification(rawValue: raw) ?? .other
+    }
 
     var symbolName: String {
         switch self {
@@ -211,11 +223,11 @@ struct Restaurant: Codable, Identifiable {
     var updatedAt: Date
 
     var deliveryFeeFormatted: String {
-        deliveryFee == 0 ? "Free Delivery" : "$\(String(format: "%.2f", Double(deliveryFee) / 100))"
+        deliveryFee == 0 ? "Free Delivery" : Money.dollars(deliveryFee)
     }
 
     var minOrderFormatted: String {
-        "$\(String(format: "%.0f", Double(minOrder) / 100))"
+        Money.dollars(minOrder)
     }
 
     var deliveryTimeFormatted: String {
@@ -252,6 +264,44 @@ struct Restaurant: Codable, Identifiable {
     }
 }
 
+extension Restaurant {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        ownerID = try c.decode(String.self, forKey: .ownerID)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decode(String.self, forKey: .description)
+        imageURL = try c.decode(String.self, forKey: .imageURL)
+        coverImageURL = try c.decodeIfPresent(String.self, forKey: .coverImageURL)
+        logoURL = try c.decodeIfPresent(String.self, forKey: .logoURL)
+        phone = try c.decode(String.self, forKey: .phone)
+        email = try c.decode(String.self, forKey: .email)
+        street = try c.decode(String.self, forKey: .street)
+        city = try c.decode(String.self, forKey: .city)
+        state = try c.decode(String.self, forKey: .state)
+        zipCode = try c.decode(String.self, forKey: .zipCode)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        kosherCertification = try c.decode(KosherCertification.self, forKey: .kosherCertification)
+        certifyingAgency = try c.decodeIfPresent(String.self, forKey: .certifyingAgency) ?? ""
+        isCholovYisroel = try c.decode(Bool.self, forKey: .isCholovYisroel)
+        isPasYisroel = try c.decode(Bool.self, forKey: .isPasYisroel)
+        isGlattKosher = try c.decode(Bool.self, forKey: .isGlattKosher)
+        kosherCertificateUrl = try c.decodeIfPresent(String.self, forKey: .kosherCertificateUrl)
+        cuisineType = try c.decodeIfPresent([String].self, forKey: .cuisineType) ?? []
+        rating = try c.decode(Double.self, forKey: .rating)
+        reviewCount = try c.decode(Int.self, forKey: .reviewCount)
+        deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
+        minOrder = try c.decode(Int.self, forKey: .minOrder)
+        estDeliveryMin = try c.decode(Int.self, forKey: .estDeliveryMin)
+        estDeliveryMax = try c.decode(Int.self, forKey: .estDeliveryMax)
+        isOpen = try c.decode(Bool.self, forKey: .isOpen)
+        isActive = try c.decode(Bool.self, forKey: .isActive)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+    }
+}
+
 // MARK: - Menu
 
 struct MenuCategory: Codable, Identifiable {
@@ -284,7 +334,7 @@ struct MenuItem: Codable, Identifiable {
     var modifierGroups: [ModifierGroup]?
 
     var priceFormatted: String {
-        "$\(String(format: "%.2f", Double(max(price, 0)) / 100))"
+        Money.dollars(max(price, 0))
     }
 
     var kashrusType: String {
@@ -397,7 +447,7 @@ struct Cart: Codable, Identifiable {
     var subtotal: Int
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
+        Money.dollars(max(subtotal, 0))
     }
 
     var itemCount: Int {
@@ -422,7 +472,7 @@ struct CartItem: Codable, Identifiable {
     var selectedModifiers: [SelectedModifier]?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(price * quantity, 0)) / 100))"
+        Money.dollars(max(price * quantity, 0))
     }
 
     /// "Large • Extra hummus • Extra tahini" summary for the cart row.
@@ -488,6 +538,11 @@ struct Order: Codable, Identifiable {
     var serviceFee: Int
     var tax: Int
     var total: Int
+    /// Deal discount applied to this order, in cents (0 when no deal).
+    /// Backed by an optional so older API responses that predate the
+    /// `discount` field still decode (synthesized Codable treats a missing
+    /// optional key as nil); `discount` normalizes that to 0.
+    private var discountRaw: Int?
     var deliveryAddress: String
     var deliveryLat: Double
     var deliveryLng: Double
@@ -506,27 +561,35 @@ struct Order: Codable, Identifiable {
     var deliveredAt: Date?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(total, 0)) / 100))"
+        Money.dollars(max(total, 0))
     }
 
     var subtotalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(subtotal, 0)) / 100))"
+        Money.dollars(max(subtotal, 0))
     }
 
     var deliveryFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(max(deliveryFee, 0)) / 100))"
+        Money.dollars(max(deliveryFee, 0))
     }
 
     var serviceFeeFormatted: String {
-        "$\(String(format: "%.2f", Double(max(serviceFee, 0)) / 100))"
+        Money.dollars(max(serviceFee, 0))
     }
 
     var taxFormatted: String {
-        "$\(String(format: "%.2f", Double(max(tax, 0)) / 100))"
+        Money.dollars(max(tax, 0))
+    }
+
+    /// Deal discount in cents (0 when no deal applied).
+    var discount: Int { discountRaw ?? 0 }
+
+    var discountFormatted: String {
+        "-$\(String(format: "%.2f", Double(max(discount, 0)) / 100))"
     }
 
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, total, courier
+        case discountRaw = "discount"
         case userID = "user_id"
         case restaurantID = "restaurant_id"
         case restaurantName = "restaurant_name"
@@ -563,7 +626,7 @@ struct OrderItem: Codable, Identifiable {
     var selectedModifiers: [SelectedModifier]?
 
     var totalFormatted: String {
-        "$\(String(format: "%.2f", Double(max(price * quantity, 0)) / 100))"
+        Money.dollars(max(price * quantity, 0))
     }
 
     var modifierSummary: String? {
@@ -748,7 +811,7 @@ struct Deal: Codable, Identifiable {
 
     var minOrderFormatted: String? {
         guard let min = minOrderAmount, min > 0 else { return nil }
-        return "$\(String(format: "%.2f", Double(min) / 100))"
+        return Money.dollars(min)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -774,4 +837,27 @@ struct Deal: Codable, Identifiable {
 
 struct APIErrorResponse: Codable {
     let error: String
+}
+
+/// Centralized dollars <-> cents conversion — single source of truth for parsing
+/// user-entered dollar strings into integer cents and rendering cents back to
+/// the canonical "$X.XX" string. Routing every conversion through here makes the
+/// recurring comma-decimal bug structurally impossible.
+enum Money {
+    /// Parse a user-entered dollar string into integer cents. Normalizes a comma
+    /// decimal ("4,10"), strips non [0-9.], rejects >1 dot, rounds (not truncates,
+    /// so 4.10 -> 410¢ not 409¢). nil on empty/invalid.
+    static func parseCents(_ dollars: String) -> Int? {
+        let filtered = dollars.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
+        if filtered.isEmpty { return nil }
+        if filtered.components(separatedBy: ".").count > 2 { return nil }
+        guard let value = Double(filtered) else { return nil }
+        return Int((value * 100).rounded())
+    }
+
+    /// Canonical "$X.XX" rendering — byte-identical to the inline
+    /// `"$\(String(format: "%.2f", Double(cents) / 100))"` used everywhere.
+    static func dollars(_ cents: Int) -> String {
+        "$\(String(format: "%.2f", Double(cents) / 100))"
+    }
 }

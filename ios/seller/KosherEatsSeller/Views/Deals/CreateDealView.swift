@@ -12,6 +12,8 @@ struct CreateDealView: View {
         return f
     }()
 
+    @State private var isGeneralDeal = true
+    @State private var selectedMenuItem: MenuItem?
     @State private var title = ""
     @State private var description = ""
     @State private var discountType: DiscountType = .percentage
@@ -28,7 +30,7 @@ struct CreateDealView: View {
         guard !title.isEmpty, title.count <= 100 else { return false }
         if discountType != .bogo {
             if discountType == .fixed {
-                guard let v = Double(discountValue), v > 0 else { return false }
+                guard let v = Double(discountValue.replacingOccurrences(of: ",", with: ".")), v > 0 else { return false }
             } else {
                 guard let v = Int(discountValue), v > 0 else { return false }
                 if v > 100 { return false }
@@ -44,6 +46,24 @@ struct CreateDealView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
+                        formSection("Deal Type") {
+                            Toggle(isOn: $isGeneralDeal) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("General Deal")
+                                        .font(.subheadline)
+                                        .foregroundColor(.keTextPrimary)
+                                    Text("Not tied to a specific menu item")
+                                        .font(.caption)
+                                        .foregroundColor(.keTextMuted)
+                                }
+                            }
+                            .tint(.keSuccess)
+
+                            if !isGeneralDeal {
+                                menuItemPicker
+                            }
+                        }
+
                         formSection("Deal Info") {
                             formField("Title", text: $title, placeholder: "e.g. 20% Off First Order")
                             formField("Description", text: $description, placeholder: "Optional details")
@@ -142,6 +162,12 @@ struct CreateDealView: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .task {
+                if vm.menuItems.isEmpty { await vm.loadMenuItems() }
+            }
+            .onChange(of: isGeneralDeal) { _, general in
+                if general { selectedMenuItem = nil }
+            }
             .onChange(of: title) { _, _ in
                 if title.count > 100 { title = String(title.prefix(100)) }
             }
@@ -175,13 +201,13 @@ struct CreateDealView: View {
         if discountType == .bogo {
             value = 0
         } else if discountType == .fixed {
-            guard let dollars = Double(discountValue), dollars > 0 else {
+            guard let dollars = Double(discountValue.replacingOccurrences(of: ",", with: ".")), dollars > 0,
+                  let cents = CurrencyFormat.parseCents(discountValue) else {
                 localError = "Enter a valid discount value"
                 return
             }
-            let cents = Int(round(dollars * 100))
-            if cents > 99999 {
-                localError = "Fixed discount cannot exceed $999.99"
+            if cents > 10000 {
+                localError = "Fixed discount cannot exceed $100"
                 return
             }
             value = cents
@@ -202,6 +228,22 @@ struct CreateDealView: View {
             return
         }
 
+        if !isGeneralDeal && selectedMenuItem == nil {
+            localError = "Select a menu item or switch to a general deal"
+            return
+        }
+
+        let minOrderCents: Int?
+        if minOrderAmount.isEmpty {
+            minOrderCents = nil
+        } else if let mo = Double(minOrderAmount.replacingOccurrences(of: ",", with: ".")), mo > 0,
+                  let cents = CurrencyFormat.parseCents(minOrderAmount) {
+            minOrderCents = cents
+        } else {
+            localError = "Enter a valid minimum order amount"
+            return
+        }
+
         if let selectedImage {
             isUploading = true
             do {
@@ -218,14 +260,89 @@ struct CreateDealView: View {
             title: title,
             description: description,
             imageUrl: imageUrl,
-            menuItemId: nil,
+            menuItemId: isGeneralDeal ? nil : selectedMenuItem?.id,
             discountType: discountType,
             discountValue: value,
-            minOrderAmount: minOrderAmount.isEmpty ? nil : Int(round((Double(minOrderAmount) ?? 0) * 100)),
+            minOrderAmount: minOrderCents,
             startsAt: nil,
             expiresAt: Self.isoFormatter.string(from: expiresAt)
         )
         await vm.createDeal(request)
+    }
+
+    // MARK: - Menu Item Picker
+
+    @ViewBuilder
+    private var menuItemPicker: some View {
+        Text("Menu Item")
+            .font(.caption)
+            .foregroundColor(.keTextSecondary)
+
+        if let item = selectedMenuItem {
+            HStack(spacing: 10) {
+                RemoteImage(url: item.imageUrl)
+                    .frame(width: 44, height: 44)
+                    .cornerRadius(8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.subheadline)
+                        .foregroundColor(.keTextPrimary)
+                        .lineLimit(1)
+                    Text(item.priceFormatted)
+                        .font(.caption)
+                        .foregroundColor(.kePrimary)
+                }
+                Spacer()
+                Button {
+                    selectedMenuItem = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.keTextMuted)
+                }
+            }
+            .padding(10)
+            .background(Color.kePrimary.opacity(0.1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.kePrimary.opacity(0.4), lineWidth: 1),
+            )
+            .cornerRadius(10)
+        } else if vm.menuItems.isEmpty {
+            Text("No menu items found. Add items to your menu first.")
+                .font(.caption)
+                .foregroundColor(.keTextMuted)
+        } else {
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(vm.menuItems) { item in
+                        Button {
+                            selectedMenuItem = item
+                        } label: {
+                            HStack(spacing: 10) {
+                                RemoteImage(url: item.imageUrl)
+                                    .frame(width: 36, height: 36)
+                                    .cornerRadius(6)
+                                Text(item.name)
+                                    .font(.subheadline)
+                                    .foregroundColor(.keTextPrimary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(item.priceFormatted)
+                                    .font(.caption)
+                                    .foregroundColor(.keTextSecondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(height: 180)
+            .background(Color.keCard)
+            .cornerRadius(10)
+        }
     }
 
     // MARK: - Form Helpers

@@ -3,18 +3,45 @@ import SwiftUI
 
 // MARK: - Currency Formatting
 
-/// Locale-aware currency formatter for cents → display string.
-/// Uses the device locale so "$12.34" renders correctly in all regions.
+/// USD currency formatter for cents → display string.
+/// Forces en_US formatting so "$12.34" renders consistently regardless of device locale.
 enum CurrencyFormat {
     private static let formatter: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
+        f.locale = Locale(identifier: "en_US")
         return f
     }()
 
     static func string(fromCents cents: Int) -> String {
         formatter.string(from: NSNumber(value: Double(cents) / 100)) ?? "$0.00"
+    }
+
+    /// Canonical cents → "$X.XX" display string. Alias of `string(fromCents:)`
+    /// so display is byte-identical to the app's existing currency output.
+    static func dollars(_ cents: Int) -> String {
+        string(fromCents: cents)
+    }
+
+    /// Canonical dollars-string → cents parse. Normalizes comma-decimal
+    /// locales (',' → '.'), strips any character outside [0-9.], rejects
+    /// strings with more than one decimal point, and rounds to the nearest
+    /// cent. Returns nil for empty/invalid input.
+    ///
+    /// This is the single source of truth for every dollars→cents conversion
+    /// in the seller app, making the recurring comma-decimal money bug
+    /// structurally impossible. The normalize/strip/round behavior mirrors the
+    /// per-field fixes that previously lived inline at each parse site.
+    static func parseCents(_ dollars: String) -> Int? {
+        let normalized = dollars
+            .replacingOccurrences(of: ",", with: ".")
+            .filter { $0.isNumber || $0 == "." }
+        if normalized.isEmpty { return nil }
+        // Reject more than one decimal point — an ambiguous/invalid amount.
+        if normalized.filter({ $0 == "." }).count > 1 { return nil }
+        guard let d = Double(normalized) else { return nil }
+        return Int((d * 100).rounded())
     }
 }
 
@@ -40,6 +67,12 @@ enum KosherCertification: String, Codable, CaseIterable, Identifiable {
     case Badatz
     case ChofK = "Chof-K"
     case other
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = KosherCertification(rawValue: raw) ?? .other
+    }
 
     var id: String { rawValue }
 
@@ -139,7 +172,7 @@ enum OrderStatus: String, Codable, CaseIterable, Identifiable {
         // `.pickedUp` belongs here too: the seller needs to see orders that
         // have left the kitchen but aren't delivered yet, otherwise they lose
         // visibility into deliveries en route once the courier grabs the bag.
-        case .pending, .accepted, .preparing, .ready, .pickedUp:
+        case .scheduled, .pending, .accepted, .preparing, .ready, .pickedUp:
             return true
         default:
             return false
@@ -207,6 +240,21 @@ struct Restaurant: Codable, Identifiable {
     var estDeliveryMax: Int
     var isOpen: Bool
     var isActive: Bool
+    /// Platform moderation state: "pending", "approved", or "rejected".
+    /// Backend emits it with `omitempty` (models.go:126) so it can be absent
+    /// on older responses — optional, defaulting to nil. The dashboard treats
+    /// only an explicit "approved" as live; anything else (including nil) gates
+    /// the open/closed toggle and shows a "Pending approval" caption, mirroring
+    /// Android DashboardScreen.kt's `isApproved` gating.
+    var approvalStatus: String?
+
+    /// True only when the platform admin has approved this restaurant. A nil
+    /// (field absent) or any non-"approved" value reads as not-yet-approved so
+    /// the seller can't flip themselves open before review — the backend
+    /// enforces the same rule (seller.go ~L392), this just keeps the UI honest.
+    var isApproved: Bool {
+        approvalStatus?.caseInsensitiveCompare("approved") == .orderedSame
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, phone, email, street, city, state, lat, lng, rating
@@ -229,6 +277,44 @@ struct Restaurant: Codable, Identifiable {
         case estDeliveryMax = "est_delivery_max"
         case isOpen = "is_open"
         case isActive = "is_active"
+        case approvalStatus = "approval_status"
+    }
+}
+
+extension Restaurant {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        ownerId = try c.decode(String.self, forKey: .ownerId)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decode(String.self, forKey: .description)
+        imageUrl = try c.decode(String.self, forKey: .imageUrl)
+        coverImageUrl = try c.decodeIfPresent(String.self, forKey: .coverImageUrl)
+        logoUrl = try c.decodeIfPresent(String.self, forKey: .logoUrl)
+        phone = try c.decode(String.self, forKey: .phone)
+        email = try c.decode(String.self, forKey: .email)
+        street = try c.decode(String.self, forKey: .street)
+        city = try c.decode(String.self, forKey: .city)
+        state = try c.decode(String.self, forKey: .state)
+        zipCode = try c.decode(String.self, forKey: .zipCode)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lng = try c.decode(Double.self, forKey: .lng)
+        kosherCertification = try c.decode(KosherCertification.self, forKey: .kosherCertification)
+        certifyingAgency = try c.decode(String.self, forKey: .certifyingAgency)
+        isCholovYisroel = try c.decode(Bool.self, forKey: .isCholovYisroel)
+        isPasYisroel = try c.decode(Bool.self, forKey: .isPasYisroel)
+        isGlattKosher = try c.decode(Bool.self, forKey: .isGlattKosher)
+        kosherCertificateUrl = try c.decodeIfPresent(String.self, forKey: .kosherCertificateUrl)
+        cuisineType = try c.decodeIfPresent([String].self, forKey: .cuisineType) ?? []
+        rating = try c.decode(Double.self, forKey: .rating)
+        reviewCount = try c.decode(Int.self, forKey: .reviewCount)
+        deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
+        minOrder = try c.decode(Int.self, forKey: .minOrder)
+        estDeliveryMin = try c.decode(Int.self, forKey: .estDeliveryMin)
+        estDeliveryMax = try c.decode(Int.self, forKey: .estDeliveryMax)
+        isOpen = try c.decode(Bool.self, forKey: .isOpen)
+        isActive = try c.decode(Bool.self, forKey: .isActive)
+        approvalStatus = try c.decodeIfPresent(String.self, forKey: .approvalStatus)
     }
 }
 
@@ -289,6 +375,28 @@ struct MenuItem: Codable, Identifiable, Equatable {
     static func == (lhs: MenuItem, rhs: MenuItem) -> Bool {
         lhs.id == rhs.id
     }
+}
+
+/// A self-serve menu-import job (UberEats today). Created when the seller pastes
+/// a store link during onboarding; the Menu screen polls it to show progress.
+/// Only the fields the app needs are modeled — Codable ignores the rest.
+struct MenuImport: Codable, Identifiable {
+    let id: String
+    let status: String          // pending | running | done | failed
+    let sourceUrl: String?
+    let itemsTotal: Int
+    let itemsCreated: Int
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, error
+        case sourceUrl = "source_url"
+        case itemsTotal = "items_total"
+        case itemsCreated = "items_created"
+    }
+
+    /// True while the import is still in flight (drives the "importing…" banner).
+    var isInProgress: Bool { status == "pending" || status == "running" }
 }
 
 struct ModifierGroup: Codable, Identifiable, Equatable {
@@ -432,6 +540,10 @@ struct Order: Codable, Identifiable {
     let deliveryFee: Int
     let serviceFee: Int
     let tax: Int
+    /// Deal discount applied to this order, in cents (0 when no deal). Subtracted
+    /// in the totals breakdown so the rows reconcile to `total`. Backend emits it
+    /// as `discount`; defaults to 0 when absent (pre-deal-pricing responses).
+    let discount: Int
     let total: Int
     let deliveryAddress: String
     let estDeliveryTime: String?
@@ -451,7 +563,7 @@ struct Order: Codable, Identifiable {
     var isPickup: Bool { fulfillmentType == "pickup" }
 
     enum CodingKeys: String, CodingKey {
-        case id, status, items, subtotal, tax, total, courier
+        case id, status, items, subtotal, tax, discount, total, courier
         case userId = "user_id"
         case restaurantId = "restaurant_id"
         case restaurantName = "restaurant_name"
@@ -480,6 +592,8 @@ struct Order: Codable, Identifiable {
         deliveryFee = try c.decode(Int.self, forKey: .deliveryFee)
         serviceFee = try c.decode(Int.self, forKey: .serviceFee)
         tax = try c.decode(Int.self, forKey: .tax)
+        // Default to 0 so responses without a deal discount still decode.
+        discount = (try c.decodeIfPresent(Int.self, forKey: .discount)) ?? 0
         total = try c.decode(Int.self, forKey: .total)
         deliveryAddress = try c.decode(String.self, forKey: .deliveryAddress)
         estDeliveryTime = try c.decodeIfPresent(String.self, forKey: .estDeliveryTime)

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // RunMigrations walks the given directory and applies any .sql files whose
@@ -19,7 +20,53 @@ import (
 // Keeps things simple — no down migrations, no dependency graph, just
 // "apply all new files in order and remember which ones ran." Good enough
 // for the MVP and avoids pulling in a dependency like golang-migrate.
+//
+// Multi-instance safe: two instances deploying at once must not race the
+// schema_migrations apply (both reading "not applied", both running the same
+// file). We serialize the whole run behind a session-level Postgres advisory
+// lock (pg_advisory_lock, blocking) held on a single dedicated connection for
+// the duration. The first instance runs the migrations; any concurrent
+// instance blocks on the lock, then — once it acquires — finds every file
+// already recorded in schema_migrations and applies nothing. Single-instance
+// deploys are unaffected: the lock is uncontended and acquired immediately.
+const migrationAdvisoryLockKey int64 = 0x4B45_5357_0002
+
 func (db *DB) RunMigrations(ctx context.Context, dir string) error {
+	// Hold the advisory lock on its own connection for the whole run; session
+	// advisory locks are per-connection so the same conn must take and release.
+	conn, err := db.Pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration lock conn: %w", err)
+	}
+	defer conn.Release()
+
+	// Bound lock acquisition so a wedged-but-alive peer (a stuck migration /
+	// hung connection still holding the session lock) surfaces a clear error
+	// instead of hanging startup forever. pg_try_advisory_lock returns
+	// immediately; poll until we get it or the deadline passes.
+	lockCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	for {
+		var got bool
+		if err := conn.QueryRow(lockCtx, `SELECT pg_try_advisory_lock($1)`, migrationAdvisoryLockKey).Scan(&got); err != nil {
+			return fmt.Errorf("acquire migration advisory lock: %w", err)
+		}
+		if got {
+			break
+		}
+		select {
+		case <-lockCtx.Done():
+			return fmt.Errorf("could not acquire migration advisory lock within 60s (held by another instance): %w", lockCtx.Err())
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	defer func() {
+		if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLockKey); err != nil {
+			// Best-effort: the lock also drops when the conn closes/resets.
+			_ = err
+		}
+	}()
+
 	if _, err := db.Pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,
@@ -91,9 +138,12 @@ func (db *DB) loadAppliedMigrations(ctx context.Context) (map[string]bool, error
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			continue
+			return nil, err
 		}
 		out[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

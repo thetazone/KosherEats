@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"log/slog"
 	"net/http"
@@ -18,7 +19,12 @@ import (
 	"github.com/koshereats/backend/internal/database"
 	"github.com/koshereats/backend/internal/handlers"
 	kemiddleware "github.com/koshereats/backend/internal/middleware"
+	"github.com/koshereats/backend/internal/observability"
+	"github.com/koshereats/backend/internal/payout"
+	"github.com/koshereats/backend/internal/redisclient"
 	"github.com/koshereats/backend/internal/scheduler"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 	"golang.org/x/time/rate"
 )
 
@@ -38,6 +44,43 @@ func main() {
 		log.Fatal("JWT_SECRET must be set to a random value of at least 32 characters")
 	}
 
+	// ── Sentry error reporting (no-op unless SENTRY_DSN is set) ──────────
+	// Init before anything that might panic so handler panics are captured.
+	// Flush is deferred so buffered events are sent on shutdown.
+	flushSentry, sentryEnabled := observability.InitSentry(cfg.SentryDSN, os.Getenv("APP_ENV"))
+	defer flushSentry()
+	if sentryEnabled {
+		logger.Info("sentry error reporting enabled")
+	}
+
+	// ── Shared Redis client (optional) ──────────────────────────────────
+	// Built once from REDIS_URL and shared by the rate limiters. A nil client
+	// (empty/blank URL) or an unreachable server transparently degrades the
+	// limiters to their in-memory behavior — Redis is never on the request
+	// failure path.
+	redisClient, rerr := redisclient.New(cfg.RedisURL)
+	if rerr != nil {
+		logger.Warn("redis url parse failed; rate limiter will use in-memory fallback",
+			slog.String("error", rerr.Error()))
+		redisClient = nil
+	}
+	if redisClient != nil {
+		if redisclient.Ping(context.Background(), redisClient) {
+			defer redisClient.Close()
+			logger.Info("rate limiter: redis-backed (shared across instances)")
+		} else {
+			// Don't keep a dead client — consulting it per request would cost a
+			// dial timeout on every rate-limit check (RedisURL defaults to
+			// localhost:6379, which won't resolve in prod without Redis). Drop it
+			// and use the pure in-memory limiter.
+			logger.Warn("rate limiter: redis unreachable at startup; using in-memory limiter")
+			redisClient.Close()
+			redisClient = nil
+		}
+	} else {
+		logger.Info("rate limiter: in-memory (no REDIS_URL)")
+	}
+
 	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
@@ -49,7 +92,7 @@ func main() {
 	exePath, _ := os.Executable()
 	migrationsPath := filepath.Join(filepath.Dir(exePath), "internal", "database", "migrations")
 	if err := db.RunMigrations(context.Background(), migrationsPath); err != nil {
-		log.Printf("migration warning: %v", err) // non-fatal; may not exist in all deploys
+		log.Fatalf("failed to apply migrations: %v", err) // abort startup rather than serve a half-migrated schema
 	}
 
 	r := chi.NewRouter()
@@ -62,6 +105,9 @@ func main() {
 	r.Use(chimiddleware.RealIP)
 	r.Use(kemiddleware.RequestLogger(logger))
 	r.Use(chimiddleware.Recoverer)
+	// Report handler panics to Sentry (then re-panic so Recoverer above writes
+	// the 500). No-op when Sentry isn't configured.
+	r.Use(observability.SentryRecover)
 
 	// Tighter CORS. Accepts the dev web URL, configured prod web URL, and
 	// iOS simulator loopback explicitly. No wildcards.
@@ -78,9 +124,17 @@ func main() {
 	}))
 
 	// Rate limiters. Auth endpoints are strict (credential stuffing defense),
-	// authenticated endpoints are lenient (catch runaway clients only).
-	authLimiter := kemiddleware.NewRateLimiter(rate.Limit(5), 10, 30*time.Minute)
-	apiLimiter := kemiddleware.NewRateLimiter(rate.Limit(30), 60, 30*time.Minute)
+	// authenticated endpoints are lenient (catch runaway clients only). When
+	// a Redis client is present these enforce shared limits across instances;
+	// with redisClient==nil they are byte-for-byte the old in-memory limiter.
+	authLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(5), 10, 30*time.Minute)
+	apiLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(30), 60, 30*time.Minute)
+	// Email-existence check is an account-enumeration oracle (returns whether a
+	// given (email, role, vertical) account exists). Throttle it on its own
+	// counter — much stricter than general auth — so enumeration can't ride the
+	// looser /login burst budget. Distinct max/window => independent Redis +
+	// in-memory counters.
+	emailCheckLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(3.0/60), 3, 30*time.Minute)
 
 	h := handlers.New(db, cfg)
 
@@ -92,6 +146,11 @@ func main() {
 	// doesn't block the link.
 	r.Get("/admin/restaurants/decision", h.RestaurantDecisionPage)
 	r.Post("/admin/restaurants/decision", h.RestaurantDecisionPage)
+	// No-login admin dashboard gated by the ADMIN_DASHBOARD_KEY shared secret
+	// (?key=). Lists pending restaurants with one-click Approve/Reject so
+	// approvals don't depend on email magic links. Disabled if the env is unset.
+	r.Get("/admin/restaurants", h.AdminRestaurantsPage)
+	r.Post("/admin/restaurants/{id}/decision", h.AdminRestaurantDecision)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -113,22 +172,34 @@ func main() {
 		r.Post("/login", h.Login)
 		r.Post("/refresh", h.RefreshToken)
 		r.Post("/social", h.SocialLogin)
-		// Used by the unified email entry on each app: given an email, says
-		// whether a user exists so the client can route to "enter password"
-		// vs "create account". Doesn't leak enough to be a useful enumeration
-		// primitive beyond what /login already reveals via its error message.
-		r.Post("/email/check", h.CheckEmail)
 		// Phone OTP login (Twilio Verify). Used by the seller app's "Continue
 		// with phone" flow. Start sends the SMS; verify trades a valid code
 		// for a JWT if the phone is associated with an existing account.
 		r.Post("/phone/start", h.StartPhoneLogin)
 		r.Post("/phone/verify", h.VerifyPhoneLogin)
+		// Email password reset: forgot emails a 6-digit code; reset trades the
+		// code + new password for an updated credential.
+		r.Post("/password/forgot", h.ForgotPassword)
+		r.Post("/password/reset", h.ResetPassword)
+	})
+
+	// Email-existence check: own stricter limiter (account-enumeration oracle).
+	// Used by the unified email entry on each app: given an email, says whether a
+	// user exists so the client can route to "enter password" vs "create account".
+	// This IS an account-existence oracle for a precise (email, role, vertical)
+	// tuple — /login does NOT leak existence (identical 401 for unknown-email and
+	// wrong-password), so this reveals strictly MORE than /login. It rides its own
+	// stricter limiter (3 req/60s) instead of the looser shared authLimiter so
+	// enumeration can't borrow the /login burst budget.
+	r.Group(func(r chi.Router) {
+		r.Use(emailCheckLimiter.PerIP)
+		r.Post("/api/v1/auth/email/check", h.CheckEmail)
 	})
 
 	// App Store reviewer bypass — only registered when REVIEWER_SECRET is set.
 	// Uses a dedicated tight limiter (5 req/min) to prevent secret brute-force.
 	if cfg.ReviewerSecret != "" {
-		reviewerLimiter := kemiddleware.NewRateLimiter(rate.Limit(5.0/60), 5, 30*time.Minute)
+		reviewerLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(5.0/60), 5, 30*time.Minute)
 		r.Group(func(r chi.Router) {
 			r.Use(reviewerLimiter.PerIP)
 			r.Post("/api/v1/auth/reviewer/seller", h.ReviewerSellerLogin)
@@ -163,6 +234,10 @@ func main() {
 		r.Use(apiLimiter.PerUser)
 		r.Post("/", h.CreateOrder)
 		r.Get("/", h.ListOrders)
+		// Idempotent client recovery: look up an order by the PaymentIntent
+		// the client just confirmed. Static segment so chi matches it ahead of
+		// the /{id} wildcard at this level.
+		r.Get("/by-payment-intent/{pi}", h.GetOrderByPaymentIntent)
 		r.Get("/{id}", h.GetOrder)
 		r.Patch("/{id}/cancel", h.CancelOrder)
 		r.Post("/{id}/rating", h.RateOrder)
@@ -240,6 +315,12 @@ func main() {
 			r.Delete("/modifier-groups/{groupId}", h.DeleteModifierGroup)
 			r.Post("/categories", h.CreateCategory)
 			r.Delete("/categories/{id}", h.DeleteCategory)
+
+			// Self-serve menu import: paste an UberEats store URL; an
+			// out-of-process worker drains the job and writes menu items.
+			r.Post("/imports", h.CreateMenuImport)
+			r.Get("/imports", h.ListMenuImports)
+			r.Get("/imports/{id}", h.GetMenuImport)
 		})
 
 		r.Route("/orders", func(r chi.Router) {
@@ -393,7 +474,62 @@ func main() {
 	//       aren't stuck watching a dead order.
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 	defer schedulerCancel()
-	scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash()).Start(schedulerCtx)
+	dispatcher := scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash())
+	// Wire the admin alerter so auto-refunds and permanently-failed payouts
+	// raise an alert (email when ADMIN_ALERT_EMAIL is set, log-only otherwise).
+	dispatcher.SetAlerter(h.Alerter())
+
+	// ── Temporal durable payouts (DISABLED unless TEMPORAL_HOSTPORT is set) ──
+	// When off we never dial a client, never start a worker, and inject a nil
+	// *payout.Starter — so the handler + scheduler keep their legacy
+	// direct-transfer behavior, byte-for-byte. When on, courier payouts route
+	// through a Temporal workflow for exactly-once transfers.
+	var (
+		temporalClient client.Client
+		payoutWorker   = (worker.Worker)(nil)
+	)
+	if cfg.Temporal.HostPort != "" {
+		opts := client.Options{
+			HostPort:  cfg.Temporal.HostPort,
+			Namespace: cfg.Temporal.Namespace,
+		}
+		// Temporal Cloud auth. API key (preferred) or mTLS client cert both
+		// require TLS; a local/insecure dev server sets neither and dials plain.
+		switch {
+		case cfg.Temporal.APIKey != "":
+			opts.Credentials = client.NewAPIKeyStaticCredentials(cfg.Temporal.APIKey)
+			opts.ConnectionOptions = client.ConnectionOptions{TLS: &tls.Config{}}
+		case cfg.Temporal.TLSCert != "" && cfg.Temporal.TLSKey != "":
+			cert, cerr := tls.LoadX509KeyPair(cfg.Temporal.TLSCert, cfg.Temporal.TLSKey)
+			if cerr != nil {
+				log.Fatalf("temporal: load mTLS cert/key: %v", cerr)
+			}
+			opts.ConnectionOptions = client.ConnectionOptions{TLS: &tls.Config{Certificates: []tls.Certificate{cert}}}
+		}
+		tc, err := client.Dial(opts)
+		if err != nil {
+			log.Fatalf("failed to dial temporal: %v", err)
+		}
+		temporalClient = tc
+
+		acts := payout.NewActivities(h.Stripe(), db.Pool)
+		w := payout.NewWorker(tc, cfg.Temporal.TaskQueue, acts)
+		if err := w.Start(); err != nil {
+			log.Fatalf("failed to start temporal worker: %v", err)
+		}
+		payoutWorker = w
+
+		starter := &payout.Starter{Client: tc, TaskQueue: cfg.Temporal.TaskQueue}
+		h.SetPayoutStarter(starter)
+		dispatcher.SetPayoutStarter(starter)
+
+		logger.Info("temporal payouts enabled",
+			slog.String("host_port", cfg.Temporal.HostPort),
+			slog.String("namespace", cfg.Temporal.Namespace),
+			slog.String("task_queue", cfg.Temporal.TaskQueue))
+	}
+
+	dispatcher.Start(schedulerCtx)
 
 	go func() {
 		logger.Info("server starting", slog.String("port", cfg.Port))
@@ -415,5 +551,17 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server shutdown error", slog.String("error", err.Error()))
 	}
+
+	// Drain in-flight payout activities before exit (only when Temporal was
+	// enabled). Stop() blocks until running activities finish, then we close
+	// the client. No-ops entirely when disabled (nil worker + nil client).
+	if payoutWorker != nil {
+		logger.Info("stopping temporal payout worker")
+		payoutWorker.Stop()
+	}
+	if temporalClient != nil {
+		temporalClient.Close()
+	}
+
 	logger.Info("shutdown complete")
 }

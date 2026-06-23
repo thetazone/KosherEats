@@ -19,6 +19,11 @@ struct CheckoutView: View {
     @State private var showAddressPicker = false
     @State private var placedOrder: Order?
     @State private var bundleRefreshTask: Task<Void, Never>?
+    // Set the instant a custom-tip edit lands and cleared once the debounced
+    // refreshBundle finishes. isLoadingBundle stays false during the 500ms
+    // debounce sleep, so without this flag canPay would let the user pay
+    // against the previous (stale-tip) bundle before the refresh fires.
+    @State private var pendingBundleRefresh = false
     // Carries the order id we should deep-link to AFTER the confirmation
     // cover finishes dismissing — prevents the root tab from racing the
     // fullScreenCover dismissal animation.
@@ -48,7 +53,13 @@ struct CheckoutView: View {
                         TipSelector(
                             subtotal: vm.bundle?.subtotal ?? 0,
                             selected: vm.tipSelection,
-                            customAmount: $vm.customTipText,
+                            // Route edits through updateCustomTip so digit/decimal
+                            // filtering and the max-tip error actually fire — a raw
+                            // $vm.customTipText binding skips that validation.
+                            customAmount: Binding(
+                                get: { vm.customTipText },
+                                set: { vm.updateCustomTip($0) },
+                            ),
                             onSelect: { choice in vm.selectTip(choice) },
                         )
                     }
@@ -88,7 +99,12 @@ struct CheckoutView: View {
         .navigationTitle("Checkout")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            vm.appliedDealId = cartVM.appliedDeal?.id
+            vm.appliedDealId = cartVM.dealIdForCheckout
+            // Recover any order that was charged but never confirmed (app died
+            // between the charge and a known-good order). Clears the in-flight
+            // marker if the order now exists; otherwise it stays set and the
+            // charge path's guard blocks a second charge.
+            await vm.reconcileInflightOrder()
             await vm.loadAddresses()
             await vm.refreshBundle()
             if vm.selectedAddress == nil && vm.fulfillmentType == "delivery" {
@@ -100,23 +116,38 @@ struct CheckoutView: View {
         }
         .onChange(of: vm.tipSelection) { _, _ in
             bundleRefreshTask?.cancel()
+            // Switching tip selection cancels any in-flight custom-tip task,
+            // which would otherwise bail before clearing pendingBundleRefresh
+            // and leave the pay button stuck disabled. This refresh's own
+            // isLoadingBundle guard covers the disable window from here.
+            pendingBundleRefresh = false
             bundleRefreshTask = Task { await vm.refreshBundle() }
         }
         .onChange(of: vm.customTipText) { _, _ in
             if vm.tipSelection == .custom {
+                // Mark a refresh pending BEFORE the debounce sleep so canPay
+                // disables the pay buttons immediately — otherwise the user
+                // could pay against the stale-tip bundle during the 500ms gap.
+                pendingBundleRefresh = true
                 bundleRefreshTask?.cancel()
                 bundleRefreshTask = Task {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     guard !Task.isCancelled else { return }
                     await vm.refreshBundle()
+                    pendingBundleRefresh = false
                 }
             }
         }
         .alert("Payment Received — Order Failed", isPresented: $vm.orderCreationFailed) {
             Button("Retry") {
                 Task {
-                    guard let bundle = vm.bundle, let addr = vm.selectedAddress else { return }
-                    if let order = await vm.placeOrder(address: addr, bundle: bundle) {
+                    guard let bundle = vm.bundle else { return }
+                    // Delivery requires an address; pickup legitimately has
+                    // none — placeOrder accepts nil and maps it to ""/(0,0).
+                    // Guarding on selectedAddress here made Retry a silent
+                    // no-op for pickup customers with no saved address.
+                    if vm.fulfillmentType == "delivery", vm.selectedAddress == nil { return }
+                    if let order = await vm.placeOrder(address: vm.selectedAddress, bundle: bundle) {
                         Haptics.success()
                         showAddressPicker = false
                         placedOrder = order
@@ -210,7 +241,7 @@ struct CheckoutView: View {
     }
 
     private var canPay: Bool {
-        guard vm.bundle != nil, !vm.isProcessing, !vm.isLoadingBundle else { return false }
+        guard vm.bundle != nil, !vm.isProcessing, !vm.isLoadingBundle, !pendingBundleRefresh else { return false }
         // Pickup orders don't need an address; delivery orders do.
         if vm.fulfillmentType == "pickup" { return true }
         return vm.selectedAddress != nil
@@ -602,5 +633,5 @@ private struct TotalsCard: View {
 // MARK: - Helpers
 
 private func format(_ cents: Int) -> String {
-    String(format: "$%.2f", Double(cents) / 100)
+    Money.dollars(cents)
 }

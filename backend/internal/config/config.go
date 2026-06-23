@@ -79,18 +79,52 @@ type Config struct {
 	// Tax rate as a whole-number percentage (e.g. 9 = 9%). Defaults to 9
 	// if TAX_RATE_PERCENT is not set.
 	TaxRatePercent int
+
+	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePercent
+	// to the (currently stubbed) Stripe Tax integration point. Default false:
+	// the flat-rate path is unchanged unless STRIPE_TAX_ENABLED=true. See
+	// handlers.taxForOrder — wiring Stripe Tax also needs the connected Stripe
+	// account to have Tax enabled, so this stays off until that's provisioned.
+	StripeTaxEnabled bool
+
+	// AdminAlertEmail receives anomaly alerts (charge disputes, refunds,
+	// auto-refunds, permanently failed payouts). Empty (the default) makes
+	// alertAdmin a logged no-op so dev/test never tries to send mail.
+	AdminAlertEmail string
+
+	// SentryDSN enables error reporting to Sentry. Empty (the default) makes
+	// Sentry a complete no-op: no init, no network calls. Set SENTRY_DSN in
+	// prod to capture handler panics + errors.
+	SentryDSN string
+
+	// Temporal (durable courier payout sweep). DISABLED unless HostPort is
+	// non-empty: when empty we never dial a Temporal client, inject a nil
+	// *payout.Starter, and the legacy direct-transfer sweep runs unchanged.
+	Temporal TemporalConfig
+}
+
+// TemporalConfig holds the connection settings for the payout workflow worker.
+// An empty HostPort means Temporal is disabled (the default).
+type TemporalConfig struct {
+	HostPort  string // TEMPORAL_HOSTPORT, e.g. "localhost:7233". Empty → disabled.
+	Namespace string // TEMPORAL_NAMESPACE, default "default"
+	TaskQueue string // TEMPORAL_TASK_QUEUE, default "payout-task-queue"
+	// Cloud auth (leave all empty for a local/insecure dev server):
+	APIKey  string // TEMPORAL_API_KEY — Temporal Cloud API key (enables TLS). Preferred.
+	TLSCert string // TEMPORAL_TLS_CERT — path to client cert for mTLS (alternative to API key)
+	TLSKey  string // TEMPORAL_TLS_KEY — path to client key for mTLS
 }
 
 func Load() *Config {
 	return &Config{
-		Port:             getEnv("PORT", "8080"),
-		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/koshereats?sslmode=disable"),
-		RedisURL:         getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:        getEnv("JWT_SECRET", ""),
+		Port:                 getEnv("PORT", "8080"),
+		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/koshereats?sslmode=disable"),
+		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:            getEnv("JWT_SECRET", ""),
 		StripeSecretKey:      getEnv("STRIPE_SECRET_KEY", ""),
 		StripePublishableKey: getEnv("STRIPE_PUBLISHABLE_KEY", ""),
 		StripeWebhookSec:     getEnv("STRIPE_WEBHOOK_SECRET", ""),
-		WebURL:           getEnv("WEB_URL", "http://localhost:3000"),
+		WebURL:               getEnv("WEB_URL", "http://localhost:3000"),
 
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
@@ -136,7 +170,20 @@ func Load() *Config {
 		DoorDashSigningKey:  getEnv("DOORDASH_SIGNING_KEY", ""),
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
 
-		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
+		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
+		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
+		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
+
+		SentryDSN: getEnv("SENTRY_DSN", ""),
+
+		Temporal: TemporalConfig{
+			HostPort:  getEnv("TEMPORAL_HOSTPORT", ""),
+			Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
+			TaskQueue: getEnv("TEMPORAL_TASK_QUEUE", "payout-task-queue"),
+			APIKey:    getEnv("TEMPORAL_API_KEY", ""),
+			TLSCert:   getEnv("TEMPORAL_TLS_CERT", ""),
+			TLSKey:    getEnv("TEMPORAL_TLS_KEY", ""),
+		},
 	}
 }
 

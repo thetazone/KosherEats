@@ -5,57 +5,67 @@ struct DealsView: View {
     @StateObject private var vm = DealsViewModel()
 
     var body: some View {
-        ZStack {
-            Color.keBackground.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                Color.keBackground.ignoresSafeArea()
 
-            if vm.isLoading && vm.deals.isEmpty {
-                ProgressView().tint(.kePrimary)
-            } else if let error = vm.errorMessage, vm.deals.isEmpty {
-                ErrorStateView(
-                    message: error,
-                    onRetry: { Task { await vm.load() } }
-                )
-            } else if vm.deals.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "tag.slash")
-                        .font(.system(size: 48))
-                        .foregroundColor(.keTextMuted)
-                    Text("No deals right now")
-                        .font(.headline)
-                        .foregroundColor(.keTextPrimary)
-                    Text("Check back later for deals from nearby restaurants.")
-                        .font(.subheadline)
-                        .foregroundColor(.keTextSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
-            } else {
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 14) {
-                        ForEach(vm.deals) { deal in
-                            NavigationLink(destination: RestaurantDetailView(restaurantID: deal.restaurantId)) {
-                                DealListCard(deal: deal) {
-                                    cartVM.applyDeal(deal)
-                                    Haptics.success()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
+                if vm.isLoading && vm.deals.isEmpty {
+                    ProgressView().tint(.kePrimary)
+                } else if let error = vm.errorMessage, vm.deals.isEmpty {
+                    ErrorStateView(
+                        message: error,
+                        onRetry: { Task { await vm.load() } }
+                    )
+                } else if vm.deals.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "tag.slash")
+                            .font(.system(size: 48))
+                            .foregroundColor(.keTextMuted)
+                        Text("No deals right now")
+                            .font(.headline)
+                            .foregroundColor(.keTextPrimary)
+                        Text("Check back later for deals from nearby restaurants.")
+                            .font(.subheadline)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
                     }
-                    .padding()
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 14) {
+                            ForEach(vm.deals) { deal in
+                                NavigationLink(destination: RestaurantDetailView(restaurantID: deal.restaurantId)) {
+                                    DealListCard(
+                                        deal: deal,
+                                        onApply: {
+                                            cartVM.applyDeal(deal)
+                                            Haptics.success()
+                                        },
+                                        isApplied: cartVM.appliedDeal?.id == deal.id,
+                                        onRemove: {
+                                            cartVM.removeDeal()
+                                            Haptics.success()
+                                        }
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding()
+                    }
                 }
             }
-        }
-        .navigationTitle("Deals Near You")
-        .navigationBarTitleDisplayMode(.large)
-        .task { await vm.load() }
-        .refreshable { await vm.load() }
-        .overlay {
-            if vm.isLoading && !vm.deals.isEmpty {
-                ProgressView()
-                    .tint(.kePrimary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding()
+            .navigationTitle("Deals Near You")
+            .navigationBarTitleDisplayMode(.large)
+            .task { await vm.load() }
+            .refreshable { await vm.load() }
+            .overlay {
+                if vm.isLoading && !vm.deals.isEmpty {
+                    ProgressView()
+                        .tint(.kePrimary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding()
+                }
             }
         }
     }
@@ -79,6 +89,7 @@ class DealsViewModel: ObservableObject {
 
     func load() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let all = try await APIService.shared.getNearbyDeals()
@@ -106,6 +117,11 @@ class DealsViewModel: ObservableObject {
 struct DealCard: View {
     let deal: Deal
     let onApply: () -> Void
+    /// Whether this card's deal is the one currently applied to the cart.
+    /// Drives the "Applied ✓" state and swaps Apply for a Remove path.
+    var isApplied: Bool = false
+    /// Removes the applied deal. When nil, the Applied state is read-only.
+    var onRemove: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -136,14 +152,33 @@ struct DealCard: View {
                     .foregroundColor(.keTextMuted)
             }
 
-            Button(action: onApply) {
-                Text("Apply Deal")
+            if isApplied {
+                Button {
+                    onRemove?()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark")
+                        Text(onRemove == nil ? "Applied" : "Applied — Remove")
+                    }
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.keTextOnAccent)
+                    .foregroundColor(.kePrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 32)
-                    .background(Color.kePrimary)
+                    .background(Color.kePrimary.opacity(0.12))
                     .cornerRadius(8)
+                }
+                .disabled(onRemove == nil)
+                .accessibilityLabel(onRemove == nil ? "Deal applied" : "Deal applied, tap to remove")
+            } else {
+                Button(action: onApply) {
+                    Text("Apply Deal")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.keTextOnAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(Color.kePrimary)
+                        .cornerRadius(8)
+                }
             }
         }
         .padding(12)
@@ -158,6 +193,10 @@ struct DealCard: View {
 struct DealListCard: View {
     let deal: Deal
     let onApply: () -> Void
+    /// Whether this card's deal is the one currently applied to the cart.
+    var isApplied: Bool = false
+    /// Removes the applied deal. When nil, the Applied state is read-only.
+    var onRemove: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -216,14 +255,33 @@ struct DealListCard: View {
 
                 Spacer()
 
-                Button(action: onApply) {
-                    Text("Apply")
+                if isApplied {
+                    Button {
+                        onRemove?()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                            Text(onRemove == nil ? "Applied" : "Remove")
+                        }
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.keTextOnAccent)
+                        .foregroundColor(.kePrimary)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background(Color.kePrimary)
+                        .background(Color.kePrimary.opacity(0.12))
                         .cornerRadius(8)
+                    }
+                    .disabled(onRemove == nil)
+                    .accessibilityLabel(onRemove == nil ? "Deal applied" : "Deal applied, tap to remove")
+                } else {
+                    Button(action: onApply) {
+                        Text("Apply")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.keTextOnAccent)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.kePrimary)
+                            .cornerRadius(8)
+                    }
                 }
             }
 

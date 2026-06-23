@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -71,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,12 +81,14 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.graphics.painter.ColorPainter
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.koshereats.consumer.data.models.Deal
 import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.MenuItem
 import com.koshereats.consumer.data.models.formatPrice
 import com.koshereats.consumer.data.models.formatPriceWhole
 import com.koshereats.consumer.ui.components.KosherInfoRow
+import com.koshereats.consumer.ui.components.MenuItemDietaryDot
 import com.koshereats.consumer.ui.components.MenuItemShimmer
 import com.koshereats.consumer.ui.components.ShimmerBrush
 import com.koshereats.consumer.ui.theme.*
@@ -203,6 +207,23 @@ fun RestaurantDetailScreen(
                                 )
                         )
 
+                        // Closed overlay — mirrors iOS RestaurantDetailView + home card
+                        if (!restaurant.isOpen) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(BackgroundBlack.copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Currently Closed",
+                                    color = TextWhite,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                            }
+                        }
+
                         // Restaurant name at bottom of hero
                         Column(
                             modifier = Modifier
@@ -241,6 +262,66 @@ fun RestaurantDetailScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = TextTertiary,
                         )
+
+                        // Stats row — mirrors iOS RestaurantDetailView (rating, ETA, fee)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            StatPill(
+                                icon = Icons.Filled.Star,
+                                text = "%.1f (%d)".format(restaurant.rating, restaurant.reviewCount),
+                                color = Orange,
+                            )
+                            if (restaurant.deliveryTimeMax > 0) {
+                                StatPill(
+                                    icon = Icons.Filled.Schedule,
+                                    text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
+                                    color = TextSecondary,
+                                )
+                            }
+                            StatPill(
+                                icon = Icons.Filled.LocalOffer,
+                                text = if (restaurant.deliveryFee == 0) "Free Delivery"
+                                else restaurant.deliveryFee.formatPrice(),
+                                color = if (restaurant.deliveryFee == 0) SuccessGreen else TextSecondary,
+                            )
+                        }
+
+                        if (restaurant.minimumOrder > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Min. order: ${restaurant.minimumOrder.formatPriceWhole()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted,
+                            )
+                        }
+
+                        if (!restaurant.isOpen) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ErrorRed.copy(alpha = 0.12f))
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Filled.Schedule,
+                                    contentDescription = null,
+                                    tint = ErrorRed,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Currently closed — not accepting orders right now.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary,
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -327,7 +408,7 @@ fun RestaurantDetailScreen(
                                                 .find { it.id == deal.menuItemId }
                                             if (linkedItem != null) {
                                                 cartViewModel.applyDeal(deal)
-                                                sheetItem = linkedItem
+                                                if (restaurant.isOpen) sheetItem = linkedItem
                                             }
                                         } else {
                                             cartViewModel.applyDeal(deal)
@@ -340,17 +421,55 @@ fun RestaurantDetailScreen(
                     }
                 }
 
-                if (uiState.menuCategories.isEmpty() && !uiState.isLoading) {
-                    item(key = "empty_menu") {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = "This restaurant has no menu items yet.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextMuted,
-                            )
+                if (uiState.menuCategories.isEmpty()) {
+                    when {
+                        // Menu fetch still in flight (restaurant resolved first) — show
+                        // shimmer rows rather than flashing the "no menu items" message.
+                        uiState.isLoading -> {
+                            items(4, key = { "menu_shimmer_$it" }) {
+                                MenuItemShimmer()
+                            }
+                        }
+                        // Menu fetch failed — distinguish from genuine emptiness and offer retry.
+                        uiState.error != null -> {
+                            item(key = "menu_error") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        text = "Couldn't load the menu.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = TextSecondary,
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(
+                                        // TODO(companion): RestaurantViewModel needs a real
+                                        // retryMenu()/reload() that re-fetches the menu. Until
+                                        // then we clear the stale error so the screen re-evaluates
+                                        // instead of permanently showing the failure.
+                                        onClick = { viewModel.clearError() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                                        shape = RoundedCornerShape(12.dp),
+                                    ) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
+                        }
+                        else -> {
+                            item(key = "empty_menu") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        text = "This restaurant has no menu items yet.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = TextMuted,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -408,7 +527,8 @@ fun RestaurantDetailScreen(
                         items(selectedCategory.items, key = { it.id }) { menuItem ->
                             VerticalMenuItemCard(
                                 menuItem = menuItem,
-                                onClick = { sheetItem = menuItem },
+                                isOrderable = restaurant.isOpen,
+                                onClick = { if (restaurant.isOpen) sheetItem = menuItem },
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 10.dp),
@@ -516,7 +636,7 @@ fun RestaurantDetailScreen(
                                     Icon(Icons.Filled.Close, contentDescription = "Close", tint = TextWhite)
                                 }
                             }
-                            AsyncImage(
+                            SubcomposeAsyncImage(
                                 model = restaurant.kosherCertificateUrl,
                                 contentDescription = "Kosher certificate",
                                 contentScale = ContentScale.Fit,
@@ -524,8 +644,46 @@ fun RestaurantDetailScreen(
                                     .fillMaxWidth()
                                     .padding(16.dp)
                                     .clip(RoundedCornerShape(12.dp)),
-                                placeholder = ColorPainter(SurfaceDark),
-                                error = ColorPainter(SurfaceDark),
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(300.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(color = Orange)
+                                    }
+                                },
+                                error = {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(300.dp)
+                                            .padding(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.ErrorOutline,
+                                            contentDescription = null,
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(40.dp),
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = "Unable to load certificate",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = TextSecondary,
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "The certificate for ${restaurant.name} could not be loaded. Please try again later.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextMuted,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                },
                             )
                         }
                     }
@@ -539,7 +697,7 @@ fun RestaurantDetailScreen(
                 val linkedItem = uiState.menuCategories
                     .flatMap { it.items }
                     .find { it.id == pendingDeal.menuItemId }
-                if (linkedItem != null) {
+                if (linkedItem != null && restaurant?.isOpen == true) {
                     sheetItem = linkedItem
                 }
                 cartViewModel.clearPendingDealItem()
@@ -551,7 +709,7 @@ fun RestaurantDetailScreen(
             MenuItemSheet(
                 menuItem = item,
                 onDismiss = { sheetItem = null },
-                onAddToCart = { qty, customizations, instructions ->
+                onAddToCart = { qty, modifiers, instructions ->
                     if (activeRestaurant == null) return@MenuItemSheet
                     cartViewModel.addItem(
                         menuItem = item,
@@ -559,7 +717,7 @@ fun RestaurantDetailScreen(
                         restaurantName = activeRestaurant.name,
                         restaurantImageUrl = activeRestaurant.logoUrl ?: activeRestaurant.imageUrl,
                         quantity = qty,
-                        selectedCustomizations = customizations,
+                        selectedModifiers = modifiers,
                         specialInstructions = instructions,
                     )
                 },
@@ -624,6 +782,31 @@ private fun DealBanner(
 }
 
 @Composable
+private fun StatPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    color: Color,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
 fun HorizontalMenuItemCard(
     menuItem: MenuItem,
     onClick: () -> Unit,
@@ -666,15 +849,24 @@ fun HorizontalMenuItemCard(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = menuItem.name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextWhite,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            lineHeight = 18.sp,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = menuItem.name,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            MenuItemDietaryDot(
+                isMeat = menuItem.isMeat,
+                isDairy = menuItem.isDairy,
+                isPareve = menuItem.isPareve,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = menuItem.price.formatPrice(),
@@ -689,25 +881,35 @@ fun VerticalMenuItemCard(
     menuItem: MenuItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isOrderable: Boolean = true,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
-            .clickable(onClick = onClick)
+            .clickable(enabled = isOrderable, onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(
-                text = menuItem.name,
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextWhite,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = menuItem.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextWhite,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                MenuItemDietaryDot(
+                    isMeat = menuItem.isMeat,
+                    isDairy = menuItem.isDairy,
+                    isPareve = menuItem.isPareve,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
             if (menuItem.description.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -737,7 +939,7 @@ fun VerticalMenuItemCard(
                 placeholder = ColorPainter(SurfaceDark),
                 error = ColorPainter(SurfaceDark),
             )
-            if (menuItem.isAvailable) {
+            if (menuItem.isAvailable && isOrderable) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

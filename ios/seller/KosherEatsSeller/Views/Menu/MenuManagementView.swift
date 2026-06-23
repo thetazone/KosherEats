@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MenuManagementView: View {
-    @StateObject private var vm = MenuViewModel()
+    @StateObject private var vm: MenuViewModel
     @ObservedObject private var selectedRestaurant = SelectedRestaurant.shared
     @State private var showAddItem = false
     @State private var editingItem: MenuItem?
@@ -9,6 +9,12 @@ struct MenuManagementView: View {
     @State private var newCategoryName = ""
     @State private var searchText = ""
     @State private var itemToDelete: MenuItem?
+    @State private var categoryToDelete: MenuCategory?
+
+    /// `previewVM` is the DEBUG screenshot-harness injection; production uses a fresh VM.
+    init(previewVM: MenuViewModel? = nil) {
+        _vm = StateObject(wrappedValue: previewVM ?? MenuViewModel())
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,21 +42,52 @@ struct MenuManagementView: View {
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if let name = selectedRestaurant.name {
-                    HStack(spacing: 6) {
-                        Image(systemName: "storefront.fill")
-                            .font(.caption2)
-                            .foregroundColor(.kePrimary)
-                        Text("Showing: \(name)")
-                            .font(.caption.bold())
-                            .foregroundColor(.keTextSecondary)
-                            .lineLimit(1)
-                        Spacer()
+                VStack(spacing: 0) {
+                    if let name = selectedRestaurant.name {
+                        HStack(spacing: 6) {
+                            Image(systemName: "storefront.fill")
+                                .font(.caption2)
+                                .foregroundColor(.kePrimary)
+                            Text("Showing: \(name)")
+                                .font(.caption.bold())
+                                .foregroundColor(.keTextSecondary)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
-                    .background(Color.keBackground)
+                    if let job = vm.activeImport {
+                        HStack(spacing: 10) {
+                            switch job.status {
+                            case "failed":
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.keError)
+                                Text("Menu import failed — you can add items manually.")
+                                    .font(.caption.bold()).foregroundColor(.keTextPrimary)
+                            case "done":
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.kePrimary)
+                                Text("Imported \(job.itemsCreated) item\(job.itemsCreated == 1 ? "" : "s") from UberEats")
+                                    .font(.caption.bold()).foregroundColor(.keTextPrimary)
+                            default:
+                                ProgressView().controlSize(.small).tint(.kePrimary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Importing your menu from UberEats…")
+                                        .font(.caption.bold()).foregroundColor(.keTextPrimary)
+                                    Text(job.itemsTotal > 0 ? "\(job.itemsCreated) of \(job.itemsTotal) items added" : "Fetching items…")
+                                        .font(.caption2).foregroundColor(.keTextSecondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.kePrimary.opacity(0.12))
+                    }
                 }
+                .background(Color.keBackground)
             }
             .navigationTitle("Menu")
             .navigationBarTitleDisplayMode(.large)
@@ -82,24 +119,32 @@ struct MenuManagementView: View {
             .task {
                 vm.startObservingRestaurant()
                 await vm.load()
+                vm.startImportWatch()
             }
+            .onDisappear { vm.stopImportWatch() }
             .sheet(isPresented: $showAddItem) {
                 MenuItemFormView(
                     categories: vm.categories,
                     onSave: { cat, name, desc, price, imageUrl, meat, dairy, pareve in
-                        Task {
-                            let success = await vm.createItem(
-                                categoryId: cat,
-                                name: name,
-                                description: desc,
-                                price: price,
-                                imageUrl: imageUrl,
-                                isMeat: meat,
-                                isDairy: dairy,
-                                isPareve: pareve
-                            )
-                            if success { showAddItem = false }
+                        // Awaited by the form so its Save button stays disabled
+                        // until this actually completes. Return nil on success
+                        // (parent dismisses), or the error so the form can show
+                        // it inline on the sheet.
+                        let success = await vm.createItem(
+                            categoryId: cat,
+                            name: name,
+                            description: desc,
+                            price: price,
+                            imageUrl: imageUrl,
+                            isMeat: meat,
+                            isDairy: dairy,
+                            isPareve: pareve
+                        )
+                        if success {
+                            showAddItem = false
+                            return nil
                         }
+                        return vm.errorMessage ?? "Couldn't save item. Please try again."
                     }
                 )
                 .presentationDetents([.medium, .large])
@@ -109,21 +154,23 @@ struct MenuManagementView: View {
                     categories: vm.categories,
                     existingItem: item,
                     onSave: { cat, name, desc, price, imageUrl, meat, dairy, pareve in
-                        Task {
-                            let success = await vm.updateItem(
-                                id: item.id,
-                                categoryId: cat,
-                                name: name,
-                                description: desc,
-                                price: price,
-                                imageUrl: imageUrl,
-                                isMeat: meat,
-                                isDairy: dairy,
-                                isPareve: pareve,
-                                isAvailable: item.isAvailable
-                            )
-                            if success { editingItem = nil }
+                        let success = await vm.updateItem(
+                            id: item.id,
+                            categoryId: cat,
+                            name: name,
+                            description: desc,
+                            price: price,
+                            imageUrl: imageUrl,
+                            isMeat: meat,
+                            isDairy: dairy,
+                            isPareve: pareve,
+                            isAvailable: item.isAvailable
+                        )
+                        if success {
+                            editingItem = nil
+                            return nil
                         }
+                        return vm.errorMessage ?? "Couldn't save item. Please try again."
                     }
                 )
                 .presentationDetents([.medium, .large])
@@ -164,6 +211,24 @@ struct MenuManagementView: View {
             } message: {
                 if let item = itemToDelete {
                     Text("Are you sure you want to delete \"\(item.name)\"? This cannot be undone.")
+                }
+            }
+            .alert("Delete Category", isPresented: Binding(
+                get: { categoryToDelete != nil },
+                set: { if !$0 { categoryToDelete = nil } }
+            )) {
+                Button("Cancel", role: .cancel) {
+                    categoryToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let category = categoryToDelete {
+                        Task { await vm.deleteCategory(id: category.id) }
+                        categoryToDelete = nil
+                    }
+                }
+            } message: {
+                if let category = categoryToDelete {
+                    Text("Are you sure you want to delete \"\(category.name)\"? This cannot be undone.")
                 }
             }
             .overlay {
@@ -245,7 +310,7 @@ struct MenuManagementView: View {
 
                 if items.isEmpty {
                     Button(role: .destructive) {
-                        Task { await vm.deleteCategory(id: category.id) }
+                        categoryToDelete = category
                     } label: {
                         Image(systemName: "trash")
                             .font(.caption)

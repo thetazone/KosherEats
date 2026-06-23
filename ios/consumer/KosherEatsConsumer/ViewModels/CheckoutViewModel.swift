@@ -39,7 +39,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             switch self {
             case .none: return "None"
             case .percent(let bps):
-                let cents = (subtotal * bps) / 10_000
+                let cents = Int((Double(subtotal) * Double(bps) / 10_000).rounded())
                 return "\(bps / 100)%\n$\(String(format: "%.2f", Double(cents) / 100))"
             case .custom: return "Custom"
             }
@@ -62,6 +62,12 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             if fulfillmentType == "pickup" {
                 tipSelection = .none
                 customTipText = ""
+            } else if oldValue == "pickup", tipSelection == .none {
+                // Returning to delivery FROM pickup (which zeroed the tip): restore
+                // the default so a delivery -> pickup -> delivery toggle doesn't
+                // silently charge $0. Gated on oldValue == "pickup" so a deliberate
+                // "no tip" chosen while already in delivery is never overridden.
+                tipSelection = .percent(1800)
             }
             Task { @MainActor [weak self] in
                 await self?.refreshBundle()
@@ -84,6 +90,11 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     private var sheetContinuation: CheckedContinuation<Void, Error>?
     private var applePayContext: STPApplePayContext?
     private var applePayContinuation: CheckedContinuation<Void, Error>?
+    /// The exact bundle whose Apple Pay sheet is currently presented. The
+    /// delegate confirms THIS PaymentIntent, not `self.bundle`, which a
+    /// concurrent refreshBundle() can swap out from under the live sheet
+    /// (charging PI B while placeOrder records PI A).
+    private var applePayBundle: APIService.PaymentSheetBundle?
 
     deinit {
         // Resume any pending continuations so their Tasks don't leak.
@@ -119,7 +130,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// clamped to "" so the user can't enter a negative tip.
     func updateCustomTip(_ text: String) {
         if text.isEmpty { customTipText = text; return }
-        let filtered = text.filter { $0.isNumber || $0 == "." }
+        let filtered = text.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
         if filtered.components(separatedBy: ".").count > 2 { return }
         if let value = Double(filtered), value > Double(Self.maxTipCents) / 100.0 {
             errorMessage = "Maximum tip is $\(Self.maxTipCents / 100)"
@@ -135,10 +146,13 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         let subtotal = bundle?.subtotal ?? 0
         switch tipSelection {
         case .none: return 0
-        case .percent(let bps): return (subtotal * bps) / 10_000
+        case .percent(let bps): return Int((Double(subtotal) * Double(bps) / 10_000).rounded())
         case .custom:
-            let dollars = max(0, Double(customTipText) ?? 0)
-            return min(Int(dollars * 100), Self.maxTipCents)
+            // customTipText is already comma-normalized / digit-filtered by
+            // updateCustomTip; Money.parseCents reproduces the same parse and
+            // rounds (not truncates) so exact-cent inputs like $4.10 stay 410¢.
+            let cents = Money.parseCents(customTipText) ?? 0
+            return min(max(0, cents), Self.maxTipCents)
         }
     }
 
@@ -148,6 +162,27 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// load and any time the tip selection changes so the totals match what
     /// Stripe will actually charge.
     func refreshBundle() async {
+        // Never refresh while a charge is in flight. A refresh creates a brand-
+        // new PaymentIntent server-side and swaps `self.bundle`; if that lands
+        // while the PaymentSheet or Apple Pay sheet is up, the live sheet ends
+        // up confirming a different PaymentIntent than the one placeOrder will
+        // record (charge / order mismatch). The totals are locked once the user
+        // taps pay, so a stale-tip refresh has nothing useful to do here.
+        guard !isProcessing else { return }
+
+        // Snapshot whether we're about to compute a percent tip against a
+        // not-yet-loaded bundle (subtotal == 0). The backend only honours an
+        // absolute cents tip — it never recomputes a percentage — so a percent
+        // tip evaluated here against a nil bundle bakes tip=0 into the
+        // PaymentIntent. On the first load we re-refresh once the real subtotal
+        // is known so the default tip isn't silently dropped.
+        let neededReRefresh: Bool
+        if case .percent = tipSelection, (bundle?.subtotal ?? 0) == 0 {
+            neededReRefresh = true
+        } else {
+            neededReRefresh = false
+        }
+
         bundleGeneration += 1
         let gen = bundleGeneration
         isLoadingBundle = true
@@ -160,6 +195,14 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId)
             guard gen == bundleGeneration, !Task.isCancelled else { return }
             bundle = fresh
+
+            // The percent tip was computed against a zero subtotal but we now
+            // have a real one — recompute and refresh once so the PaymentIntent
+            // reflects the intended tip. Re-entry is bounded: the second pass
+            // sees a non-zero subtotal and won't loop.
+            if neededReRefresh, fresh.tip == 0, fresh.subtotal > 0, currentTipCents() > 0 {
+                await refreshBundle()
+            }
         } catch {
             guard gen == bundleGeneration, !Task.isCancelled else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -172,11 +215,35 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// dev stub mode (no Stripe key configured server-side) this short-
     /// circuits and marks the payment as succeeded immediately so the rest
     /// of the flow stays testable locally.
+    /// Validates the chosen scheduled time BEFORE any card is charged. A
+    /// just-passed scheduled time must stop the flow here — once the card is
+    /// charged, blocking order creation leaves an unrecoverable
+    /// 'payment received, no order' state. Returns false (and sets
+    /// errorMessage) when the time has already passed.
+    private func scheduledTimeIsValid() -> Bool {
+        if let scheduled = scheduledFor, scheduled < Date() {
+            errorMessage = "Your scheduled time has passed. Please select a new time."
+            return false
+        }
+        return true
+    }
+
     func presentAndChargePaymentSheet(bundle: APIService.PaymentSheetBundle) async {
         paymentSucceeded = false
         isProcessing = true
         errorMessage = nil
         defer { isProcessing = false }
+
+        // Pre-charge validation: a stale scheduled time must abort before the
+        // card is charged, never after (see placeOrder).
+        guard scheduledTimeIsValid() else { return }
+
+        // Never confirm a NEW PaymentIntent while a prior charged-but-
+        // unrecovered PaymentIntent is still pending. Try to reconcile it
+        // first (the order may exist now); if it still can't be resolved,
+        // refuse to charge again so we don't double-charge for an order we
+        // never recovered.
+        guard await passesInflightGuard() else { return }
 
         if bundle.isStub {
             paymentSucceeded = true
@@ -257,6 +324,15 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         errorMessage = nil
         defer { isProcessing = false }
 
+        // Pre-charge validation: a stale scheduled time must abort before the
+        // card is charged, never after (see placeOrder).
+        guard scheduledTimeIsValid() else { return }
+
+        // Never confirm a NEW PaymentIntent while a prior charged-but-
+        // unrecovered PaymentIntent is still pending — see the PaymentSheet
+        // path for the rationale. Keeps the Apple Pay path consistent.
+        guard await passesInflightGuard() else { return }
+
         if bundle.isStub {
             // Mirror the PaymentSheet dev-stub behaviour so reviewers without
             // real Stripe keys still get through the flow.
@@ -279,6 +355,10 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         }
 
         self.applePayContext = context
+        // Pin the exact bundle being charged so the delegate confirms THIS
+        // PaymentIntent regardless of any later refreshBundle() that replaces
+        // self.bundle.
+        self.applePayBundle = bundle
 
         try? await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -296,43 +376,89 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// Itemised summary items for the Apple Pay sheet. The last row is the
     /// merchant total, per Apple's guidelines — the prior rows are a
     /// breakdown so the user sees what they're paying for.
+    ///
+    /// Money-critical: the breakdown rows MUST visibly reconcile to the final
+    /// total. `bundle.total` is the source of truth (it is what we actually
+    /// charge), but the itemised rows we can show — subtotal, discount, tax,
+    /// fees, delivery, tip — won't necessarily sum to it (server-only fees,
+    /// rounding, or a discount applied to a base we don't surface here). If we
+    /// let a mismatched breakdown ship, the Apple Pay sheet shows rows that
+    /// don't add up to the charge, which reads as an overcharge. So we sum the
+    /// signed cents of every row we display and, if it differs from
+    /// `bundle.total`, insert a single reconciling row carrying the exact
+    /// remainder. The visible rows then provably sum to `bundle.total`, and the
+    /// final "KosherEats" row equals the real charge.
     private func applePaySummaryItems(bundle: APIService.PaymentSheetBundle) -> [PKPaymentSummaryItem] {
+        // Track each row's signed cents alongside the PKPaymentSummaryItem so
+        // we reconcile against the *exact* integer amounts the sheet displays,
+        // never re-deriving from Double-rounded values.
+        var rows: [(label: String, cents: Int)] = [
+            ("Subtotal", bundle.subtotal),
+        ]
+        if let discount = bundle.discount, discount > 0 {
+            rows.append(("Deal discount", -discount))
+        }
+        rows.append(("Tax", bundle.tax))
+        rows.append(("Service fee", bundle.serviceFee))
+        rows.append(("Delivery", bundle.deliveryFee))
+        if bundle.tip > 0 {
+            rows.append(("Driver tip", bundle.tip))
+        }
+
+        // Reconcile the visible breakdown to the charged total. Any nonzero
+        // delta becomes one signed adjustment row so the rows sum exactly to
+        // bundle.total. Labelled by sign so the user sees a sensible word.
+        let breakdownSum = rows.reduce(0) { $0 + $1.cents }
+        let delta = bundle.total - breakdownSum
+        if delta != 0 {
+            rows.append((delta > 0 ? "Other fees" : "Adjustment", delta))
+        }
+
         func item(_ label: String, _ cents: Int) -> PKPaymentSummaryItem {
             PKPaymentSummaryItem(
                 label: label,
                 amount: NSDecimalNumber(value: Double(cents) / 100),
             )
         }
-        var items: [PKPaymentSummaryItem] = [
-            item("Subtotal", bundle.subtotal),
-        ]
-        if let discount = bundle.discount, discount > 0 {
-            items.append(PKPaymentSummaryItem(
-                label: "Deal discount",
-                amount: NSDecimalNumber(value: -Double(discount) / 100)
-            ))
-        }
-        items.append(contentsOf: [
-            item("Tax", bundle.tax),
-            item("Service fee", bundle.serviceFee),
-            item("Delivery", bundle.deliveryFee),
-        ])
-        if bundle.tip > 0 {
-            items.append(item("Driver tip", bundle.tip))
-        }
+        var items = rows.map { item($0.label, $0.cents) }
+        // Final row is the merchant total — the actual charge, unconditionally
+        // bundle.total. The breakdown above now sums to exactly this value.
         items.append(item("KosherEats", bundle.total))
         return items
     }
 
     // MARK: - Order creation
 
+    /// UserDefaults key holding the PaymentIntent id the client has just
+    /// confirmed (the card is charged) but for which it has not yet confirmed
+    /// an order exists server-side. It is set immediately after the charge,
+    /// before createOrder, and cleared once an order is known to exist (either
+    /// createOrder returned, recovery found it, or reconcileInflightOrder
+    /// resolved it). While it is set, the charge path refuses to confirm a
+    /// NEW PaymentIntent — charging again would double-charge the customer for
+    /// an order we never recovered.
+    private static let inflightPaymentIntentKey = "inflight_payment_intent"
+
+    private var persistedInflightPI: String? {
+        get { UserDefaults.standard.string(forKey: Self.inflightPaymentIntentKey) }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: Self.inflightPaymentIntentKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.inflightPaymentIntentKey)
+            }
+        }
+    }
+
     func placeOrder(address: Address?, bundle: APIService.PaymentSheetBundle) async -> Order? {
         guard !isProcessing else { return nil }
 
-        if let scheduled = scheduledFor, scheduled < Date() {
-            errorMessage = "Your scheduled time has passed. Please select a new time."
-            return nil
-        }
+        // NOTE: the scheduled-time check lives in presentAndChargePaymentSheet /
+        // presentApplePayExpress, BEFORE the card is charged. We must NOT block
+        // here post-charge — that would strand a paid customer with no order.
+        // If the scheduled time has just passed the backend falls back to ASAP
+        // (status 'pending'), so we always send the request and let the server
+        // decide.
 
         isProcessing = true
         defer { isProcessing = false }
@@ -348,54 +474,109 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             // In stub mode we don't have a real payment intent id; the backend
             // tolerates an empty string.
             let paymentIntentId = bundle.isStub ? "stub_intent" : try extractIntentId(from: bundle.paymentIntentSecret)
-            // Retry createOrder up to 3 times — the card is already charged,
-            // so dropping the order on a transient network failure is worse
-            // than a duplicate-order guard on the backend (idempotent via
-            // payment_intent_id unique constraint).
-            var lastError: Error?
-            for attempt in 0..<3 {
-                do {
-                    return try await api.createOrder(
-                        deliveryAddress: addressString,
-                        lat: lat,
-                        lng: lng,
-                        paymentIntentId: paymentIntentId,
-                        tip: bundle.tip,
-                        scheduledFor: scheduledFor,
-                        fulfillmentType: fulfillmentType,
-                        appliedDealId: appliedDealId
-                    )
-                } catch let APIError.httpError(code, _) where code == 409 {
-                    // Duplicate payment_intent_id — the order was already created
-                    // on a previous attempt whose response was lost. Fetch it.
-                    if let orders = try? await api.listOrders(),
-                       let existing = orders.first(where: { $0.stripePaymentID == paymentIntentId }) {
-                        return existing
-                    }
-                    lastError = NSError(
-                        domain: "Checkout",
-                        code: -3,
-                        userInfo: [
-                            NSLocalizedDescriptionKey: "Payment was received, but we couldn't recover the created order. Please retry or contact support."
-                        ]
-                    )
-                } catch {
-                    lastError = error
-                    if attempt < 2 {
-                        let delaySec = min(pow(2.0, Double(attempt)), 30)
-                        try? await Task.sleep(nanoseconds: UInt64(delaySec) * 1_000_000_000)
-                    }
-                }
+
+            // The card was just charged for THIS PaymentIntent. Persist it
+            // BEFORE createOrder so that if the app dies (crash / kill) between
+            // the charge and a known-good order, the next launch can reconcile
+            // it via reconcileInflightOrder() instead of silently dropping a
+            // paid order. Skip stub mode — no real charge to recover.
+            if !bundle.isStub {
+                persistedInflightPI = paymentIntentId
             }
-            paymentSucceeded = false
-            orderCreationFailed = true
-            errorMessage = lastError?.localizedDescription ?? "Order creation failed"
-            return nil
+
+            do {
+                let order = try await api.createOrder(
+                    deliveryAddress: addressString,
+                    lat: lat,
+                    lng: lng,
+                    paymentIntentId: paymentIntentId,
+                    tip: bundle.tip,
+                    scheduledFor: scheduledFor,
+                    fulfillmentType: fulfillmentType,
+                    appliedDealId: appliedDealId
+                )
+                // createOrder is idempotent on a duplicate payment_intent_id
+                // (backend returns 200 with the existing user-scoped order), so
+                // a successful return here always means the order exists. Clear
+                // the in-flight marker.
+                if !bundle.isStub { persistedInflightPI = nil }
+                return order
+            } catch {
+                // createOrder failed AFTER the charge. The order may still have
+                // been created (request reached the DB but the response was
+                // lost, or a transient failure on a later replay). Recover by
+                // looking the order up directly by PaymentIntent id with a few
+                // backoff retries before surfacing an error. Stub mode has no
+                // real PI to recover against, so fall straight through to the
+                // error path.
+                if !bundle.isStub,
+                   let recovered = await recoverOrder(paymentIntentId: paymentIntentId) {
+                    paymentSucceeded = true
+                    persistedInflightPI = nil
+                    return recovered
+                }
+                // No order found. Leave persistedInflightPI set so a later
+                // reconcile / next launch can still recover it once the backend
+                // catches up; surface a retryable error to the user.
+                paymentSucceeded = false
+                orderCreationFailed = true
+                errorMessage = error.localizedDescription
+                return nil
+            }
         } catch {
+            // extractIntentId threw — we never charged a real PI here, so there
+            // is nothing to recover and nothing to persist.
             paymentSucceeded = false
             errorMessage = error.localizedDescription
             return nil
         }
+    }
+
+    /// Post-charge recovery: look the order up by the PaymentIntent id the
+    /// client just confirmed, retrying with backoff (0.5s / 1s / 2s) to ride
+    /// out a brief replication / commit lag. Returns the order if found, or nil
+    /// if every attempt 404s or errors. A 404 means "no order for this user
+    /// yet"; any other error is also treated as "not yet recovered" and retried.
+    private func recoverOrder(paymentIntentId: String) async -> Order? {
+        let delaysNanos: [UInt64] = [500_000_000, 1_000_000_000, 2_000_000_000]
+        for (attempt, delay) in delaysNanos.enumerated() {
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            if let order = try? await api.getOrderByPaymentIntent(paymentIntentId) {
+                return order
+            }
+        }
+        return nil
+    }
+
+    /// Called on checkout-screen appear and app launch. If a PaymentIntent was
+    /// charged but never confirmed as an order (the app died between the charge
+    /// and a known-good order), look it up and, if it now exists server-side,
+    /// clear the marker. Leaves the marker in place when the lookup 404s so a
+    /// later attempt can still recover it. Returns the recovered order, if any,
+    /// so a caller can route the user to it.
+    @discardableResult
+    func reconcileInflightOrder() async -> Order? {
+        guard let pi = persistedInflightPI else { return nil }
+        if let order = try? await api.getOrderByPaymentIntent(pi) {
+            persistedInflightPI = nil
+            return order
+        }
+        return nil
+    }
+
+    /// Top-of-charge-path guard. Returns true when it is safe to confirm a NEW
+    /// PaymentIntent. When a prior charged-but-unrecovered PaymentIntent is
+    /// still persisted it first tries to reconcile it (clearing the marker if
+    /// the order now exists); if it still can't be resolved it blocks the new
+    /// charge and surfaces an error so we never double-charge the customer.
+    private func passesInflightGuard() async -> Bool {
+        guard persistedInflightPI != nil else { return true }
+        await reconcileInflightOrder()
+        if persistedInflightPI == nil { return true }
+        errorMessage = "Your previous payment is still being confirmed. Please check your orders before trying again."
+        return false
     }
 
     /// PaymentIntent client secrets are `pi_xxxxxx_secret_yyyy`. We only
@@ -447,7 +628,10 @@ extension CheckoutViewModel: ApplePayContextDelegate {
         didCreatePaymentMethod paymentMethod: StripeAPI.PaymentMethod,
         paymentInformation: PKPayment
     ) async throws -> String {
-        guard let secret = self.bundle?.paymentIntentSecret else {
+        // Use the bundle pinned at present time, NOT self.bundle — a concurrent
+        // refreshBundle() may have replaced self.bundle with a different
+        // PaymentIntent, which would charge a PI that placeOrder never records.
+        guard let secret = self.applePayBundle?.paymentIntentSecret else {
             throw NSError(
                 domain: "Checkout",
                 code: -1,
@@ -475,6 +659,7 @@ extension CheckoutViewModel: ApplePayContextDelegate {
                 self.paymentSucceeded = false
             }
             self.applePayContext = nil
+            self.applePayBundle = nil
             self.applePayContinuation?.resume()
             self.applePayContinuation = nil
         }

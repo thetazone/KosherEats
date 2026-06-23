@@ -36,6 +36,20 @@ data class ChatUiState(
 )
 
 /**
+ * Replace the optimistic [clientId] entry with the server's copy, deduping
+ * against the poll. If the 3s poll already merged in the server echo (under
+ * [serverMsg].id) while the POST was in flight, mapping clientId -> serverMsg
+ * would create two entries with the same id and crash the LazyColumn's
+ * `item(key = message.id)`. In that case just drop the optimistic entry.
+ */
+private fun ChatUiState.reconcileSent(clientId: String, serverMsg: ChatMessage): List<ChatMessage> =
+    if (messages.any { it.id == serverMsg.id }) {
+        messages.filterNot { it.id == clientId }
+    } else {
+        messages.map { if (it.id == clientId) serverMsg else it }
+    }
+
+/**
  * Polling-based chat mirror of iOS OrderChatView. Starts a 3s refresh loop
  * when the screen opens and cancels it when the ViewModel is cleared.
  *
@@ -106,7 +120,7 @@ class ChatViewModel @Inject constructor(
                 if (serverMsg != null && response.isSuccessful) {
                     _state.update { current ->
                         current.copy(
-                            messages = current.messages.map { if (it.id == clientId) serverMsg else it },
+                            messages = current.reconcileSent(clientId, serverMsg),
                             isSending = false,
                             error = null,
                         )
@@ -158,7 +172,7 @@ class ChatViewModel @Inject constructor(
                 if (serverMsg != null && response.isSuccessful) {
                     _state.update { current ->
                         current.copy(
-                            messages = current.messages.map { if (it.id == clientId) serverMsg else it },
+                            messages = current.reconcileSent(clientId, serverMsg),
                             inFlightMessageIds = current.inFlightMessageIds - clientId,
                             error = null,
                         )
