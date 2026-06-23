@@ -87,6 +87,13 @@ func (h *Handler) UberDirect() *uberdirect.Client { return h.uber }
 // dispatch fallback chain.
 func (h *Handler) DoorDash() *doordash.Client { return h.doordash }
 
+// Alerter builds an admin anomaly alerter from the configured AdminAlertEmail
+// and the shared email client, so the scheduler can alert on auto-refunds and
+// permanently failed payouts using the same address/transport as the handler.
+func (h *Handler) Alerter() *notify.Alerter {
+	return notify.NewAlerter(h.cfg.AdminAlertEmail, h.email)
+}
+
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -80,6 +80,18 @@ type Config struct {
 	// if TAX_RATE_PERCENT is not set.
 	TaxRatePercent int
 
+	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePercent
+	// to the (currently stubbed) Stripe Tax integration point. Default false:
+	// the flat-rate path is unchanged unless STRIPE_TAX_ENABLED=true. See
+	// handlers.taxForOrder — wiring Stripe Tax also needs the connected Stripe
+	// account to have Tax enabled, so this stays off until that's provisioned.
+	StripeTaxEnabled bool
+
+	// AdminAlertEmail receives anomaly alerts (charge disputes, refunds,
+	// auto-refunds, permanently failed payouts). Empty (the default) makes
+	// alertAdmin a logged no-op so dev/test never tries to send mail.
+	AdminAlertEmail string
+
 	// Temporal (durable courier payout sweep). DISABLED unless HostPort is
 	// non-empty: when empty we never dial a Temporal client, inject a nil
 	// *payout.Starter, and the legacy direct-transfer sweep runs unchanged.
@@ -153,7 +165,9 @@ func Load() *Config {
 		DoorDashSigningKey:  getEnv("DOORDASH_SIGNING_KEY", ""),
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
 
-		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
+		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
+		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
+		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
 
 		Temporal: TemporalConfig{
 			HostPort:  getEnv("TEMPORAL_HOSTPORT", ""),

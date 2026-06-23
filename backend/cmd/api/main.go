@@ -421,6 +421,9 @@ func main() {
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 	defer schedulerCancel()
 	dispatcher := scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash())
+	// Wire the admin alerter so auto-refunds and permanently-failed payouts
+	// raise an alert (email when ADMIN_ALERT_EMAIL is set, log-only otherwise).
+	dispatcher.SetAlerter(h.Alerter())
 
 	// ── Temporal durable payouts (DISABLED unless TEMPORAL_HOSTPORT is set) ──
 	// When off we never dial a client, never start a worker, and inject a nil

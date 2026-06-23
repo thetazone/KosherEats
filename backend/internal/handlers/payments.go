@@ -1,14 +1,44 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/models"
+	"github.com/koshereats/backend/internal/notify"
 	"github.com/stripe/stripe-go/v78/webhook"
 )
+
+// alertAdmin emails the configured admin alert address about an operational
+// anomaly (charge dispute, refund, etc.). When cfg.AdminAlertEmail is unset it
+// is a logged no-op (see notify.Alerter). Money-critical paths call this for
+// side-channel visibility; a send failure never breaks the caller.
+func (h *Handler) alertAdmin(subject, body string) {
+	notify.NewAlerter(h.cfg.AdminAlertEmail, h.email).Alert(subject, body)
+}
+
+// taxForOrder computes the tax on a (discounted) subtotal in cents.
+//
+// Today this is a documented stub: it returns the same flat-rate result the
+// inline computation always used, so enabling cfg.StripeTaxEnabled changes
+// nothing about the charged amount yet — it only routes tax through this one
+// integration point.
+//
+// TODO: integrate Stripe Tax (needs the connected Stripe account's Tax feature
+// enabled). When wired, this should call Stripe's tax calculation for the
+// order's jurisdiction instead of the flat TaxRatePercent. Until then the
+// flat rate is authoritative and StripeTaxEnabled is effectively a feature
+// flag guarding an inert seam.
+func (h *Handler) taxForOrder(discountedSubtotal int) int {
+	// TODO: integrate Stripe Tax (needs the Stripe account's Tax enabled).
+	return discountedSubtotal * h.cfg.TaxRatePercent / 100
+}
 
 // CreatePaymentIntent computes the authoritative total server-side (cart +
 // fees + tip) and returns a PaymentSheet bundle that iOS StripePaymentSheet
@@ -114,7 +144,16 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	serviceFee := 0
-	tax := discountedSubtotal * h.cfg.TaxRatePercent / 100
+	// Default: flat TaxRatePercent (unchanged). When StripeTaxEnabled is set we
+	// route through taxForOrder, the Stripe Tax integration seam — which today
+	// returns the same flat-rate value, so the charged total is identical until
+	// that stub is wired to real Stripe Tax.
+	var tax int
+	if h.cfg.StripeTaxEnabled {
+		tax = h.taxForOrder(discountedSubtotal)
+	} else {
+		tax = discountedSubtotal * h.cfg.TaxRatePercent / 100
+	}
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
@@ -253,7 +292,31 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if event.Type == "account.updated" {
+	// Idempotency: Stripe delivers at-least-once, so the same event.ID can
+	// arrive multiple times (retries, network dups). Record the id once; if the
+	// INSERT affects no rows we've already processed this event — ACK 200 and
+	// run no side effects again. We do this AFTER signature verification so an
+	// unsigned/forged payload can never poison the ledger.
+	ct, err := h.db.Pool.Exec(r.Context(),
+		`INSERT INTO stripe_webhook_events (event_id, type) VALUES ($1, $2)
+		 ON CONFLICT (event_id) DO NOTHING`, event.ID, string(event.Type))
+	if err != nil {
+		slog.Error("StripeWebhook: failed to record event for idempotency",
+			slog.String("event_id", event.ID), slog.String("error", err.Error()))
+		// Fail closed so Stripe retries — better a duplicate delivery (which the
+		// dedupe will then catch) than silently dropping a dispute/refund event.
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		slog.Info("StripeWebhook: duplicate event ignored",
+			slog.String("event_id", event.ID), slog.String("type", string(event.Type)))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	switch event.Type {
+	case "account.updated":
 		var account struct {
 			ID               string `json:"id"`
 			PayoutsEnabled   bool   `json:"payouts_enabled"`
@@ -273,7 +336,111 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
+	case "charge.dispute.created":
+		// A customer (or their bank) is disputing a charge. This is money at
+		// risk — log loudly and alert the admin so they can submit evidence
+		// before Stripe's response deadline.
+		var dispute struct {
+			ID            string `json:"id"`
+			Charge        string `json:"charge"`
+			PaymentIntent string `json:"payment_intent"`
+			Amount        int    `json:"amount"`
+			Currency      string `json:"currency"`
+			Reason        string `json:"reason"`
+			Status        string `json:"status"`
+		}
+		if err := json.Unmarshal(event.Data.Raw, &dispute); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		orderID := h.lookupOrderByPaymentIntent(r.Context(), dispute.PaymentIntent)
+		slog.Warn("StripeWebhook: charge dispute created",
+			slog.String("dispute_id", dispute.ID),
+			slog.String("charge", dispute.Charge),
+			slog.String("payment_intent", dispute.PaymentIntent),
+			slog.String("order_id", orderID),
+			slog.Int("amount_cents", dispute.Amount),
+			slog.String("reason", dispute.Reason),
+			slog.String("status", dispute.Status))
+		h.alertAdmin(
+			"Stripe dispute opened",
+			disputeAlertBody(dispute.ID, dispute.Charge, dispute.PaymentIntent, orderID, dispute.Amount, dispute.Reason),
+		)
+
+	case "charge.refunded":
+		// A charge was refunded (manually in the dashboard, by our auto-refund
+		// sweeps, or by Stripe). Log + alert so refunds are never silent.
+		var charge struct {
+			ID             string `json:"id"`
+			PaymentIntent  string `json:"payment_intent"`
+			AmountRefunded int    `json:"amount_refunded"`
+			Amount         int    `json:"amount"`
+		}
+		if err := json.Unmarshal(event.Data.Raw, &charge); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		orderID := h.lookupOrderByPaymentIntent(r.Context(), charge.PaymentIntent)
+		slog.Info("StripeWebhook: charge refunded",
+			slog.String("charge", charge.ID),
+			slog.String("payment_intent", charge.PaymentIntent),
+			slog.String("order_id", orderID),
+			slog.Int("amount_refunded_cents", charge.AmountRefunded))
+		h.alertAdmin(
+			"Stripe charge refunded",
+			refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded),
+		)
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// lookupOrderByPaymentIntent resolves the order id whose stripe_payment_id
+// matches the given PaymentIntent, for enriching dispute/refund alerts. Empty
+// PI or no match returns "" — alerts are best-effort context, never a hard
+// dependency, so a lookup miss must not fail the webhook.
+func (h *Handler) lookupOrderByPaymentIntent(ctx context.Context, paymentIntent string) string {
+	if paymentIntent == "" {
+		return ""
+	}
+	var orderID string
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT id FROM orders WHERE stripe_payment_id = $1`, paymentIntent,
+	).Scan(&orderID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Warn("StripeWebhook: order lookup by payment_intent failed",
+				slog.String("payment_intent", paymentIntent), slog.String("error", err.Error()))
+		}
+		return ""
+	}
+	return orderID
+}
+
+func disputeAlertBody(disputeID, charge, paymentIntent, orderID string, amountCents int, reason string) string {
+	body := "A Stripe charge dispute was opened.\n\n" +
+		"Dispute: " + disputeID + "\n" +
+		"Charge: " + charge + "\n" +
+		"PaymentIntent: " + paymentIntent + "\n" +
+		"Amount (cents): " + strconv.Itoa(amountCents) + "\n" +
+		"Reason: " + reason + "\n"
+	if orderID != "" {
+		body += "Order: " + orderID + "\n"
+	}
+	body += "\nSubmit evidence in the Stripe dashboard before the response deadline."
+	return body
+}
+
+func refundAlertBody(charge, paymentIntent, orderID string, amountRefundedCents int) string {
+	body := "A Stripe charge was refunded.\n\n" +
+		"Charge: " + charge + "\n" +
+		"PaymentIntent: " + paymentIntent + "\n" +
+		"Amount refunded (cents): " + strconv.Itoa(amountRefundedCents) + "\n"
+	if orderID != "" {
+		body += "Order: " + orderID + "\n"
+	}
+	return body
 }

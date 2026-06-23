@@ -376,30 +376,53 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// Itemised summary items for the Apple Pay sheet. The last row is the
     /// merchant total, per Apple's guidelines — the prior rows are a
     /// breakdown so the user sees what they're paying for.
+    ///
+    /// Money-critical: the breakdown rows MUST visibly reconcile to the final
+    /// total. `bundle.total` is the source of truth (it is what we actually
+    /// charge), but the itemised rows we can show — subtotal, discount, tax,
+    /// fees, delivery, tip — won't necessarily sum to it (server-only fees,
+    /// rounding, or a discount applied to a base we don't surface here). If we
+    /// let a mismatched breakdown ship, the Apple Pay sheet shows rows that
+    /// don't add up to the charge, which reads as an overcharge. So we sum the
+    /// signed cents of every row we display and, if it differs from
+    /// `bundle.total`, insert a single reconciling row carrying the exact
+    /// remainder. The visible rows then provably sum to `bundle.total`, and the
+    /// final "KosherEats" row equals the real charge.
     private func applePaySummaryItems(bundle: APIService.PaymentSheetBundle) -> [PKPaymentSummaryItem] {
+        // Track each row's signed cents alongside the PKPaymentSummaryItem so
+        // we reconcile against the *exact* integer amounts the sheet displays,
+        // never re-deriving from Double-rounded values.
+        var rows: [(label: String, cents: Int)] = [
+            ("Subtotal", bundle.subtotal),
+        ]
+        if let discount = bundle.discount, discount > 0 {
+            rows.append(("Deal discount", -discount))
+        }
+        rows.append(("Tax", bundle.tax))
+        rows.append(("Service fee", bundle.serviceFee))
+        rows.append(("Delivery", bundle.deliveryFee))
+        if bundle.tip > 0 {
+            rows.append(("Driver tip", bundle.tip))
+        }
+
+        // Reconcile the visible breakdown to the charged total. Any nonzero
+        // delta becomes one signed adjustment row so the rows sum exactly to
+        // bundle.total. Labelled by sign so the user sees a sensible word.
+        let breakdownSum = rows.reduce(0) { $0 + $1.cents }
+        let delta = bundle.total - breakdownSum
+        if delta != 0 {
+            rows.append((delta > 0 ? "Other fees" : "Adjustment", delta))
+        }
+
         func item(_ label: String, _ cents: Int) -> PKPaymentSummaryItem {
             PKPaymentSummaryItem(
                 label: label,
                 amount: NSDecimalNumber(value: Double(cents) / 100),
             )
         }
-        var items: [PKPaymentSummaryItem] = [
-            item("Subtotal", bundle.subtotal),
-        ]
-        if let discount = bundle.discount, discount > 0 {
-            items.append(PKPaymentSummaryItem(
-                label: "Deal discount",
-                amount: NSDecimalNumber(value: -Double(discount) / 100)
-            ))
-        }
-        items.append(contentsOf: [
-            item("Tax", bundle.tax),
-            item("Service fee", bundle.serviceFee),
-            item("Delivery", bundle.deliveryFee),
-        ])
-        if bundle.tip > 0 {
-            items.append(item("Driver tip", bundle.tip))
-        }
+        var items = rows.map { item($0.label, $0.cents) }
+        // Final row is the merchant total — the actual charge, unconditionally
+        // bundle.total. The breakdown above now sums to exactly this value.
         items.append(item("KosherEats", bundle.total))
         return items
     }

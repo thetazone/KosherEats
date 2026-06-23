@@ -30,6 +30,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -117,11 +118,32 @@ type Dispatcher struct {
 	// kicks off (or dedups into) a payout workflow that owns the transfer.
 	// Nil/disabled keeps the legacy direct-transfer behavior unchanged.
 	payoutStarter *payout.Starter
+
+	// alerter sends admin anomaly alerts (auto-refunds, permanently failed
+	// payouts). Nil is safe — notify.Alerter.Alert is nil-receiver-safe and
+	// degrades to a logged no-op, so a dispatcher with no alerter wired keeps
+	// its original behavior.
+	alerter *notify.Alerter
 }
 
 // SetPayoutStarter injects the Temporal payout starter. Passing a nil starter
 // (the default) leaves the dispatcher in legacy direct-transfer mode.
 func (d *Dispatcher) SetPayoutStarter(s *payout.Starter) { d.payoutStarter = s }
+
+// SetAlerter injects the admin alerter used for auto-refund and failed-payout
+// anomaly alerts. Optional: a nil alerter (the default) degrades to log-only.
+func (d *Dispatcher) SetAlerter(a *notify.Alerter) { d.alerter = a }
+
+// alert is a nil-safe shim so call sites don't have to guard d.alerter.
+func (d *Dispatcher) alert(subject, body string) {
+	if d.alerter == nil {
+		// Mirror the Alerter no-op so anomalies still surface in logs.
+		slog.Warn("admin-alert (no alerter wired)",
+			slog.String("subject", subject), slog.String("body", body))
+		return
+	}
+	d.alerter.Alert(subject, body)
+}
 
 func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
 	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd}
@@ -233,6 +255,10 @@ func (d *Dispatcher) sweepOrphanPayments(ctx context.Context) {
 			slog.String("payment_intent", c.PaymentIntentID),
 			slog.String("user_id", c.UserID),
 			slog.Int("amount_cents", c.AmountCents))
+		d.alert("Auto-refund: charged-but-no-order PaymentIntent",
+			fmt.Sprintf("The orphan-payment sweep refunded a charge that never became an order.\n\n"+
+				"PaymentIntent: %s\nUser: %s\nAmount (cents): %d\n",
+				c.PaymentIntentID, c.UserID, c.AmountCents))
 	}
 }
 
@@ -942,6 +968,11 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 			slog.String("courier_id", p.courierID),
 			slog.Int("attempts", nextAttempt),
 			slog.String("last_error", err.Error()))
+		d.alert("Courier payout failed permanently — admin review required",
+			fmt.Sprintf("A courier payout exhausted all %d attempts and is now failed_permanent.\n\n"+
+				"Payout queue id: %s\nOrder: %s\nCourier: %s\nConnect account: %s\n"+
+				"Amount (cents): %d\nLast error: %s\n",
+				maxPayoutAttempts, p.id, p.orderID, p.courierID, p.connectID, p.amountCents, err.Error()))
 	} else {
 		nextStatus = "pending"
 		backoffSecs = payoutBackoffSecs(nextAttempt)
