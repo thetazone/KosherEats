@@ -1,0 +1,2389 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# KosherEats / Mamiye-Eats backend HTTP API — OpenAPI 3.0 spec
+#
+# GENERATED / HAND-CURATED to anchor typed clients (iOS/Android/web).
+# Source of truth: backend/cmd/api/main.go (route registrations) and
+# backend/internal/models/models.go (+ handler request/response structs).
+# JSON field names are snake_case exactly as the Go structs serialize them.
+#
+# This file is the contract, not the implementation. When a route or model
+# changes in Go, update this spec in the same change. Validate with any
+# OpenAPI 3.0 tool (e.g. `npx @redocly/cli lint backend/openapi.yaml` or
+# `swagger-cli validate backend/openapi.yaml`).
+# ─────────────────────────────────────────────────────────────────────────────
+openapi: 3.0.3
+info:
+  title: KosherEats API
+  version: "1.0.0"
+  description: >
+    HTTP API for the KosherEats / GreenEats food-delivery platform. Serves the
+    consumer, seller, courier, and admin apps. All money fields are integer
+    cents unless noted. Most paths are under /api/v1; auth is a Bearer JWT
+    obtained from the /api/v1/auth endpoints.
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+  - url: https://koshereats-api.fly.dev
+    description: Production (Fly.io)
+
+tags:
+  - name: health
+  - name: auth
+  - name: restaurants
+  - name: cart
+  - name: orders
+  - name: payments
+  - name: favorites
+  - name: deals
+  - name: user
+  - name: seller
+  - name: courier
+  - name: admin
+  - name: devices
+  - name: uploads
+  - name: webhooks
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ── Health ────────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness/readiness probe (pings the DB)
+      security: []
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+        "503":
+          description: Degraded (DB unreachable)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: degraded }
+                  reason: { type: string }
+
+  # ── Auth (public, per-IP rate limited) ────────────────────────────────────
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Log in with email + password (scoped by role + vertical)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a fresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+              required: [refresh_token]
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/social:
+    post:
+      tags: [auth]
+      summary: Sign in / up with a social provider (Apple, Google)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string, enum: [apple, google] }
+                id_token: { type: string }
+                role: { $ref: "#/components/schemas/UserRole" }
+                vertical: { type: string }
+              required: [provider, id_token]
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/email/check:
+    post:
+      tags: [auth]
+      summary: Check whether an account exists for an (email, role, vertical)
+      description: >
+        Account-existence oracle used by the unified email entry screen to route
+        to "enter password" vs "create account". Per-IP rate limited.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: "#/components/schemas/UserRole" }
+                vertical: { type: string }
+              required: [email]
+      responses:
+        "200":
+          description: Existence result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exists: { type: boolean }
+
+  /api/v1/auth/phone/start:
+    post:
+      tags: [auth]
+      summary: Start phone-OTP login (sends SMS via Twilio Verify)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+              required: [phone]
+      responses:
+        "200": { description: SMS sent }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/phone/verify:
+    post:
+      tags: [auth]
+      summary: Verify phone-OTP code and return a JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                code: { type: string }
+              required: [phone, code]
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Email a 6-digit password-reset code
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                role: { $ref: "#/components/schemas/UserRole" }
+                vertical: { type: string }
+              required: [email]
+      responses:
+        "200": { description: Code emailed (always 200 to avoid enumeration) }
+
+  /api/v1/auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Reset password using the emailed code
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                code: { type: string }
+                new_password: { type: string }
+              required: [email, code, new_password]
+      responses:
+        "200": { description: Password updated }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/v1/auth/reviewer/seller:
+    post:
+      tags: [auth]
+      summary: App Store reviewer bypass login (only when REVIEWER_SECRET is set)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                secret: { type: string }
+              required: [secret]
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { description: Endpoint not registered (REVIEWER_SECRET unset) }
+
+  # ── Restaurants (public, optional auth) ───────────────────────────────────
+  /api/v1/restaurants:
+    get:
+      tags: [restaurants]
+      summary: List restaurants in the caller's vertical
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/VerticalQuery" }
+        - in: query
+          name: lat
+          schema: { type: number, format: double }
+        - in: query
+          name: lng
+          schema: { type: number, format: double }
+      responses:
+        "200":
+          description: Restaurant list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/restaurants/search:
+    get:
+      tags: [restaurants]
+      summary: Full-text restaurant search
+      security: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - { $ref: "#/components/parameters/VerticalQuery" }
+      responses:
+        "200":
+          description: Matching restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/restaurants/suggested:
+    get:
+      tags: [restaurants]
+      summary: Suggested / featured restaurants
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/VerticalQuery" }
+      responses:
+        "200":
+          description: Suggested restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/restaurants/{id}:
+    get:
+      tags: [restaurants]
+      summary: Get a single restaurant
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/restaurants/{id}/menu:
+    get:
+      tags: [restaurants]
+      summary: Get a restaurant's menu (categories with items)
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Menu categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MenuCategory" }
+
+  /api/v1/restaurants/{id}/deals:
+    get:
+      tags: [restaurants, deals]
+      summary: List active deals for a restaurant
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Deals
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DealWithItem" }
+
+  # ── Deals (public, consumer "Deals" tab) ──────────────────────────────────
+  /api/v1/deals/nearby:
+    get:
+      tags: [deals]
+      summary: List active deals near a location
+      security: []
+      parameters:
+        - in: query
+          name: lat
+          schema: { type: number, format: double }
+        - in: query
+          name: lng
+          schema: { type: number, format: double }
+        - { $ref: "#/components/parameters/VerticalQuery" }
+      responses:
+        "200":
+          description: Nearby deals
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DealWithItem" }
+
+  # ── Delivery quote (auth) ─────────────────────────────────────────────────
+  /api/v1/delivery-quote:
+    post:
+      tags: [orders]
+      summary: Quote a delivery fee for a restaurant + address pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                restaurant_id: { type: string }
+                delivery_address: { type: string }
+                delivery_lat: { type: number, format: double }
+                delivery_lng: { type: number, format: double }
+      responses:
+        "200":
+          description: Fee quote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  delivery_fee: { type: integer, description: cents }
+        "401": { $ref: "#/components/responses/Error" }
+
+  # ── Cart (auth) ───────────────────────────────────────────────────────────
+  /api/v1/cart:
+    get:
+      tags: [cart]
+      summary: Get the current user's cart
+      responses:
+        "200":
+          description: Cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+    delete:
+      tags: [cart]
+      summary: Clear the cart
+      responses:
+        "200": { description: Cart cleared }
+
+  /api/v1/cart/items:
+    post:
+      tags: [cart]
+      summary: Add an item to the cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                menu_item_id: { type: string }
+                quantity: { type: integer, minimum: 1 }
+                notes: { type: string }
+                selected_modifiers:
+                  type: array
+                  items: { $ref: "#/components/schemas/SelectedModifier" }
+              required: [menu_item_id, quantity]
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/v1/cart/items/{id}:
+    patch:
+      tags: [cart]
+      summary: Update a cart item's quantity/notes
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity: { type: integer, minimum: 1 }
+                notes: { type: string }
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+    delete:
+      tags: [cart]
+      summary: Remove a cart item
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Updated cart
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Cart" }
+
+  # ── Orders (auth) ─────────────────────────────────────────────────────────
+  /api/v1/orders:
+    get:
+      tags: [orders]
+      summary: List the current user's orders
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+    post:
+      tags: [orders]
+      summary: Create an order from the current cart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
+      responses:
+        "200":
+          description: Created order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/v1/orders/by-payment-intent/{pi}:
+    get:
+      tags: [orders]
+      summary: Look up an order by its Stripe PaymentIntent id (idempotent recovery)
+      parameters:
+        - in: path
+          name: pi
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/orders/{id}:
+    get:
+      tags: [orders]
+      summary: Get a single order
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/orders/{id}/cancel:
+    patch:
+      tags: [orders]
+      summary: Cancel an order
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/v1/orders/{id}/rating:
+    post:
+      tags: [orders]
+      summary: Rate a completed order / its courier
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string }
+              required: [rating]
+      responses:
+        "200": { description: Rating recorded }
+
+  /api/v1/orders/{id}/location/stream:
+    get:
+      tags: [orders]
+      summary: Server-Sent Events stream of the courier's live location
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: SSE stream (text/event-stream); each event is a CourierLocationPing
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /api/v1/orders/{id}/chat:
+    get:
+      tags: [orders]
+      summary: List chat messages for an order
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChatMessage" }
+    post:
+      tags: [orders]
+      summary: Send a chat message on an order thread
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                body: { type: string }
+              required: [body]
+      responses:
+        "200":
+          description: Created message
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatMessage" }
+
+  # ── Payments (auth) ───────────────────────────────────────────────────────
+  /api/v1/payments/intent:
+    post:
+      tags: [payments]
+      summary: Create a PaymentIntent + PaymentSheet bundle for the current cart
+      description: >
+        Computes the authoritative total server-side from the cart (the client
+        only supplies tip + fulfillment + optional deal/address). Returns the
+        PaymentSheet bundle plus the full price breakdown.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePaymentIntentRequest" }
+      responses:
+        "200":
+          description: PaymentSheet bundle + price breakdown
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentIntentResponse" }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /api/v1/payments/confirm:
+    post:
+      tags: [payments]
+      summary: No-op confirm (confirmation happens client-side via PaymentSheet)
+      responses:
+        "200":
+          description: Confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: confirmed }
+
+  /api/v1/payments/customer:
+    get:
+      tags: [payments]
+      summary: Get a Stripe customer bundle for STPCustomerSheet (saved cards)
+      responses:
+        "200":
+          description: Customer bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentSheetBundle" }
+
+  /api/v1/payments/setup-intent:
+    post:
+      tags: [payments]
+      summary: Create a SetupIntent client_secret for adding a card
+      responses:
+        "200":
+          description: SetupIntent client secret
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client_secret: { type: string }
+
+  # ── Favorites (auth) ──────────────────────────────────────────────────────
+  /api/v1/favorites:
+    get:
+      tags: [favorites]
+      summary: List favorited restaurants
+      responses:
+        "200":
+          description: Favorites
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/favorites/ids:
+    get:
+      tags: [favorites]
+      summary: List favorited restaurant ids
+      responses:
+        "200":
+          description: Favorite ids
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+
+  /api/v1/favorites/{restaurant_id}:
+    post:
+      tags: [favorites]
+      summary: Add a favorite
+      parameters:
+        - { $ref: "#/components/parameters/RestaurantIdPath" }
+      responses:
+        "200": { description: Added }
+    delete:
+      tags: [favorites]
+      summary: Remove a favorite
+      parameters:
+        - { $ref: "#/components/parameters/RestaurantIdPath" }
+      responses:
+        "200": { description: Removed }
+
+  # ── User profile (auth) ───────────────────────────────────────────────────
+  /api/v1/user/profile:
+    get:
+      tags: [user]
+      summary: Get the current user's profile
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+    put:
+      tags: [user]
+      summary: Update profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name: { type: string }
+                last_name: { type: string }
+                phone: { type: string }
+                avatar_url: { type: string }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /api/v1/user/addresses:
+    get:
+      tags: [user]
+      summary: List saved addresses
+      responses:
+        "200":
+          description: Addresses
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Address" }
+    post:
+      tags: [user]
+      summary: Add an address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Address" }
+      responses:
+        "200":
+          description: Created address
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Address" }
+
+  /api/v1/user/addresses/{id}:
+    delete:
+      tags: [user]
+      summary: Delete an address
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/user/addresses/{id}/default:
+    patch:
+      tags: [user]
+      summary: Set an address as the default
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200": { description: Default set }
+
+  /api/v1/user/notification-preferences:
+    get:
+      tags: [user]
+      summary: Get notification preferences
+      responses:
+        "200":
+          description: Preferences
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: { type: boolean } }
+    put:
+      tags: [user]
+      summary: Update notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: { type: boolean } }
+      responses:
+        "200": { description: Updated }
+
+  /api/v1/user/account:
+    delete:
+      tags: [user]
+      summary: Delete the current user's account
+      responses:
+        "200": { description: Account deleted }
+
+  /api/v1/user/linked-providers:
+    get:
+      tags: [user]
+      summary: List linked auth providers
+      responses:
+        "200":
+          description: Linked providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+    post:
+      tags: [user]
+      summary: Link an auth provider to the account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string }
+                id_token: { type: string }
+              required: [provider, id_token]
+      responses:
+        "200": { description: Linked }
+
+  /api/v1/user/linked-providers/{provider}:
+    delete:
+      tags: [user]
+      summary: Unlink an auth provider
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Unlinked }
+
+  # ── Seller (auth + seller role) ───────────────────────────────────────────
+  /api/v1/seller/restaurants:
+    get:
+      tags: [seller]
+      summary: List the seller's restaurants
+      responses:
+        "200":
+          description: Restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Restaurant" }
+    post:
+      tags: [seller]
+      summary: Create a restaurant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Restaurant" }
+      responses:
+        "200":
+          description: Created restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/seller/restaurant:
+    get:
+      tags: [seller]
+      summary: Get a seller's restaurant (defaults to first owned)
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+    put:
+      tags: [seller]
+      summary: Update a seller's restaurant
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Restaurant" }
+      responses:
+        "200":
+          description: Updated restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/seller/restaurant/status:
+    patch:
+      tags: [seller]
+      summary: Toggle a restaurant open/closed
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_open: { type: boolean }
+              required: [is_open]
+      responses:
+        "200":
+          description: Updated restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/seller/dashboard/stats:
+    get:
+      tags: [seller]
+      summary: Seller dashboard summary stats
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardStats" }
+
+  /api/v1/seller/menu:
+    get:
+      tags: [seller]
+      summary: Get the seller's full menu (categories with items + modifiers)
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Menu categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MenuCategory" }
+
+  /api/v1/seller/menu/items:
+    post:
+      tags: [seller]
+      summary: Create a menu item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MenuItem" }
+      responses:
+        "200":
+          description: Created item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuItem" }
+
+  /api/v1/seller/menu/items/{id}:
+    put:
+      tags: [seller]
+      summary: Update a menu item
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MenuItem" }
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuItem" }
+    delete:
+      tags: [seller]
+      summary: Delete a menu item
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/seller/menu/items/{id}/availability:
+    patch:
+      tags: [seller]
+      summary: Toggle item availability
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_available: { type: boolean }
+              required: [is_available]
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuItem" }
+
+  /api/v1/seller/menu/items/{itemId}/modifier-groups:
+    post:
+      tags: [seller]
+      summary: Create a modifier group on a menu item
+      parameters:
+        - in: path
+          name: itemId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModifierGroup" }
+      responses:
+        "200":
+          description: Created modifier group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModifierGroup" }
+
+  /api/v1/seller/menu/modifier-groups/{groupId}:
+    put:
+      tags: [seller]
+      summary: Update a modifier group
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModifierGroup" }
+      responses:
+        "200":
+          description: Updated modifier group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModifierGroup" }
+    delete:
+      tags: [seller]
+      summary: Delete a modifier group
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/seller/menu/categories:
+    post:
+      tags: [seller]
+      summary: Create a menu category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                sort_order: { type: integer }
+              required: [name]
+      responses:
+        "200":
+          description: Created category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuCategory" }
+
+  /api/v1/seller/menu/categories/{id}:
+    delete:
+      tags: [seller]
+      summary: Delete a menu category
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200": { description: Deleted }
+
+  /api/v1/seller/menu/imports:
+    post:
+      tags: [seller]
+      summary: Start an async menu import from an external store URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string, example: ubereats }
+                source_url: { type: string, format: uri }
+              required: [source_url]
+      responses:
+        "200":
+          description: Created import job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuImport" }
+        "400": { $ref: "#/components/responses/Error" }
+    get:
+      tags: [seller]
+      summary: List menu import jobs for the restaurant
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Import jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MenuImport" }
+
+  /api/v1/seller/menu/imports/{id}:
+    get:
+      tags: [seller]
+      summary: Get a single menu import job (progress polling)
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Import job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuImport" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/orders:
+    get:
+      tags: [seller]
+      summary: List the restaurant's orders
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/OrderStatus" }
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  /api/v1/seller/orders/{id}:
+    get:
+      tags: [seller]
+      summary: Get a single order (seller view, includes customer contact)
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+
+  /api/v1/seller/orders/{id}/accept:
+    patch:
+      tags: [seller]
+      summary: Accept a pending order
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/orders/{id}/preparing:
+    patch:
+      tags: [seller]
+      summary: Mark an order preparing
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/orders/{id}/ready:
+    patch:
+      tags: [seller]
+      summary: Mark an order ready for pickup
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/orders/{id}/complete:
+    patch:
+      tags: [seller]
+      summary: Mark an order complete (pickup orders)
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/orders/{id}/reject:
+    patch:
+      tags: [seller]
+      summary: Reject a pending order (refunds the customer)
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/orders/{id}/pickup:
+    patch:
+      tags: [seller]
+      summary: Seller-self-delivery — mark picked up
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/orders/{id}/deliver:
+    patch:
+      tags: [seller]
+      summary: Seller-self-delivery — mark delivered
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/seller/deals:
+    get:
+      tags: [seller, deals]
+      summary: List the restaurant's deals
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Deals
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Deal" }
+    post:
+      tags: [seller, deals]
+      summary: Create a deal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateDealRequest" }
+      responses:
+        "200":
+          description: Created deal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deal" }
+
+  /api/v1/seller/deals/{dealId}:
+    delete:
+      tags: [seller, deals]
+      summary: Deactivate a deal
+      parameters:
+        - in: path
+          name: dealId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Deactivated }
+
+  /api/v1/seller/integrations:
+    get:
+      tags: [seller]
+      summary: List POS integrations
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object }
+
+  /api/v1/seller/integrations/clover/connect-url:
+    get:
+      tags: [seller]
+      summary: Get the Clover OAuth connect URL
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Connect URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+
+  /api/v1/seller/integrations/{id}/test:
+    post:
+      tags: [seller]
+      summary: Test a POS integration connection
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { description: Test result }
+
+  /api/v1/seller/integrations/{id}:
+    delete:
+      tags: [seller]
+      summary: Disconnect a POS integration
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { description: Disconnected }
+
+  /api/v1/integrations/clover/callback:
+    get:
+      tags: [seller]
+      summary: Clover OAuth redirect callback (public, HMAC-state guarded)
+      security: []
+      parameters:
+        - in: query
+          name: code
+          schema: { type: string }
+        - in: query
+          name: state
+          schema: { type: string }
+        - in: query
+          name: merchant_id
+          schema: { type: string }
+      responses:
+        "302": { description: Redirect back to the seller app }
+
+  # ── Courier (auth + courier role; register is public) ─────────────────────
+  /api/v1/courier/auth/register:
+    post:
+      tags: [courier]
+      summary: Register a courier account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+
+  /api/v1/courier/profile:
+    get:
+      tags: [courier]
+      summary: Get the courier's own full profile
+      responses:
+        "200":
+          description: Courier profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/courier/onboarding/phone/verify:
+    post:
+      tags: [courier]
+      summary: Verify courier phone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                code: { type: string }
+      responses:
+        "200": { description: Verified }
+
+  /api/v1/courier/onboarding/vehicle:
+    put:
+      tags: [courier]
+      summary: Set courier vehicle details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vehicle_type: { $ref: "#/components/schemas/VehicleType" }
+                vehicle_make: { type: string }
+                vehicle_model: { type: string }
+                vehicle_year: { type: integer }
+                vehicle_color: { type: string }
+                license_plate: { type: string }
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/courier/onboarding/documents:
+    put:
+      tags: [courier]
+      summary: Submit courier documents (license, insurance, registration)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                drivers_license_url: { type: string }
+                drivers_license_number: { type: string }
+                insurance_url: { type: string }
+                vehicle_registration_url: { type: string }
+                profile_photo_url: { type: string }
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/courier/online:
+    post:
+      tags: [courier]
+      summary: Set the courier online/offline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_online: { type: boolean }
+              required: [is_online]
+      responses:
+        "200": { description: Updated }
+
+  /api/v1/courier/location:
+    post:
+      tags: [courier]
+      summary: Push a GPS location heartbeat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourierLocationPing" }
+      responses:
+        "200": { description: Recorded }
+
+  /api/v1/courier/payouts/account:
+    post:
+      tags: [courier]
+      summary: Create a Stripe Connect payout account
+      responses:
+        "200":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account_id: { type: string }
+
+  /api/v1/courier/payouts/link:
+    get:
+      tags: [courier]
+      summary: Get the Stripe Connect onboarding link
+      responses:
+        "200":
+          description: Onboarding link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+
+  /api/v1/courier/payouts/status:
+    get:
+      tags: [courier]
+      summary: Get payout readiness status
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payout_ready: { type: boolean }
+
+  /api/v1/courier/deliveries/available:
+    get:
+      tags: [courier]
+      summary: List available (claimable) deliveries near the courier
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  /api/v1/courier/deliveries/upcoming:
+    get:
+      tags: [courier]
+      summary: List upcoming scheduled deliveries
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  /api/v1/courier/orders/active:
+    get:
+      tags: [courier]
+      summary: List the courier's active (claimed, undelivered) orders
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  /api/v1/courier/orders/history:
+    get:
+      tags: [courier]
+      summary: List the courier's delivery history
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  /api/v1/courier/orders/{id}/claim:
+    post:
+      tags: [courier]
+      summary: Claim an available order
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/v1/courier/orders/{id}/pickup:
+    post:
+      tags: [courier]
+      summary: Mark a claimed order picked up
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  /api/v1/courier/orders/{id}/deliver:
+    post:
+      tags: [courier]
+      summary: Mark an order delivered (optionally with a proof photo)
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery_proof_url: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/OrderResponse" }
+
+  # ── Devices (auth) ────────────────────────────────────────────────────────
+  /api/v1/devices/register:
+    post:
+      tags: [devices]
+      summary: Register a push-notification token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+                platform: { type: string, enum: [ios, android] }
+              required: [token, platform]
+      responses:
+        "200": { description: Registered }
+
+  /api/v1/devices/unregister:
+    post:
+      tags: [devices]
+      summary: Unregister a push-notification token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string }
+              required: [token]
+      responses:
+        "200": { description: Unregistered }
+
+  # ── Uploads (auth) ────────────────────────────────────────────────────────
+  /api/v1/uploads/presign:
+    post:
+      tags: [uploads]
+      summary: Get an S3 presigned upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content_type: { type: string }
+                purpose: { type: string }
+              required: [content_type]
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url: { type: string, format: uri }
+                  public_url: { type: string, format: uri }
+
+  # ── Admin (auth + admin role) ─────────────────────────────────────────────
+  /api/v1/admin/stats:
+    get:
+      tags: [admin]
+      summary: Platform-wide stats
+      responses:
+        "200": { description: Stats, content: { application/json: { schema: { type: object } } } }
+
+  /api/v1/admin/restaurants:
+    get:
+      tags: [admin]
+      summary: List all restaurants
+      responses:
+        "200":
+          description: Restaurants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Restaurant" }
+    post:
+      tags: [admin]
+      summary: Create a restaurant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Restaurant" }
+      responses:
+        "200":
+          description: Created restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/admin/restaurants/{id}/approval:
+    patch:
+      tags: [admin]
+      summary: Set a restaurant's approval status
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approval_status: { type: string, enum: [pending, approved, rejected] }
+              required: [approval_status]
+      responses:
+        "200":
+          description: Updated restaurant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Restaurant" }
+
+  /api/v1/admin/sellers:
+    post:
+      tags: [admin]
+      summary: Create a seller account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AuthTokenResponse" }
+
+  /api/v1/admin/couriers:
+    get:
+      tags: [admin]
+      summary: List couriers
+      responses:
+        "200":
+          description: Couriers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/admin/couriers/{id}:
+    get:
+      tags: [admin]
+      summary: Courier detail
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: Courier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/admin/couriers/{id}/approve:
+    patch:
+      tags: [admin]
+      summary: Approve a courier
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: Updated courier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/admin/couriers/{id}/reject:
+    patch:
+      tags: [admin]
+      summary: Reject a courier
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: Updated courier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierProfile" }
+
+  /api/v1/admin/orders:
+    get:
+      tags: [admin]
+      summary: List all orders
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  # ── Admin web pages (HTML, key-gated; not part of the typed JSON API) ─────
+  /admin/restaurants:
+    get:
+      tags: [admin]
+      summary: No-login admin restaurants dashboard (HTML; ?key= shared secret)
+      security: []
+      parameters:
+        - in: query
+          name: key
+          schema: { type: string }
+      responses:
+        "200": { description: HTML page }
+
+  /admin/restaurants/{id}/decision:
+    post:
+      tags: [admin]
+      summary: Approve/reject a restaurant from the HTML dashboard
+      security: []
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200": { description: HTML page }
+
+  /admin/restaurants/decision:
+    get:
+      tags: [admin]
+      summary: Restaurant approval magic-link page (HTML; token in URL)
+      security: []
+      responses:
+        "200": { description: HTML page }
+    post:
+      tags: [admin]
+      summary: Submit restaurant approval decision (HTML magic link)
+      security: []
+      responses:
+        "200": { description: HTML page }
+
+  # ── Webhooks (public, signature-verified) ─────────────────────────────────
+  /api/v1/webhooks/stripe:
+    post:
+      tags: [webhooks]
+      summary: Stripe webhook (Stripe-Signature verified)
+      security: []
+      responses:
+        "200": { description: Acknowledged }
+        "400": { description: Bad signature }
+
+  /api/v1/webhooks/checkr:
+    post:
+      tags: [webhooks]
+      summary: Checkr background-check webhook
+      security: []
+      responses:
+        "200": { description: Acknowledged }
+
+  /api/v1/webhooks/uber-direct:
+    post:
+      tags: [webhooks]
+      summary: Uber Direct delivery-status webhook
+      security: []
+      responses:
+        "200": { description: Acknowledged }
+
+  /api/v1/webhooks/doordash:
+    post:
+      tags: [webhooks]
+      summary: DoorDash Drive delivery-status webhook
+      security: []
+      responses:
+        "200": { description: Acknowledged }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PathId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    RestaurantIdPath:
+      in: path
+      name: restaurant_id
+      required: true
+      schema: { type: string }
+    VerticalQuery:
+      in: query
+      name: vertical
+      description: Branded app scope; defaults to 'kosher'. Ignored when authenticated (JWT claim wins).
+      schema: { type: string, enum: [kosher, vegan] }
+    SellerRestaurantQuery:
+      in: query
+      name: restaurant_id
+      description: Target restaurant; omitted falls back to the seller's first owned restaurant.
+      schema: { type: string }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    AuthTokenResponse:
+      description: Authentication tokens + user
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AuthResponse" }
+    OrderResponse:
+      description: Updated order
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Order" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    UserRole:
+      type: string
+      enum: [consumer, seller, admin, courier]
+
+    OrderStatus:
+      type: string
+      enum: [scheduled, pending, accepted, preparing, ready, picked_up, delivered, completed, cancelled, rejected]
+
+    VehicleType:
+      type: string
+      enum: [car, bike, scooter, motorcycle, walk]
+
+    DiscountType:
+      type: string
+      enum: [percentage, fixed, bogo]
+
+    KosherCertification:
+      type: string
+      enum: [OU, OK, Kof-K, Star-K, cRc, Badatz, Chof-K, other]
+
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string, description: JWT access token }
+        refresh_token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+
+    RegisterRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        phone: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        vertical: { type: string, description: "'kosher' (default) or 'vegan'" }
+      required: [email, password]
+
+    LoginRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        vertical: { type: string }
+      required: [email, password]
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        first_name: { type: string }
+        last_name: { type: string }
+        phone: { type: string }
+        role: { $ref: "#/components/schemas/UserRole" }
+        vertical: { type: string }
+        avatar_url: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Address:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        label: { type: string }
+        street: { type: string }
+        apt: { type: string }
+        city: { type: string }
+        state: { type: string }
+        zip_code: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        is_default: { type: boolean }
+
+    Restaurant:
+      type: object
+      properties:
+        id: { type: string }
+        owner_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        image_url: { type: string }
+        cover_image_url: { type: string }
+        logo_url: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        street: { type: string }
+        city: { type: string }
+        state: { type: string }
+        zip_code: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        kosher_certification: { $ref: "#/components/schemas/KosherCertification" }
+        certifying_agency: { type: string }
+        is_cholov_yisroel: { type: boolean }
+        is_pas_yisroel: { type: boolean }
+        is_glatt_kosher: { type: boolean }
+        kosher_certificate_url: { type: string }
+        cuisine_type:
+          type: array
+          items: { type: string }
+        rating: { type: number, format: double }
+        review_count: { type: integer }
+        delivery_fee: { type: integer, description: cents }
+        min_order: { type: integer, description: cents }
+        est_delivery_min: { type: integer, description: minutes }
+        est_delivery_max: { type: integer, description: minutes }
+        is_open: { type: boolean }
+        is_active: { type: boolean }
+        approval_status: { type: string, enum: [pending, approved, rejected] }
+        delivery_mode: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    MenuCategory:
+      type: object
+      properties:
+        id: { type: string }
+        restaurant_id: { type: string }
+        name: { type: string }
+        sort_order: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/MenuItem" }
+
+    MenuItem:
+      type: object
+      properties:
+        id: { type: string }
+        restaurant_id: { type: string }
+        category_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        image_url: { type: string }
+        price: { type: integer, description: cents }
+        is_meat: { type: boolean }
+        is_dairy: { type: boolean }
+        is_pareve: { type: boolean }
+        is_available: { type: boolean }
+        sort_order: { type: integer }
+        modifier_groups:
+          type: array
+          items: { $ref: "#/components/schemas/ModifierGroup" }
+
+    ModifierGroup:
+      type: object
+      properties:
+        id: { type: string }
+        menu_item_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        is_required: { type: boolean }
+        min_selections: { type: integer }
+        max_selections: { type: integer }
+        sort_order: { type: integer }
+        modifiers:
+          type: array
+          items: { $ref: "#/components/schemas/Modifier" }
+
+    Modifier:
+      type: object
+      properties:
+        id: { type: string }
+        group_id: { type: string }
+        name: { type: string }
+        price_delta: { type: integer, description: "cents; may be negative" }
+        is_default: { type: boolean }
+        is_available: { type: boolean }
+        sort_order: { type: integer }
+
+    SelectedModifier:
+      type: object
+      description: Snapshot of a chosen modifier (name + price copied at selection time).
+      properties:
+        id: { type: string }
+        group_id: { type: string }
+        group_name: { type: string }
+        name: { type: string }
+        price_delta: { type: integer, description: cents }
+
+    Cart:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        restaurant_id: { type: string }
+        subtotal: { type: integer, description: cents }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CartItem" }
+
+    CartItem:
+      type: object
+      properties:
+        id: { type: string }
+        cart_id: { type: string }
+        menu_item_id: { type: string }
+        name: { type: string }
+        price: { type: integer, description: "per-unit cents, includes modifier deltas" }
+        quantity: { type: integer }
+        notes: { type: string }
+        selected_modifiers:
+          type: array
+          items: { $ref: "#/components/schemas/SelectedModifier" }
+
+    CreateOrderRequest:
+      type: object
+      properties:
+        restaurant_id: { type: string }
+        delivery_address: { type: string }
+        delivery_lat: { type: number, format: double }
+        delivery_lng: { type: number, format: double }
+        payment_intent_id: { type: string }
+        tip: { type: integer, description: cents }
+        scheduled_for: { type: string, format: date-time, nullable: true, description: "null = ASAP" }
+        fulfillment_type: { type: string, enum: [delivery, pickup] }
+        applied_deal_id: { type: string }
+
+    Order:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        restaurant_id: { type: string }
+        restaurant_name: { type: string }
+        restaurant_lat: { type: number, format: double }
+        restaurant_lng: { type: number, format: double }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+        subtotal: { type: integer, description: cents }
+        discount: { type: integer, description: "deal discount, cents" }
+        delivery_fee: { type: integer, description: cents }
+        service_fee: { type: integer, description: cents }
+        tax: { type: integer, description: cents }
+        total: { type: integer, description: cents }
+        delivery_address: { type: string }
+        delivery_lat: { type: number, format: double }
+        delivery_lng: { type: number, format: double }
+        stripe_payment_id: { type: string }
+        est_delivery_time: { type: string, format: date-time }
+        courier_id: { type: string, nullable: true }
+        courier:
+          description: Assigned courier (null until claimed).
+          allOf: [{ $ref: "#/components/schemas/CourierPublic" }]
+        claimed_at: { type: string, format: date-time, nullable: true }
+        picked_up_at: { type: string, format: date-time, nullable: true }
+        delivered_at: { type: string, format: date-time, nullable: true }
+        courier_payout: { type: integer, description: cents }
+        courier_tip: { type: integer, description: cents }
+        courier_rating: { type: integer, nullable: true }
+        customer_name: { type: string }
+        customer_phone: { type: string }
+        delivery_proof_url: { type: string }
+        fulfillment_type: { type: string, enum: [delivery, pickup] }
+        external_delivery_id: { type: string, nullable: true }
+        external_provider: { type: string, nullable: true }
+        external_tracking_url: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    OrderItem:
+      type: object
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        menu_item_id: { type: string }
+        name: { type: string }
+        price: { type: integer, description: "per-unit cents, includes modifier deltas" }
+        quantity: { type: integer }
+        notes: { type: string }
+        selected_modifiers:
+          type: array
+          items: { $ref: "#/components/schemas/SelectedModifier" }
+
+    CreatePaymentIntentRequest:
+      type: object
+      description: All fields optional; server derives the total from the cart.
+      properties:
+        tip: { type: integer, description: cents }
+        fulfillment_type: { type: string, enum: [delivery, pickup] }
+        restaurant_id: { type: string }
+        delivery_address: { type: string }
+        applied_deal_id: { type: string }
+
+    PaymentSheetBundle:
+      type: object
+      description: Everything the iOS Stripe PaymentSheet / CustomerSheet needs.
+      properties:
+        payment_intent_secret: { type: string }
+        ephemeral_key_secret: { type: string }
+        customer_id: { type: string }
+        publishable_key: { type: string }
+        default_card_brand: { type: string }
+        default_card_last4: { type: string }
+
+    PaymentIntentResponse:
+      type: object
+      description: PaymentSheet bundle fields plus the server-computed price breakdown.
+      properties:
+        payment_intent_secret: { type: string }
+        ephemeral_key_secret: { type: string }
+        customer_id: { type: string }
+        publishable_key: { type: string }
+        subtotal: { type: integer, description: cents }
+        discount: { type: integer, description: cents }
+        applied_deal_id: { type: string }
+        delivery_fee: { type: integer, description: cents }
+        service_fee: { type: integer, description: cents }
+        tax: { type: integer, description: cents }
+        tip: { type: integer, description: cents }
+        total: { type: integer, description: cents }
+
+    Deal:
+      type: object
+      properties:
+        id: { type: string }
+        restaurant_id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        image_url: { type: string }
+        menu_item_id: { type: string, nullable: true }
+        discount_type: { $ref: "#/components/schemas/DiscountType" }
+        discount_value: { type: integer }
+        min_order_amount: { type: integer, nullable: true, description: cents }
+        starts_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DealWithItem:
+      allOf:
+        - $ref: "#/components/schemas/Deal"
+        - type: object
+          properties:
+            restaurant_name: { type: string }
+            restaurant_image_url: { type: string }
+            menu_item_name: { type: string, nullable: true }
+            menu_item_price: { type: integer, nullable: true, description: cents }
+            menu_item_image_url: { type: string, nullable: true }
+
+    CreateDealRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        image_url: { type: string }
+        menu_item_id: { type: string, nullable: true }
+        discount_type: { $ref: "#/components/schemas/DiscountType" }
+        discount_value: { type: integer }
+        min_order_amount: { type: integer, nullable: true }
+        starts_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time }
+      required: [title, discount_type, discount_value, expires_at]
+
+    MenuImport:
+      type: object
+      description: Async menu-import job (e.g. from an UberEats store URL).
+      properties:
+        id: { type: string }
+        restaurant_id: { type: string }
+        source: { type: string, example: ubereats }
+        source_url: { type: string, format: uri }
+        status: { type: string, enum: [pending, running, done, failed] }
+        items_total: { type: integer }
+        items_created: { type: integer }
+        error: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DashboardStats:
+      type: object
+      properties:
+        today_orders: { type: integer }
+        today_revenue: { type: integer, description: cents }
+        active_orders: { type: integer }
+        avg_prep_time: { type: number, format: double, description: minutes }
+
+    CourierProfile:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        onboarding_status:
+          type: string
+          enum: [pending_info, pending_documents, pending_background, approved, rejected, suspended]
+        phone_verified: { type: boolean }
+        vehicle_type: { $ref: "#/components/schemas/VehicleType" }
+        vehicle_make: { type: string }
+        vehicle_model: { type: string }
+        vehicle_year: { type: integer }
+        vehicle_color: { type: string }
+        license_plate: { type: string }
+        drivers_license_url: { type: string }
+        drivers_license_number: { type: string }
+        insurance_url: { type: string }
+        vehicle_registration_url: { type: string }
+        profile_photo_url: { type: string }
+        background_check_status: { type: string }
+        payout_ready: { type: boolean }
+        is_online: { type: boolean }
+        last_lat: { type: number, format: double }
+        last_lng: { type: number, format: double }
+        last_location_at: { type: string, format: date-time, nullable: true }
+        total_deliveries: { type: integer }
+        rating: { type: number, format: double }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CourierPublic:
+      type: object
+      description: Trimmed courier view shown to consumers/sellers on an assigned order.
+      properties:
+        id: { type: string }
+        first_name: { type: string }
+        phone: { type: string }
+        avatar_url: { type: string }
+        vehicle_type: { $ref: "#/components/schemas/VehicleType" }
+        vehicle_make: { type: string }
+        vehicle_model: { type: string }
+        vehicle_color: { type: string }
+        license_plate: { type: string }
+        rating: { type: number, format: double }
+        total_deliveries: { type: integer }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+
+    CourierLocationPing:
+      type: object
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        heading: { type: number, format: double }
+        speed: { type: number, format: double }
+
+    ChatMessage:
+      type: object
+      description: One message in an order-scoped chat thread.
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        sender_id: { type: string }
+        sender_role: { $ref: "#/components/schemas/UserRole" }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
