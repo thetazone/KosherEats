@@ -22,9 +22,11 @@
 //     Replaces the old fire-and-forget goroutine that silently dropped
 //     failed payouts.
 //
-// In-process is fine for a single-instance deploy. If we ever scale to
-// multiple API instances we'll need a distributed lock (Redis or
-// pg_advisory_lock) so only one node runs the sweeps.
+// Multi-instance safe: runAll gates every tick behind a session-level
+// Postgres advisory lock (pg_try_advisory_lock on sweepAdvisoryLockKey), so
+// when several API instances run this loop only the lock holder executes the
+// sweeps on a given tick and the rest skip it. Single-instance deploys are
+// unaffected — the lock is always free.
 package scheduler
 
 import (
@@ -72,6 +74,13 @@ const staleRejectionBatchLimit = 20
 // try is a blocking Stripe API call (~500ms) so with 60s between ticks we
 // want comfortable headroom. 20 keeps us well under a minute in the worst case.
 const payoutBatchLimit = 20
+
+// sweepAdvisoryLockKey is the fixed Postgres advisory-lock key that gates the
+// per-tick sweep run. When the backend runs as multiple instances, only the
+// instance that holds this session-level lock executes runAll on a given tick;
+// the others skip that tick. The key is an arbitrary-but-stable constant
+// ("KESW01" mnemonic) chosen not to collide with the migration lock below.
+const sweepAdvisoryLockKey int64 = 0x4B45_5357_0001
 
 // maxPayoutAttempts is the number of failed transfer attempts before the
 // queue row flips to 'failed_permanent' for admin review. After this many
@@ -170,6 +179,46 @@ func (d *Dispatcher) Start(ctx context.Context) {
 }
 
 func (d *Dispatcher) runAll(ctx context.Context) {
+	// Multi-instance safety: gate the whole sweep behind a session-level
+	// Postgres advisory lock so two API instances can't double-process the
+	// same tick (double-promote scheduled orders, double-assign couriers,
+	// double-refund, etc.). Session advisory locks are per-connection, so we
+	// pin a single pooled connection for the duration: take the lock on that
+	// conn, run every sweep, then release the lock and the conn together.
+	//
+	// pg_try_advisory_lock is non-blocking: if another instance already holds
+	// the lock we get false and skip this tick — the holder is doing the work
+	// and the next tick (or the holder's next tick) covers anything we missed.
+	// In the default single-instance deploy the lock is always free, so this
+	// is behavior-preserving.
+	conn, err := d.db.Acquire(ctx)
+	if err != nil {
+		slog.Error("sweep: acquire conn for advisory lock failed, skipping tick",
+			slog.String("error", err.Error()))
+		return
+	}
+	defer conn.Release()
+
+	var locked bool
+	if err := conn.QueryRow(ctx,
+		`SELECT pg_try_advisory_lock($1)`, sweepAdvisoryLockKey,
+	).Scan(&locked); err != nil {
+		slog.Error("sweep: pg_try_advisory_lock failed, skipping tick",
+			slog.String("error", err.Error()))
+		return
+	}
+	if !locked {
+		slog.Debug("sweep: advisory lock held by another instance, skipping tick")
+		return
+	}
+	// Release the lock on the same connection before it returns to the pool.
+	defer func() {
+		if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, sweepAdvisoryLockKey); err != nil {
+			slog.Error("sweep: pg_advisory_unlock failed",
+				slog.String("error", err.Error()))
+		}
+	}()
+
 	d.sweepScheduled(ctx)
 	d.sweepAutoDispatch(ctx)
 	d.sweepStaleRejection(ctx)

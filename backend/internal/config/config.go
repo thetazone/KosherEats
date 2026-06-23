@@ -92,6 +92,11 @@ type Config struct {
 	// alertAdmin a logged no-op so dev/test never tries to send mail.
 	AdminAlertEmail string
 
+	// SentryDSN enables error reporting to Sentry. Empty (the default) makes
+	// Sentry a complete no-op: no init, no network calls. Set SENTRY_DSN in
+	// prod to capture handler panics + errors.
+	SentryDSN string
+
 	// Temporal (durable courier payout sweep). DISABLED unless HostPort is
 	// non-empty: when empty we never dial a Temporal client, inject a nil
 	// *payout.Starter, and the legacy direct-transfer sweep runs unchanged.
@@ -168,6 +173,8 @@ func Load() *Config {
 		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
 		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
 		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
+
+		SentryDSN: getEnv("SENTRY_DSN", ""),
 
 		Temporal: TemporalConfig{
 			HostPort:  getEnv("TEMPORAL_HOSTPORT", ""),

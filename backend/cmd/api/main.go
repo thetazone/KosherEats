@@ -19,7 +19,9 @@ import (
 	"github.com/koshereats/backend/internal/database"
 	"github.com/koshereats/backend/internal/handlers"
 	kemiddleware "github.com/koshereats/backend/internal/middleware"
+	"github.com/koshereats/backend/internal/observability"
 	"github.com/koshereats/backend/internal/payout"
+	"github.com/koshereats/backend/internal/redisclient"
 	"github.com/koshereats/backend/internal/scheduler"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -40,6 +42,43 @@ func main() {
 
 	if len(cfg.JWTSecret) < 32 {
 		log.Fatal("JWT_SECRET must be set to a random value of at least 32 characters")
+	}
+
+	// ── Sentry error reporting (no-op unless SENTRY_DSN is set) ──────────
+	// Init before anything that might panic so handler panics are captured.
+	// Flush is deferred so buffered events are sent on shutdown.
+	flushSentry, sentryEnabled := observability.InitSentry(cfg.SentryDSN, os.Getenv("APP_ENV"))
+	defer flushSentry()
+	if sentryEnabled {
+		logger.Info("sentry error reporting enabled")
+	}
+
+	// ── Shared Redis client (optional) ──────────────────────────────────
+	// Built once from REDIS_URL and shared by the rate limiters. A nil client
+	// (empty/blank URL) or an unreachable server transparently degrades the
+	// limiters to their in-memory behavior — Redis is never on the request
+	// failure path.
+	redisClient, rerr := redisclient.New(cfg.RedisURL)
+	if rerr != nil {
+		logger.Warn("redis url parse failed; rate limiter will use in-memory fallback",
+			slog.String("error", rerr.Error()))
+		redisClient = nil
+	}
+	if redisClient != nil {
+		if redisclient.Ping(context.Background(), redisClient) {
+			defer redisClient.Close()
+			logger.Info("rate limiter: redis-backed (shared across instances)")
+		} else {
+			// Don't keep a dead client — consulting it per request would cost a
+			// dial timeout on every rate-limit check (RedisURL defaults to
+			// localhost:6379, which won't resolve in prod without Redis). Drop it
+			// and use the pure in-memory limiter.
+			logger.Warn("rate limiter: redis unreachable at startup; using in-memory limiter")
+			redisClient.Close()
+			redisClient = nil
+		}
+	} else {
+		logger.Info("rate limiter: in-memory (no REDIS_URL)")
 	}
 
 	db, err := database.Connect(cfg.DatabaseURL)
@@ -66,6 +105,9 @@ func main() {
 	r.Use(chimiddleware.RealIP)
 	r.Use(kemiddleware.RequestLogger(logger))
 	r.Use(chimiddleware.Recoverer)
+	// Report handler panics to Sentry (then re-panic so Recoverer above writes
+	// the 500). No-op when Sentry isn't configured.
+	r.Use(observability.SentryRecover)
 
 	// Tighter CORS. Accepts the dev web URL, configured prod web URL, and
 	// iOS simulator loopback explicitly. No wildcards.
@@ -82,9 +124,11 @@ func main() {
 	}))
 
 	// Rate limiters. Auth endpoints are strict (credential stuffing defense),
-	// authenticated endpoints are lenient (catch runaway clients only).
-	authLimiter := kemiddleware.NewRateLimiter(rate.Limit(5), 10, 30*time.Minute)
-	apiLimiter := kemiddleware.NewRateLimiter(rate.Limit(30), 60, 30*time.Minute)
+	// authenticated endpoints are lenient (catch runaway clients only). When
+	// a Redis client is present these enforce shared limits across instances;
+	// with redisClient==nil they are byte-for-byte the old in-memory limiter.
+	authLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(5), 10, 30*time.Minute)
+	apiLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(30), 60, 30*time.Minute)
 
 	h := handlers.New(db, cfg)
 
@@ -145,7 +189,7 @@ func main() {
 	// App Store reviewer bypass — only registered when REVIEWER_SECRET is set.
 	// Uses a dedicated tight limiter (5 req/min) to prevent secret brute-force.
 	if cfg.ReviewerSecret != "" {
-		reviewerLimiter := kemiddleware.NewRateLimiter(rate.Limit(5.0/60), 5, 30*time.Minute)
+		reviewerLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(5.0/60), 5, 30*time.Minute)
 		r.Group(func(r chi.Router) {
 			r.Use(reviewerLimiter.PerIP)
 			r.Post("/api/v1/auth/reviewer/seller", h.ReviewerSellerLogin)
