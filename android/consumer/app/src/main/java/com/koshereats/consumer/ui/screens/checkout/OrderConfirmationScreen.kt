@@ -166,16 +166,11 @@ private fun OrderSummaryCard(order: Order) {
             // Driver tip mirrors iOS, which reads `courierTip`; fall back to the
             // legacy `tip` field for orders that predate the courier_tip split.
             val tip = if (order.courierTip > 0) order.courierTip else order.tip
-            // The persisted Order carries no discount field; derive one only when
-            // the line components overshoot the charged total, so a discounted
-            // order's breakdown still reconciles to its total (display-only).
-            val components = order.subtotal + order.deliveryFee + order.serviceFee + order.tax + tip
-            val discount = (components - order.total).coerceAtLeast(0)
 
             SummaryRow("Subtotal", order.subtotal.formatPrice())
-            if (discount > 0) {
+            if (order.discount > 0) {
                 // Mirrors iOS OrderConfirmationView's "Savings" row ("-$X.XX").
-                SummaryRow("Savings", "-${discount.formatPrice()}", valueColor = SuccessGreen)
+                SummaryRow("Savings", "-${order.discount.formatPrice()}", valueColor = SuccessGreen)
             }
             SummaryRow("Delivery fee", order.deliveryFee.formatPrice())
             SummaryRow("Service fee", order.serviceFee.formatPrice())

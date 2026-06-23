@@ -155,7 +155,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		// No courier means no tip lane; ignore any client-supplied value.
 		tip = 0
 	}
-	if tip > discountedSubtotal {
+	if tip > subtotal {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}

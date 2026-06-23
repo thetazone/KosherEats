@@ -92,7 +92,7 @@ func main() {
 	exePath, _ := os.Executable()
 	migrationsPath := filepath.Join(filepath.Dir(exePath), "internal", "database", "migrations")
 	if err := db.RunMigrations(context.Background(), migrationsPath); err != nil {
-		log.Printf("migration warning: %v", err) // non-fatal; may not exist in all deploys
+		log.Fatalf("failed to apply migrations: %v", err) // abort startup rather than serve a half-migrated schema
 	}
 
 	r := chi.NewRouter()
@@ -129,6 +129,12 @@ func main() {
 	// with redisClient==nil they are byte-for-byte the old in-memory limiter.
 	authLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(5), 10, 30*time.Minute)
 	apiLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(30), 60, 30*time.Minute)
+	// Email-existence check is an account-enumeration oracle (returns whether a
+	// given (email, role, vertical) account exists). Throttle it on its own
+	// counter — much stricter than general auth — so enumeration can't ride the
+	// looser /login burst budget. Distinct max/window => independent Redis +
+	// in-memory counters.
+	emailCheckLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(3.0/60), 3, 30*time.Minute)
 
 	h := handlers.New(db, cfg)
 
@@ -166,15 +172,6 @@ func main() {
 		r.Post("/login", h.Login)
 		r.Post("/refresh", h.RefreshToken)
 		r.Post("/social", h.SocialLogin)
-		// Used by the unified email entry on each app: given an email, says whether
-		// a user exists so the client can route to "enter password" vs "create
-		// account". NOTE: this IS an account-existence oracle for a precise
-		// (email, role, vertical) tuple — /login does NOT leak existence (it returns
-		// the same 401 "invalid credentials" for unknown-email and wrong-password),
-		// so this reveals strictly MORE than /login. It is currently throttled only
-		// by the shared per-IP authLimiter; consider a dedicated stricter limiter /
-		// CAPTCHA before relying on it being safe.
-		r.Post("/email/check", h.CheckEmail)
 		// Phone OTP login (Twilio Verify). Used by the seller app's "Continue
 		// with phone" flow. Start sends the SMS; verify trades a valid code
 		// for a JWT if the phone is associated with an existing account.
@@ -184,6 +181,19 @@ func main() {
 		// code + new password for an updated credential.
 		r.Post("/password/forgot", h.ForgotPassword)
 		r.Post("/password/reset", h.ResetPassword)
+	})
+
+	// Email-existence check: own stricter limiter (account-enumeration oracle).
+	// Used by the unified email entry on each app: given an email, says whether a
+	// user exists so the client can route to "enter password" vs "create account".
+	// This IS an account-existence oracle for a precise (email, role, vertical)
+	// tuple — /login does NOT leak existence (identical 401 for unknown-email and
+	// wrong-password), so this reveals strictly MORE than /login. It rides its own
+	// stricter limiter (3 req/60s) instead of the looser shared authLimiter so
+	// enumeration can't borrow the /login burst budget.
+	r.Group(func(r chi.Router) {
+		r.Use(emailCheckLimiter.PerIP)
+		r.Post("/api/v1/auth/email/check", h.CheckEmail)
 	})
 
 	// App Store reviewer bypass — only registered when REVIEWER_SECRET is set.

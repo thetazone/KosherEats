@@ -39,7 +39,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             switch self {
             case .none: return "None"
             case .percent(let bps):
-                let cents = (subtotal * bps) / 10_000
+                let cents = Int((Double(subtotal) * Double(bps) / 10_000).rounded())
                 return "\(bps / 100)%\n$\(String(format: "%.2f", Double(cents) / 100))"
             case .custom: return "Custom"
             }
@@ -146,7 +146,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         let subtotal = bundle?.subtotal ?? 0
         switch tipSelection {
         case .none: return 0
-        case .percent(let bps): return (subtotal * bps) / 10_000
+        case .percent(let bps): return Int((Double(subtotal) * Double(bps) / 10_000).rounded())
         case .custom:
             // customTipText is already comma-normalized / digit-filtered by
             // updateCustomTip; Money.parseCents reproduces the same parse and

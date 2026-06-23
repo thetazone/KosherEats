@@ -161,7 +161,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	if isPickup {
 		tip = 0
 	}
-	if tip > discountedSubtotal {
+	if tip > subtotal {
 		writeError(w, http.StatusBadRequest, "tip cannot exceed subtotal")
 		return
 	}
@@ -324,6 +324,12 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Admin alerts are side effects that must escape the tx exactly-once.
+	// Capture them here and only send after Commit succeeds, so a commit
+	// failure (which rolls back the dedupe row and triggers a Stripe retry)
+	// cannot re-send the same email.
+	var alertSubject, alertBody string
+
 	switch event.Type {
 	case "account.updated":
 		var account struct {
@@ -373,10 +379,8 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.Int("amount_cents", dispute.Amount),
 			slog.String("reason", dispute.Reason),
 			slog.String("status", dispute.Status))
-		h.alertAdmin(
-			"Stripe dispute opened",
-			disputeAlertBody(dispute.ID, dispute.Charge, dispute.PaymentIntent, orderID, dispute.Amount, dispute.Reason),
-		)
+		alertSubject = "Stripe dispute opened"
+		alertBody = disputeAlertBody(dispute.ID, dispute.Charge, dispute.PaymentIntent, orderID, dispute.Amount, dispute.Reason)
 
 	case "charge.refunded":
 		// A charge was refunded (manually in the dashboard, by our auto-refund
@@ -398,10 +402,8 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("payment_intent", charge.PaymentIntent),
 			slog.String("order_id", orderID),
 			slog.Int("amount_refunded_cents", charge.AmountRefunded))
-		h.alertAdmin(
-			"Stripe charge refunded",
-			refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded),
-		)
+		alertSubject = "Stripe charge refunded"
+		alertBody = refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded)
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
@@ -409,6 +411,10 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("event_id", event.ID), slog.String("error", err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	if alertSubject != "" {
+		h.alertAdmin(alertSubject, alertBody)
 	}
 
 	w.WriteHeader(http.StatusOK)

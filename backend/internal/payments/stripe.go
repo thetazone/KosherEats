@@ -188,6 +188,17 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 	if err != nil {
 		return fmt.Errorf("retrieve payment intent: %w", err)
 	}
+	return verifyPI(pi, userID, expectedAmountCents)
+}
+
+// verifyPI is the pure verification core shared by VerifyPaymentSucceeded. It
+// takes an already-retrieved PaymentIntent (with latest_charge expanded) and
+// asserts it succeeded, matches the expected amount, isn't refunded, and — most
+// importantly — belongs to the authenticated caller. Factored out so the
+// ownership guard can be unit-tested against a fabricated *stripe.PaymentIntent
+// without a live Stripe key (the enabled path is otherwise unreachable in stub
+// mode).
+func verifyPI(pi *stripe.PaymentIntent, userID string, expectedAmountCents int) error {
 	if pi.Status != stripe.PaymentIntentStatusSucceeded {
 		return fmt.Errorf("payment intent status is %s, expected succeeded", pi.Status)
 	}
@@ -196,6 +207,15 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 	}
 	if ch := pi.LatestCharge; ch != nil && (ch.Refunded || ch.AmountRefunded > 0) {
 		return fmt.Errorf("payment intent has been refunded")
+	}
+	// Bind the charge to the authenticated caller. Every checkout PI is stamped
+	// with Metadata["user_id"] in CreatePaymentSheet; reject if it is missing or
+	// belongs to a different user. Without this, an attacker who knows a victim's
+	// payment_intent_id (succeeded but whose CreateOrder never landed — the 20m
+	// orphan-sweep window) could POST CreateOrder with the victim's PI and get an
+	// order charged to the victim's card attributed to themselves (cross-user IDOR).
+	if pi.Metadata["user_id"] != userID {
+		return fmt.Errorf("payment intent does not belong to this user")
 	}
 	return nil
 }

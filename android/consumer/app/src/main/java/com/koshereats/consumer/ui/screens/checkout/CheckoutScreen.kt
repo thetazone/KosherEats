@@ -536,7 +536,7 @@ private fun TipSelectorCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TipChoice.presets.forEach { preset ->
                     val selected = when {
-                        tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.fraction == preset.fraction
+                        tipChoice is TipChoice.Percent && preset is TipChoice.Percent -> tipChoice.bps == preset.bps
                         else -> tipChoice == preset
                     }
                     Box(

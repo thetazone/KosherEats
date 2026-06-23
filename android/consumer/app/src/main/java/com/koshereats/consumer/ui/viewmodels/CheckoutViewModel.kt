@@ -38,22 +38,21 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
-import kotlin.math.roundToInt
 
 sealed interface TipChoice {
     data object None : TipChoice
-    data class Percent(val fraction: Double) : TipChoice
+    data class Percent(val bps: Int) : TipChoice
     data object Custom : TipChoice
 
     companion object {
-        val presets: List<TipChoice> = listOf(None, Percent(0.15), Percent(0.18), Percent(0.20), Custom)
+        val presets: List<TipChoice> = listOf(None, Percent(1500), Percent(1800), Percent(2000), Custom)
     }
 
     fun label(subtotalCents: Int): String = when (this) {
         None -> "None"
         is Percent -> {
-            val cents = (subtotalCents * fraction).toInt()
-            "${(fraction * 100).toInt()}%\n${cents.formatPrice()}"
+            val cents = (subtotalCents * bps) / 10_000
+            "${bps / 100}%\n${cents.formatPrice()}"
         }
         Custom -> "Custom"
     }
@@ -64,7 +63,7 @@ data class CheckoutUiState(
     val selectedAddress: Address? = null,
     /** "delivery" or "pickup". Pickup skips address, courier tip, and delivery fee. */
     val fulfillmentType: String = "delivery",
-    val tipChoice: TipChoice = TipChoice.Percent(0.18),
+    val tipChoice: TipChoice = TipChoice.Percent(1800),
     val customTipText: String = "",
     val scheduledFor: LocalDateTime? = null,
     val bundle: PaymentSheetBundle? = null,
@@ -433,13 +432,13 @@ class CheckoutViewModel @Inject constructor(
         val subtotal = subtotalCents
         val tip = when (val choice = state.tipChoice) {
             TipChoice.None -> 0
-            is TipChoice.Percent -> (subtotal * choice.fraction).roundToInt()
+            is TipChoice.Percent -> (subtotal * choice.bps) / 10_000
             TipChoice.Custom -> {
                 // Route user-entered tip text through Money.parseCents so a comma
-                // decimal ("12,50") parses as 1250¢ instead of 0. Clamp preserved
-                // (0..$1000 -> 0..100000¢).
+                // decimal ("12,50") parses as 1250¢ instead of 0. Cap mirrors iOS
+                // CheckoutViewModel.maxTipCents (0..$500 -> 0..50000¢).
                 val cents = Money.parseCents(state.customTipText) ?: 0
-                cents.coerceIn(0, 100_000)
+                cents.coerceIn(0, 50_000)
             }
         }
         return tip.coerceAtLeast(0)

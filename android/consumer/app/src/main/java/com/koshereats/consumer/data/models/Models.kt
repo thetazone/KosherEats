@@ -380,6 +380,10 @@ data class Order(
     val status: OrderStatus = OrderStatus.PENDING,
     val items: List<OrderItem> = emptyList(),
     val subtotal: Int = 0,
+    /** Deal discount applied to this order, in cents (0 when no deal).
+     *  Authoritative value from the backend; do NOT derive. Invariant:
+     *  subtotal - discount + delivery_fee + service_fee + tax + courier_tip == total. */
+    val discount: Int = 0,
     @SerializedName("delivery_fee") val deliveryFee: Int = 0,
     @SerializedName("service_fee") val serviceFee: Int = 0,
     val tax: Int = 0,

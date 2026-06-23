@@ -409,11 +409,6 @@ private fun PriceBreakdown(order: Order) {
     // Driver tip mirrors iOS, which reads `courierTip`. Fall back to the legacy
     // `tip` field for older orders that predate the courier_tip split.
     val tip = if (order.courierTip > 0) order.courierTip else order.tip
-    // The persisted Order carries no discount field; derive one only when the
-    // line components overshoot the charged total, so a discounted order's
-    // breakdown still reconciles to its total (display-only).
-    val components = order.subtotal + order.deliveryFee + order.serviceFee + order.tax + tip
-    val discount = (components - order.total).coerceAtLeast(0)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -427,9 +422,9 @@ private fun PriceBreakdown(order: Order) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SummaryRow("Subtotal", order.subtotal.formatPrice())
-            if (discount > 0) {
+            if (order.discount > 0) {
                 // Mirrors iOS OrderDetailView's "Savings" row (value formatted "-$X.XX").
-                SummaryRow("Savings", "-${discount.formatPrice()}", valueColor = SuccessGreen)
+                SummaryRow("Savings", "-${order.discount.formatPrice()}", valueColor = SuccessGreen)
             }
             SummaryRow("Delivery Fee", order.deliveryFee.formatPrice())
             SummaryRow("Service Fee", order.serviceFee.formatPrice())

@@ -88,6 +88,10 @@ func (h *Handler) AdminRestaurantsPage(w http.ResponseWriter, r *http.Request) {
 // Form: action=approve|reject. Mirrors AdminSetRestaurantApproval + emails the seller.
 func (h *Handler) AdminRestaurantDecision(w http.ResponseWriter, r *http.Request) {
 	key, ok := h.adminKeyOK(r)
+	if adminDashboardKey() == "" {
+		http.NotFound(w, r)
+		return
+	}
 	if !ok {
 		w.WriteHeader(http.StatusForbidden)
 		writeAdminPage(w, "Forbidden", `<p>Invalid or missing key.</p>`)
