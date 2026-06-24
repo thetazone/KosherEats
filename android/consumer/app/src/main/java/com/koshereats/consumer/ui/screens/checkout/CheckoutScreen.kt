@@ -120,13 +120,31 @@ fun CheckoutScreen(
         }
         try {
             PaymentConfiguration.init(context, bundle.publishableKey)
+            // Google Pay is the Android counterpart to Apple Pay, but unlike
+            // Apple Pay it does NOT appear automatically — it has to be
+            // configured explicitly or the sheet shows no Google Pay button.
+            // Environment tracks the Stripe key so it flips to Production
+            // automatically when we cut over to live keys.
+            val googlePayEnv = if (bundle.publishableKey.startsWith("pk_live")) {
+                PaymentSheet.GooglePayConfiguration.Environment.Production
+            } else {
+                PaymentSheet.GooglePayConfiguration.Environment.Test
+            }
             val config = PaymentSheet.Configuration(
                 merchantDisplayName = "KosherEats",
                 customer = PaymentSheet.CustomerConfiguration(
                     id = bundle.customerId,
                     ephemeralKeySecret = bundle.ephemeralKeySecret,
                 ),
-                allowsDelayedPaymentMethods = true,
+                // Card only — matches the card-only PaymentIntent and iOS. Keeps
+                // ACH/bank debits out of the sheet (Link is removed at the
+                // Stripe account level, not here).
+                allowsDelayedPaymentMethods = false,
+                googlePay = PaymentSheet.GooglePayConfiguration(
+                    environment = googlePayEnv,
+                    countryCode = "US",
+                    currencyCode = "USD",
+                ),
             )
             paymentSheet.presentWithPaymentIntent(
                 paymentIntentClientSecret = bundle.paymentIntentSecret,
