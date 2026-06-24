@@ -80,6 +80,20 @@ type Config struct {
 	// if TAX_RATE_PERCENT is not set.
 	TaxRatePercent int
 
+	// Delivery pricing levers (food-marketplace economics). The real courier
+	// quote can be several times a small order's value (e.g. $12 to deliver a
+	// $3 order), which kills conversion. These gate that.
+	//
+	// DeliveryMinSubtotalCents: reject DELIVERY orders whose item subtotal is
+	// below this — the customer adds items or switches to pickup. 0 disables.
+	// Default 1500 ($15). Tune live with DELIVERY_MIN_SUBTOTAL_CENTS.
+	//
+	// FreeDeliveryOverCents: waive the delivery fee when the item subtotal is at
+	// or above this (a promo lever — the platform eats the courier cost). 0
+	// disables (no subsidy). Off by default; enable with FREE_DELIVERY_OVER_CENTS.
+	DeliveryMinSubtotalCents int
+	FreeDeliveryOverCents    int
+
 	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePercent
 	// to the (currently stubbed) Stripe Tax integration point. Default false:
 	// the flat-rate path is unchanged unless STRIPE_TAX_ENABLED=true. See
@@ -171,6 +185,9 @@ func Load() *Config {
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
 
 		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
+
+		DeliveryMinSubtotalCents: getEnvInt("DELIVERY_MIN_SUBTOTAL_CENTS", 1500),
+		FreeDeliveryOverCents:    getEnvInt("FREE_DELIVERY_OVER_CENTS", 0),
 		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
 		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
 
