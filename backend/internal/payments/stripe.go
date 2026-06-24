@@ -14,6 +14,8 @@ import (
 	cryptorand "crypto/rand"
 	"fmt"
 	"log"
+	"net/mail"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -44,6 +46,12 @@ const (
 	orphanMarkerKey   = "kosher_eats_checkout"
 	orphanMarkerValue = "1"
 )
+
+// deliveryFeeMetaKey is the PaymentIntent metadata key under which we record the
+// delivery fee the charge total was computed against. CreateOrder reads it back
+// (StampedDeliveryFee) so the order it records is priced against the same fee
+// that was charged — never a fresh, slightly-different live courier quote.
+const deliveryFeeMetaKey = "delivery_fee"
 
 // looksLikeRealStripeKey filters out the "sk_test_your_stripe_secret_key"
 // placeholders commonly left in .env.example files. Any real Stripe secret
@@ -189,6 +197,32 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 		return fmt.Errorf("retrieve payment intent: %w", err)
 	}
 	return verifyPI(pi, userID, expectedAmountCents)
+}
+
+// StampedDeliveryFee returns the delivery fee (in cents) that the given
+// PaymentIntent was created against, read from the metadata CreatePaymentSheet
+// stamps. ok is false when the PI predates this stamp (older in-flight
+// checkouts) or in dev stub mode — callers then fall back to re-quoting. This
+// is what lets CreateOrder price the order against the exact fee that was
+// charged, instead of a fresh live courier quote that drifts by a few cents and
+// trips the amount-match guard.
+func (c *Client) StampedDeliveryFee(paymentIntentID string) (cents int, ok bool, err error) {
+	if !c.enabled || paymentIntentID == "" {
+		return 0, false, nil
+	}
+	pi, err := paymentintent.Get(paymentIntentID, nil)
+	if err != nil {
+		return 0, false, fmt.Errorf("retrieve payment intent: %w", err)
+	}
+	raw, present := pi.Metadata[deliveryFeeMetaKey]
+	if !present {
+		return 0, false, nil
+	}
+	v, convErr := strconv.Atoi(raw)
+	if convErr != nil {
+		return 0, false, nil
+	}
+	return v, true, nil
 }
 
 // verifyPI is the pure verification core shared by VerifyPaymentSucceeded. It
@@ -384,13 +418,26 @@ func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, us
 		return *existing, nil
 	}
 
-	cust, err := stripecustomer.New(&stripe.CustomerParams{
-		Email: stripe.String(email),
-		Name:  stripe.String(name),
+	// Only attach the email if it actually parses as an address. A malformed
+	// value (e.g. a doubled domain like "x@gmail.com@gmail.com" from a bad
+	// signup) makes Stripe reject the whole Customer create with
+	// email_invalid, which would 500 checkout for that account. The email is a
+	// convenience field on the Customer, not required to charge — so when it's
+	// junk we create the customer without it and log, rather than block the
+	// order. The bad value should be corrected at its source in the users row.
+	custParams := &stripe.CustomerParams{
+		Name: stripe.String(name),
 		Params: stripe.Params{
 			Metadata: map[string]string{"user_id": userID},
 		},
-	})
+	}
+	if _, perr := mail.ParseAddress(email); perr == nil {
+		custParams.Email = stripe.String(email)
+	} else if email != "" {
+		log.Printf("[stripe] user=%s has unparseable email %q; creating Stripe customer without email", userID, email)
+	}
+
+	cust, err := stripecustomer.New(custParams)
 	if err != nil {
 		return "", fmt.Errorf("create customer: %w", err)
 	}
@@ -415,7 +462,7 @@ func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, us
 // In dev stub mode (no STRIPE_SECRET_KEY), returns fake values. The iOS app
 // detects the stub prefix and skips actually presenting PaymentSheet, which
 // keeps local dev functional without real Stripe keys.
-func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents int, userID, email, name string) (*PaymentSheetBundle, error) {
+func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name string) (*PaymentSheetBundle, error) {
 	if !c.enabled {
 		return &PaymentSheetBundle{
 			PaymentIntentSecret: "pi_stub_" + fakeID() + "_secret_stub",
@@ -460,6 +507,12 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 			Metadata: map[string]string{
 				"user_id":       userID,
 				orphanMarkerKey: orphanMarkerValue,
+				// Stamp the delivery fee that this charge total was computed
+				// against. CreateOrder reuses it (see StampedDeliveryFee) instead
+				// of re-quoting the courier API, which would return a slightly
+				// different live quote and fail the amount-match guard. This is
+				// what binds the recorded order total to the charged amount.
+				deliveryFeeMetaKey: strconv.Itoa(deliveryFeeCents),
 			},
 		},
 	})
@@ -553,12 +606,14 @@ func (c *Client) CreateSetupIntent(ctx context.Context, pool *pgxpool.Pool, user
 		return "", err
 	}
 
+	// Card only — match the checkout PaymentIntent. AutomaticPaymentMethods
+	// would surface Link and ACH bank debits in the "add a card" CustomerSheet,
+	// which we don't want for a food-delivery wallet. Apple Pay still rides on
+	// "card" when the device supports it.
 	si, err := setupintent.New(&stripe.SetupIntentParams{
-		Customer: stripe.String(customerID),
-		AutomaticPaymentMethods: &stripe.SetupIntentAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
-		Usage: stripe.String("off_session"),
+		Customer:           stripe.String(customerID),
+		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
+		Usage:              stripe.String("off_session"),
 	})
 	if err != nil {
 		return "", fmt.Errorf("create setup intent: %w", err)

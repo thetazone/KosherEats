@@ -136,6 +136,23 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 			deliveryFee = deliveryFeeFallbackCents
 		}
 	}
+	// Reuse the delivery fee the PaymentIntent was actually charged against,
+	// rather than the fresh quote computed just above. quoteDeliveryFee hits a
+	// live courier API whose price drifts second-to-second, so re-quoting here
+	// would routinely disagree with what CreatePaymentIntent charged by a few
+	// cents (or, when the PI fell back to the flat rate, by dollars) and fail
+	// the amount-match guard below — charging the customer but rejecting the
+	// order. The stamp is authoritative and tamper-proof (set server-side at PI
+	// creation). Falls back to the quote above for stub mode / pre-stamp PIs.
+	if h.stripe != nil {
+		if fee, ok, err := h.stripe.StampedDeliveryFee(req.PaymentIntentID); err != nil {
+			slog.Warn("CreateOrder: could not read stamped delivery fee, using live quote",
+				slog.String("payment_intent_id", req.PaymentIntentID),
+				slog.String("error", err.Error()))
+		} else if ok {
+			deliveryFee = fee
+		}
+	}
 	serviceFee := 0
 	// Apply the deal discount before tax so the recorded total agrees with
 	// the Stripe charge that CreatePaymentIntent computed using the same

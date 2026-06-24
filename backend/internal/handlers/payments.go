@@ -127,11 +127,17 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 
 	deliveryFee := 0
 	if !isPickup {
-		if req.RestaurantID != "" && req.DeliveryAddress != "" {
+		// Quote against the cart's restaurant (authoritative — CreateOrder uses
+		// the same cart.RestaurantID), so the client only has to supply the
+		// delivery address. Without a delivery address we can't quote, so fall
+		// back to the flat rate. The fee computed here is stamped onto the
+		// PaymentIntent and reused verbatim by CreateOrder, so the two never
+		// disagree even though quoteDeliveryFee is a live, drifting quote.
+		if req.DeliveryAddress != "" {
 			var restAddress string
 			err := h.db.Pool.QueryRow(r.Context(),
 				`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, '')
-				   FROM restaurants WHERE id = $1`, req.RestaurantID,
+				   FROM restaurants WHERE id = $1`, cartRestID,
 			).Scan(&restAddress)
 			if err == nil && restAddress != "" {
 				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress)
@@ -176,7 +182,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
 	}
 
-	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, user["user_id"], email, firstName+" "+lastName)
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName)
 	if err != nil {
 		// Surface the real Stripe error to the logs so future "failed to
 		// create payment" reports take seconds, not an hour, to diagnose.

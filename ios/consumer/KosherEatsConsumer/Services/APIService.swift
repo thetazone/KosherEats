@@ -605,19 +605,25 @@ class APIService: ObservableObject {
         var isStub: Bool { paymentIntentSecret.hasPrefix("pi_stub_") }
     }
 
-    func createPaymentSheet(tip: Int, fulfillmentType: String = "delivery", appliedDealId: String? = nil) async throws -> PaymentSheetBundle {
+    func createPaymentSheet(tip: Int, fulfillmentType: String = "delivery", appliedDealId: String? = nil, deliveryAddress: String? = nil) async throws -> PaymentSheetBundle {
         struct Body: Encodable {
             let tip: Int
             let fulfillmentType: String
             let appliedDealId: String?
+            // Sent so the PaymentIntent prices the real courier delivery quote
+            // instead of the flat fallback. The server stamps that fee onto the
+            // PaymentIntent and CreateOrder reuses it, so the charge and the
+            // recorded order total always agree. Omitted for pickup.
+            let deliveryAddress: String?
             enum CodingKeys: String, CodingKey {
                 case tip
                 case fulfillmentType = "fulfillment_type"
                 case appliedDealId = "applied_deal_id"
+                case deliveryAddress = "delivery_address"
             }
         }
         return try await request(method: "POST", path: "/payments/intent",
-                                 body: Body(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId), authenticated: true)
+                                 body: Body(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId, deliveryAddress: deliveryAddress), authenticated: true)
     }
 
     // CustomerSheet bundle — used by Profile → Payment Methods to let the

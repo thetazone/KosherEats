@@ -192,7 +192,11 @@ final class CheckoutViewModel: NSObject, ObservableObject {
 
         do {
             let tip = currentTipCents()
-            let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId)
+            // Send the delivery address (delivery only) so the PaymentIntent is
+            // priced against the real courier quote, matching what CreateOrder
+            // will record. Pickup carries no address and no delivery fee.
+            let deliveryAddress = fulfillmentType == "pickup" ? nil : selectedAddress?.formatted
+            let fresh = try await api.createPaymentSheet(tip: tip, fulfillmentType: fulfillmentType, appliedDealId: appliedDealId, deliveryAddress: deliveryAddress)
             guard gen == bundleGeneration, !Task.isCancelled else { return }
             bundle = fresh
 
