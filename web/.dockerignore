@@ -1,0 +1,25 @@
+# Host-built artifacts must NOT be copied into the image:
+# - node_modules: host is arm64; the linux/amd64 build does its own `npm ci`,
+#   and COPY . . over it would clobber the platform-correct @next/swc binary.
+# - .next: stale host build; the image rebuilds with `npm run build`.
+node_modules
+.next
+
+# VCS / OS / editor cruft
+.git
+.gitignore
+.DS_Store
+
+# Local-only / build metadata not needed in the image
+Dockerfile
+Dockerfile.local
+.dockerignore
+fly.toml
+docker-compose*.yml
+tsconfig.tsbuildinfo
+*.log
+npm-debug.log*
+
+# Never bake env files into the image (NEXT_PUBLIC_* defaults live in src/lib)
+.env
+.env.*

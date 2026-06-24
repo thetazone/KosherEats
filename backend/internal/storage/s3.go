@@ -134,6 +134,8 @@ func extFromContentType(ct string) string {
 		return ".png"
 	case "image/heic":
 		return ".heic"
+	case "image/webp":
+		return ".webp"
 	default:
 		return ""
 	}
