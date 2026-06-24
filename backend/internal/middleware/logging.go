@@ -32,6 +32,16 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Unwrap lets http.ResponseController reach interfaces this recorder doesn't
+// itself implement — notably http.Flusher (Server-Sent Events, e.g. the order
+// location stream) and the connection write-deadline setter for long-lived
+// streams. Without it, a `w.(http.Flusher)` assertion in a handler fails
+// because statusRecorder only embeds the http.ResponseWriter interface (which
+// has no Flush), so SSE streaming 500s with "streaming unsupported".
+func (s *statusRecorder) Unwrap() http.ResponseWriter {
+	return s.ResponseWriter
+}
+
 // RequestLogger is a structured logger middleware. Logs one line per request
 // with method, path, status, duration, and (if JWT middleware has run) the
 // authenticated user id. Uses slog so ops tooling can parse it as JSON in

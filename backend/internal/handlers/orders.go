@@ -1343,22 +1343,25 @@ func (h *Handler) StreamOrderLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeError(w, http.StatusInternalServerError, "streaming unsupported")
-		return
-	}
-
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	// The server has a 15s WriteTimeout; clear the per-write deadline so this
-	// long-lived stream isn't killed mid-connection.
+	// Flush + write-deadline go through http.ResponseController so it can unwrap
+	// the logging middleware's statusRecorder to reach the real connection. A
+	// direct w.(http.Flusher) assertion fails on the wrapped writer, which used
+	// to 500 every SSE stream with "streaming unsupported". The server has a 15s
+	// WriteTimeout; clear the per-write deadline so this long-lived stream isn't
+	// killed mid-connection.
 	rc := http.NewResponseController(w)
 	_ = rc.SetWriteDeadline(time.Time{})
-	flusher.Flush()
+	if err := rc.Flush(); err != nil {
+		// Transport genuinely can't stream; the 200 + headers are already sent,
+		// so there's nothing to do but stop.
+		slog.Error("StreamOrderLocation: streaming unsupported", slog.String("error", err.Error()))
+		return
+	}
 
 	events, unsub := h.location.Subscribe(id)
 	defer unsub()
@@ -1375,7 +1378,7 @@ func (h *Handler) StreamOrderLocation(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 				return
 			}
-			flusher.Flush()
+			_ = rc.Flush()
 		case e, ok := <-events:
 			if !ok {
 				return
@@ -1387,7 +1390,7 @@ func (h *Handler) StreamOrderLocation(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, "event: location\ndata: %s\n\n", payload); err != nil {
 				return
 			}
-			flusher.Flush()
+			_ = rc.Flush()
 		}
 	}
 }

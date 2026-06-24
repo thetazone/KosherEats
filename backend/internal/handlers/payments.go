@@ -291,7 +291,16 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	event, err := webhook.ConstructEvent(payload, r.Header.Get("Stripe-Signature"), h.cfg.StripeWebhookSec)
+	// IgnoreAPIVersionMismatch: the webhook endpoint is pinned to the account's
+	// current Stripe API version, which is newer than the one stripe-go v78 is
+	// built against. The SIGNATURE is still fully verified — we only relax the
+	// version assertion, which would otherwise reject every live event with a
+	// 400. The fields this handler reads (event.Type, PaymentIntent id/status,
+	// charge dispute, account payout flags) are stable across these versions.
+	event, err := webhook.ConstructEventWithOptions(
+		payload, r.Header.Get("Stripe-Signature"), h.cfg.StripeWebhookSec,
+		webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true},
+	)
 	if err != nil {
 		slog.Warn("stripe webhook signature verification failed", slog.String("error", err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
