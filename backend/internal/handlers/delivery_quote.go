@@ -10,17 +10,9 @@ import (
 )
 
 const (
-	// Markup added on top of the cheapest external courier quote. Covers
-	// payment processing on the delivery fee portion and gives a small buffer.
-	deliveryFeeMarkupCents = 100 // $1.00
-
-	// Floor and ceiling for the consumer-facing delivery fee regardless of
-	// what the external provider quotes. Keeps pricing predictable.
-	deliveryFeeFloorCents   = 499 // $4.99
-	deliveryFeeCeilingCents = 1199 // $11.99
-
-	// Fallback delivery fee when no external provider is configured or all
-	// quotes fail. Matches the old formula's ballpark for a ~$68 order.
+	// Fallback delivery fee for the rare case where no external provider is
+	// configured or all quotes fail — we can't compute "provider + markup"
+	// without a quote, so we fall back to a flat fee rather than block delivery.
 	deliveryFeeFallbackCents = 599 // $5.99
 )
 
@@ -41,7 +33,7 @@ type DeliveryQuoteResponse struct {
 // DeliveryQuote returns the dynamic delivery fee for a given restaurant →
 // customer route. Called by the checkout screen before payment.
 func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
-	_, err := getUserFromContext(r)
+	user, err := getUserFromContext(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -69,7 +61,15 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress)
+	// Item subtotal of the user's cart decides the markup tier ($1 vs $2 over
+	// the large-order threshold), so the preview matches what checkout charges.
+	var subtotal int
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT COALESCE(SUM(ci.unit_price * ci.quantity), 0)
+		   FROM cart_items ci JOIN carts c ON ci.cart_id = c.id
+		  WHERE c.user_id = $1`, user["user_id"]).Scan(&subtotal)
+
+	quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
 
 	writeJSON(w, http.StatusOK, DeliveryQuoteResponse{
 		DeliveryFeeCents: quote.consumerFee,
@@ -87,10 +87,12 @@ type deliveryQuoteResult struct {
 }
 
 // quoteDeliveryFee gets quotes from available external providers, picks the
-// cheapest, and returns the consumer-facing fee (provider cost + markup,
-// clamped to floor/ceiling). Falls back to a flat fee if no providers are
-// configured or all quotes fail.
-func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAddress string) deliveryQuoteResult {
+// cheapest, and returns the consumer-facing fee: the real provider cost plus a
+// flat markup we keep ($1 normally, $2 once the item subtotal clears the
+// large-order threshold). No floor/ceiling — the fee always tracks the actual
+// quote. Falls back to a flat fee only if no provider is configured or all
+// quotes fail. subtotalCents is the item subtotal (excl. delivery).
+func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAddress string, subtotalCents int) deliveryQuoteResult {
 	type providerQuote struct {
 		provider   string
 		feeCents   int
@@ -143,13 +145,14 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAd
 		}
 	}
 
-	consumerFee := best.feeCents + deliveryFeeMarkupCents
-	if consumerFee < deliveryFeeFloorCents {
-		consumerFee = deliveryFeeFloorCents
+	// Provider cost + our flat markup. $2 once the order clears the large-order
+	// threshold (bigger basket → we keep a bit more), $1 otherwise. No clamping:
+	// the consumer pays exactly the courier cost plus the markup.
+	markup := h.cfg.DeliveryMarkupCents
+	if subtotalCents > h.cfg.DeliveryLargeOrderCents {
+		markup = h.cfg.DeliveryMarkupLargeCents
 	}
-	if consumerFee > deliveryFeeCeilingCents {
-		consumerFee = deliveryFeeCeilingCents
-	}
+	consumerFee := best.feeCents + markup
 
 	return deliveryQuoteResult{
 		consumerFee: consumerFee,

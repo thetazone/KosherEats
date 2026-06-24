@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -126,24 +125,14 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 
 	isPickup := req.FulfillmentType == "pickup"
 
-	// Minimum order for delivery: a tiny order can't justify the courier fee, so
-	// require a reasonable basket or send the customer to pickup. Enforced here
-	// (and again in CreateOrder) so it can't be bypassed. Pickup has no minimum.
-	if !isPickup && h.cfg.DeliveryMinSubtotalCents > 0 && subtotal < h.cfg.DeliveryMinSubtotalCents {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf(
-			"Delivery orders have a $%.2f minimum. Add items or switch to pickup.",
-			float64(h.cfg.DeliveryMinSubtotalCents)/100))
-		return
-	}
-
 	deliveryFee := 0
 	if !isPickup {
 		// Quote against the cart's restaurant (authoritative — CreateOrder uses
 		// the same cart.RestaurantID), so the client only has to supply the
-		// delivery address. Without a delivery address we can't quote, so fall
-		// back to the flat rate. The fee computed here is stamped onto the
-		// PaymentIntent and reused verbatim by CreateOrder, so the two never
-		// disagree even though quoteDeliveryFee is a live, drifting quote.
+		// delivery address. The subtotal sets the markup tier. Without a delivery
+		// address we can't quote, so fall back to the flat rate. The fee computed
+		// here is stamped onto the PaymentIntent and reused verbatim by
+		// CreateOrder, so the two never disagree even though the quote drifts.
 		if req.DeliveryAddress != "" {
 			var restAddress string
 			err := h.db.Pool.QueryRow(r.Context(),
@@ -151,19 +140,13 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 				   FROM restaurants WHERE id = $1`, cartRestID,
 			).Scan(&restAddress)
 			if err == nil && restAddress != "" {
-				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress)
+				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
 				deliveryFee = quote.consumerFee
 			} else {
 				deliveryFee = deliveryFeeFallbackCents
 			}
 		} else {
 			deliveryFee = deliveryFeeFallbackCents
-		}
-		// Free-delivery promo lever (off by default): waive the fee on large
-		// baskets. The platform absorbs the courier cost, so this stays 0 until
-		// explicitly enabled. Stamped onto the PI, so CreateOrder reuses the 0.
-		if h.cfg.FreeDeliveryOverCents > 0 && subtotal >= h.cfg.FreeDeliveryOverCents {
-			deliveryFee = 0
 		}
 	}
 	serviceFee := 0

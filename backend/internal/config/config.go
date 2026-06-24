@@ -80,19 +80,14 @@ type Config struct {
 	// if TAX_RATE_PERCENT is not set.
 	TaxRatePercent int
 
-	// Delivery pricing levers (food-marketplace economics). The real courier
-	// quote can be several times a small order's value (e.g. $12 to deliver a
-	// $3 order), which kills conversion. These gate that.
-	//
-	// DeliveryMinSubtotalCents: reject DELIVERY orders whose item subtotal is
-	// below this — the customer adds items or switches to pickup. 0 disables.
-	// Default 1500 ($15). Tune live with DELIVERY_MIN_SUBTOTAL_CENTS.
-	//
-	// FreeDeliveryOverCents: waive the delivery fee when the item subtotal is at
-	// or above this (a promo lever — the platform eats the courier cost). 0
-	// disables (no subsidy). Off by default; enable with FREE_DELIVERY_OVER_CENTS.
-	DeliveryMinSubtotalCents int
-	FreeDeliveryOverCents    int
+	// Delivery pricing: the consumer always pays the cheapest external courier
+	// (Uber Direct / DoorDash) quote PLUS a flat markup we keep — no minimum, no
+	// free delivery, no floor/ceiling. The fee always tracks the real provider
+	// cost. DeliveryMarkupCents on normal orders; DeliveryMarkupLargeCents once
+	// the item subtotal (excl. delivery) exceeds DeliveryLargeOrderCents.
+	DeliveryMarkupCents      int
+	DeliveryMarkupLargeCents int
+	DeliveryLargeOrderCents  int
 
 	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePercent
 	// to the (currently stubbed) Stripe Tax integration point. Default false:
@@ -186,8 +181,9 @@ func Load() *Config {
 
 		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
 
-		DeliveryMinSubtotalCents: getEnvInt("DELIVERY_MIN_SUBTOTAL_CENTS", 1500),
-		FreeDeliveryOverCents:    getEnvInt("FREE_DELIVERY_OVER_CENTS", 0),
+		DeliveryMarkupCents:      getEnvInt("DELIVERY_MARKUP_CENTS", 100),
+		DeliveryMarkupLargeCents: getEnvInt("DELIVERY_MARKUP_LARGE_CENTS", 200),
+		DeliveryLargeOrderCents:  getEnvInt("DELIVERY_LARGE_ORDER_CENTS", 4000),
 		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
 		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
 

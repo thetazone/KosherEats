@@ -121,14 +121,6 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "delivery address is required for delivery orders")
 		return
 	}
-	// Minimum order for delivery — mirrors CreatePaymentIntent; defense in depth
-	// for any direct /orders call. Pickup is exempt.
-	if fulfillmentType == "delivery" && h.cfg.DeliveryMinSubtotalCents > 0 && subtotal < h.cfg.DeliveryMinSubtotalCents {
-		writeError(w, http.StatusBadRequest, fmt.Sprintf(
-			"Delivery orders have a $%.2f minimum. Add items or switch to pickup.",
-			float64(h.cfg.DeliveryMinSubtotalCents)/100))
-		return
-	}
 
 	deliveryFee := 0
 	if fulfillmentType != "pickup" {
@@ -138,7 +130,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 			   FROM restaurants WHERE id = $1`, cart.RestaurantID,
 		).Scan(&restAddress)
 		if err == nil && restAddress != "" {
-			quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress)
+			quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
 			deliveryFee = quote.consumerFee
 		} else {
 			deliveryFee = deliveryFeeFallbackCents
