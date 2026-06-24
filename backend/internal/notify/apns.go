@@ -39,14 +39,15 @@ const (
 )
 
 type APNs struct {
-	cfg       *config.Config
-	client    *http.Client
-	privKey   *ecdsa.PrivateKey
-	endpoint  string
-	enabled   bool
-	tokenMu   sync.Mutex
-	cachedJWT string
-	jwtIssued time.Time
+	cfg         *config.Config
+	client      *http.Client
+	privKey     *ecdsa.PrivateKey
+	endpoint    string // primary APNs host (production or sandbox per config)
+	altEndpoint string // the other environment, used as a BadDeviceToken fallback
+	enabled     bool
+	tokenMu     sync.Mutex
+	cachedJWT   string
+	jwtIssued   time.Time
 }
 
 type Payload struct {
@@ -74,10 +75,11 @@ func New(cfg *config.Config) *APNs {
 	}
 	a.privKey = key
 	a.enabled = true
+	const prodHost, sandboxHost = "https://api.push.apple.com", "https://api.sandbox.push.apple.com"
 	if cfg.APNsProduction {
-		a.endpoint = "https://api.push.apple.com"
+		a.endpoint, a.altEndpoint = prodHost, sandboxHost
 	} else {
-		a.endpoint = "https://api.sandbox.push.apple.com"
+		a.endpoint, a.altEndpoint = sandboxHost, prodHost
 	}
 	return a
 }
@@ -103,11 +105,42 @@ func (a *APNs) Send(ctx context.Context, deviceToken string, app App, payload Pa
 		return
 	}
 
-	url := fmt.Sprintf("%s/3/device/%s", a.endpoint, deviceToken)
+	status, reason, err := a.postPush(ctx, a.endpoint, deviceToken, jwtToken, body, app)
+	if err != nil {
+		log.Printf("[apns] send error: %v", err)
+		return
+	}
+
+	// BadDeviceToken almost always means the token belongs to the OTHER APNs
+	// environment — a dev/sandbox token while we're on production (or vice
+	// versa). Retry once on the alternate host so dev, TestFlight and App Store
+	// tokens all deliver without per-token environment bookkeeping.
+	if status == http.StatusBadRequest && strings.Contains(reason, "BadDeviceToken") && a.altEndpoint != "" {
+		log.Printf("[apns] BadDeviceToken on %s for token=%s… — retrying on alternate env %s",
+			a.endpoint, safePrefix(deviceToken), a.altEndpoint)
+		status, reason, err = a.postPush(ctx, a.altEndpoint, deviceToken, jwtToken, body, app)
+		if err != nil {
+			log.Printf("[apns] alt send error: %v", err)
+			return
+		}
+	}
+
+	if status >= 300 {
+		// reason is APNs' JSON body, e.g. {"reason":"DeviceTokenNotForTopic"} —
+		// distinguishes topic mismatch, Unregistered, or a 403 auth-key problem.
+		log.Printf("[apns] non-2xx status=%d reason=%s topic=%s for token=%s…",
+			status, reason, a.topicFor(app), safePrefix(deviceToken))
+	}
+}
+
+// postPush sends one push to the given APNs host. Returns the HTTP status and,
+// on a non-2xx, the trimmed JSON error body (Apple's reason). A status < 300
+// means the push was accepted for delivery.
+func (a *APNs) postPush(ctx context.Context, endpoint, deviceToken, jwtToken string, body []byte, app App) (int, string, error) {
+	url := fmt.Sprintf("%s/3/device/%s", endpoint, deviceToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		log.Printf("[apns] request error: %v", err)
-		return
+		return 0, "", err
 	}
 	req.Header.Set("authorization", "bearer "+jwtToken)
 	req.Header.Set("apns-topic", a.topicFor(app))
@@ -116,21 +149,14 @@ func (a *APNs) Send(ctx context.Context, deviceToken string, app App, payload Pa
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		log.Printf("[apns] send error: %v", err)
-		return
+		return 0, "", err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode >= 300 {
-		// APNs returns a JSON body like {"reason":"BadDeviceToken"} on errors —
-		// log it so we can tell apart a sandbox/prod token mismatch
-		// (BadDeviceToken), a bad topic (DeviceTokenNotForTopic / BadTopic), an
-		// expired token (Unregistered), or an auth-key problem (403
-		// InvalidProviderToken / ExpiredProviderToken).
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		log.Printf("[apns] non-2xx status=%d reason=%s topic=%s for token=%s…",
-			resp.StatusCode, strings.TrimSpace(string(body)), a.topicFor(app), safePrefix(deviceToken))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return resp.StatusCode, strings.TrimSpace(string(b)), nil
 	}
+	return resp.StatusCode, "", nil
 }
 
 // SendMulti fans out a single payload to many device tokens concurrently.
