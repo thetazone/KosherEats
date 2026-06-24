@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -121,7 +122,14 @@ func (a *APNs) Send(ctx context.Context, deviceToken string, app App, payload Pa
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		log.Printf("[apns] non-2xx status=%d for token=%s…", resp.StatusCode, safePrefix(deviceToken))
+		// APNs returns a JSON body like {"reason":"BadDeviceToken"} on errors —
+		// log it so we can tell apart a sandbox/prod token mismatch
+		// (BadDeviceToken), a bad topic (DeviceTokenNotForTopic / BadTopic), an
+		// expired token (Unregistered), or an auth-key problem (403
+		// InvalidProviderToken / ExpiredProviderToken).
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		log.Printf("[apns] non-2xx status=%d reason=%s topic=%s for token=%s…",
+			resp.StatusCode, strings.TrimSpace(string(body)), a.topicFor(app), safePrefix(deviceToken))
 	}
 }
 
