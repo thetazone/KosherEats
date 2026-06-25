@@ -220,10 +220,17 @@ struct AddToCartSheet: View {
             }
             .onAppear {
                 // Pre-select each group's default options so required
-                // single-select groups start valid.
+                // single-select groups start valid. Only seed AVAILABLE
+                // defaults, and never preselect more than the group allows —
+                // a single-select group marked with multiple defaults must
+                // start with at most one so the selection is valid on open.
                 var initial: [String: Set<String>] = [:]
                 for group in (item.modifierGroups ?? []) {
-                    let defaults = group.modifiers.filter(\.isDefault).map(\.id)
+                    let defaults = group.modifiers
+                        .filter { $0.isDefault && $0.isAvailable }
+                        .sorted { $0.sortOrder < $1.sortOrder }
+                        .prefix(max(group.maxSelections, 0))
+                        .map(\.id)
                     if !defaults.isEmpty { initial[group.id] = Set(defaults) }
                 }
                 selection = initial

@@ -560,6 +560,20 @@ struct Order: Codable, Identifiable {
     var pickedUpAt: Date?
     var deliveredAt: Date?
 
+    // External delivery (Uber Direct / DoorDash Drive). When a third-party
+    // network fulfills the delivery there is no platform courier and no SSE
+    // location stream, so the tracking UI swaps the live map for a simple
+    // "track in their app" card. All nullable for orders fulfilled in-house.
+    var externalProvider: String?
+    var externalDeliveryID: String?
+    var externalTrackingURL: String?
+
+    /// True when this order's delivery is handled by an external network, in
+    /// which case there is no platform courier to show or stream.
+    var isExternalDelivery: Bool {
+        !(externalDeliveryID ?? "").isEmpty || !(externalTrackingURL ?? "").isEmpty
+    }
+
     var totalFormatted: String {
         Money.dollars(max(total, 0))
     }
@@ -612,6 +626,9 @@ struct Order: Codable, Identifiable {
         case claimedAt = "claimed_at"
         case pickedUpAt = "picked_up_at"
         case deliveredAt = "delivered_at"
+        case externalProvider = "external_provider"
+        case externalDeliveryID = "external_delivery_id"
+        case externalTrackingURL = "external_tracking_url"
     }
 }
 

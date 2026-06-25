@@ -450,15 +450,39 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// an order we never recovered.
     private static let inflightPaymentIntentKey = "inflight_payment_intent"
 
+    /// Companion to `inflightPaymentIntentKey`: the wall-clock time the marker
+    /// was last set. Used by the inflight guard to distinguish a genuinely
+    /// in-flight charge (recent) from a permanently-stuck marker (old) so an
+    /// unrecoverable PaymentIntent can't lock the user out of checkout forever.
+    private static let inflightPaymentIntentAtKey = "inflight_payment_intent_at"
+
+    /// How long a stuck marker keeps blocking new charges before we give up on
+    /// it and let the user check out again. Short enough not to strand users,
+    /// long enough to ride out the reconcile/recovery window during a real
+    /// in-flight charge.
+    private static let inflightMarkerMaxAge: TimeInterval = 5 * 60
+
     private var persistedInflightPI: String? {
         get { UserDefaults.standard.string(forKey: Self.inflightPaymentIntentKey) }
         set {
             if let newValue {
                 UserDefaults.standard.set(newValue, forKey: Self.inflightPaymentIntentKey)
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.inflightPaymentIntentAtKey)
             } else {
                 UserDefaults.standard.removeObject(forKey: Self.inflightPaymentIntentKey)
+                UserDefaults.standard.removeObject(forKey: Self.inflightPaymentIntentAtKey)
             }
         }
+    }
+
+    /// Age of the persisted in-flight marker, or nil when no marker is set.
+    /// Treats a present marker with a missing timestamp (e.g. one written by a
+    /// prior build) as old so it can't lock checkout indefinitely.
+    private var persistedInflightAge: TimeInterval? {
+        guard persistedInflightPI != nil else { return nil }
+        let setAt = UserDefaults.standard.double(forKey: Self.inflightPaymentIntentAtKey)
+        guard setAt > 0 else { return .greatestFiniteMagnitude }
+        return Date().timeIntervalSince1970 - setAt
     }
 
     func placeOrder(address: Address?, bundle: APIService.PaymentSheetBundle) async -> Order? {
@@ -586,8 +610,18 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         guard persistedInflightPI != nil else { return true }
         await reconcileInflightOrder()
         if persistedInflightPI == nil { return true }
-        errorMessage = "Your previous payment is still being confirmed. Please check your orders before trying again."
-        return false
+        // Reconcile still couldn't resolve the marker. Only block while it's
+        // recent enough to plausibly still be settling — that's the window
+        // where charging again would risk a genuine double-charge. Once the
+        // marker is stale an unrecoverable PaymentIntent would otherwise lock
+        // the user out of every future checkout, so clear it and let them
+        // through (the orphaned charge is handled out-of-band, e.g. refund).
+        if let age = persistedInflightAge, age < Self.inflightMarkerMaxAge {
+            errorMessage = "Your previous payment is still being confirmed. Please check your orders before trying again."
+            return false
+        }
+        persistedInflightPI = nil
+        return true
     }
 
     /// PaymentIntent client secrets are `pi_xxxxxx_secret_yyyy`. We only

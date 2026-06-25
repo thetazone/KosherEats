@@ -8,6 +8,7 @@ import MapKit
 struct OrderTrackingView: View {
     let orderId: String
     @StateObject private var vm: OrderTrackingViewModel
+    @Environment(\.openURL) private var openURL
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     // Flip true once we've fit the camera to the order's pins. Prevents the
@@ -29,20 +30,36 @@ struct OrderTrackingView: View {
     var body: some View {
         VStack(spacing: 0) {
             if let order = vm.order {
-                map(for: order)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 420)
+                if order.isExternalDelivery {
+                    // No platform courier and no live location stream for
+                    // third-party deliveries — show a simple "track in their
+                    // app" card instead of the frozen map / "finding a courier".
+                    externalDeliveryCard(for: order)
 
-                statusHeader(for: order)
+                    statusHeader(for: order)
 
-                ScrollView {
-                    VStack(spacing: Theme.spacingMD) {
-                        if let courier = order.courier {
-                            courierCard(courier)
+                    ScrollView {
+                        VStack(spacing: Theme.spacingMD) {
+                            addressCard(for: order)
                         }
-                        addressCard(for: order)
+                        .padding(Theme.spacingMD)
                     }
-                    .padding(Theme.spacingMD)
+                } else {
+                    map(for: order)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 420)
+
+                    statusHeader(for: order)
+
+                    ScrollView {
+                        VStack(spacing: Theme.spacingMD) {
+                            if let courier = order.courier {
+                                courierCard(courier)
+                            }
+                            addressCard(for: order)
+                        }
+                        .padding(Theme.spacingMD)
+                    }
                 }
             } else if vm.errorMessage != nil {
                 VStack(spacing: Theme.spacingMD) {
@@ -382,6 +399,48 @@ struct OrderTrackingView: View {
         .padding()
         .background(Color.keCard)
         .cornerRadius(Theme.cornerRadiusMedium)
+    }
+
+    /// Stand-in for the live map when delivery is handled by a third-party
+    /// network (Uber Direct / DoorDash Drive): there is no platform courier or
+    /// location stream, so we surface a "track in their app" card instead.
+    private func externalDeliveryCard(for order: Order) -> some View {
+        let trackingURL = (order.externalTrackingURL?.isEmpty == false)
+            ? URL(string: order.externalTrackingURL!)
+            : nil
+        return VStack(spacing: Theme.spacingMD) {
+            Image(systemName: "shippingbox.fill")
+                .font(.system(size: 40))
+                .foregroundColor(.kePrimary)
+            VStack(spacing: Theme.spacingXS) {
+                Text("Delivered by \(Self.providerName(for: order.externalProvider))")
+                    .font(.title3.bold())
+                    .foregroundColor(.keTextPrimary)
+                Text("Your order is on its way.")
+                    .font(.subheadline)
+                    .foregroundColor(.keTextSecondary)
+            }
+            .multilineTextAlignment(.center)
+
+            if let trackingURL {
+                Button("Track delivery") {
+                    openURL(trackingURL)
+                }
+                .buttonStyle(KEPrimaryButtonStyle())
+            }
+        }
+        .padding(Theme.spacingLG)
+        .frame(maxWidth: .infinity)
+        .background(Color.keBackgroundElevated)
+    }
+
+    /// Human-friendly name for an external delivery provider key.
+    private static func providerName(for provider: String?) -> String {
+        switch provider {
+        case "uber_direct": return "Uber"
+        case "doordash_drive": return "DoorDash"
+        default: return "our delivery partner"
+        }
     }
 
 }
