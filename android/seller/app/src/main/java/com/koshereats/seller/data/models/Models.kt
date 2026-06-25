@@ -196,6 +196,9 @@ data class Order(
     @Json(name = "customer_name") val customerName: String = "",
     @Json(name = "customer_phone") val customerPhone: String = "",
     @Json(name = "courier") val courier: CourierPublic? = null,
+    // Uber Direct / DoorDash delivery id once dispatched to an external provider
+    // (null otherwise). Lets the UI hide "Dispatch to Uber" once a provider owns it.
+    @Json(name = "external_delivery_id") val externalDeliveryId: String? = null,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "scheduled_for") val scheduledFor: String? = null,
@@ -261,6 +264,21 @@ data class DashboardStats(
     @Json(name = "today_revenue") val todayRevenue: Int = 0,
     @Json(name = "active_orders") val activeOrders: Int = 0,
     @Json(name = "avg_prep_time") val avgPrepTime: Double = 0.0,
+    // Seller's 50% cut of delivery fees on orders they self-delivered today.
+    @Json(name = "today_delivery_earnings") val todayDeliveryEarnings: Int = 0,
+)
+
+/**
+ * Result of escalating a self-delivery order to Uber Direct
+ * (PATCH /seller/orders/{id}/escalate). Mirrors iOS EscalateResponse and the
+ * backend's writeJSON map (status/provider/delivery_id/tracking_url).
+ */
+@JsonClass(generateAdapter = true)
+data class EscalateResponse(
+    val status: String = "",
+    val provider: String = "",
+    @Json(name = "delivery_id") val deliveryId: String = "",
+    @Json(name = "tracking_url") val trackingUrl: String = "",
 )
 
 // --- Device tokens (push notifications) ---

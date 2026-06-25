@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -278,12 +279,31 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f),
                     )
                     StatCard(
+                        title = "Delivery Earnings",
+                        // Seller's 50% of delivery fees on orders they self-delivered today.
+                        value = state.stats.todayDeliveryEarnings.formatPrice(),
+                        icon = Icons.Filled.DirectionsCar,
+                        iconTint = SuccessGreen,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    StatCard(
                         title = "Avg Prep Time",
                         value = "${state.stats.avgPrepTime.toInt()} min",
                         icon = Icons.Filled.AccessTime,
                         iconTint = StatusPreparing,
                         modifier = Modifier.weight(1f),
                     )
+                    // Keep the trailing card half-width (grid parity with iOS's
+                    // last-row single card) rather than stretching it full-width.
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
 

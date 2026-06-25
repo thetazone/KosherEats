@@ -21,6 +21,7 @@ import android.net.Uri
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
@@ -470,6 +471,11 @@ fun SellerOrderDetailScreen(
                     status = order.status,
                     isPickup = order.isPickup,
                     isSelfDelivery = deliveryMode == "restaurant",
+                    // Mirrors the backend escalate guard: no courier, not already on
+                    // a provider, and a delivery (not pickup) order.
+                    canEscalate = order.courier == null &&
+                        order.externalDeliveryId.isNullOrEmpty() &&
+                        !order.isPickup,
                     scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
@@ -489,6 +495,9 @@ fun SellerOrderDetailScreen(
                     },
                     onSelfDeliver = {
                         viewModel.sellerDeliverOrder(orderId)
+                    },
+                    onEscalate = {
+                        viewModel.escalateOrderToUber(orderId)
                     },
                     onCancel = { showRejectConfirm = true },
                 )
@@ -542,11 +551,38 @@ private fun SavingsRow(label: String, amount: Int) {
     }
 }
 
+/**
+ * Secondary action on an open delivery order (accepted/preparing): hand it off
+ * to an Uber Direct courier when the seller is swamped. One-way — the backend
+ * rejects orders already on a courier/provider, surfaced as an error Toast.
+ * Mirrors iOS escalateButton ("Dispatch to Uber").
+ */
+@Composable
+private fun EscalateToUberButton(
+    isUpdating: Boolean,
+    onEscalate: () -> Unit,
+) {
+    Button(
+        onClick = onEscalate,
+        enabled = !isUpdating,
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+    ) {
+        Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Dispatch to Uber", fontWeight = FontWeight.SemiBold)
+    }
+}
+
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
     isPickup: Boolean,
     isSelfDelivery: Boolean,
+    // True when the order isn't on a courier or external provider yet — the
+    // escalate-to-Uber action is available (accepted/preparing/ready).
+    canEscalate: Boolean,
     scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
@@ -555,6 +591,7 @@ private fun OrderActionButtons(
     onComplete: () -> Unit,
     onSelfPickup: () -> Unit,
     onSelfDeliver: () -> Unit,
+    onEscalate: () -> Unit,
     onCancel: () -> Unit,
 ) {
     Column(
@@ -645,6 +682,7 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                if (canEscalate) EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -662,6 +700,7 @@ private fun OrderActionButtons(
                         Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                if (canEscalate) EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
             }
             OrderStatus.READY -> {
                 if (isPickup) {
@@ -711,6 +750,11 @@ private fun OrderActionButtons(
                         Text("Awaiting Pickup…", fontWeight = FontWeight.SemiBold)
                     }
                 }
+                // The seller's own driver (or the wait for a platform courier) can
+                // still be punted to Uber while the order sits in Ready — same
+                // one-way escalate as accepted/preparing. Drops off once a courier
+                // claims it or it's dispatched (canEscalate).
+                if (canEscalate) EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
             }
             OrderStatus.PICKED_UP -> {
                 if (isSelfDelivery) {

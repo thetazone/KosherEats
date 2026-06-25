@@ -685,6 +685,48 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Escalate an open self-delivery order to Uber Direct. One-way — the backend
+     * rejects orders already on a courier/provider (409), surfaced as an error
+     * Toast. On success the order is re-fetched so the UI reflects the handoff.
+     */
+    fun escalateOrderToUber(orderId: String) {
+        if (_state.value.pendingOrderIds.contains(orderId)) return
+        viewModelScope.launch {
+            _state.update { it.copy(
+                pendingOrderIds = it.pendingOrderIds + orderId,
+                error = null,
+                updateSuccess = null,
+            ) }
+            try {
+                val response = apiService.escalateOrderToUber(orderId)
+                if (response.isSuccessful) {
+                    val detail = apiService.getOrderDetail(orderId)
+                    val updatedOrder = detail.body()
+                    _state.update { st ->
+                        st.copy(
+                            selectedOrder = updatedOrder ?: st.selectedOrder,
+                            orders = if (updatedOrder != null) st.orders.map { if (it.id == orderId) updatedOrder else it } else st.orders,
+                            pendingOrderIds = st.pendingOrderIds - orderId,
+                            updateSuccess = "Sent to Uber — a courier is on the way.",
+                        )
+                    }
+                } else {
+                    _state.update { it.copy(
+                        pendingOrderIds = it.pendingOrderIds - orderId,
+                        error = "Couldn't send to Uber — it may already be dispatched.",
+                    ) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    pendingOrderIds = it.pendingOrderIds - orderId,
+                    error = "Connection error: ${e.localizedMessage}",
+                ) }
+            }
+        }
+    }
+
     fun refresh() {
         loadJob?.cancel()
         loadMoreJob?.cancel()

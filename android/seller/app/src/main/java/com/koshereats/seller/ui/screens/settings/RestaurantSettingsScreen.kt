@@ -184,6 +184,12 @@ fun RestaurantSettingsScreen(
     var certifyingAgency by remember(restaurantKey) {
         mutableStateOf(restaurant?.certificationDetails.orEmpty())
     }
+    // Who-delivers toggle. Seller-facing model is binary: "restaurant" = I deliver
+    // (keep 50% of the fee); anything else (platform/external) collapses to
+    // "external" = KosherEats dispatches an Uber courier. Mirrors iOS.
+    var deliveryMode by remember(restaurantKey) {
+        mutableStateOf(if (restaurant?.deliveryMode == "restaurant") "restaurant" else "external")
+    }
     var isSaving by remember { mutableStateOf(false) }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -591,6 +597,47 @@ fun RestaurantSettingsScreen(
 
             // Delivery / Pricing (editable)
             SettingsSectionCard(icon = Icons.Filled.AttachMoney, title = "Delivery") {
+                // Who delivers — own driver vs Uber Direct. Mirrors iOS "Who delivers"
+                // segmented Picker, including the dynamic caption per mode.
+                Text(
+                    text = "Who delivers",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(SurfaceDarkElevated)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    DeliveryModeSegment(
+                        label = "I deliver",
+                        selected = deliveryMode == "restaurant",
+                        modifier = Modifier.weight(1f),
+                        onClick = { deliveryMode = "restaurant" },
+                    )
+                    DeliveryModeSegment(
+                        label = "KosherEats (Uber)",
+                        selected = deliveryMode == "external",
+                        modifier = Modifier.weight(1f),
+                        onClick = { deliveryMode = "external" },
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (deliveryMode == "restaurant") {
+                        "Your own driver delivers — you keep 50% of the delivery fee. You can still send any order to Uber if you get slammed."
+                    } else {
+                        "Orders auto-dispatch to an Uber courier the moment you tap Ready."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -677,6 +724,7 @@ fun RestaurantSettingsScreen(
                         estDeliveryMax = estDeliveryMax,
                         kosherCert = kosherCert,
                         certifyingAgency = certifyingAgency,
+                        deliveryMode = deliveryMode,
                     )
                     if (changes.isEmpty()) {
                         Toast.makeText(context, "No changes to save", Toast.LENGTH_SHORT).show()
@@ -1059,6 +1107,36 @@ private fun validateSettings(
  * backend JSON names the seller `PUT /seller/restaurant` handler honors. The handler uses
  * COALESCE per column, so sending only changed fields is a safe partial update.
  */
+/**
+ * One segment of the "Who delivers" toggle. Selected = filled Orange pill;
+ * unselected = transparent over the row's elevated background. Avoids the
+ * experimental SegmentedButton API for cross-version safety.
+ */
+@Composable
+private fun DeliveryModeSegment(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .then(if (selected) Modifier.background(Orange) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) TextWhite else TextSecondary,
+            maxLines = 1,
+        )
+    }
+}
+
 private fun buildRestaurantChanges(
     restaurant: Restaurant,
     name: String,
@@ -1075,6 +1153,7 @@ private fun buildRestaurantChanges(
     estDeliveryMax: String,
     kosherCert: KosherCertification,
     certifyingAgency: String,
+    deliveryMode: String,
 ): Map<String, Any> {
     val changes = mutableMapOf<String, Any>()
     if (name.trim() != restaurant.name) changes["name"] = name.trim()
@@ -1103,6 +1182,13 @@ private fun buildRestaurantChanges(
     }
     if (certifyingAgency != restaurant.certificationDetails) {
         changes["certifying_agency"] = certifyingAgency
+    }
+    // Compare against the seeded toggle value (restaurant→"restaurant", else
+    // "external") so an untouched toggle never spuriously flips a platform-mode
+    // restaurant to external on an unrelated save.
+    val seededMode = if (restaurant.deliveryMode == "restaurant") "restaurant" else "external"
+    if (deliveryMode != seededMode) {
+        changes["delivery_mode"] = deliveryMode
     }
     return changes
 }
