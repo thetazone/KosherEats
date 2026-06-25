@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/koshereats/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -125,6 +126,86 @@ func (h *Handler) verifyPhoneOTP(ctx context.Context, phone, code string) (ok bo
 		slog.Error("failed to clear OTP start row", slog.String("phone", phone), slog.String("error", derr.Error()))
 	}
 	return true, 0, ""
+}
+
+// StartPhoneChange sends an OTP to a NEW phone number for the authenticated
+// user. VerifyPhoneChange then verifies it and writes the new phone — the ONLY
+// way to change an account's phone, since UpdateProfile no longer writes it
+// (an unverified phone write was an account-squat/hijack vector).
+func (h *Handler) StartPhoneChange(w http.ResponseWriter, r *http.Request) {
+	if _, err := getUserFromContext(r); err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req PhoneStartRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	phone := normalizePhone(req.Phone)
+	if !looksLikeE164(phone) {
+		writeError(w, http.StatusBadRequest, "phone must be in E.164 format (+15551234567)")
+		return
+	}
+	if err := h.sms.Start(r.Context(), phone); err != nil {
+		writeError(w, http.StatusBadGateway, "failed to send verification code")
+		return
+	}
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`INSERT INTO phone_otp_starts (phone, started_at, failed_attempts, locked_until)
+		 VALUES ($1, NOW(), 0, NULL)
+		 ON CONFLICT (phone) DO UPDATE SET started_at = NOW(), failed_attempts = 0, locked_until = NULL`,
+		phone); err != nil {
+		slog.Error("failed to record OTP start for phone change",
+			slog.String("phone", phone), slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to start phone change")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+// VerifyPhoneChange verifies the OTP for the new phone (lockout-aware) and sets
+// it on the authenticated user's account, rejecting a number already in use.
+func (h *Handler) VerifyPhoneChange(w http.ResponseWriter, r *http.Request) {
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	var req PhoneVerifyRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	phone := normalizePhone(req.Phone)
+	if !looksLikeE164(phone) || req.Code == "" {
+		writeError(w, http.StatusBadRequest, "phone and code are required")
+		return
+	}
+	if ok, status, msg := h.verifyPhoneOTP(r.Context(), phone, req.Code); !ok {
+		writeError(w, status, msg)
+		return
+	}
+	if _, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE users SET phone = $1, updated_at = NOW() WHERE id = $2`,
+		phone, user["user_id"]); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			writeError(w, http.StatusConflict, "that phone number is already linked to another account")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to update phone")
+		return
+	}
+	// Keep the phone auth-provider link in sync so phone-OTP login still resolves
+	// the account by its new number (best-effort; the user may have no phone link).
+	if _, perr := h.db.Pool.Exec(r.Context(),
+		`UPDATE user_auth_providers SET provider_id = $1 WHERE user_id = $2 AND provider = 'phone'`,
+		phone, user["user_id"]); perr != nil {
+		slog.Warn("phone change: failed to sync auth-provider link",
+			slog.String("user_id", user["user_id"]), slog.String("error", perr.Error()))
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "phone updated"})
 }
 
 func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {

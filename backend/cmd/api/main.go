@@ -442,6 +442,10 @@ func main() {
 		r.Use(apiLimiter.PerUser)
 		r.Get("/profile", h.GetProfile)
 		r.Put("/profile", h.UpdateProfile)
+		// Verified phone-change flow (UpdateProfile no longer writes phone):
+		// start sends an OTP to the new number, verify sets it on the account.
+		r.Post("/phone/change/start", h.StartPhoneChange)
+		r.Post("/phone/change/verify", h.VerifyPhoneChange)
 		r.Get("/addresses", h.ListAddresses)
 		r.Post("/addresses", h.AddAddress)
 		r.Delete("/addresses/{id}", h.DeleteAddress)

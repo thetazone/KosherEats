@@ -65,35 +65,29 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	ctx := r.Context()
 
+	// SECURITY: profile edit no longer writes `phone`. Phone is a login factor
+	// (phone-OTP login keys off it), and an unverified write let a user squat a
+	// number / set up a hijack. Phone changes go through the OTP-verified flow
+	// (StartPhoneChange + VerifyPhoneChange); req.Phone is ignored here.
 	if email != "" {
 		_, err := h.db.Pool.Exec(ctx,
-			`UPDATE users SET first_name = $1, last_name = $2, phone = $3, email = $4, updated_at = NOW()
-			 WHERE id = $5`,
-			req.FirstName, req.LastName, req.Phone, email, user["user_id"])
+			`UPDATE users SET first_name = $1, last_name = $2, email = $3, updated_at = NOW()
+			 WHERE id = $4`,
+			req.FirstName, req.LastName, email, user["user_id"])
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				if strings.Contains(pgErr.ConstraintName, "phone") {
-					writeError(w, http.StatusConflict, "that phone number is already linked to another account")
-				} else {
-					writeError(w, http.StatusConflict, "that email is already in use")
-				}
+				writeError(w, http.StatusConflict, "that email is already in use")
 				return
 			}
 			writeError(w, http.StatusBadRequest, "failed to update profile")
 			return
 		}
 	} else {
-		_, err := h.db.Pool.Exec(ctx,
-			`UPDATE users SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW()
-			 WHERE id = $4`,
-			req.FirstName, req.LastName, req.Phone, user["user_id"])
-		if err != nil {
-			var pgErr *pgconn.PgError
-			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-				writeError(w, http.StatusConflict, "that phone number is already linked to another account")
-				return
-			}
+		if _, err := h.db.Pool.Exec(ctx,
+			`UPDATE users SET first_name = $1, last_name = $2, updated_at = NOW()
+			 WHERE id = $3`,
+			req.FirstName, req.LastName, user["user_id"]); err != nil {
 			writeError(w, http.StatusBadRequest, "failed to update profile")
 			return
 		}
