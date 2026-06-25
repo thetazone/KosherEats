@@ -523,10 +523,14 @@ fun RestaurantDetailScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                         }
                         items(selectedCategory.items, key = { it.id }) { menuItem ->
+                            // An item is orderable only when the restaurant is open AND the
+                            // item itself isn't paused (is_available=false); otherwise the
+                            // add-to-cart sheet would open for an unavailable item.
+                            val orderable = restaurant.isOpen && menuItem.isAvailable
                             VerticalMenuItemCard(
                                 menuItem = menuItem,
-                                isOrderable = restaurant.isOpen,
-                                onClick = { if (restaurant.isOpen) sheetItem = menuItem },
+                                isOrderable = orderable,
+                                onClick = { if (orderable) sheetItem = menuItem },
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .padding(bottom = 10.dp),
@@ -886,6 +890,9 @@ fun VerticalMenuItemCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(SurfaceDark)
+            // Dim the whole card when it isn't orderable (restaurant closed or item
+            // paused) so it reads as unavailable, matching the disabled tap target.
+            .alpha(if (isOrderable) 1f else 0.5f)
             .clickable(enabled = isOrderable, onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,

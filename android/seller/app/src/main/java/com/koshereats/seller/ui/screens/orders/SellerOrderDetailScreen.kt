@@ -58,6 +58,7 @@ import java.time.Duration
 import java.time.Instant
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -74,10 +75,10 @@ import com.koshereats.seller.ui.theme.StatusPreparing
 import com.koshereats.seller.ui.theme.StatusReady
 import com.koshereats.seller.ui.theme.SuccessGreen
 import com.koshereats.seller.ui.theme.SurfaceDark
+import com.koshereats.seller.ui.theme.SurfaceDarkElevated
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
-import com.koshereats.seller.ui.viewmodels.AuthViewModel
 import com.koshereats.seller.ui.viewmodels.OrdersViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,16 +87,10 @@ fun SellerOrderDetailScreen(
     orderId: String,
     onBack: () -> Unit,
     viewModel: OrdersViewModel = hiltViewModel(),
-    authViewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val authState by authViewModel.state.collectAsStateWithLifecycle()
     val order = state.selectedOrder
     val context = LocalContext.current
-    // The restaurant's delivery_mode (from AuthViewModel restaurant state). When
-    // "restaurant", the restaurant self-delivers — no platform courier will ever
-    // pick up — so the seller must drive ready→picked_up→delivered themselves.
-    val deliveryMode = authState.restaurant?.deliveryMode ?: "platform"
     var showRejectConfirm by remember { mutableStateOf(false) }
     var rejectReason by remember { mutableStateOf("") }
 
@@ -261,6 +256,22 @@ fun SellerOrderDetailScreen(
                             OrderStatusBadge(status = order.status)
                         }
 
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // Fulfillment chip — mirrors ActiveOrderCard's chip and the
+                        // iOS statusHeader so the seller can tell pickup from delivery.
+                        Text(
+                            text = if (order.isPickup) "PICKUP" else "DELIVERY",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (order.isPickup) Orange else TextSecondary,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    if (order.isPickup) Orange.copy(alpha = 0.15f) else SurfaceDarkElevated,
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+
                         val mins = minutesAgo
                         if (mins != null) {
                             Spacer(modifier = Modifier.height(4.dp))
@@ -271,7 +282,10 @@ fun SellerOrderDetailScreen(
                             )
                         }
 
-                        if (order.deliveryAddress.isNotBlank()) {
+                        // Delivery destination — only meaningful for delivery orders.
+                        // Pickup orders have no customer address (the chip above says
+                        // PICKUP), so hide the block rather than mislabel it.
+                        if (!order.isPickup && order.deliveryAddress.isNotBlank()) {
                             Spacer(modifier = Modifier.height(16.dp))
                             HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                             Spacer(modifier = Modifier.height(16.dp))
@@ -470,7 +484,11 @@ fun SellerOrderDetailScreen(
                 OrderActionButtons(
                     status = order.status,
                     isPickup = order.isPickup,
-                    isSelfDelivery = deliveryMode == "restaurant",
+                    // Derive from the per-order delivery_mode the backend stamps,
+                    // not the (possibly stale/absent) global restaurant state — a
+                    // mismatch there could leave a READY delivery order with no
+                    // actionable button.
+                    isSelfDelivery = order.isSelfDelivery,
                     // Mirrors the backend escalate guard: no courier, not already on
                     // a provider, and a delivery (not pickup) order.
                     canEscalate = order.courier == null &&
@@ -617,6 +635,7 @@ private fun OrderActionButtons(
                             val activatesAt = remember(scheduledFor) {
                                 runCatching {
                                     java.time.ZonedDateTime.parse(scheduledFor)
+                                        .withZoneSameInstant(java.time.ZoneId.systemDefault())
                                         .format(java.time.format.DateTimeFormatter.ofPattern("MMM d 'at' h:mm a"))
                                 }.getOrElse { scheduledFor }
                             }

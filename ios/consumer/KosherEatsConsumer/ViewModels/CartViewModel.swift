@@ -17,6 +17,12 @@ class CartViewModel: ObservableObject {
     /// alert; the add only proceeds via `confirmPendingRestaurantSwitch()`.
     @Published var pendingRestaurantSwitch: PendingRestaurantSwitch?
 
+    /// A pending reorder that would replace the current cart because the order
+    /// is from a different restaurant. The View binds to this to present a
+    /// confirmation alert; the reorder only proceeds via
+    /// `confirmPendingReorder()`.
+    @Published var pendingReorder: PendingReorder?
+
     /// Captured parameters for an add-to-cart that is awaiting the user's
     /// confirmation to discard their existing cart from another restaurant.
     struct PendingRestaurantSwitch: Identifiable {
@@ -33,6 +39,32 @@ class CartViewModel: ObservableObject {
         let itemName: String
         let unitPrice: Int
         let selectedModifiers: [SelectedModifier]
+
+        /// Title for the confirmation alert the View presents.
+        var alertTitle: String {
+            if let restaurantName, !restaurantName.isEmpty {
+                return String(localized: "Start a new cart at \(restaurantName)?")
+            }
+            return String(localized: "Start a new cart?")
+        }
+
+        /// Body for the confirmation alert: warns that the existing cart from a
+        /// different restaurant will be discarded (mirrors the backend wipe).
+        var alertMessage: String {
+            String(localized: "Your items from your current cart will be removed.")
+        }
+    }
+
+    /// Captured parameters for a reorder that is awaiting the user's
+    /// confirmation to discard their existing cart from another restaurant.
+    struct PendingReorder: Identifiable {
+        let id = UUID()
+        let items: [OrderItem]
+        let restaurantID: String
+        /// The restaurant being reordered *from*. Optional because callers may
+        /// not always have the name in scope; when nil the confirmation message
+        /// degrades to a generic phrasing.
+        let restaurantName: String?
 
         /// Title for the confirmation alert the View presents.
         var alertTitle: String {
@@ -299,7 +331,47 @@ class CartViewModel: ObservableObject {
         pendingRestaurantSwitch = nil
     }
 
-    func reorder(items: [OrderItem], restaurantID: String) async -> String? {
+    /// Entry point for the "Order Again" UI. If the reorder would silently wipe
+    /// an existing cart from another restaurant, it stashes the request and
+    /// publishes `pendingReorder` so the View can confirm first; otherwise it
+    /// reorders immediately. Returns the reorder error message (if any) when it
+    /// proceeded without needing confirmation, or `nil` when it either succeeded
+    /// or is now awaiting confirmation. Routes through the same restaurant-switch
+    /// guard as the menu add path so reorders can't discard a cart unprompted.
+    func requestReorder(
+        items: [OrderItem],
+        restaurantID: String,
+        restaurantName: String? = nil
+    ) async -> String? {
+        guard !isReordering else { return nil }
+        if wouldSwitchRestaurant(to: restaurantID) {
+            pendingReorder = PendingReorder(
+                items: items,
+                restaurantID: restaurantID,
+                restaurantName: restaurantName
+            )
+            return nil
+        }
+        return await performReorder(items: items, restaurantID: restaurantID)
+    }
+
+    /// Proceeds with the reorder the user confirmed will replace their cart.
+    @discardableResult
+    func confirmPendingReorder() async -> String? {
+        guard let pending = pendingReorder else { return nil }
+        pendingReorder = nil
+        // The deal was tied to the old restaurant's cart; drop it so it can't
+        // be misapplied to the new restaurant's items.
+        appliedDeal = nil
+        return await performReorder(items: pending.items, restaurantID: pending.restaurantID)
+    }
+
+    /// Dismisses the pending reorder, leaving the existing cart untouched.
+    func cancelPendingReorder() {
+        pendingReorder = nil
+    }
+
+    private func performReorder(items: [OrderItem], restaurantID: String) async -> String? {
         guard !isReordering else { return nil }
         isReordering = true
         defer { isReordering = false }

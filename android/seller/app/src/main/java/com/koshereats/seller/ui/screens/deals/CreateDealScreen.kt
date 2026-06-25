@@ -455,15 +455,17 @@ fun CreateDealScreen(
             if (discountType != DiscountType.BOGO) {
                 OutlinedTextField(
                     value = discountValue,
-                    onValueChange = { newVal ->
-                        discountValue = if (discountType == DiscountType.FIXED) {
-                            filterDollarCents(newVal)
+                    onValueChange = onValueChange@{ newVal ->
+                        if (discountType == DiscountType.FIXED) {
+                            discountValue = filterDollarCents(newVal)
                         } else {
                             // Percentage is a whole number (1-100); the deal value is
-                            // stored as an Int, so reject decimals rather than silently
-                            // rounding them at submit time.
+                            // stored as an Int. Reject any input containing a decimal
+                            // separator outright (keeping the prior value) rather than
+                            // stripping it — stripping turned "20.5" into "205" → "100".
+                            if (newVal.any { c -> c == '.' || c == ',' }) return@onValueChange
                             val digits = newVal.filter { c -> c.isDigit() }
-                            if ((digits.toIntOrNull() ?: 0) > 100) "100" else digits
+                            discountValue = if ((digits.toIntOrNull() ?: 0) > 100) "100" else digits
                         }
                     },
                     label = {

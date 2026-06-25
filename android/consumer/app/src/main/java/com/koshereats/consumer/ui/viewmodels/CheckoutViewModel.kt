@@ -436,9 +436,14 @@ class CheckoutViewModel @Inject constructor(
             TipChoice.Custom -> {
                 // Route user-entered tip text through Money.parseCents so a comma
                 // decimal ("12,50") parses as 1250¢ instead of 0. Cap mirrors iOS
-                // CheckoutViewModel.maxTipCents (0..$500 -> 0..50000¢).
+                // CheckoutViewModel.currentTipCents: the backend rejects tip > subtotal
+                // (400), so clamp against the subtotal too — but ONLY once it's known.
+                // While subtotal is 0 (no bundle / local cart not yet synced), clamping
+                // to it would silently zero a typed tip, so fall back to the flat
+                // $500 cap in that window (canPay blocks paying until the bundle loads).
                 val cents = Money.parseCents(state.customTipText) ?: 0
-                cents.coerceIn(0, 50_000)
+                val cap = if (subtotal <= 0) 50_000 else minOf(50_000, subtotal)
+                cents.coerceIn(0, cap)
             }
         }
         return tip.coerceAtLeast(0)
@@ -688,27 +693,22 @@ class CheckoutViewModel @Inject constructor(
                         }
                         return@launch
                     } else if (resp.code() == 409) {
-                        // Duplicate payment_intent_id — order already exists. Fetch the latest
-                        // order and require it to belong to the same restaurant the user just
-                        // tried to check out from; otherwise an unrelated historical order
-                        // could surface to the user.
-                        val existing = fetchMostRecentOrder()
-                        val matches = existing != null && existing.restaurantId == _restaurantId
-                        if (matches) {
-                            if (!isStubIntent) clearInflightPI()
-                            _uiState.update { it.copy(isProcessing = false, placedOrder = existing) }
-                        } else {
-                            // The order exists server-side (409) but we couldn't confirm the
-                            // match. recoverOrder() below (in the failure path) is by-PI scoped,
-                            // so prefer it: clear only once we positively recover it.
+                        // Duplicate payment_intent_id — the order already exists server-side.
+                        // Recover it STRICTLY by PaymentIntent (mirrors iOS): a restaurant-only
+                        // "most recent order" heuristic could surface a stale prior order and
+                        // wrongly clear the in-flight marker for a different, unconfirmed charge.
+                        if (isStubIntent) {
                             _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
-                            if (!isStubIntent) {
-                                val recovered = recoverOrder(paymentIntentId)
-                                if (recovered != null) {
-                                    clearInflightPI()
-                                    _uiState.update { it.copy(errorMessage = null, placedOrder = recovered) }
-                                }
-                            }
+                            return@launch
+                        }
+                        val recovered = recoverOrder(paymentIntentId)
+                        if (recovered != null) {
+                            clearInflightPI()
+                            _uiState.update { it.copy(isProcessing = false, placedOrder = recovered) }
+                        } else {
+                            // Couldn't confirm the order by PI yet — leave the marker set so a
+                            // later reconcile / next launch can still recover it.
+                            _uiState.update { it.copy(isProcessing = false, errorMessage = "Order may have been placed — check My Orders or contact support") }
                         }
                         return@launch
                     } else {
@@ -860,15 +860,6 @@ class CheckoutViewModel @Inject constructor(
             )
         }
         return false
-    }
-
-    private suspend fun fetchMostRecentOrder(): Order? = try {
-        val r = api.getOrders(page = 1)
-        if (r.isSuccessful) r.body()?.firstOrNull() else null
-    } catch (e: Exception) {
-        if (e is CancellationException) throw e
-        Log.e("CheckoutViewModel", "fetchMostRecentOrder failed during 409 recovery", e)
-        null
     }
 
     fun retry() {

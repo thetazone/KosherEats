@@ -90,20 +90,16 @@ struct OrdersListContent: View {
                                                 reorderTask?.cancel()
                                                 let task = Task {
                                                     guard !Task.isCancelled else { return }
-                                                    let error = await cartVM.reorder(
+                                                    let error = await cartVM.requestReorder(
                                                         items: order.items,
-                                                        restaurantID: order.restaurantID
+                                                        restaurantID: order.restaurantID,
+                                                        restaurantName: order.restaurantName
                                                     )
                                                     guard !Task.isCancelled else { return }
-                                                    if error == nil {
-                                                        showReorderToast = true
-                                                    } else {
-                                                        reorderError = error
-                                                    }
-                                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                                    guard !Task.isCancelled else { return }
-                                                    showReorderToast = false
-                                                    reorderError = nil
+                                                    // Awaiting confirmation: the alert will drive the
+                                                    // reorder; don't show the success toast yet.
+                                                    if cartVM.pendingReorder != nil { return }
+                                                    await showReorderResult(error: error)
                                                 }
                                                 reorderTask = task
                                             } : nil
@@ -189,6 +185,7 @@ struct OrdersListContent: View {
                 reorderTask = nil
                 showReorderToast = false
                 reorderError = nil
+                cartVM.cancelPendingReorder()
             }
             .task {
                 await vm.loadOrders()
@@ -203,6 +200,53 @@ struct OrdersListContent: View {
             .navigationDestination(item: $pendingDetailOrderId) { id in
                 OrderDetailView(orderID: id)
             }
+            .alert(
+                cartVM.pendingReorder?.alertTitle ?? "",
+                isPresented: Binding(
+                    get: { cartVM.pendingReorder != nil },
+                    set: { presented in
+                        // The system clears the binding when either alert button
+                        // is tapped; if it went false without us consuming the
+                        // pending reorder (e.g. a swipe-to-dismiss), treat it as a
+                        // cancel so the existing cart is left untouched.
+                        if !presented, cartVM.pendingReorder != nil {
+                            cartVM.cancelPendingReorder()
+                        }
+                    }
+                ),
+                presenting: cartVM.pendingReorder
+            ) { _ in
+                Button(String(localized: "Start New Cart"), role: .destructive) {
+                    reorderTask?.cancel()
+                    let task = Task {
+                        guard !Task.isCancelled else { return }
+                        let error = await cartVM.confirmPendingReorder()
+                        guard !Task.isCancelled else { return }
+                        await showReorderResult(error: error)
+                    }
+                    reorderTask = task
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    cartVM.cancelPendingReorder()
+                }
+            } message: { pending in
+                Text(pending.alertMessage)
+            }
+    }
+
+    /// Surfaces the outcome of a reorder: a success toast or an error banner,
+    /// auto-dismissed after a short delay. Shared by the immediate reorder path
+    /// and the restaurant-switch confirmation path.
+    private func showReorderResult(error: String?) async {
+        if error == nil {
+            showReorderToast = true
+        } else {
+            reorderError = error
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        guard !Task.isCancelled else { return }
+        showReorderToast = false
+        reorderError = nil
     }
 }
 

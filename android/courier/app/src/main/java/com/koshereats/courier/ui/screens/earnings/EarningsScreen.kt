@@ -56,7 +56,17 @@ import javax.inject.Inject
 
 sealed class EarningsUiState {
     object Loading : EarningsUiState()
-    data class Success(val history: List<HistoryOrder>) : EarningsUiState()
+    /**
+     * @param history the most-recent deliveries (backend caps this list, so it
+     *   MUST NOT be used to derive lifetime/all-time aggregates).
+     * @param lifetimeDeliveries the courier's true all-time delivery count,
+     *   sourced from the profile (`total_deliveries`), which the backend bumps
+     *   on every delivery and is therefore not capped. Null if unavailable.
+     */
+    data class Success(
+        val history: List<HistoryOrder>,
+        val lifetimeDeliveries: Int?,
+    ) : EarningsUiState()
     object Error : EarningsUiState()
 }
 
@@ -78,9 +88,17 @@ class EarningsViewModel @Inject constructor(
             _uiState.value = EarningsUiState.Loading
         }
         val result = repo.listHistory()
+        // The history list is capped by the backend, so pull the uncapped
+        // lifetime delivery count from the profile separately. A profile fetch
+        // failure is non-fatal — we just omit the all-time count rather than
+        // showing a wrong (capped) number.
+        val lifetimeDeliveries = repo.profile().getOrNull()?.totalDeliveries
         _isRefreshing.value = false
         if (result.isSuccess) {
-            _uiState.value = EarningsUiState.Success(result.getOrDefault(emptyList()))
+            _uiState.value = EarningsUiState.Success(
+                history = result.getOrDefault(emptyList()),
+                lifetimeDeliveries = lifetimeDeliveries,
+            )
         } else if (!wasSuccess) {
             _uiState.value = EarningsUiState.Error
         }
@@ -116,9 +134,13 @@ fun EarningsScreen(vm: EarningsViewModel = hiltViewModel()) {
             val weekItems = history.filter {
                 isoLocalDate(it.deliveredAt ?: "")?.let { d -> !d.isBefore(weekStart) } == true
             }
+            // Today/week are safe to derive from the (capped) recent list — a
+            // courier won't exceed the backend's history cap within a single
+            // day or ISO week. All-time aggregates are NOT computed here: the
+            // history list is capped, so summing it would silently undercount.
             val todayTotal = todayItems.sumOf { it.courierPayout }
             val weekTotal = weekItems.sumOf { it.courierPayout }
-            val lifetimeTotal = history.sumOf { it.courierPayout }
+            val lifetimeDeliveries = state.lifetimeDeliveries
 
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -162,12 +184,13 @@ fun EarningsScreen(vm: EarningsViewModel = hiltViewModel()) {
                                 Text("${weekItems.size} deliveries", color = TextSecondary, fontSize = 11.sp)
                             }
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("All time: ${lifetimeTotal.formatPrice()}", color = TextMuted, fontSize = 12.sp)
-                            Text("${history.size} deliveries total", color = TextMuted, fontSize = 12.sp)
+                        if (lifetimeDeliveries != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                Text("$lifetimeDeliveries deliveries total", color = TextMuted, fontSize = 12.sp)
+                            }
                         }
                     }
 

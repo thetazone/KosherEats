@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +86,10 @@ fun MenuItemSheet(
         selections[groupId]?.contains(optionId) == true
 
     fun toggle(group: ModifierGroup, optionId: String) {
+        // Never let a paused (is_available=false) option be selected — the backend
+        // won't honor it and would charge a stale priceDelta (mirrors iOS
+        // `guard mod.isAvailable else { return }`).
+        if (group.modifiers.firstOrNull { it.id == optionId }?.isAvailable == false) return
         val current = selections[group.id] ?: emptySet()
         selections[group.id] = if (current.contains(optionId)) {
             current - optionId
@@ -205,12 +210,15 @@ fun MenuItemSheet(
 
                 for (option in group.modifiers) {
                     val selected = isSelected(group.id, option.id)
+                    // Paused options can't be selected (mirrors iOS): disable the tap and
+                    // dim the row so the user can't add a stale-priced modifier.
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (selected) Orange.copy(alpha = 0.1f) else Color.Transparent)
-                            .clickable { toggle(group, option.id) }
+                            .alpha(if (option.isAvailable) 1f else 0.5f)
+                            .clickable(enabled = option.isAvailable) { toggle(group, option.id) }
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -242,7 +250,13 @@ fun MenuItemSheet(
                             color = TextWhite,
                             modifier = Modifier.weight(1f),
                         )
-                        if (option.priceDelta != 0) {
+                        if (!option.isAvailable) {
+                            Text(
+                                text = "Unavailable",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ErrorRed,
+                            )
+                        } else if (option.priceDelta != 0) {
                             Text(
                                 text = (if (option.priceDelta > 0) "+" else "") + option.priceDelta.formatPrice(),
                                 style = MaterialTheme.typography.bodySmall,
