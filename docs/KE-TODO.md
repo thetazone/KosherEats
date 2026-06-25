@@ -5,6 +5,16 @@ Last updated: 2026-06-25.
 
 ---
 
+## ✅ Post-backlog review pass — DONE & DEPLOYED (2026-06-25, commit `86b128fd`)
+Fresh adversarial review (4 lenses: regression of the recent changes + perf + security + concurrency, each finding skeptic-verified). 5 confirmed, all fixed; build + vet + full suite green; deployed (migrations 049 + 050 verified live on prod, `/health` 200).
+- [x] **Perf — GetMenu N+1** (consumer restaurant-detail, hot path): was 1+N item queries (one per category) → one batched query bucketed by category_id. Added a test asserting correct item→category bucketing.
+- [x] **Perf — GetSellerMenu N+1**: same per-category fix, seller side.
+- [x] **Perf — GetDashboardStats lifetime scan**: each 30s poll full-scanned the restaurant's entire order history (non-sargable `created_at AT TIME ZONE ::date` filters). Rewritten to a sargable `created_at >= NY-midnight-today` range + a separate status-indexed active-orders count; new composite index `idx_orders_restaurant_created` (migration 049).
+- [x] **Perf — ListNearbyDeals unbounded**: added `LIMIT 100`.
+- [x] **Concurrency — courier busy-guard race**: the NOT EXISTS in the claim CAS / auto-dispatch wasn't race-safe (two concurrent claims by one courier could double-book under READ COMMITTED). Added partial-unique index `uq_courier_one_active_order` (migration 050) as the race-safe backstop; ClaimOrder + tryAutoAssign catch 23505 → "busy" / fall through. Verified prod had 0 existing duplicates before adding the unique index. Added a DB-level constraint test.
+
+---
+
 ## ✅ Medium/low backlog pass — DONE (2026-06-25)
 Re-triaged the cycle 1–3 med/low tail (153 raw → 132 real); fixed the 16 worth-fixing, intentionally skipped the noise (per Salto: "skip the med/low noise for now").
 - [x] **Backend mediums (5)** — committed `da3e8324`, pushed, **DEPLOYED** (`fly deploy`, clean boot, `/health` 200):
