@@ -1,3 +1,4 @@
+import AudioToolbox
 import Combine
 import Foundation
 import SwiftUI
@@ -33,6 +34,39 @@ class DashboardViewModel: ObservableObject {
     /// network returned.
     private var statsRestaurantId: String?
     private var hasLoadedStatsOnce = false
+
+    /// NotificationCenter observer that reloads the dashboard the moment an
+    /// order-status push arrives — the Dashboard is the default tab, so without
+    /// this it sat up to 30s stale and never chimed on a new order even though
+    /// the Orders tab did. Mirrors OrdersViewModel.pushObserver.
+    private var pushObserver: NSObjectProtocol?
+
+    /// Pending order IDs already seen, so a poll/push reload only chimes for
+    /// genuinely-new tickets rather than every reload. Mirrors
+    /// OrdersViewModel.knownPendingIDs.
+    private var knownPendingIDs: Set<String> = []
+    /// Seeded false on first load so the initial fetch populates
+    /// `knownPendingIDs` without firing the chime for every already-present
+    /// pending order.
+    private var hasSeededPendingIDs = false
+    /// Debounce timestamp so multiple pending orders landing together don't
+    /// stack overlapping pings. Mirrors OrdersViewModel.lastAlertTime.
+    private var lastAlertTime: Date = .distantPast
+
+    init() {
+        pushObserver = NotificationCenter.default.addObserver(
+            forName: .orderStatusUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // "Some order changed" → reload the whole dashboard; the
+            // fetchActiveOrders path detects any brand-new pending ticket and
+            // chimes. This closes the up-to-30s gap on the default tab.
+            Task { @MainActor [weak self] in
+                await self?.load()
+            }
+        }
+    }
 
     func load() async {
         loadGeneration &+= 1
@@ -84,6 +118,10 @@ class DashboardViewModel: ObservableObject {
                 .removeDuplicates()
                 .sink { [weak self] _ in
                     guard let self else { return }
+                    // Re-seed so switching restaurants doesn't chime for the
+                    // newly-selected restaurant's already-pending tickets.
+                    self.knownPendingIDs = []
+                    self.hasSeededPendingIDs = false
                     Task { @MainActor [weak self] in
                         await self?.load()
                     }
@@ -99,6 +137,25 @@ class DashboardViewModel: ObservableObject {
     deinit {
         refreshTimer?.invalidate()
         restaurantSubscription?.cancel()
+        if let pushObserver { NotificationCenter.default.removeObserver(pushObserver) }
+    }
+
+    /// Triple-ping on a brand-new ticket so the seller hears it on the default
+    /// (Dashboard) tab, not just on Orders. Debounced to 2s so several pending
+    /// orders in one reload don't stack overlapping pings. Mirrors
+    /// OrdersViewModel.playNewOrderAlert.
+    private func playNewOrderAlert() {
+        let now = Date()
+        guard now.timeIntervalSince(lastAlertTime) >= 2.0 else { return }
+        lastAlertTime = now
+        AudioServicesPlaySystemSound(1007)
+        Haptics.notify(.warning)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            AudioServicesPlaySystemSound(1007)
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            AudioServicesPlaySystemSound(1007)
+        }
     }
 
     @Published var isTogglingOpen = false
@@ -123,6 +180,18 @@ class DashboardViewModel: ObservableObject {
         do {
             let orders = try await APIService.shared.getOrders()
             guard generation == loadGeneration else { return }
+            // Chime on a brand-new pending ticket so the seller hears it on the
+            // default tab. Seed silently on the first load so already-present
+            // orders don't ping. Mirrors the OrdersViewModel poll loop.
+            let newPending = Set(orders.filter { $0.status == .pending }.map(\.id))
+            if hasSeededPendingIDs {
+                if !newPending.subtracting(knownPendingIDs).isEmpty {
+                    playNewOrderAlert()
+                }
+            } else {
+                hasSeededPendingIDs = true
+            }
+            knownPendingIDs = newPending
             let filtered = orders.filter { $0.status.isActive }
                 .sorted { $0.createdAt > $1.createdAt }
             self.activeOrders = filtered

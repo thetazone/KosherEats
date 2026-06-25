@@ -47,6 +47,7 @@ import com.koshereats.consumer.ui.theme.TextSecondary
 import com.koshereats.consumer.ui.theme.TextWhite
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
@@ -158,7 +159,12 @@ private fun ScheduledTimePickerDialog(
     var pickedDate by remember { mutableStateOf<java.time.LocalDate?>(null) }
 
     if (pickedDate == null) {
-        val initialMillis = initial.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        // Material3's DatePicker works in UTC start-of-day millis and we decode the
+        // selection back in UTC below. Seed it the same way (matching SchedulePickerSheet)
+        // so an evening user's pre-selected day matches their local `initial` date instead
+        // of slipping a day under the UTC round-trip.
+        val initialMillis =
+            initial.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val dateState = rememberDatePickerState(
             initialSelectedDateMillis = initialMillis,
             // Disallow past days. Anything "today or later" passes; we

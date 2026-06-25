@@ -39,6 +39,15 @@ class LocationForegroundService : Service() {
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Check permission before startForeground: on Android 14+, calling startForeground()
+        // with FOREGROUND_SERVICE_TYPE_LOCATION without ACCESS_FINE_LOCATION throws SecurityException.
+        // This guard must run before BOTH the delivery-active and normal startForeground calls.
+        if (!locationTracker.hasPermission()) {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(PERMISSION_ERROR_NOTIFICATION_ID, buildPermissionErrorNotification())
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (intent?.getBooleanExtra(EXTRA_DELIVERY_ACTIVE, false) == true) {
             val notification = buildNotification(deliveryActive = true)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -47,14 +56,6 @@ class LocationForegroundService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
             return START_STICKY
-        }
-        // Check permission before startForeground: on Android 14+, calling startForeground()
-        // with FOREGROUND_SERVICE_TYPE_LOCATION without ACCESS_FINE_LOCATION throws SecurityException.
-        if (!locationTracker.hasPermission()) {
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(PERMISSION_ERROR_NOTIFICATION_ID, buildPermissionErrorNotification())
-            stopSelf()
-            return START_NOT_STICKY
         }
         val notification = buildNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

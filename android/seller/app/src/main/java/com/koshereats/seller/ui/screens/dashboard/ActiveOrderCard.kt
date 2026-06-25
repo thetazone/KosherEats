@@ -133,7 +133,12 @@ fun ActiveOrderCard(
                     }
                 }
                 if (order.status == OrderStatus.PENDING) {
-                    PendingCountdown(createdAt = order.createdAt)
+                    // Anchor on the pending-entry time, not placement: a
+                    // scheduled order promoted to pending re-stamps updated_at,
+                    // so created_at would show "Auto-rejecting…" immediately.
+                    // For normally-created orders created_at == updated_at, so
+                    // this is a no-op there.
+                    PendingCountdown(anchor = order.updatedAt.ifBlank { order.createdAt })
                 } else {
                     val mins = minutesAgo
                     if (mins != null) {
@@ -199,13 +204,13 @@ fun ActiveOrderCard(
  * (scheduler/dispatcher.go): after 10 minutes in 'pending' the order is
  * auto-rejected and the customer refunded, so the seller needs to see how close
  * they are. Flips to the error color in the final 2 minutes. Renders nothing if
- * createdAt can't be parsed, matching the iOS nil-date guard.
+ * [anchor] can't be parsed, matching the iOS nil-date guard.
  */
 @Composable
-private fun PendingCountdown(createdAt: String) {
-    val placedAt = remember(createdAt) {
-        runCatching { Instant.parse(createdAt) }
-            .recoverCatching { java.time.OffsetDateTime.parse(createdAt).toInstant() }
+private fun PendingCountdown(anchor: String) {
+    val placedAt = remember(anchor) {
+        runCatching { Instant.parse(anchor) }
+            .recoverCatching { java.time.OffsetDateTime.parse(anchor).toInstant() }
             .getOrNull()
     } ?: return
 

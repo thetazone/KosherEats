@@ -629,6 +629,45 @@ struct Order: Codable, Identifiable {
         deliveryMode = (try c.decodeIfPresent(String.self, forKey: .deliveryMode)) ?? "platform"
     }
 
+    /// Builds an order from a freshly-fetched list/poll copy while preserving
+    /// the richer detail-only fields the seller is currently viewing. The
+    /// seller `/seller/orders` list query omits `courier`, `customer_name`, and
+    /// `customer_phone` (only `/seller/orders/{id}` hydrates them), so letting a
+    /// list copy overwrite a detail copy wholesale would blank the courier card
+    /// and customer block the seller had open. We take the fresh copy's status
+    /// and money fields (those genuinely change), but fall back to the old copy
+    /// for any detail-only field the fresh copy is missing.
+    init(merging fresh: Order, preservingFrom old: Order) {
+        id = fresh.id
+        userId = fresh.userId
+        restaurantId = fresh.restaurantId
+        restaurantName = fresh.restaurantName
+        status = fresh.status
+        items = fresh.items.isEmpty ? old.items : fresh.items
+        subtotal = fresh.subtotal
+        deliveryFee = fresh.deliveryFee
+        serviceFee = fresh.serviceFee
+        tax = fresh.tax
+        discount = fresh.discount
+        total = fresh.total
+        deliveryAddress = fresh.deliveryAddress
+        estDeliveryTime = fresh.estDeliveryTime ?? old.estDeliveryTime
+        createdAt = fresh.createdAt
+        updatedAt = fresh.updatedAt
+        // Detail-only fields the list endpoint doesn't return — keep the richer
+        // copy when the fresh one lacks them.
+        courier = fresh.courier ?? old.courier
+        customerName = fresh.customerName ?? old.customerName
+        customerPhone = fresh.customerPhone ?? old.customerPhone
+        courierTip = fresh.courierTip ?? old.courierTip
+        courierPayout = fresh.courierPayout ?? old.courierPayout
+        fulfillmentType = fresh.fulfillmentType
+        // Detail-only too: the list endpoint omits external_delivery_id, so keep
+        // the open detail copy's value when the fresh list copy lacks it.
+        externalDeliveryId = fresh.externalDeliveryId ?? old.externalDeliveryId
+        deliveryMode = fresh.deliveryMode
+    }
+
     /// Dollars display for the total. Every UI using $%.2f on order.total
     /// should use this instead.
     var totalFormatted: String { CurrencyFormat.string(fromCents: total) }
@@ -669,6 +708,17 @@ struct Order: Codable, Identifiable {
 
     var createdAtDate: Date? {
         Self.iso8601Frac.date(from: createdAt) ?? Self.iso8601Plain.date(from: createdAt)
+    }
+
+    /// Parsed `updatedAt` (the last status-transition timestamp), or `nil` if it
+    /// doesn't match a supported format. Same ISO8601 frac/plain fallback chain
+    /// as `createdAtDate`. The "Waiting m:ss" timers key off this rather than
+    /// `createdAt` so a scheduled order promoted to pending hours after it was
+    /// placed shows time-in-current-state — matching the backend's auto-reject
+    /// clock, which also runs from the pending transition — instead of a bogus
+    /// multi-hour wait that instantly flags overdue.
+    var updatedAtDate: Date? {
+        Self.iso8601Frac.date(from: updatedAt) ?? Self.iso8601Plain.date(from: updatedAt)
     }
 
     private static let displayFormatter: DateFormatter = {

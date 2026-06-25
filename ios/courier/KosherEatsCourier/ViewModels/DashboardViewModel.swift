@@ -61,17 +61,32 @@ final class DashboardViewModel: ObservableObject {
                 errorMessage = userFacingMessage(for: error)
             }
         } else {
+            // `active` is populated from the last refresh. If a delivery is in
+            // progress, going offline must NOT tear down location reporting —
+            // the consumer's live-tracking pin is fed by our GPS heartbeats, and
+            // killing them mid-delivery freezes their map. Mirror the Android
+            // logic: flip isOnline off but keep the heartbeat/poll loop alive,
+            // and only stop reporting once no active delivery remains.
+            let stillDelivering = !active.isEmpty
             let loc = location.currentLocation
             do {
                 try await api.setOnline(false,
                                         lat: loc?.coordinate.latitude ?? 0,
                                         lng: loc?.coordinate.longitude ?? 0)
                 isOnline = false
-                locationManager = nil
-                location.hasActiveDelivery = false
-                location.stopHeartbeat()
-                stopPolling()
+                if stillDelivering {
+                    // Keep heartbeat + polling running so the consumer's map and
+                    // order-status updates stay live; the poll loop tears things
+                    // down once the delivery is confirmed complete (see refresh()).
+                    location.hasActiveDelivery = true
+                } else {
+                    locationManager = nil
+                    location.hasActiveDelivery = false
+                    location.stopHeartbeat()
+                    stopPolling()
+                }
                 available = []
+                connectionLost = false
             } catch {
                 errorMessage = userFacingMessage(for: error)
             }
@@ -120,6 +135,18 @@ final class DashboardViewModel: ObservableObject {
         } else {
             consecutivePollFailures = 0
             connectionLost = false
+        }
+
+        // The courier may have gone offline mid-delivery; we kept the heartbeat
+        // and poll loop alive to feed the consumer's tracking map. Tear them
+        // down once the active delivery is confirmed complete so we don't leak
+        // GPS reporting after the courier is fully offline.
+        if !isOnline && active.isEmpty {
+            locationManager?.hasActiveDelivery = false
+            locationManager?.stopHeartbeat()
+            locationManager = nil
+            stopPolling()
+            consecutivePollFailures = 0
         }
     }
 

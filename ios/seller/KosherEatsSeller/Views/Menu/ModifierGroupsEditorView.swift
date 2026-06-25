@@ -183,6 +183,12 @@ struct ModifierGroupEditorView: View {
     @State private var maxSelections: Int = 1
     @State private var sortOrder: Int = 0
     @State private var options: [Modifier] = []
+    /// Per-option price drafts, keyed by the option's (client or server) id.
+    /// The price field edits this raw string so in-progress input like "5.5"
+    /// isn't re-rounded/re-formatted on every keystroke (which made
+    /// non-whole-dollar amounts impossible to type). Converted to cents only at
+    /// save time, exactly like MenuItemFormView's `priceText`.
+    @State private var priceTexts: [String: String] = [:]
     @State private var saving = false
     @State private var deleting = false
     @State private var errorMessage: String?
@@ -235,7 +241,7 @@ struct ModifierGroupEditorView: View {
                                 optionRow(for: $opt)
                             }
                             Button {
-                                options.append(Modifier(
+                                let newOption = Modifier(
                                     id: Self.newOptionIDPrefix + UUID().uuidString,
                                     groupId: existing?.id ?? "",
                                     name: "",
@@ -243,7 +249,9 @@ struct ModifierGroupEditorView: View {
                                     isDefault: false,
                                     isAvailable: true,
                                     sortOrder: options.count
-                                ))
+                                )
+                                options.append(newOption)
+                                priceTexts[newOption.id] = ""
                             } label: {
                                 Label("Add Option", systemImage: "plus.circle")
                                     .foregroundColor(.kePrimary)
@@ -309,6 +317,13 @@ struct ModifierGroupEditorView: View {
         maxSelections = g.maxSelections
         sortOrder = g.sortOrder
         options = g.modifiers
+        // Seed each option's price draft from its cents value, formatted like
+        // MenuItemFormView's price field.
+        priceTexts = Dictionary(
+            uniqueKeysWithValues: g.modifiers.map {
+                ($0.id, String(format: "%.2f", Double($0.priceDelta) / 100))
+            }
+        )
     }
 
     private func optionRow(for binding: Binding<Modifier>) -> some View {
@@ -323,18 +338,35 @@ struct ModifierGroupEditorView: View {
                 Text("$")
                     .foregroundColor(.keTextMuted)
                     .font(.caption)
+                // Edits a raw draft string (not the parsed cents) so in-progress
+                // input like "5.5" isn't re-rounded on every keystroke. The
+                // draft is converted to cents only at save time. Same
+                // comma→"." / single-decimal filter as MenuItemFormView.
                 TextField("0.00", text: Binding(
-                    get: { String(format: "%.2f", Double(opt.priceDelta) / 100) },
-                    set: { newVal in
-                        let cents = max(0, CurrencyFormat.parseCents(newVal) ?? 0)
-                        binding.wrappedValue.priceDelta = cents
-                    }
+                    get: { priceTexts[opt.id] ?? "" },
+                    set: { priceTexts[opt.id] = $0 }
                 ))
                 .keyboardType(.decimalPad)
                 .foregroundColor(.keTextPrimary)
                 .frame(width: 60)
                 .multilineTextAlignment(.trailing)
                 .accessibilityLabel("Price adjustment in dollars")
+                .onChange(of: priceTexts[opt.id] ?? "") { _, newValue in
+                    var filtered = newValue
+                        .replacingOccurrences(of: ",", with: ".")
+                        .filter { $0.isNumber || $0 == "." }
+                    if filtered.filter({ $0 == "." }).count > 1 {
+                        var seenDot = false
+                        filtered = String(filtered.filter { ch in
+                            if ch == "." {
+                                if seenDot { return false }
+                                seenDot = true
+                            }
+                            return true
+                        })
+                    }
+                    if filtered != newValue { priceTexts[opt.id] = filtered }
+                }
             }
 
             Button {
@@ -342,6 +374,7 @@ struct ModifierGroupEditorView: View {
                 // id for unsaved options), so matching by id removes exactly
                 // the tapped row.
                 options.removeAll { $0.id == opt.id }
+                priceTexts.removeValue(forKey: opt.id)
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundColor(.keError)
@@ -395,10 +428,12 @@ struct ModifierGroupEditorView: View {
                 // id) so the backend inserts them rather than failing to update
                 // a non-existent row.
                 let isNew = opt.id.isEmpty || opt.id.hasPrefix(Self.newOptionIDPrefix)
+                // Convert the price draft to cents here (not on each keystroke).
+                let priceDelta = max(0, CurrencyFormat.parseCents(priceTexts[opt.id] ?? "") ?? 0)
                 return ModifierOptionRequest(
                     id: isNew ? nil : opt.id,
                     name: opt.name,
-                    priceDelta: opt.priceDelta,
+                    priceDelta: priceDelta,
                     isDefault: opt.isDefault,
                     isAvailable: opt.isAvailable,
                     sortOrder: idx

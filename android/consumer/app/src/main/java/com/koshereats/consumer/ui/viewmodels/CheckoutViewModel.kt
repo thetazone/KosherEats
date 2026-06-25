@@ -528,6 +528,28 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Cart is empty or invalid. Please add items and try again.") }
             return
         }
+        // Validate the scheduled time BEFORE charging — mirror iOS scheduledTimeIsValid().
+        // A slot that lapsed while the user lingered would otherwise be charged and then
+        // rejected server-side, leaving the customer charged-but-no-order.
+        if (_uiState.value.scheduledFor != null && _uiState.value.scheduledFor!!.isBefore(LocalDateTime.now())) {
+            _uiState.update { it.copy(errorMessage = "Selected time has passed. Please pick a new time.", scheduledFor = null) }
+            return
+        }
+        // Validate the delivery address BEFORE charging. A non-geocoded address would be
+        // rejected when the order is created, but only AFTER the card was charged — so
+        // refuse to charge and prompt the user to re-add it first.
+        val state = _uiState.value
+        if (state.fulfillmentType != "pickup") {
+            val address = state.selectedAddress
+            if (address == null) {
+                _uiState.update { it.copy(errorMessage = "Select a delivery address") }
+                return
+            }
+            if (!address.isGeocoded) {
+                _uiState.update { it.copy(errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
+                return
+            }
+        }
         // Lock in the bundle the user is paying and stop any in-flight/debounced reprice so
         // refreshBundle() can't swap _uiState.value.bundle while the PaymentSheet is open.
         refreshBundleJob?.cancel()
@@ -610,10 +632,9 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Select a delivery address") }
             return
         }
-        if (!isPickup && address != null && !address.isGeocoded) {
-            _uiState.update { it.copy(isProcessing = false, errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
-            return
-        }
+        // NOTE: the non-geocoded-address gate now runs in onPayTapped() BEFORE the charge
+        // (see the isGeocoded check there) so we never charge a card for an address the
+        // order endpoint would reject — keeping it here would only fire post-charge.
         // Use the bundle the user actually paid for. The server cross-checks that the
         // client-sent tip matches the amount baked into the paid intent (VerifyPaymentSucceeded),
         // so sending _uiState.value.bundle.tip after a mid-payment reprice would fail verification.

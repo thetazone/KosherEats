@@ -93,6 +93,7 @@ import com.koshereats.consumer.ui.components.MenuItemShimmer
 import com.koshereats.consumer.ui.components.ShimmerBrush
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.CartViewModel
+import com.koshereats.consumer.ui.viewmodels.MenuLoadState
 import com.koshereats.consumer.ui.viewmodels.RestaurantViewModel
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -422,33 +423,29 @@ fun RestaurantDetailScreen(
                 }
 
                 if (uiState.menuCategories.isEmpty()) {
-                    when {
+                    when (uiState.menuState) {
                         // Menu fetch still in flight (restaurant resolved first) — show
                         // shimmer rows rather than flashing the "no menu items" message.
-                        uiState.isLoading -> {
+                        MenuLoadState.Loading -> {
                             items(4, key = { "menu_shimmer_$it" }) {
                                 MenuItemShimmer()
                             }
                         }
                         // Menu fetch failed — distinguish from genuine emptiness and offer retry.
-                        uiState.error != null -> {
+                        MenuLoadState.Error -> {
                             item(key = "menu_error") {
                                 Column(
                                     modifier = Modifier.fillMaxWidth().padding(32.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Text(
-                                        text = "Couldn't load the menu.",
+                                        text = uiState.menuError ?: "Couldn't load the menu.",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = TextSecondary,
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                     Button(
-                                        // TODO(companion): RestaurantViewModel needs a real
-                                        // retryMenu()/reload() that re-fetches the menu. Until
-                                        // then we clear the stale error so the screen re-evaluates
-                                        // instead of permanently showing the failure.
-                                        onClick = { viewModel.clearError() },
+                                        onClick = { viewModel.retryMenu() },
                                         colors = ButtonDefaults.buttonColors(containerColor = Orange),
                                         shape = RoundedCornerShape(12.dp),
                                     ) {
@@ -457,7 +454,8 @@ fun RestaurantDetailScreen(
                                 }
                             }
                         }
-                        else -> {
+                        // Menu loaded successfully but the restaurant genuinely has no items.
+                        MenuLoadState.Loaded -> {
                             item(key = "empty_menu") {
                                 Column(
                                     modifier = Modifier.fillMaxWidth().padding(32.dp),

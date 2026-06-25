@@ -453,7 +453,20 @@ class OrdersViewModel: ObservableObject {
                 .filter { inFlightOrderIDs.contains($0.id) }
                 .map { ($0.id, $0) }
         )
-        var merged = fresh.map { inFlightOrders[$0.id] ?? $0 }
+        // Existing in-memory copies, keyed by id, so we can carry forward the
+        // detail-only fields (courier, customer name/phone) the `/seller/orders`
+        // list query strips — otherwise a poll/dashboard merge would blank the
+        // courier card on the order the seller is viewing.
+        let existingByID = Dictionary(uniqueKeysWithValues: orders.map { ($0.id, $0) })
+        var merged = fresh.map { freshOrder -> Order in
+            // An in-flight optimistic copy always wins — its status mutation is
+            // newer than this poll's pre-mutation server state.
+            if let inFlight = inFlightOrders[freshOrder.id] { return inFlight }
+            if let existing = existingByID[freshOrder.id] {
+                return Order(merging: freshOrder, preservingFrom: existing)
+            }
+            return freshOrder
+        }
         let freshIDs = Set(fresh.map(\.id))
         merged.append(contentsOf: inFlightOrders.values.filter { !freshIDs.contains($0.id) })
         orders = merged

@@ -81,11 +81,14 @@ struct ActiveOrderCard: View {
 
             // Action hint — live countdown for pending orders so the seller
             // sees how close they are to the auto-reject deadline.
-            // Guard: only render the countdown when createdAtDate is non-nil;
-            // a nil date (e.g. malformed server response) skips the timer
-            // rather than crashing.
+            // Keyed off updatedAt (the pending-transition timestamp), not
+            // createdAt: a scheduled order promoted to pending hours later must
+            // count from the promotion — matching the backend's auto-reject
+            // clock — not from when it was placed, which would show it already
+            // expired. Falls back to createdAt, then skips the timer entirely if
+            // both dates are nil (malformed response) rather than crashing.
             if order.status == .pending {
-                if let placedAt = order.createdAtDate {
+                if let placedAt = order.updatedAtDate ?? order.createdAtDate {
                     PendingCountdown(placedAt: placedAt)
                         .padding(.top, 4)
                 }

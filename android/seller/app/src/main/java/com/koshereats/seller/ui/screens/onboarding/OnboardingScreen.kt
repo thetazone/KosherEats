@@ -919,7 +919,7 @@ private fun KosherStep(
             onExpandedChange = { certExpanded = it },
         ) {
             OutlinedTextField(
-                value = certification.name,
+                value = certification.displayName,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Kosher Certification") },
@@ -935,15 +935,19 @@ private fun KosherStep(
                 onDismissRequest = { certExpanded = false },
                 modifier = Modifier.background(SurfaceDark),
             ) {
-                KosherCertification.entries.forEach { cert ->
-                    DropdownMenuItem(
-                        text = { Text(cert.name, color = TextWhite) },
-                        onClick = {
-                            certification = cert
-                            certExpanded = false
-                        },
-                    )
-                }
+                // Hide the UNKNOWN sentinel and show human labels, matching
+                // RestaurantSettingsScreen and iOS.
+                KosherCertification.entries
+                    .filter { it != KosherCertification.UNKNOWN }
+                    .forEach { cert ->
+                        DropdownMenuItem(
+                            text = { Text(cert.displayName, color = TextWhite) },
+                            onClick = {
+                                certification = cert
+                                certExpanded = false
+                            },
+                        )
+                    }
             }
         }
 

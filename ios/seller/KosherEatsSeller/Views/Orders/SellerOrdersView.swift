@@ -327,13 +327,18 @@ struct OrderRowView: View {
     /// which tickets are getting stale. Flips red once past 15 min so the
     /// pain point is immediately obvious. Finished orders just show the
     /// usual date string.
+    ///
+    /// Keyed off `updatedAt` (the last status-transition timestamp), not
+    /// `createdAt`: a scheduled order promoted to pending hours after it was
+    /// placed must show time-in-current-state, otherwise it would render a
+    /// bogus multi-hour wait and instantly flag overdue.
     @ViewBuilder
     private var timestampLine: some View {
         let showCounter = order.status == .pending
             || order.status == .accepted
             || order.status == .preparing
             || order.status == .ready
-        if showCounter, let created = order.createdAtDate {
+        if showCounter, let created = order.updatedAtDate ?? order.createdAtDate {
             TimelineView(.periodic(from: .now, by: 10)) { context in
                 let elapsed = max(0, Int(context.date.timeIntervalSince(created)))
                 let mins = elapsed / 60
