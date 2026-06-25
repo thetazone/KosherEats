@@ -190,7 +190,6 @@ struct Address: Codable, Identifiable {
 
 struct Restaurant: Codable, Identifiable {
     let id: String
-    var ownerID: String
     var name: String
     var description: String
     var imageURL: String
@@ -240,7 +239,6 @@ struct Restaurant: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, phone, email, street, city, state, lat, lng, rating
-        case ownerID = "owner_id"
         case imageURL = "image_url"
         case coverImageURL = "cover_image_url"
         case logoURL = "logo_url"
@@ -268,7 +266,6 @@ extension Restaurant {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
-        ownerID = try c.decode(String.self, forKey: .ownerID)
         name = try c.decode(String.self, forKey: .name)
         description = try c.decode(String.self, forKey: .description)
         imageURL = try c.decode(String.self, forKey: .imageURL)
