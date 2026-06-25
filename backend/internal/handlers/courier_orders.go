@@ -402,13 +402,21 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("failed to fetch courier stripe_connect_id for payout enqueue",
 			slog.String("courier_id", user["user_id"]), slog.String("error", err.Error()))
 	}
-	if connectID != "" && payout > 0 {
+	if payout > 0 {
+		// Queue the payout even if the courier hasn't onboarded to Stripe yet —
+		// store a NULL connect id rather than dropping the payout. The sweep skips
+		// NULL-connect rows; the account.updated webhook backfills the id when the
+		// courier finishes onboarding, and the sweep then pays the backlog.
+		var connectArg interface{}
+		if connectID != "" {
+			connectArg = connectID
+		}
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO courier_payout_queue
 			    (order_id, courier_id, stripe_connect_id, amount_cents)
 			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (order_id) DO NOTHING`,
-			orderID, user["user_id"], connectID, payout); err != nil {
+			orderID, user["user_id"], connectArg, payout); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to enqueue payout")
 			return
 		}

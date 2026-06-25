@@ -383,6 +383,24 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		if ready {
+			// Backfill payouts queued before this courier onboarded: stamp their
+			// connect id so the next sweep can finally pay the backlog (DeliverOrder
+			// queues with a NULL connect id when the courier isn't onboarded yet).
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE courier_payout_queue q
+				   SET stripe_connect_id = cp.stripe_connect_id, updated_at = NOW()
+				  FROM courier_profiles cp
+				 WHERE q.courier_id = cp.user_id
+				   AND cp.stripe_connect_id = $1
+				   AND q.stripe_connect_id IS NULL
+				   AND q.status = 'pending'`, account.ID); err != nil {
+				slog.Error("StripeWebhook: failed to backfill connect id on queued payouts",
+					slog.String("connect_id", account.ID), slog.String("error", err.Error()))
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
 
 	case "charge.dispute.created":
 		// A customer (or their bank) is disputing a charge. This is money at

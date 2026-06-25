@@ -783,6 +783,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 			SELECT id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count
 			  FROM courier_payout_queue
 			 WHERE status = 'pending'
+			   AND stripe_connect_id IS NOT NULL
 			   AND next_retry_at <= NOW()
 			 ORDER BY next_retry_at ASC
 			 LIMIT $1
@@ -859,6 +860,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		   SELECT id
 		     FROM courier_payout_queue
 		    WHERE status = 'pending'
+		      AND stripe_connect_id IS NOT NULL
 		      AND next_retry_at <= NOW()
 		    ORDER BY next_retry_at ASC
 		    LIMIT $1
