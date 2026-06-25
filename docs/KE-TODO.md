@@ -5,6 +5,11 @@ Last updated: 2026-06-25.
 
 ---
 
+## ✅ CI fixed — fully green (2026-06-25, commit `a8d8c03e`)
+CI had been red on every push: the **Android (consumer)** job failed at `:app:processDebugGoogleServices` ("google-services.json is missing"). Root cause — consumer is the only Android app applying the `com.google.gms.google-services` plugin (FCM + Crashlytics + Analytics), which hard-requires the gitignored `google-services.json` at build time; seller/courier do manual FCM init without the plugin (so they were green). Fix: CI writes a minimal placeholder `google-services.json` (correct package_name) for the consumer compile only — CI just type-checks, never runs the app. Verified locally that the placeholder passes `processDebugGoogleServices` + `compileDebugKotlin`, then confirmed the full run green (all 7 jobs ✓). Gitignore policy unchanged.
+- **Noted (not blocking):** the iOS consumer job emits Swift-6 main-actor isolation **warnings** (`LocationManager.swift`, `OrderDetailView.swift`) — fine today, would become errors under Swift 6 language mode. Future cleanup.
+- **Noted (CI coverage gap):** the Android + iOS CI matrices cover only consumer + seller — **courier** isn't built in CI. Worth adding.
+
 ## ✅ Post-backlog review pass — DONE & DEPLOYED (2026-06-25, commit `86b128fd`)
 Fresh adversarial review (4 lenses: regression of the recent changes + perf + security + concurrency, each finding skeptic-verified). 5 confirmed, all fixed; build + vet + full suite green; deployed (migrations 049 + 050 verified live on prod, `/health` 200).
 - [x] **Perf — GetMenu N+1** (consumer restaurant-detail, hot path): was 1+N item queries (one per category) → one batched query bucketed by category_id. Added a test asserting correct item→category bucketing.
