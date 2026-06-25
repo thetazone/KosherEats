@@ -364,11 +364,14 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load order payout fields")
 		return
 	}
-	// Platform-side courier bump: 2.5% of subtotal, paid out of our service
-	// fee. Combined with the consumer's 2.5% (already inside delivery_fee),
-	// the courier nets ~5% of subtotal on top of the $3.99 base.
-	platformBump := subtotal * 25 / 1000
-	payout := deliveryFee + tip + platformBump
+	// Courier earns the delivery fee (their labor) + 100% of the tip. The old
+	// "+2.5% of subtotal" platform bump was funded by a service fee that is now
+	// hard-coded 0, so it was paid out of nothing — a structural loss on every
+	// in-house delivery. Removed. (Courier payout only applies to platform-mode
+	// in-house deliveries; external-mode orders are delivered + billed by the
+	// provider, and orders.provider_fee_cents records that cost for accounting.)
+	_ = subtotal
+	payout := deliveryFee + tip
 
 	result, err := tx.Exec(r.Context(),
 		`UPDATE orders

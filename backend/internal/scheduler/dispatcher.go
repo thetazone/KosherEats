@@ -894,6 +894,14 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 // completed; on failure reschedules with backoff or — if we've exhausted
 // maxPayoutAttempts — flips to failed_permanent so a human can intervene.
 func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
+	// TODO(temporal-cutover): this legacy path keys the Stripe idempotency key on
+	// the queue row id (p.id), but the Temporal path (payout/payout.go) keys it on
+	// "payout-"+orderID (the WorkflowID). If a payout is attempted under one regime
+	// and re-attempted under the other across a cutover, Stripe sees two different
+	// keys and DOUBLE-PAYS. Before enabling Temporal payouts, align both on a
+	// single stable key — order_id is UNIQUE in courier_payout_queue, so switch
+	// this call to "payout-"+p.orderID to match WorkflowID. (Temporal is off in
+	// prod today, so this is latent.)
 	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID, p.id)
 	if err == nil {
 		ct, uerr := d.db.Exec(ctx, `

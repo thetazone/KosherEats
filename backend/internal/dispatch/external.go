@@ -211,9 +211,10 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 	// we couldn't record it — surface a loud error to reconcile, never drop it.
 	tag2, uerr := e.db.Exec(ctx, `
 		UPDATE orders
-		   SET external_delivery_id = $1, external_provider = $2, external_tracking_url = $3, updated_at = NOW()
+		   SET external_delivery_id = $1, external_provider = $2, external_tracking_url = $3,
+		       provider_fee_cents = $5, updated_at = NOW()
 		 WHERE id = $4 AND external_provider = 'dispatching'`,
-		deliveryID, best.provider, trackingURL, in.OrderID)
+		deliveryID, best.provider, trackingURL, in.OrderID, fee)
 	if uerr != nil {
 		slog.Error("external-dispatch: db update failed",
 			slog.String("order_id", in.OrderID), slog.String("error", uerr.Error()))
