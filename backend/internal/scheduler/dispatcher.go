@@ -601,13 +601,20 @@ type stalePending struct {
 // effect — a Stripe refund — and we only want to flip the DB row once the
 // refund succeeds, so a partial failure is recoverable.
 func (d *Dispatcher) sweepStaleRejection(ctx context.Context) {
+	// Measure staleness from updated_at (when the order ENTERED pending), not
+	// created_at (when it was placed). A scheduled order is placed now but only
+	// promoted to pending at its scheduled_for time — sweepScheduled stamps
+	// updated_at = NOW() on that promotion. Keying off created_at would make a
+	// scheduled order older than the TTL the instant it went pending, so it was
+	// auto-rejected + refunded immediately. For a normally-created pending order
+	// created_at == updated_at, so this is a no-op there.
 	rows, err := d.db.Query(ctx, `
 		SELECT o.id, o.user_id, rest.name, COALESCE(o.stripe_payment_id, '')
 		  FROM orders o
 		  JOIN restaurants rest ON rest.id = o.restaurant_id
 		 WHERE o.status = 'pending'
-		   AND o.created_at < NOW() - make_interval(secs => $1)
-		 ORDER BY o.created_at ASC
+		   AND o.updated_at < NOW() - make_interval(secs => $1)
+		 ORDER BY o.updated_at ASC
 		 LIMIT $2`,
 		int(pendingOrderTTL.Seconds()), staleRejectionBatchLimit)
 	if err != nil {
