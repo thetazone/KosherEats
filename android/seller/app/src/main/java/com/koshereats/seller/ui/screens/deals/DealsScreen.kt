@@ -209,8 +209,12 @@ private fun DealCard(
     val isExpired = parsedExpiry?.isBefore(now) ?: true
 
     val expiryText = if (parsedExpiry != null && !parsedExpiry.isBefore(now)) {
-        val hours = ChronoUnit.HOURS.between(now, parsedExpiry)
-        if (hours < 24) "${hours}h left" else "${hours / 24}d left"
+        val minutes = ChronoUnit.MINUTES.between(now, parsedExpiry)
+        when {
+            minutes < 60 -> "${minutes}m left"
+            minutes < 24 * 60 -> "${(minutes + 59) / 60}h left"
+            else -> "${(minutes + 24 * 60 - 1) / (24 * 60)}d left"
+        }
     } else ""
 
     Card(

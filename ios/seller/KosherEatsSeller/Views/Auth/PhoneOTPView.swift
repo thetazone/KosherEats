@@ -43,7 +43,7 @@ struct PhoneOTPView: View {
                         .background(Color.keCard)
                         .cornerRadius(12)
                         .focused($codeFieldFocused)
-                        .onChange(of: code) { _, newValue in
+                        .onChange(of: code) { oldValue, newValue in
                             // Keep only digits. Twilio Verify code length is
                             // configured on the service, so accept a sensible
                             // numeric range instead of truncating to four.
@@ -59,9 +59,16 @@ struct PhoneOTPView: View {
                             if code.count > maxCodeLength {
                                 code = String(code.prefix(maxCodeLength))
                             }
-                            // Auto-submit once the user has entered the maximum
-                            // number of digits (e.g. iOS autofill from the SMS).
-                            if code.count == maxCodeLength && !isSubmitting && !authVM.isLoading {
+                            // Auto-submit on SMS autofill / paste: iOS fills the
+                            // whole code in one shot, so detect a multi-character
+                            // jump that lands at a plausible complete length
+                            // (>= minCodeLength) rather than waiting for the hard
+                            // max — the real codes are 4 (dev) or 6 (Twilio prod)
+                            // digits, which never reach maxCodeLength.
+                            let oldDigitCount = oldValue.filter(\.isNumber).count
+                            let autofilled = code.count - oldDigitCount > 1
+                            if autofilled && code.count >= minCodeLength
+                                && !isSubmitting && !authVM.isLoading {
                                 Task { await submit() }
                             }
                         }

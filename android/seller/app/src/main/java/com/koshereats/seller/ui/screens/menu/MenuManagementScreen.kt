@@ -216,7 +216,7 @@ fun MenuManagementScreen(
                 categories.forEach { (category, label) ->
                     FilterChip(
                         selected = state.selectedCategory == category,
-                        onClick = { viewModel.loadMenuItems(category) },
+                        onClick = { viewModel.selectCategory(category) },
                         label = {
                             Text(text = label, style = MaterialTheme.typography.labelMedium)
                         },

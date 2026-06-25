@@ -40,7 +40,7 @@ enum class OrderStatus(val displayName: String) {
 
     val stepIndex: Int
         get() = when (this) {
-            SCHEDULED -> -2
+            SCHEDULED -> 0
             PENDING -> 0
             ACCEPTED -> 1
             PREPARING -> 2
@@ -331,7 +331,7 @@ private fun computeDiscount(deal: Deal, subtotal: Int, items: List<CartItem>): I
         DiscountType.FIXED -> deal.discountValue.coerceAtMost(subtotal)
         DiscountType.BOGO -> {
             val totalQty = items.sumOf { it.quantity }
-            if (totalQty < 2) 0 else items.minOfOrNull { it.menuItem.price } ?: 0
+            if (totalQty < 2) 0 else items.minOfOrNull { it.menuItem.price + it.selectedModifiers.sumOf { m -> m.priceDelta } } ?: 0
         }
         DiscountType.UNKNOWN -> 0
     }

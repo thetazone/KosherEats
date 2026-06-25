@@ -731,16 +731,17 @@ fun RestaurantSettingsScreen(
                         return@Button
                     }
                     isSaving = true
-                    // Persist each changed field through the existing VM hook. The backend
-                    // applies these as partial COALESCE updates, and any failure surfaces via
-                    // the updateFieldError Toast wired in LaunchedEffect above.
-                    // NOTE: a single batched PUT would be cleaner — see companion edit request
-                    // for AuthViewModel.updateRestaurantFields(Map).
-                    changes.forEach { (key, value) ->
-                        authViewModel.updateRestaurantField(key, value)
+                    // Persist all changed fields in a single batched PUT and await the
+                    // result, so the button stays disabled (blocking double-taps) and we
+                    // only confirm success once the PUT actually lands. Failures surface
+                    // via the updateFieldError Toast wired in LaunchedEffect above.
+                    scope.launch {
+                        val ok = authViewModel.updateRestaurantFields(changes)
+                        isSaving = false
+                        if (ok) {
+                            Toast.makeText(context, "Changes saved", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                    Toast.makeText(context, "Saving changes…", Toast.LENGTH_SHORT).show()
-                    isSaving = false
                 },
                 enabled = !isSaving,
                 modifier = Modifier

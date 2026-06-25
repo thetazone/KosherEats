@@ -174,8 +174,11 @@ interface ApiService {
 
     @GET("orders")
     suspend fun getOrders(
-        @Query("page") page: Int = 1,
-        @Query("per_page") perPage: Int = ApiPaging.ORDERS_PAGE_SIZE,
+        // Backend paginates by RFC3339Nano `cursor` (the created_at of the last
+        // order already held) + `limit`; it ignores page/per_page. null cursor
+        // loads the first page.
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = ApiPaging.ORDERS_PAGE_SIZE,
         @Query("status") status: String? = null,
     ): Response<List<Order>>
 

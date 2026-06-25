@@ -681,6 +681,22 @@ struct Order: Codable, Identifiable {
         return Self.displayFormatter.string(from: date)
     }
 
+    /// `estDeliveryTime` parsed and rendered as a human-readable time, or `nil`
+    /// when the field is absent. Falls back to the raw string only if it fails
+    /// to parse, so the seller never sees a bare ISO8601 machine timestamp.
+    var estDeliveryTimeFormatted: String? {
+        guard let raw = estDeliveryTime, !raw.isEmpty else { return nil }
+        let date = Self.iso8601Frac.date(from: raw) ?? Self.iso8601Plain.date(from: raw)
+        return date.map { Self.etaFormatter.string(from: $0) } ?? raw
+    }
+
+    private static let etaFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
+
     /// Parsed `createdAt` as a `Date`, or `nil` if the string doesn't match
     /// any supported format.
     ///
@@ -783,6 +799,20 @@ enum DiscountType: String, Codable, CaseIterable, Identifiable {
     case percentage
     case fixed
     case bogo
+    /// Fallback for unrecognised discount types the backend may introduce, so
+    /// a single new value doesn't fail the entire `[Deal]` decode. Mirrors the
+    /// guard on `OrderStatus` / `KosherCertification`.
+    case unknown
+
+    /// The real, seller-selectable discount types. Excludes `.unknown`, which
+    /// is decode-only and must never appear in the create-deal picker.
+    static var allCases: [DiscountType] { [.percentage, .fixed, .bogo] }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        self = DiscountType(rawValue: raw) ?? .unknown
+    }
 
     var id: String { rawValue }
 
@@ -791,6 +821,7 @@ enum DiscountType: String, Codable, CaseIterable, Identifiable {
         case .percentage: return "Percentage Off"
         case .fixed: return "Fixed Amount Off"
         case .bogo: return "Buy One Get One"
+        case .unknown: return "Discount"
         }
     }
 }
@@ -816,6 +847,7 @@ struct Deal: Codable, Identifiable {
         case .percentage: return "\(discountValue)% Off"
         case .fixed: return CurrencyFormat.string(fromCents: discountValue) + " Off"
         case .bogo: return "BOGO"
+        case .unknown: return "Discount"
         }
     }
 

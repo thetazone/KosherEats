@@ -278,12 +278,12 @@ class OrdersViewModel: ObservableObject {
         switch selectedFilter {
         case .active:
             filteredOrders = orders.filter { $0.status.isActive }
-                .sorted { $0.createdAt > $1.createdAt }
+                .sorted { ($0.createdAtDate ?? .distantPast) > ($1.createdAtDate ?? .distantPast) }
         case .completed:
             filteredOrders = orders.filter { !$0.status.isActive }
-                .sorted { $0.createdAt > $1.createdAt }
+                .sorted { ($0.createdAtDate ?? .distantPast) > ($1.createdAtDate ?? .distantPast) }
         case .all:
-            filteredOrders = orders.sorted { $0.createdAt > $1.createdAt }
+            filteredOrders = orders.sorted { ($0.createdAtDate ?? .distantPast) > ($1.createdAtDate ?? .distantPast) }
         }
     }
 

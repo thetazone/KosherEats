@@ -138,12 +138,12 @@ class RestaurantRepository @Inject constructor(
     }
 
     fun getOrders(
-        page: Int = 1,
+        cursor: String? = null,
         status: String? = null,
     ): Flow<Resource<List<Order>>> = flow {
         emit(Resource.Loading)
         try {
-            val response = apiService.getOrders(page = page, status = status)
+            val response = apiService.getOrders(cursor = cursor, status = status)
             if (response.isSuccessful) {
                 response.body()?.let { emit(Resource.Success(it)) }
                     ?: emit(Resource.Error("No orders found"))

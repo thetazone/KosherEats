@@ -185,6 +185,8 @@ data class CourierOrder(
     @SerializedName("delivery_lng") val deliveryLng: Double,
     @SerializedName("restaurant_lat") val restaurantLat: Double,
     @SerializedName("restaurant_lng") val restaurantLng: Double,
+    @SerializedName("customer_name") val customerName: String? = null,
+    @SerializedName("customer_phone") val customerPhone: String? = null,
     @SerializedName("claimed_at") val claimedAt: String? = null,
     @SerializedName("picked_up_at") val pickedUpAt: String? = null,
 )

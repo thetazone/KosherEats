@@ -376,17 +376,30 @@ class CartViewModel: ObservableObject {
         isReordering = true
         defer { isReordering = false }
 
+        // Attempt every item rather than bailing on the first failure: a single
+        // out-of-stock item (backend returns 400) shouldn't strand a partial
+        // cart with no explanation. Track how many failed so we can surface a
+        // clear "some items couldn't be added" message instead of a bare
+        // single-item error.
+        var failures = 0
         for item in items {
-            if let err = await addItem(
+            if await addItem(
                 menuItemID: item.menuItemID,
                 quantity: item.quantity,
                 notes: item.notes,
                 restaurantID: restaurantID,
                 modifierIDs: item.selectedModifiers?.map(\.id) ?? []
-            ) {
-                await loadCart()
-                return err
+            ) != nil {
+                failures += 1
             }
+        }
+        // Reconcile local state with the server after a mixed batch.
+        if failures > 0 {
+            await loadCart()
+            if failures == items.count {
+                return "None of those items could be added — they may be unavailable."
+            }
+            return "Some items couldn't be added — they may be unavailable. The rest are in your cart."
         }
         return nil
     }

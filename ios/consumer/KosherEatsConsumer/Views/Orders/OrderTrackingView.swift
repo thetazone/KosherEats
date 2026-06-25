@@ -111,10 +111,10 @@ struct OrderTrackingView: View {
         }
         .onChange(of: vm.order?.status) { _, newStatus in
             maybePromptForRating(newStatus: newStatus)
-            if let newStatus {
+            if newStatus != nil, let order = vm.order {
                 UIAccessibility.post(
                     notification: .announcement,
-                    argument: phaseText(for: newStatus)
+                    argument: phaseText(for: order)
                 )
             }
         }
@@ -247,32 +247,67 @@ struct OrderTrackingView: View {
 
     private func statusHeader(for order: Order) -> some View {
         VStack(spacing: Theme.spacingXS) {
-            Text(phaseText(for: order.status))
+            Text(phaseText(for: order))
                 .font(.title3.bold())
                 .foregroundColor(.keTextPrimary)
-            Text(phaseSubtext(for: order.status))
+            Text(phaseSubtext(for: order))
                 .font(.caption)
                 .foregroundColor(.keTextSecondary)
 
-            if order.status.isActive && order.status != .pending {
-                let etaText = "ETA: \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))"
+            if order.status.isActive && order.status != .pending,
+               let etaTime = sanitizedETA(order.estDeliveryTime) {
+                let etaText = "ETA: \(etaTime.formatted(date: .omitted, time: .shortened))"
                 Text(etaText)
                     .font(.subheadline.bold())
                     .foregroundColor(.kePrimary)
-                    .accessibilityValue("Estimated delivery at \(order.estDeliveryTime.formatted(date: .omitted, time: .shortened))")
+                    .accessibilityValue("Estimated \(isPickup(order) ? "pickup" : "delivery") at \(etaTime.formatted(date: .omitted, time: .shortened))")
             }
 
-            progressBar(for: order.status)
-                .padding(.top, Theme.spacingSM)
+            // Cancelled/rejected orders have stepIndex -1, which would render an
+            // all-empty 6-step skeleton; hide the timeline for terminal states
+            // (matching OrderDetailView).
+            if order.status.stepIndex >= 0 {
+                progressBar(for: order)
+                    .padding(.top, Theme.spacingSM)
+            }
         }
         .padding(Theme.spacingMD)
         .frame(maxWidth: .infinity)
         .background(Color.keBackgroundElevated)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Order status: \(phaseText(for: order.status))")
+        .accessibilityLabel("Order status: \(phaseText(for: order))")
     }
 
-    private func phaseText(for status: OrderStatus) -> String {
+    private func isPickup(_ order: Order) -> Bool {
+        order.fulfillmentType == "pickup"
+    }
+
+    /// Returns the ETA only when it's a plausible time. Guards against
+    /// epoch-zero / stale garbage values, mirroring OrderConfirmationView.etaText.
+    private func sanitizedETA(_ eta: Date) -> Date? {
+        guard eta.timeIntervalSince1970 > 1,
+              eta > Date().addingTimeInterval(-24 * 3600) else {
+            return nil
+        }
+        return eta
+    }
+
+    private func phaseText(for order: Order) -> String {
+        let status = order.status
+        if order.isExternalDelivery {
+            let provider = Self.providerName(for: order.externalProvider)
+            switch status {
+            case .ready: return "Handing off to \(provider)"
+            case .pickedUp: return "On its way with \(provider)"
+            default: break
+            }
+        } else if isPickup(order) {
+            switch status {
+            case .ready: return "Ready for pickup"
+            case .pickedUp: return "Picked up"
+            default: break
+            }
+        }
         switch status {
         case .scheduled: return "Scheduled for later"
         case .pending: return "Waiting for the restaurant"
@@ -290,7 +325,23 @@ struct OrderTrackingView: View {
         }
     }
 
-    private func phaseSubtext(for status: OrderStatus) -> String {
+    private func phaseSubtext(for order: Order) -> String {
+        let status = order.status
+        if order.isExternalDelivery {
+            let provider = Self.providerName(for: order.externalProvider)
+            switch status {
+            case .ready: return "Your order is ready and a \(provider) courier is on the way to pick it up."
+            case .pickedUp: return "Your order is on its way with \(provider)."
+            default: break
+            }
+        } else if isPickup(order) {
+            switch status {
+            case .ready: return "Your order is ready to collect at the restaurant."
+            case .pickedUp: return "You've collected your order."
+            case .preparing: return "Your meal is being cooked and packed for pickup."
+            default: break
+            }
+        }
         switch status {
         case .scheduled:
             return "Your order is queued and will move into the kitchen closer to the scheduled time."
@@ -320,8 +371,9 @@ struct OrderTrackingView: View {
     /// Completed steps show a filled kePrimary circle with a check, the active
     /// step pulses to signal "this is where you are right now", and future
     /// steps are muted. Connector lines between steps track fill proportionally.
-    private func progressBar(for status: OrderStatus) -> some View {
-        DeliveryTimeline(stepIndex: status.stepIndex)
+    /// For pickup orders the last two step labels switch to pickup wording.
+    private func progressBar(for order: Order) -> some View {
+        DeliveryTimeline(stepIndex: order.status.stepIndex, isPickup: isPickup(order))
     }
 
     // MARK: - Cards
@@ -416,7 +468,7 @@ struct OrderTrackingView: View {
                 Text("Delivered by \(Self.providerName(for: order.externalProvider))")
                     .font(.title3.bold())
                     .foregroundColor(.keTextPrimary)
-                Text("Your order is on its way.")
+                Text(Self.externalCardSubtext(for: order))
                     .font(.subheadline)
                     .foregroundColor(.keTextSecondary)
             }
@@ -432,6 +484,28 @@ struct OrderTrackingView: View {
         .padding(Theme.spacingLG)
         .frame(maxWidth: .infinity)
         .background(Color.keBackgroundElevated)
+    }
+
+    /// Status-aware subtext for the external-delivery card so we don't claim
+    /// "on its way" while the order is still being prepared or handed off.
+    private static func externalCardSubtext(for order: Order) -> String {
+        let provider = providerName(for: order.externalProvider)
+        switch order.status {
+        case .scheduled:
+            return "Your order is scheduled. A \(provider) courier will deliver it."
+        case .pending, .accepted, .preparing:
+            return "The restaurant is preparing your order. A \(provider) courier will deliver it."
+        case .ready:
+            return "Your order is ready and a \(provider) courier is on the way to pick it up."
+        case .pickedUp:
+            return "Your order is on its way with \(provider)."
+        case .delivered, .completed:
+            return "Your order has been delivered."
+        case .cancelled, .rejected:
+            return "This order will not be delivered."
+        case .unknown:
+            return "We're working on your order. Check back shortly."
+        }
     }
 
     /// Human-friendly name for an external delivery provider key.
@@ -471,6 +545,7 @@ struct MapPin: View {
 /// steps are filled with a check; future steps are empty rings.
 struct DeliveryTimeline: View {
     let stepIndex: Int
+    var isPickup: Bool = false
     @State private var pulse = false
 
     private struct Step {
@@ -478,14 +553,20 @@ struct DeliveryTimeline: View {
         let icon: String
     }
 
-    private let steps: [Step] = [
-        .init(label: "Ordered",   icon: "bag.fill"),
-        .init(label: "Accepted",  icon: "checkmark"),
-        .init(label: "Preparing", icon: "flame.fill"),
-        .init(label: "Ready",     icon: "takeoutbag.and.cup.and.straw.fill"),
-        .init(label: "En route",  icon: "bicycle"),
-        .init(label: "Delivered", icon: "house.fill"),
-    ]
+    private var steps: [Step] {
+        [
+            .init(label: "Ordered",   icon: "bag.fill"),
+            .init(label: "Accepted",  icon: "checkmark"),
+            .init(label: "Preparing", icon: "flame.fill"),
+            .init(label: "Ready",     icon: "takeoutbag.and.cup.and.straw.fill"),
+            isPickup
+                ? .init(label: "Ready for pickup", icon: "takeoutbag.and.cup.and.straw.fill")
+                : .init(label: "En route", icon: "bicycle"),
+            isPickup
+                ? .init(label: "Picked up", icon: "bag.fill")
+                : .init(label: "Delivered", icon: "house.fill"),
+        ]
+    }
 
     var body: some View {
         VStack(spacing: 6) {

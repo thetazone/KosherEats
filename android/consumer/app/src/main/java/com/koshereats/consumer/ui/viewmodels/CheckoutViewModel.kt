@@ -38,6 +38,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 sealed interface TipChoice {
     data object None : TipChoice
@@ -51,7 +52,7 @@ sealed interface TipChoice {
     fun label(subtotalCents: Int): String = when (this) {
         None -> "None"
         is Percent -> {
-            val cents = (subtotalCents * bps) / 10_000
+            val cents = (subtotalCents.toLong() * bps / 10_000.0).roundToInt()
             "${bps / 100}%\n${cents.formatPrice()}"
         }
         Custom -> "Custom"
@@ -432,7 +433,7 @@ class CheckoutViewModel @Inject constructor(
         val subtotal = subtotalCents
         val tip = when (val choice = state.tipChoice) {
             TipChoice.None -> 0
-            is TipChoice.Percent -> (subtotal * choice.bps) / 10_000
+            is TipChoice.Percent -> (subtotal.toLong() * choice.bps / 10_000.0).roundToInt()
             TipChoice.Custom -> {
                 // Route user-entered tip text through Money.parseCents so a comma
                 // decimal ("12,50") parses as 1250¢ instead of 0. Cap mirrors iOS

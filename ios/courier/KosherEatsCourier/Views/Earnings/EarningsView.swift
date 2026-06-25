@@ -29,16 +29,20 @@ struct EarningsView: View {
         return Self.timeFormatter.string(from: date)
     }
 
-    private var todayTotal: Int { dashVM.todayEarnings }
-    private var todayDeliveryCount: Int {
+    /// Today's deliveries, derived from the single `history` fetch so the total
+    /// and the count are always consistent (rather than reading the dollar total
+    /// from a separate dashVM.loadTodayEarnings() fetch that can disagree).
+    private var todayHistory: [HistoryOrder] {
         let cal = Calendar.current
         return history.filter { order in
             guard let raw = order.deliveredAt,
                   let date = Self.isoFractional.date(from: raw) ?? Self.isoPlain.date(from: raw)
             else { return false }
             return cal.isDateInToday(date)
-        }.count
+        }
     }
+    private var todayTotal: Int { todayHistory.reduce(0) { $0 + $1.courierPayout } }
+    private var todayDeliveryCount: Int { todayHistory.count }
 
     var body: some View {
         NavigationStack {
@@ -122,8 +126,8 @@ struct EarningsView: View {
             }
             .background(Color.keBackground.ignoresSafeArea())
             .navigationTitle("Earnings")
-            .task { await load(); await dashVM.loadTodayEarnings() }
-            .refreshable { await load(); await dashVM.loadTodayEarnings() }
+            .task { await load() }
+            .refreshable { await load() }
         }
     }
 

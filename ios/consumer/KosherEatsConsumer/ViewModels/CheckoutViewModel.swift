@@ -138,7 +138,7 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         // cap until the bundle (and its subtotal) has loaded.
         let cap = min(Self.maxTipCents, bundle?.subtotal ?? Self.maxTipCents)
         if let value = Double(filtered), value > Double(cap) / 100.0 {
-            errorMessage = "Tip can't exceed $\(cap / 100)"
+            errorMessage = "Tip can't exceed \(Money.dollars(cap))"
             return
         }
         errorMessage = nil
@@ -417,7 +417,13 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         }
         rows.append(("Tax", bundle.tax))
         rows.append(("Service fee", bundle.serviceFee))
-        rows.append(("Delivery", bundle.deliveryFee))
+        // Mirror the on-screen TotalsCard, which hides a $0 delivery row on
+        // pickup orders; a "Delivery $0.00" line in the Apple Pay sheet is
+        // confusing. The reconciliation row below still makes the visible rows
+        // sum to bundle.total regardless.
+        if bundle.deliveryFee > 0 {
+            rows.append(("Delivery", bundle.deliveryFee))
+        }
         if bundle.tip > 0 {
             rows.append(("Driver tip", bundle.tip))
         }
@@ -467,6 +473,17 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     /// long enough to ride out the reconcile/recovery window during a real
     /// in-flight charge.
     private static let inflightMarkerMaxAge: TimeInterval = 5 * 60
+
+    /// Clears the device-global in-flight PaymentIntent marker. Called on
+    /// logout so a charged-but-unrecovered marker left by one user can't block
+    /// a different user's checkout on the same device (the marker is user-scoped
+    /// on the backend, so the reconcile would 404 for the new user). The 5-minute
+    /// staleness cap would eventually self-heal this, but clearing on logout
+    /// closes the relogin window immediately.
+    static func clearInflightMarker() {
+        UserDefaults.standard.removeObject(forKey: inflightPaymentIntentKey)
+        UserDefaults.standard.removeObject(forKey: inflightPaymentIntentAtKey)
+    }
 
     private var persistedInflightPI: String? {
         get { UserDefaults.standard.string(forKey: Self.inflightPaymentIntentKey) }

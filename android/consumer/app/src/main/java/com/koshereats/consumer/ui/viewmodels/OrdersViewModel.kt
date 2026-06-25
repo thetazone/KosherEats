@@ -20,7 +20,6 @@ data class OrdersUiState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null,
-    val currentPage: Int = 1,
     val hasMore: Boolean = true,
 )
 
@@ -38,38 +37,37 @@ class OrdersViewModel @Inject constructor(
         loadOrders()
     }
 
-    fun loadOrders(page: Int = 1, cancelExisting: Boolean = true) {
+    /**
+     * Cursor pagination matching the backend (ListOrders keys on the created_at
+     * of the last order already held). [cursor] null loads the first page and
+     * replaces the list; a non-null cursor appends the next page.
+     */
+    fun loadOrders(cursor: String? = null, cancelExisting: Boolean = true) {
         if (cancelExisting) loadJob?.cancel()
+        val isFirstPage = cursor == null
         loadJob = viewModelScope.launch {
-            repository.getOrders(page = page).collect { result ->
+            repository.getOrders(cursor = cursor).collect { result ->
                 when (result) {
                     is Resource.Loading -> {
                         _uiState.update { it.copy(isLoading = true, error = null) }
                     }
                     is Resource.Success -> {
                         _uiState.update { state ->
-                            // Defensive dedupe: the backend paginates by cursor/limit and
-                            // currently ignores the page/per_page params the client sends, so a
-                            // "next page" can return rows we already hold. Appending blind would
-                            // produce duplicate ids and crash the LazyColumn (key = { it.id }).
-                            val newItems = if (page == 1) {
+                            // Dedupe defensively (key = { it.id } in the LazyColumn).
+                            val newItems = if (isFirstPage) {
                                 result.data
                             } else {
                                 (state.orders + result.data).distinctBy { it.id }
                             }
-                            // If a follow-up page added no genuinely new rows, there is nothing
-                            // more to load — stop, so we don't loop re-fetching the same batch.
                             val addedNew = newItems.size > state.orders.size
-                            val hasMore = if (page == 1) {
-                                result.data.size >= ApiPaging.ORDERS_PAGE_SIZE
-                            } else {
-                                addedNew && result.data.size >= ApiPaging.ORDERS_PAGE_SIZE
-                            }
+                            // A short page means the server has no more rows. A page
+                            // that added no new ids also means we've reached the end.
+                            val hasMore = result.data.size >= ApiPaging.ORDERS_PAGE_SIZE &&
+                                (isFirstPage || addedNew)
                             state.copy(
                                 orders = newItems,
                                 isLoading = false,
                                 isRefreshing = false,
-                                currentPage = page,
                                 hasMore = hasMore,
                             )
                         }
@@ -84,14 +82,15 @@ class OrdersViewModel @Inject constructor(
 
     fun refresh() {
         _uiState.update { it.copy(isRefreshing = true) }
-        loadOrders(page = 1)
+        loadOrders(cursor = null)
     }
 
     fun loadMore() {
         if (loadJob?.isActive == true) return
         val state = _uiState.value
         if (state.isLoading || !state.hasMore) return
-        if (state.currentPage >= 100) return
-        loadOrders(page = state.currentPage + 1, cancelExisting = false)
+        // Cursor = created_at of the oldest order we currently hold.
+        val cursor = state.orders.lastOrNull()?.createdAt?.takeIf { it.isNotBlank() } ?: return
+        loadOrders(cursor = cursor, cancelExisting = false)
     }
 }

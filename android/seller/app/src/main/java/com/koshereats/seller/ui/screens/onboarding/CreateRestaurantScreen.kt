@@ -309,7 +309,7 @@ fun CreateRestaurantScreen(
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    KosherCertification.entries.forEach { cert ->
+                    KosherCertification.entries.filter { it != KosherCertification.UNKNOWN }.forEach { cert ->
                         val selected = state.kosherCertification == cert
                         Box(
                             modifier = Modifier

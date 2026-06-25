@@ -69,6 +69,7 @@ import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.viewmodels.AuthViewModel
 import com.koshereats.seller.ui.viewmodels.DashboardViewModel
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -296,7 +297,7 @@ fun DashboardScreen(
                 ) {
                     StatCard(
                         title = "Avg Prep Time",
-                        value = "${state.stats.avgPrepTime.toInt()} min",
+                        value = "${state.stats.avgPrepTime.roundToInt()} min",
                         icon = Icons.Filled.AccessTime,
                         iconTint = StatusPreparing,
                         modifier = Modifier.weight(1f),

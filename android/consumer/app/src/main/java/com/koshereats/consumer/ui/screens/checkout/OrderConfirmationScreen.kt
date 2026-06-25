@@ -101,6 +101,8 @@ fun OrderConfirmationScreen(
                 )
             }
         } else {
+            FulfillmentCard(order = order)
+            Spacer(Modifier.height(16.dp))
             OrderSummaryCard(order = order)
         }
 
@@ -124,6 +126,55 @@ fun OrderConfirmationScreen(
                 Text("Done", color = TextWhite, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             }
         }
+    }
+}
+
+@Composable
+private fun FulfillmentCard(order: Order) {
+    val isPickup = order.fulfillmentType == "pickup"
+    val eta = formatEta(order.estimatedDeliveryTime)
+    val label = if (isPickup) "Pickup from" else "Delivering to"
+    val destination = if (isPickup) {
+        order.restaurantName.ifEmpty { "—" }
+    } else {
+        order.deliveryAddress.ifEmpty { "—" }
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (eta != null) {
+                Text(
+                    text = if (isPickup) "Estimated ready" else "Estimated arrival",
+                    color = TextTertiary,
+                    fontSize = 11.sp,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(eta, color = TextWhite, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(12.dp))
+            }
+            Text(label, color = TextTertiary, fontSize = 11.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(destination, color = TextWhite, fontSize = 14.sp)
+        }
+    }
+}
+
+/**
+ * Formats an RFC-3339 estimated-delivery timestamp as a local `h:mm a` clock
+ * string. Returns null when the value is missing or unparseable so the ETA row
+ * is simply omitted rather than showing a raw timestamp.
+ */
+private fun formatEta(iso: String?): String? {
+    if (iso.isNullOrBlank()) return null
+    return try {
+        val local = java.time.OffsetDateTime.parse(iso)
+            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+        java.time.format.DateTimeFormatter.ofPattern("h:mm a").format(local)
+    } catch (_: Throwable) {
+        null
     }
 }
 

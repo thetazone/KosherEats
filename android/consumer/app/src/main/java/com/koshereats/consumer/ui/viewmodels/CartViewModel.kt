@@ -192,12 +192,12 @@ class CartViewModel @Inject constructor(
             // otherwise a same-item add with different special instructions would
             // silently bump the existing line's quantity and drop the new note
             // (matches iOS, which keys lines on note too).
-            val existingIndex = if (selectedModifiers.isEmpty()) {
-                currentCart.items.indexOfFirst {
-                    it.menuItem.id == menuItem.id && it.selectedModifiers.isEmpty() &&
-                        it.specialInstructions == normalizedNote
-                }
-            } else -1
+            val newModifierKey = selectedModifiers.map { it.id }.toSet()
+            val existingIndex = currentCart.items.indexOfFirst {
+                it.menuItem.id == menuItem.id &&
+                    it.specialInstructions == normalizedNote &&
+                    it.selectedModifiers.map { m -> m.id }.toSet() == newModifierKey
+            }
 
             val updatedItems = if (existingIndex >= 0) {
                 currentCart.items.toMutableList().apply {

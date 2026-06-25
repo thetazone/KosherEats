@@ -137,7 +137,7 @@ struct CartView: View {
             Divider().background(Color.keDivider)
 
             HStack {
-                Text("Estimated Total")
+                Text("Items subtotal")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.keTextPrimary)
                 Spacer()
@@ -145,6 +145,14 @@ struct CartView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.kePrimary)
             }
+
+            // The figure above is the items subtotal only — delivery, fees and
+            // tax are added at checkout. Make that explicit so the cart never
+            // presents a number that reads as the final order total.
+            Text("Plus delivery, fees & tax")
+                .font(.system(size: 12))
+                .foregroundColor(.keTextTertiary)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 

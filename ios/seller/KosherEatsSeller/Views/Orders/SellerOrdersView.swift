@@ -26,12 +26,13 @@ struct SellerOrdersView: View {
             : [GridItem(.flexible())]
     }
 
-    /// Uses the seller's current timezone (device timezone) for the "today"
-    /// boundary. Calendar.current already uses TimeZone.current, but we set it
-    /// explicitly so the intent is clear and future refactors don't break it.
+    /// Pins the "today" boundary to America/New_York so this ticker agrees with
+    /// the Dashboard tab, whose backend GetDashboardStats computes "today" in
+    /// America/New_York. Using the device timezone instead made the two visible
+    /// surfaces disagree around the midnight boundary for sellers not on ET.
     private var todayOrders: [Order] {
         var cal = Calendar.current
-        cal.timeZone = TimeZone.current
+        cal.timeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
         return vm.orders.filter { order in
             guard let date = order.createdAtDate else { return false }
             guard order.status != .cancelled && order.status != .rejected else { return false }

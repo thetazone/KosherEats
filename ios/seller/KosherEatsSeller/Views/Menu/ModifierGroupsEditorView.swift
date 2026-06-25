@@ -369,6 +369,26 @@ struct ModifierGroupEditorView: View {
                 }
             }
 
+            // Default-option toggle: pre-selects this option for the customer.
+            // For single-select groups (max 1) only one option may be default,
+            // so picking one clears the others (radio behaviour); multi-select
+            // groups allow several defaults.
+            Button {
+                let makeDefault = !opt.isDefault
+                if makeDefault && maxSelections == 1 {
+                    for i in options.indices { options[i].isDefault = false }
+                }
+                if let i = options.firstIndex(where: { $0.id == opt.id }) {
+                    options[i].isDefault = makeDefault
+                }
+            } label: {
+                Image(systemName: opt.isDefault ? "star.fill" : "star")
+                    .foregroundColor(opt.isDefault ? .keWarning : .keTextMuted)
+            }
+            .accessibilityLabel(opt.isDefault
+                ? "Default option, tap to unset"
+                : "Set as default option")
+
             Button {
                 // Every row now has a unique id (server id, or a local "new-"
                 // id for unsaved options), so matching by id removes exactly

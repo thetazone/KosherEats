@@ -162,6 +162,17 @@ final class DashboardViewModel: ObservableObject {
         do {
             try await withRetry { try await self.api.claim(orderId: delivery.id) }
             await refresh()
+        } catch let APIError.httpError(code, _) where code == 409 {
+            // The claim is non-idempotent: if the first request committed our
+            // courier_id but the response was lost, withRetry's second attempt
+            // hits the backend's courier_id-IS-NULL guard and returns 409. That
+            // doesn't mean we lost the order — it may now be ours. Refresh and,
+            // if it shows up in active, treat the claim as the success it was
+            // rather than surfacing a spurious "no longer available" error.
+            await refresh()
+            if !active.contains(where: { $0.id == delivery.id }) {
+                errorMessage = "This order is no longer available."
+            }
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
@@ -239,6 +250,17 @@ final class DashboardViewModel: ObservableObject {
             try await withRetry { try await self.api.deliver(orderId: order.id, proofURL: proofURL) }
             // Immediately remove from active so the UI doesn't show the
             // delivered order even if refresh() fails below.
+            active.removeAll { $0.id == order.id }
+            locationManager?.hasActiveDelivery = !active.isEmpty
+            await refresh()
+            await loadTodayEarnings()
+        } catch let APIError.httpError(code, _) where code == 400 {
+            // A 400 here almost always means the order is already delivered —
+            // e.g. the first DeliverOrder response was lost and withRetry hit the
+            // backend's 0-rows guard ("cannot mark this order delivered"). The
+            // delivery actually succeeded, so treat it as success rather than
+            // surfacing a spurious error: clear it from the active list and
+            // refresh totals.
             active.removeAll { $0.id == order.id }
             locationManager?.hasActiveDelivery = !active.isEmpty
             await refresh()

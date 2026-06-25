@@ -263,35 +263,59 @@ struct SellerOrderDetailView: View {
 
     // MARK: - Delivery
 
+    @ViewBuilder
     private func deliverySection(_ order: Order) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("Delivery", icon: "location.fill")
+        if order.isPickup {
+            // Pickup orders never get a courier and the customer's home address
+            // (which the backend stores in delivery_address for pickups too)
+            // is not a delivery destination — so present a "Pickup" card rather
+            // than a misleading "Delivery" header with a map pin.
+            VStack(alignment: .leading, spacing: 12) {
+                sectionHeader("Pickup", icon: "bag.fill")
 
-            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
-                    Image(systemName: "mappin.circle.fill")
+                    Image(systemName: "storefront.fill")
                         .foregroundColor(.kePrimary)
 
-                    Text(order.deliveryAddress)
+                    Text("Customer collects at the counter")
                         .font(.subheadline)
                         .foregroundColor(.keTextPrimary)
                 }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.keCard)
+                .cornerRadius(14)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionHeader("Delivery", icon: "location.fill")
 
-                if let eta = order.estDeliveryTime {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
-                        Image(systemName: "clock")
-                            .foregroundColor(.keTextMuted)
+                        Image(systemName: "mappin.circle.fill")
+                            .foregroundColor(.kePrimary)
 
-                        Text("ETA: \(eta)")
-                            .font(.caption)
-                            .foregroundColor(.keTextSecondary)
+                        Text(order.deliveryAddress)
+                            .font(.subheadline)
+                            .foregroundColor(.keTextPrimary)
+                    }
+
+                    if let eta = order.estDeliveryTimeFormatted {
+                        HStack(spacing: 10) {
+                            Image(systemName: "clock")
+                                .foregroundColor(.keTextMuted)
+
+                            Text("ETA: \(eta)")
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+                        }
                     }
                 }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.keCard)
+                .cornerRadius(14)
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.keCard)
-            .cornerRadius(14)
         }
     }
 
@@ -321,7 +345,11 @@ struct SellerOrderDetailView: View {
                     }
                 }
                 Spacer()
-                if let phone, !phone.isEmpty {
+                // The backend masks the customer phone to the last 4 digits
+                // (e.g. "*******1234"), so a tel: link built from it would dial
+                // a useless number. Only offer the call button on an unmasked
+                // value; otherwise the digits still show as plain text above.
+                if let phone, !phone.isEmpty, !phone.contains("*") {
                     let cleaned = phone.filter { $0.isNumber || $0 == "+" }
                     if let url = URL(string: "tel:\(cleaned)") {
                         Link(destination: url) {
@@ -351,8 +379,15 @@ struct SellerOrderDetailView: View {
                 if order.discount > 0 {
                     savingsRow("Savings", value: order.discount)
                 }
-                priceRow("Delivery Fee", value: order.deliveryFee)
-                priceRow("Service Fee", value: order.serviceFee)
+                // Pickup orders carry no delivery fee (backend forces 0) and
+                // the service fee is always 0, so suppress these rows when they
+                // are zero rather than showing meaningless "$0.00" lines.
+                if !order.isPickup && order.deliveryFee > 0 {
+                    priceRow("Delivery Fee", value: order.deliveryFee)
+                }
+                if order.serviceFee > 0 {
+                    priceRow("Service Fee", value: order.serviceFee)
+                }
                 priceRow("Tax", value: order.tax)
                 if let tip = order.courierTip, tip > 0 {
                     priceRow("Courier Tip", value: tip)
@@ -416,7 +451,7 @@ struct SellerOrderDetailView: View {
                 }
                 .disabled(isActing)
 
-                if !order.isPickup { escalateButton(order) }
+                if canEscalate(order) { escalateButton(order) }
             }
 
         case .preparing:
@@ -433,7 +468,7 @@ struct SellerOrderDetailView: View {
                 }
                 .disabled(isActing)
 
-                if !order.isPickup { escalateButton(order) }
+                if canEscalate(order) { escalateButton(order) }
             }
 
         case .ready, .pickedUp:
@@ -513,6 +548,16 @@ struct SellerOrderDetailView: View {
         case .completed:
             EmptyView()
         }
+    }
+
+    /// Whether the "Dispatch to Uber" button should be offered: a delivery
+    /// order that nobody is already handling. Mirrors the backend EscalateToUber
+    /// guard (courier_id IS NULL AND external_delivery_id IS NULL) so the button
+    /// doesn't appear on already-claimed/already-dispatched orders.
+    private func canEscalate(_ order: Order) -> Bool {
+        !order.isPickup
+            && order.courier == nil
+            && (order.externalDeliveryId ?? "").isEmpty
     }
 
     /// Secondary action on an open delivery order: hand it off to an Uber

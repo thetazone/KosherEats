@@ -27,6 +27,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -835,6 +837,29 @@ private fun ModifierGroupDialog(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         )
+                        // Default toggle. For single-select groups (max 1) only one option
+                        // may be the default, so selecting one clears the others.
+                        val singleSelect = (maxSel.toIntOrNull() ?: 1) <= 1
+                        IconButton(
+                            onClick = {
+                                val newVal = !option.isDefault
+                                options = options.mapIndexed { i, o ->
+                                    when {
+                                        i == index -> o.copy(isDefault = newVal)
+                                        singleSelect && newVal -> o.copy(isDefault = false)
+                                        else -> o
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(28.dp),
+                        ) {
+                            Icon(
+                                if (option.isDefault) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                contentDescription = if (option.isDefault) "Default option" else "Set as default",
+                                tint = if (option.isDefault) Orange else TextMuted,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                         Switch(
                             checked = option.isAvailable,
                             onCheckedChange = { v ->

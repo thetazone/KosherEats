@@ -494,6 +494,11 @@ fun SellerOrderDetailScreen(
                     canEscalate = order.courier == null &&
                         order.externalDeliveryId.isNullOrEmpty() &&
                         !order.isPickup,
+                    // A courier is attached or the order was handed to an external
+                    // provider — the order is no longer seller-drivable.
+                    isExternallyDispatched = order.courier != null ||
+                        !order.externalDeliveryId.isNullOrEmpty(),
+                    hasCourier = order.courier != null,
                     scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
@@ -575,6 +580,34 @@ private fun SavingsRow(label: String, amount: Int) {
  * rejects orders already on a courier/provider, surfaced as an error Toast.
  * Mirrors iOS escalateButton ("Dispatch to Uber").
  */
+/**
+ * Informational card shown on a READY delivery order that's already been handed to
+ * a courier or external delivery partner — replaces a misleading "Awaiting Pickup"
+ * button with a passive status (parity with iOS's partner-handoff cards).
+ */
+@Composable
+private fun DispatchStatusCard(text: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDarkElevated),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.LocalShipping,
+                contentDescription = null,
+                tint = StatusReady,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(text, color = TextSecondary, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
 @Composable
 private fun EscalateToUberButton(
     isUpdating: Boolean,
@@ -601,6 +634,12 @@ private fun OrderActionButtons(
     // True when the order isn't on a courier or external provider yet — the
     // escalate-to-Uber action is available (accepted/preparing/ready).
     canEscalate: Boolean,
+    // True once a courier has claimed the order or it's been dispatched to an
+    // external provider (Uber/DoorDash) — the seller no longer drives it.
+    isExternallyDispatched: Boolean,
+    // True specifically when a platform/external courier is attached (vs. merely
+    // dispatched and awaiting a courier).
+    hasCourier: Boolean,
     scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
@@ -738,9 +777,11 @@ private fun OrderActionButtons(
                             Text("Complete Order", fontWeight = FontWeight.SemiBold)
                         }
                     }
-                } else if (isSelfDelivery) {
+                } else if (isSelfDelivery && !isExternallyDispatched) {
                     // Restaurant self-delivers: no platform courier will ever pick this up,
-                    // so the seller drives ready→picked_up themselves.
+                    // so the seller drives ready→picked_up themselves. Suppressed once the
+                    // order has been escalated to an external provider — at that point it's
+                    // partner-owned and the backend rejects a seller pickup.
                     Button(
                         onClick = onSelfPickup,
                         enabled = !isUpdating,
@@ -756,6 +797,17 @@ private fun OrderActionButtons(
                             Text("Mark Picked Up (self-delivery)", fontWeight = FontWeight.SemiBold)
                         }
                     }
+                } else if (isExternallyDispatched) {
+                    // Order is owned by a courier or external partner — show an
+                    // informational handoff state rather than a misleading
+                    // "Awaiting Pickup" button (parity with iOS).
+                    DispatchStatusCard(
+                        text = if (hasCourier) {
+                            "A courier has the order — they'll deliver it shortly."
+                        } else {
+                            "Handed to a delivery partner — a driver is on the way."
+                        },
+                    )
                 } else {
                     Button(
                         onClick = {},

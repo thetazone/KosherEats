@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -235,6 +236,12 @@ fun DeliveryMapScreen(
                 if (isPickupPhase) viewModel.pickup(order) else viewModel.deliver(order)
             },
             onOpenChat = { onOpenChat(order.id) },
+            onCallCustomer = order.customerPhone?.takeIf { it.isNotBlank() }?.let { phone ->
+                {
+                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                    context.startActivity(intent)
+                }
+            },
             onOpenNav = { showNavSheet = true },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -275,6 +282,7 @@ private fun DeliveryOverlayCard(
     isSubmitting: Boolean,
     onPrimaryAction: () -> Unit,
     onOpenChat: () -> Unit,
+    onCallCustomer: (() -> Unit)?,
     onOpenNav: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -351,6 +359,21 @@ private fun DeliveryOverlayCard(
                         tint = Orange,
                         modifier = Modifier.size(20.dp),
                     )
+                }
+                if (onCallCustomer != null) {
+                    IconButton(
+                        onClick = onCallCustomer,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(SurfaceDark, shape = RoundedCornerShape(12.dp)),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Phone,
+                            contentDescription = "Call customer",
+                            tint = Orange,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
                 Button(
                     onClick = onPrimaryAction,

@@ -317,6 +317,39 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Batched partial update: applies all changed fields in a single PUT and returns
+     * true on success. Lets the caller await the result so the save button can stay
+     * disabled (blocking double-taps) and only report success once the PUT lands.
+     * Any failure is surfaced via updateFieldError, mirroring updateRestaurantField.
+     */
+    suspend fun updateRestaurantFields(changes: Map<String, Any>): Boolean {
+        if (changes.isEmpty()) return true
+        return try {
+            val response = apiService.updateRestaurant(changes)
+            if (response.isSuccessful) {
+                val updated = response.body()
+                if (updated != null) {
+                    _state.value = _state.value.copy(restaurant = updated)
+                    true
+                } else {
+                    _state.value = _state.value.copy(updateFieldError = "Server returned empty response.")
+                    false
+                }
+            } else {
+                _state.value = _state.value.copy(
+                    updateFieldError = "Failed to save changes (HTTP ${response.code()})",
+                )
+                false
+            }
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(
+                updateFieldError = "Failed to save changes: ${e.localizedMessage}",
+            )
+            false
+        }
+    }
+
     fun clearUpdateFieldError() {
         _state.value = _state.value.copy(updateFieldError = null)
     }

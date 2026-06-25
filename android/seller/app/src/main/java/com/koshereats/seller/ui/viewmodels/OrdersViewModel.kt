@@ -193,12 +193,17 @@ class OrdersViewModel @Inject constructor(
     private suspend fun refreshSingleOrder(orderId: String) {
         if (orderId in _state.value.pendingOrderIds) return
         if (!pollMutex.tryLock()) return
+        // Set when the pushed order isn't on the current list and a full page-1 poll is
+        // needed to surface it at the correct position (mirrors iOS updateOrder's
+        // append-if-missing). Run after releasing the lock to avoid re-entrancy.
+        var needsListPoll = false
         try {
             val restaurantAtStart = NetworkModule.cachedRestaurantId
             val response = apiService.getOrderDetail(orderId)
             if (NetworkModule.cachedRestaurantId != restaurantAtStart) return
             if (response.isSuccessful) {
                 val updated = response.body() ?: return
+                needsListPoll = _state.value.orders.none { it.id == orderId }
                 _state.update { s ->
                     val filter = s.selectedFilter
                     val newOrders = s.orders.map { if (it.id == orderId) updated else it }
@@ -215,6 +220,7 @@ class OrdersViewModel @Inject constructor(
         } finally {
             pollMutex.unlock()
         }
+        if (needsListPoll) pollSilently()
     }
 
     // Returns true on success so the caller can reset the backoff counter.

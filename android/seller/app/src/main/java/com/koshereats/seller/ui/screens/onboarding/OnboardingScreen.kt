@@ -818,7 +818,7 @@ private fun AddressStep(
             )
             OutlinedTextField(
                 value = zipCode,
-                onValueChange = { if (it.length <= 10) zipCode = it },
+                onValueChange = { zipCode = it.filter { c -> c.isDigit() }.take(5) },
                 label = { Text("Zip Code") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -844,6 +844,11 @@ private fun AddressStep(
                     (street.isBlank() || city.isBlank() || stateVal.isBlank() || zipCode.isBlank())
                 ) {
                     viewModel.setError("All address fields are required")
+                    return@Button
+                }
+                // When an address is provided, the ZIP must be exactly 5 digits (mirrors iOS).
+                if (!(state.isImporting && allBlank) && zipCode.length != 5) {
+                    viewModel.setError("Enter a valid 5-digit ZIP code")
                     return@Button
                 }
                 viewModel.updateAddress(street, city, stateVal, zipCode)

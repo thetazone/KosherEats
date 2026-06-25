@@ -215,7 +215,7 @@ fun OrderTrackingScreen(
                         onDialError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } },
                     )
                 }
-                AddressCard(address = order.deliveryAddress)
+                AddressCard(order = order)
             }
         }
     }
@@ -555,7 +555,14 @@ private fun humanizeProvider(provider: String?): String = when (provider) {
 }
 
 @Composable
-private fun AddressCard(address: String) {
+private fun AddressCard(order: Order) {
+    val isPickup = order.fulfillmentType == "pickup"
+    val label = if (isPickup) "Pickup from" else "Delivering to"
+    val destination = if (isPickup) {
+        order.restaurantName.ifEmpty { "—" }
+    } else {
+        order.deliveryAddress.ifEmpty { "—" }
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -568,17 +575,17 @@ private fun AddressCard(address: String) {
             verticalAlignment = Alignment.Top,
         ) {
             Icon(
-                Icons.Filled.Home,
+                if (isPickup) Icons.Filled.Restaurant else Icons.Filled.Home,
                 contentDescription = null,
                 tint = Orange,
                 modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.size(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Delivering to", color = TextTertiary, fontSize = 11.sp)
+                Text(label, color = TextTertiary, fontSize = 11.sp)
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = address.ifEmpty { "—" },
+                    text = destination,
                     color = TextWhite,
                     fontSize = 14.sp,
                 )

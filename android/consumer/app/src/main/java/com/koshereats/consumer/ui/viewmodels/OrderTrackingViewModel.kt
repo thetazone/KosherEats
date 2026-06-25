@@ -75,7 +75,11 @@ class OrderTrackingViewModel @Inject constructor(
             loadOnce(orderId)
             if (!isActive) return@launch
             pollJob = launchPollLoop(orderId)
-            streamJob = launchLocationStream(orderId)
+            // External deliveries (Uber Direct / DoorDash Drive) have no platform
+            // courier, so the SSE location stream only emits heartbeats — skip it.
+            if (_uiState.value.order?.isExternalDelivery != true) {
+                streamJob = launchLocationStream(orderId)
+            }
         }
     }
 
@@ -109,6 +113,7 @@ class OrderTrackingViewModel @Inject constructor(
                         val existing = state.order?.courier
                         val fetchedCourier = fetched.courier
                         if (fetchedCourier != null && existing != null &&
+                            fetchedCourier.id == existing.id &&
                             (existing.lat != null || existing.lng != null)
                         ) {
                             fetched.copy(
@@ -142,6 +147,7 @@ class OrderTrackingViewModel @Inject constructor(
 
     fun retryStream() {
         val id = currentOrderId ?: return
+        if (_uiState.value.order?.isExternalDelivery == true) return
         consecutiveSseUnauthorized = 0
         streamJob?.cancel()
         streamJob = launchLocationStream(id)
@@ -248,8 +254,11 @@ class OrderTrackingViewModel @Inject constructor(
     private suspend fun handleLocationEvent(json: String) = withContext(Dispatchers.Default) {
         val event = runCatching { gson.fromJson(json, CourierLocationEvent::class.java) }.getOrNull()
             ?: return@withContext
-        // Skip bogus 0,0 coordinates (null island) from incomplete SSE payloads
-        if (event.lat == 0.0 && event.lng == 0.0) return@withContext
+        // Skip bogus 0,0 coordinates (null island) and out-of-range values from
+        // incomplete/garbled SSE payloads (mirrors iOS range validation).
+        if (event.lat !in -90.0..90.0 || event.lng !in -180.0..180.0 ||
+            (event.lat == 0.0 && event.lng == 0.0)
+        ) return@withContext
         _uiState.update { state ->
             val current = state.order ?: return@update state
             val courier = current.courier?.copy(lat = event.lat, lng = event.lng) ?: return@update state

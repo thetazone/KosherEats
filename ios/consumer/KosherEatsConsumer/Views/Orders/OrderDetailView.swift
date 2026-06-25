@@ -344,8 +344,12 @@ struct OrderDetailView: View {
             if order.discount > 0 {
                 SummaryRow(label: "Savings", value: order.discountFormatted)
             }
-            SummaryRow(label: "Delivery Fee", value: order.deliveryFeeFormatted)
-            SummaryRow(label: "Service Fee", value: order.serviceFeeFormatted)
+            if order.deliveryFee > 0 {
+                SummaryRow(label: "Delivery Fee", value: order.deliveryFeeFormatted)
+            }
+            if order.serviceFee > 0 {
+                SummaryRow(label: "Service Fee", value: order.serviceFeeFormatted)
+            }
             SummaryRow(label: "Tax", value: order.taxFormatted)
             if let tip = order.courierTip, tip > 0 {
                 SummaryRow(label: "Driver Tip", value: Money.dollars(tip))

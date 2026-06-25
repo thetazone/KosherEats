@@ -193,7 +193,7 @@ class DashboardViewModel: ObservableObject {
             }
             knownPendingIDs = newPending
             let filtered = orders.filter { $0.status.isActive }
-                .sorted { $0.createdAt > $1.createdAt }
+                .sorted { ($0.createdAtDate ?? .distantPast) > ($1.createdAtDate ?? .distantPast) }
             self.activeOrders = filtered
             // Keep the shared VM in sync so Dashboard→OrderDetail
             // navigations can find the order via syncOrderFromVM().

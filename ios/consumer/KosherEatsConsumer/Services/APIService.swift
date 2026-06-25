@@ -412,6 +412,9 @@ class APIService: ObservableObject {
 
     func logout() {
         clearToken()
+        // Drop any in-flight PaymentIntent marker so a charged-but-unrecovered
+        // checkout from this user can't block the next user on this device.
+        CheckoutViewModel.clearInflightMarker()
     }
 
     // MARK: - Password reset

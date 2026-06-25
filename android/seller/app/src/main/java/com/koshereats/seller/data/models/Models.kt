@@ -209,6 +209,10 @@ data class Order(
 ) {
     val isPickup: Boolean get() = fulfillmentType == "pickup"
     val isSelfDelivery: Boolean get() = deliveryMode == "restaurant"
+
+    // Total quantity across all line items (matches iOS Order.itemCount), as opposed
+    // to items.size which is the distinct line-item count.
+    val itemCount: Int get() = items.sumOf { it.quantity }
 }
 
 // --- Auth ---

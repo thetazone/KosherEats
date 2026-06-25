@@ -155,7 +155,7 @@ fun ActiveOrderCard(
 
             // Items summary
             Text(
-                text = "${order.items.size} item${if (order.items.size != 1) "s" else ""} " +
+                text = "${order.itemCount} item${if (order.itemCount != 1) "s" else ""} " +
                     order.items.take(2).joinToString(", ") { "${it.quantity}x ${it.menuItemName}" } +
                     if (order.items.size > 2) "..." else "",
                 style = MaterialTheme.typography.bodySmall,

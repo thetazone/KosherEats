@@ -223,6 +223,17 @@ fun CheckoutScreen(
             }
 
             if (ui.isLoadingBundle && ui.bundle == null) {
+                if (ui.fulfillmentType == "delivery" && (ui.deliveryQuoteCents ?: 0) > 0) {
+                    val fee = ui.deliveryQuoteCents ?: 0
+                    val mins = ui.deliveryQuoteMinutes
+                    Text(
+                        text = "Est. delivery fee ~${fee.formatPrice()}" +
+                            (if (mins != null && mins > 0) " · $mins min" else ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextTertiary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+                    )
+                }
                 Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Orange, modifier = Modifier.size(28.dp))
                 }
@@ -613,8 +624,10 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
                 Spacer(Modifier.height(8.dp))
                 TotalRow("Deal discount", -bundle.discount, accent = true)
             }
-            Spacer(Modifier.height(8.dp))
-            TotalRow("Delivery fee", bundle.deliveryFee)
+            if (bundle.deliveryFee > 0) {
+                Spacer(Modifier.height(8.dp))
+                TotalRow("Delivery fee", bundle.deliveryFee)
+            }
             Spacer(Modifier.height(8.dp))
             TotalRow("Service fee", bundle.serviceFee)
             Spacer(Modifier.height(8.dp))

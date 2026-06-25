@@ -474,7 +474,14 @@ private struct ModifierGroupSection: View {
     private func toggle(_ mod: Modifier) {
         guard mod.isAvailable else { return }
         if group.isSingleSelect {
-            selected = [mod.id]
+            // Allow deselecting the chosen radio option when the group is
+            // optional, so a tapped add-on in a non-mandatory single-select
+            // group isn't permanently stuck in the cart.
+            if !isMandatory && selected.contains(mod.id) {
+                selected.remove(mod.id)
+            } else {
+                selected = [mod.id]
+            }
             return
         }
         if selected.contains(mod.id) {

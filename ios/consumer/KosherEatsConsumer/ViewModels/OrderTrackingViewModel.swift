@@ -30,7 +30,16 @@ final class OrderTrackingViewModel: ObservableObject {
         stop()
         await refresh()
         startPolling()
-        startLocationStream()
+        // Only open the courier-location SSE for platform deliveries. Pickup
+        // orders have no courier, and external (Uber Direct / DoorDash) orders
+        // are tracked in the provider's app — both would leave an idle stream
+        // open that never carries a courier position. refresh() above is awaited,
+        // so self.order is populated by this point.
+        let isPickup = order?.fulfillmentType == "pickup"
+        let isExternal = order?.isExternalDelivery ?? false
+        if !isPickup && !isExternal {
+            startLocationStream()
+        }
         observePushEvents()
     }
 

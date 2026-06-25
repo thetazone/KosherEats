@@ -590,8 +590,13 @@ fun CreateDealScreen(
 
             val hasDiscountValue = discountType == DiscountType.BOGO
                     || (discountValue.toDoubleOrNull() ?: 0.0) > 0.0
+            // Fixed-amount deals are capped at $100 (10000 cents) server-side; mirror
+            // that limit inline rather than surfacing a raw backend 400.
+            val fixedExceedsCap = discountType == DiscountType.FIXED &&
+                    dollarsToCents(discountValue) > 10000
             val canCreate = title.isNotBlank()
                     && hasDiscountValue
+                    && !fixedExceedsCap
                     && isExpiryFuture
                     && !state.isCreating
                     && !isUploadingImage
@@ -600,6 +605,7 @@ fun CreateDealScreen(
             val validationHint = when {
                 title.isBlank() -> "Enter a deal title"
                 !hasDiscountValue -> "Enter a discount value"
+                fixedExceedsCap -> "Fixed discount can't exceed $100"
                 !isGeneralDeal && selectedItem == null -> "Select a menu item"
                 !isExpiryFuture -> "Expiry must be at least 30 minutes from now"
                 isUploadingImage -> "Image upload in progress…"

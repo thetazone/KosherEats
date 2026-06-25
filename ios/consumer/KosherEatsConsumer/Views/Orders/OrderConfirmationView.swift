@@ -263,8 +263,12 @@ struct OrderConfirmationView: View {
             if order.discount > 0 {
                 priceRow("Savings", order.discountFormatted)
             }
-            priceRow("Delivery fee", order.deliveryFeeFormatted)
-            priceRow("Service fee", order.serviceFeeFormatted)
+            if order.deliveryFee > 0 {
+                priceRow("Delivery fee", order.deliveryFeeFormatted)
+            }
+            if order.serviceFee > 0 {
+                priceRow("Service fee", order.serviceFeeFormatted)
+            }
             priceRow("Tax", order.taxFormatted)
             if let tip = order.courierTip, tip > 0 {
                 priceRow("Driver Tip", Money.dollars(tip))
