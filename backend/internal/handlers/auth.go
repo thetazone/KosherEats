@@ -75,6 +75,24 @@ type AuthResponse struct {
 	User         models.User `json:"user"`
 }
 
+// allowedSignupRole clamps a self-service signup role to the set a user may
+// create for themselves. SECURITY: admin accounts must NEVER be creatable
+// through any public signup path (Register / SocialLogin / phone OTP) — they're
+// seeded or created by an existing admin. AdminMiddleware authorizes purely on
+// the JWT role claim, so an attacker who could self-assign role=admin here would
+// mint an admin token and own the whole /admin surface. Returns (role, ok);
+// ok=false means the requested value is not self-serviceable → reject with 400.
+func allowedSignupRole(role models.UserRole) (models.UserRole, bool) {
+	switch role {
+	case "":
+		return models.RoleConsumer, true
+	case models.RoleConsumer, models.RoleSeller, models.RoleCourier:
+		return role, true
+	default:
+		return "", false
+	}
+}
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := readJSON(r, &req); err != nil {
@@ -99,9 +117,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role := req.Role
-	if role == "" {
-		role = models.RoleConsumer
+	role, ok := allowedSignupRole(req.Role)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid role")
+		return
 	}
 	vertical := normalizeVertical(req.Vertical)
 

@@ -112,9 +112,13 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	// ID can map to many separate user rows — one per (role × vertical) pair
 	// — and the calling app's role + vertical disambiguates which row this
 	// sign-in is for.
-	role := req.Role
-	if role == "" {
-		role = models.RoleConsumer
+	// SECURITY: clamp the requested role — never let OAuth sign-up of a fresh
+	// identity self-assign admin (see allowedSignupRole). The role also scopes
+	// every lookup below, so a rejected value never reaches a query or INSERT.
+	role, ok := allowedSignupRole(req.Role)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid role")
+		return
 	}
 	vertical := normalizeVertical(req.Vertical)
 

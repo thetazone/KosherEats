@@ -386,6 +386,45 @@ func TestIntegration_RegisterThenLoginReturnsToken(t *testing.T) {
 	}
 }
 
+// TestIntegration_SignupRejectsPrivilegedRole locks in the fix for the public
+// privilege-escalation hole: self-service registration must never mint an admin
+// (AdminMiddleware authorizes purely on the JWT role claim, so a self-assigned
+// role=admin would own the whole /admin surface). Unknown roles are rejected
+// too; legitimate self-service roles (consumer/seller/courier) still succeed.
+func TestIntegration_SignupRejectsPrivilegedRole(t *testing.T) {
+	harness.resetVolatile(t)
+
+	for _, role := range []string{"admin", "superuser"} {
+		rec := harness.do(http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+			"email":      uniqueEmail("escalate-" + role),
+			"password":   "password123",
+			"first_name": "Mallory",
+			"role":       role,
+		})
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("register role=%s: status %d (want 400), body %s", role, rec.Code, rec.Body.String())
+		}
+	}
+
+	// A legitimate self-service role still succeeds and is honored.
+	sellerRec := harness.do(http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"email":      uniqueEmail("seller-ok"),
+		"password":   "password123",
+		"first_name": "Sally",
+		"role":       "seller",
+	})
+	if sellerRec.Code != http.StatusCreated {
+		t.Fatalf("register role=seller: status %d (want 201), body %s", sellerRec.Code, sellerRec.Body.String())
+	}
+	var reg AuthResponse
+	if err := json.Unmarshal(sellerRec.Body.Bytes(), &reg); err != nil {
+		t.Fatalf("seller register decode: %v", err)
+	}
+	if reg.User.Role != "seller" {
+		t.Fatalf("seller register role = %q, want seller", reg.User.Role)
+	}
+}
+
 // (2) GetMenu returns 404 for a pending restaurant but 200 for an approved one.
 func TestIntegration_GetMenuVisibilityGate(t *testing.T) {
 	harness.resetVolatile(t)

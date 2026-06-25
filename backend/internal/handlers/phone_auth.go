@@ -97,8 +97,14 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Role == "" {
-		req.Role = models.RoleConsumer
+	// SECURITY: clamp the requested role — phone-OTP signup of a fresh (phone,
+	// role) pair must never self-assign admin (see allowedSignupRole). req.Role
+	// scopes the existing-user lookup and the createPhoneUser INSERT below.
+	if clamped, okRole := allowedSignupRole(req.Role); okRole {
+		req.Role = clamped
+	} else {
+		writeError(w, http.StatusBadRequest, "invalid role")
+		return
 	}
 	vertical := normalizeVertical(req.Vertical)
 
