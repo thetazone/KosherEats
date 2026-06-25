@@ -132,3 +132,13 @@ Second sweep (cycle-1's 102 excluded): **136 NEW confirmed — 1 critical, 45 hi
 - [x] **HIGH — DoorDash pickup webhook too narrow** (stranded escalated-while-preparing orders): widened to match Uber.
 - ⏳ **Client highs (16) being fixed** by a per-app worktree workflow (ios/android seller, android consumer/courier, ios courier).
 - ⏳ **~38 backend/other highs + 48 med + 42 low remain** — documented with fixes. Many need product/migration decisions; the med/low tier is single-skeptic-verified so expect some false positives. **This is a real backlog larger than one session — needs prioritization.**
+
+## 🔁 Highs re-triage + fixes — 2026-06-25 (on main)
+Re-triaged all 44 open highs against current code: **27 real · 8 need-decision · 8 already-fixed · 1 false-positive**. Re-triage also caught a risk in my own dispatch-reaper. Fixed this pass (all build/test-green, deployed):
+- [x] **reaper window 2m→10m** — my earlier reaper could reset a still-in-flight dispatch → orphaned paid delivery.
+- [x] **EscalateToUber on detached context** — request-cancel mid-dispatch orphaned a paid delivery (→ double-pay re-dispatch).
+- [x] **CreatePaymentIntent cart `rows.Err()`** — PI priced off a truncated cart (undercharge).
+- [x] **pickup-PI free-delivery exploit** — stamp + verify `fulfillment_type` on the PaymentIntent.
+- [x] **LinkProvider OTP brute-force lockout** — phone-link bypassed the lockout phone-login enforces (shared `verifyPhoneOTP`).
+- ⏳ **Still real & open (~22):** UpdateProfile unverified-phone (SECURITY — flagged, needs a phone-change-flow product call), webhook-stranding cluster (delivered/pickup webhook drops), CancelOrder-refunds-a-dispatched-order, ClaimOrder busy-guard, ListCourierActiveOrders `rows.Err()`, external-persist-error orphan, Android seller courier-contact card (the deferred merge). All in the backlog docs with fixes.
+- **8 need-decision** (NOT auto-fixable): courier-comp model + the 2.5% bump, legacy↔Temporal payout idempotency, courier-without-Stripe-Connect, `user_auth_providers` unique constraint (migration), refund/dispute→halt-payout.
