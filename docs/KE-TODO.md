@@ -142,3 +142,14 @@ Re-triaged all 44 open highs against current code: **27 real · 8 need-decision 
 - [x] **LinkProvider OTP brute-force lockout** — phone-link bypassed the lockout phone-login enforces (shared `verifyPhoneOTP`).
 - ⏳ **Still real & open (~22):** UpdateProfile unverified-phone (SECURITY — flagged, needs a phone-change-flow product call), webhook-stranding cluster (delivered/pickup webhook drops), CancelOrder-refunds-a-dispatched-order, ClaimOrder busy-guard, ListCourierActiveOrders `rows.Err()`, external-persist-error orphan, Android seller courier-contact card (the deferred merge). All in the backlog docs with fixes.
 - **8 need-decision** (NOT auto-fixable): courier-comp model + the 2.5% bump, legacy↔Temporal payout idempotency, courier-without-Stripe-Connect, `user_auth_providers` unique constraint (migration), refund/dispute→halt-payout.
+
+## ✅ The 8 "needs-decision" highs — RESOLVED (2026-06-25, walkthrough w/ Salto)
+All implemented + deployed (or noted), build/test-green:
+- [x] **#1 Courier comp** — dropped the 2.5% bump (loss funded by a $0 service fee); payout = delivery_fee + 100% tip. Added `orders.provider_fee_cents` (migration 047) so external-delivery margin is explicit.
+- [x] **#2 Payout idempotency (Temporal cutover)** — deferred (Temporal off); TODO at the legacy payout site documenting the double-pay risk + the fix (align both on `payout-`+orderID).
+- [x] **#3 Courier without Stripe Connect** — chose backfill: queue the payout with a NULL connect id (migration 048), sweep skips NULL-connect rows, `account.updated` webhook backfills the id on onboarding → backlog paid.
+- [x] **#4 `user_auth_providers` unique constraint** — migration 046: de-dup + UNIQUE(provider, provider_id) (one external identity → one account).
+- [x] **#5 Refund/dispute → halt payout** — StripeWebhook halts a pending courier_payout_queue row for a refunded/disputed order.
+- [x] **#6 UpdateProfile unverified phone** — built the verified phone-change flow (POST /user/phone/change/{start,verify}); UpdateProfile no longer writes phone.
+
+**Session grand total: ~62 bugs fixed**, all 4 criticals + every clear money/security high + all 6 product decisions deployed. `main` carries everything (~42 commits since the feature base); backend healthy throughout.
