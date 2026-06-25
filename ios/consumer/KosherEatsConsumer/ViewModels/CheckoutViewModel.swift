@@ -158,8 +158,14 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             // rounds (not truncates) so exact-cent inputs like $4.10 stay 410¢.
             let cents = Money.parseCents(customTipText) ?? 0
             // Clamp to the subtotal too (backend enforces tip <= subtotal), so a
-            // stale over-cap custom value can never be sent and 400 the order.
-            return min(max(0, cents), min(Self.maxTipCents, subtotal))
+            // stale over-cap custom value can never be sent and 400 the order —
+            // but ONLY once the bundle (and its real subtotal) has loaded. While
+            // bundle == nil, subtotal is 0 and clamping to it would silently zero
+            // a typed custom tip; fall back to the flat cap in that window
+            // (mirrors updateCustomTip). canPay already blocks paying until the
+            // bundle loads, at which point this re-evaluates against the real cap.
+            let cap = bundle == nil ? Self.maxTipCents : min(Self.maxTipCents, subtotal)
+            return min(max(0, cents), cap)
         }
     }
 
