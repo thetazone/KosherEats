@@ -133,6 +133,16 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SECURITY: the order's fulfillment_type must match the one the PaymentIntent
+	// was priced for. Otherwise a client mints a pickup PI (delivery_fee = 0, tip
+	// forced 0) and redeems it on a delivery order — and because CreateOrder
+	// reuses the stamped delivery_fee (StampedDeliveryFee), the delivery ships for
+	// free. ok=false means a legacy PI with no stamp — skip the check for compat.
+	if stamped, ok, ferr := h.stripe.StampedFulfillmentType(req.PaymentIntentID); ferr == nil && ok && stamped != fulfillmentType {
+		writeError(w, http.StatusBadRequest, "payment was created for a different fulfillment type")
+		return
+	}
+
 	deliveryFee := 0
 	if fulfillmentType != "pickup" {
 		var restAddress string
@@ -1382,7 +1392,14 @@ func (h *Handler) EscalateToUber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider, deliveryID, _, derr := h.dispatcher.Dispatch(r.Context(), in)
+	// Dispatch on a detached context, NOT the request context: it makes a paid
+	// CreateDelivery call followed by a persist UPDATE, and if the seller's HTTP
+	// request is cancelled in that window the persist is skipped — leaving a paid
+	// provider delivery un-recorded (the reaper then re-dispatches → double pay).
+	// Mirrors the MarkOrderReady inline-dispatch fix.
+	dispatchCtx, cancelDispatch := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDispatch()
+	provider, deliveryID, _, derr := h.dispatcher.Dispatch(dispatchCtx, in)
 	if derr != nil {
 		writeError(w, http.StatusBadGateway, "could not dispatch a courier — please try again")
 		return

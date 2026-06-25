@@ -53,6 +53,12 @@ const (
 // that was charged — never a fresh, slightly-different live courier quote.
 const deliveryFeeMetaKey = "delivery_fee"
 
+// fulfillmentMetaKey records the fulfillment_type the PaymentIntent was priced
+// for. CreateOrder rejects an order whose fulfillment_type doesn't match, so a
+// client can't mint a cheap pickup PI (delivery_fee = 0) and then redeem it on a
+// delivery order for free delivery.
+const fulfillmentMetaKey = "fulfillment_type"
+
 // looksLikeRealStripeKey filters out the "sk_test_your_stripe_secret_key"
 // placeholders commonly left in .env.example files. Any real Stripe secret
 // key starts with "sk_" and contains either "_live_" or "_test_" followed
@@ -223,6 +229,24 @@ func (c *Client) StampedDeliveryFee(paymentIntentID string) (cents int, ok bool,
 		return 0, false, nil
 	}
 	return v, true, nil
+}
+
+// StampedFulfillmentType returns the fulfillment_type the PaymentIntent was
+// priced for. ok is false when the PI predates this stamp (older in-flight
+// checkouts) or in dev stub mode — callers then skip the match check.
+func (c *Client) StampedFulfillmentType(paymentIntentID string) (value string, ok bool, err error) {
+	if !c.enabled || paymentIntentID == "" {
+		return "", false, nil
+	}
+	pi, err := paymentintent.Get(paymentIntentID, nil)
+	if err != nil {
+		return "", false, fmt.Errorf("retrieve payment intent: %w", err)
+	}
+	raw, present := pi.Metadata[fulfillmentMetaKey]
+	if !present || raw == "" {
+		return "", false, nil
+	}
+	return raw, true, nil
 }
 
 // verifyPI is the pure verification core shared by VerifyPaymentSucceeded. It
@@ -462,7 +486,7 @@ func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, us
 // In dev stub mode (no STRIPE_SECRET_KEY), returns fake values. The iOS app
 // detects the stub prefix and skips actually presenting PaymentSheet, which
 // keeps local dev functional without real Stripe keys.
-func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name string) (*PaymentSheetBundle, error) {
+func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType string) (*PaymentSheetBundle, error) {
 	if !c.enabled {
 		return &PaymentSheetBundle{
 			PaymentIntentSecret: "pi_stub_" + fakeID() + "_secret_stub",
@@ -513,6 +537,7 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 				// different live quote and fail the amount-match guard. This is
 				// what binds the recorded order total to the charged amount.
 				deliveryFeeMetaKey: strconv.Itoa(deliveryFeeCents),
+				fulfillmentMetaKey: fulfillmentType,
 			},
 		},
 	})

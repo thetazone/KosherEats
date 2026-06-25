@@ -108,7 +108,15 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		subtotal += unit * qty
 		dealItems = append(dealItems, models.OrderItem{Price: unit, Quantity: qty})
 	}
+	rowsErr := rows.Err()
 	rows.Close()
+	// A mid-iteration error makes Next() stop early just like end-of-rows, so
+	// without this the PaymentIntent would be priced off a truncated cart
+	// (undercharge). Same guard CreateOrder applies for the same query.
+	if rowsErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read cart")
+		return
+	}
 	if subtotal == 0 {
 		writeError(w, http.StatusBadRequest, "cart is empty")
 		return
@@ -182,7 +190,13 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 			slog.String("user_id", user["user_id"]), slog.String("error", err.Error()))
 	}
 
-	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName)
+	// Normalize + stamp the fulfillment type on the PI so CreateOrder can reject
+	// a pickup PI redeemed on a delivery order (free-delivery exploit).
+	fulfillmentType := "delivery"
+	if isPickup {
+		fulfillmentType = "pickup"
+	}
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType)
 	if err != nil {
 		// Surface the real Stripe error to the logs so future "failed to
 		// create payment" reports take seconds, not an hour, to diagnose.
