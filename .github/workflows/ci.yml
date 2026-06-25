@@ -106,6 +106,39 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      # The consumer app applies the com.google.gms.google-services plugin (for
+      # FCM + Crashlytics + Analytics), which hard-requires app/google-services.json
+      # at build time. That file is environment config and is gitignored, so a clean
+      # CI checkout has none and :app:processDebugGoogleServices fails before Kotlin
+      # compiles. CI only type-checks (it never runs the app or talks to Firebase),
+      # so a minimal placeholder with the correct package_name satisfies the plugin.
+      # Seller/courier do manual FCM init (no plugin) and don't need this. Real
+      # builds use the actual file from local / release config.
+      - name: Provide placeholder google-services.json (CI compile only)
+        if: matrix.app == 'consumer'
+        run: |
+          cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "koshereats-ci-placeholder",
+              "storage_bucket": "koshereats-ci-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": { "package_name": "com.koshereats.consumer" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "AIzaSyACIplaceholderkeyplaceholderke1234" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+
       - name: Compile Kotlin (debug)
         run: ./gradlew compileDebugKotlin --no-daemon --stacktrace
 
