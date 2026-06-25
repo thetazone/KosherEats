@@ -34,6 +34,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -45,11 +47,23 @@ import (
 	"github.com/koshereats/backend/internal/uberdirect"
 )
 
+// graceSeconds reads an env var as a number of seconds, falling back to def.
+// Lets us tune dispatch timing without a redeploy (Fly secret).
+func graceSeconds(key string, def time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return def
+}
+
 // autoDispatchGrace is how long an order may sit in 'ready' with no courier
-// claimed before the dispatcher auto-assigns one. This gives couriers a
-// chance to self-claim from the marketplace broadcast first, preserving the
-// feel of a driver-driven system while guaranteeing no ghost orders.
-const autoDispatchGrace = 2 * time.Minute
+// claimed before the dispatcher auto-assigns one. This gives own couriers a
+// chance to self-claim from the marketplace broadcast first. At cold-start
+// there are no own couriers, so the default is short to dispatch quickly;
+// raise AUTO_DISPATCH_GRACE_SECONDS once a fleet exists. (Was a 2m const.)
+var autoDispatchGrace = graceSeconds("AUTO_DISPATCH_GRACE_SECONDS", 30*time.Second)
 
 // autoDispatchBatchLimit caps how many stale orders we process per sweep.
 // Prevents a backlog from blocking the sweep loop or fanning out too many
@@ -62,9 +76,11 @@ const autoDispatchBatchLimit = 20
 const pendingOrderTTL = 10 * time.Minute
 
 // externalDispatchGrace is the total time an order sits in 'ready' before we
-// fall back to an external courier (Uber Direct). Must be longer than
-// autoDispatchGrace to give own-fleet assignment a chance first.
-const externalDispatchGrace = 5 * time.Minute
+// fall back to an external courier (Uber Direct). With no own fleet at
+// cold-start the default is short so deliveries dispatch promptly; raise
+// EXTERNAL_DISPATCH_GRACE_SECONDS (>= AUTO_DISPATCH_GRACE_SECONDS) to give an
+// own fleet first crack once it exists. (Was a 5m const.)
+var externalDispatchGrace = graceSeconds("EXTERNAL_DISPATCH_GRACE_SECONDS", 30*time.Second)
 
 // staleRejectionBatchLimit caps orders auto-rejected per sweep. Protects
 // Stripe from a burst of refund requests if the API was down for a while.
