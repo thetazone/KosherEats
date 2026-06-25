@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -86,6 +87,46 @@ func (h *Handler) StartPhoneLogin(w http.ResponseWriter, r *http.Request) {
 // independently belong to a consumer account AND a seller account AND a
 // courier account. Each app's auth call carries its own role — the consumer
 // app can never sign in as a seller, even with the same phone number.
+// verifyPhoneOTP runs the DB-backed brute-force lockout (phone_otp_starts: TTL,
+// failed_attempts, locked_until) and then the SMS provider check, clearing the
+// row on success. Returns ok plus, when !ok, the HTTP status + client message
+// the caller should write. Used by LinkProvider so the phone-link path can't
+// bypass the lockout that VerifyPhoneLogin enforces. (VerifyPhoneLogin still has
+// the equivalent logic inline; consolidating it is a safe follow-up.)
+func (h *Handler) verifyPhoneOTP(ctx context.Context, phone, code string) (ok bool, status int, msg string) {
+	var startedAt time.Time
+	var failedAttempts int
+	var lockedUntil *time.Time
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT started_at, failed_attempts, locked_until FROM phone_otp_starts WHERE phone = $1`, phone,
+	).Scan(&startedAt, &failedAttempts, &lockedUntil); err != nil || time.Since(startedAt) > phoneOTPTTL {
+		return false, http.StatusUnauthorized, "code expired — request a new one"
+	}
+	if lockedUntil != nil && time.Now().Before(*lockedUntil) {
+		return false, http.StatusTooManyRequests, "too many failed attempts — try again in 10 minutes"
+	}
+	verified, err := h.sms.Check(ctx, phone, code)
+	if err != nil {
+		return false, http.StatusBadGateway, "verification failed"
+	}
+	if !verified {
+		if _, uerr := h.db.Pool.Exec(ctx,
+			`UPDATE phone_otp_starts
+			    SET failed_attempts = failed_attempts + 1,
+			        locked_until = CASE WHEN failed_attempts + 1 >= $2 THEN NOW() + $3::interval ELSE locked_until END
+			  WHERE phone = $1`,
+			phone, otpMaxAttempts, fmt.Sprintf("%d seconds", int(otpLockoutDur.Seconds()))); uerr != nil {
+			slog.Error("failed to increment OTP attempt counter",
+				slog.String("phone", phone), slog.String("error", uerr.Error()))
+		}
+		return false, http.StatusUnauthorized, "invalid or expired code"
+	}
+	if _, derr := h.db.Pool.Exec(ctx, `DELETE FROM phone_otp_starts WHERE phone = $1`, phone); derr != nil {
+		slog.Error("failed to clear OTP start row", slog.String("phone", phone), slog.String("error", derr.Error()))
+	}
+	return true, 0, ""
+}
+
 func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 	var req PhoneVerifyRequest
 	if err := readJSON(r, &req); err != nil {

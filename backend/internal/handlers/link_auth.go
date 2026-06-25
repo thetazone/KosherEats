@@ -57,13 +57,11 @@ func (h *Handler) LinkProvider(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "phone and code are required for phone linking")
 			return
 		}
-		ok, verifyErr := h.sms.Check(r.Context(), phone, req.Code)
-		if verifyErr != nil {
-			writeError(w, http.StatusBadGateway, "verification failed")
-			return
-		}
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "invalid or expired code")
+		// Use the lockout-aware verifier (TTL + failed_attempts + locked_until),
+		// not a bare sms.Check — otherwise an attacker could brute-force a phone's
+		// OTP through the link path, bypassing the protection phone login enforces.
+		if okv, status, msg := h.verifyPhoneOTP(r.Context(), phone, req.Code); !okv {
+			writeError(w, status, msg)
 			return
 		}
 		providerID = phone
