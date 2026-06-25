@@ -178,17 +178,24 @@ class CartViewModel @Inject constructor(
                 restaurantImageUrl = restaurantImageUrl,
             )
 
+            val normalizedNote = specialInstructions?.trim()?.take(500)?.takeIf { it.isNotBlank() }
+
             val newCartItem = CartItem(
                 id = UUID.randomUUID().toString(),
                 menuItem = menuItem,
                 quantity = quantity.coerceIn(1, 99),
                 selectedModifiers = selectedModifiers,
-                specialInstructions = specialInstructions?.trim()?.take(500)?.takeIf { it.isNotBlank() },
+                specialInstructions = normalizedNote,
             )
 
+            // Merge into an existing line only when the note ALSO matches —
+            // otherwise a same-item add with different special instructions would
+            // silently bump the existing line's quantity and drop the new note
+            // (matches iOS, which keys lines on note too).
             val existingIndex = if (selectedModifiers.isEmpty()) {
                 currentCart.items.indexOfFirst {
-                    it.menuItem.id == menuItem.id && it.selectedModifiers.isEmpty()
+                    it.menuItem.id == menuItem.id && it.selectedModifiers.isEmpty() &&
+                        it.specialInstructions == normalizedNote
                 }
             } else -1
 
