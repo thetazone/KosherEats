@@ -230,6 +230,23 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Busy guard: a courier may only hold one active delivery at a time. This
+	// mirrors the auto-dispatch selection filter (dispatcher.go skips couriers
+	// with an order in 'ready'/'picked_up'); without it the manual-claim path
+	// let one courier stack unlimited concurrent orders — asymmetric with
+	// auto-dispatch. This pre-check gives a precise message; the CAS below also
+	// carries the same NOT EXISTS so a concurrent claim still loses the race.
+	var busy bool
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT EXISTS (
+		    SELECT 1 FROM orders
+		     WHERE courier_id = $1 AND status IN ('ready', 'picked_up'))`,
+		user["user_id"]).Scan(&busy)
+	if busy {
+		writeError(w, http.StatusConflict, "finish your current delivery before claiming another")
+		return
+	}
+
 	// Atomic claim: only succeeds if courier_id is still NULL AND the order isn't
 	// mid/post external dispatch (external_provider set to 'dispatching' or a real
 	// provider) — a KE courier must not claim an order already going to Uber.
@@ -247,7 +264,14 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 		   -- A self-delivery ('restaurant') order has external_provider NULL, so the
 		   -- guard above doesn't stop a KE courier from poaching it — exclude
 		   -- non-platform delivery modes explicitly.
-		   AND COALESCE(rest.delivery_mode, 'platform') = 'platform'`,
+		   AND COALESCE(rest.delivery_mode, 'platform') = 'platform'
+		   -- Busy guard (race-safe form of the pre-check above): reject the claim
+		   -- if this courier already holds an active delivery.
+		   AND NOT EXISTS (
+		     SELECT 1 FROM orders o2
+		      WHERE o2.courier_id = $1
+		        AND o2.status IN ('ready', 'picked_up')
+		   )`,
 		user["user_id"], orderID)
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusConflict, "order no longer available")
@@ -637,6 +661,12 @@ func (h *Handler) ListCourierHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		h.CreatedAt = createdAt.Format(time.RFC3339)
 		list = append(list, h)
+	}
+	// Fail rather than silently truncate the courier's earnings history on a
+	// mid-iteration error (would understate lifetime earnings).
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch history")
+		return
 	}
 	if list == nil {
 		list = []HistoryRow{}

@@ -223,7 +223,8 @@ func (h *Handler) snapshotModifiers(r *http.Request, menuItemID string, modifier
 		`SELECT m.id, m.group_id, g.name AS group_name, m.name, m.price_delta
 		   FROM menu_item_modifiers m
 		   JOIN menu_item_modifier_groups g ON m.group_id = g.id
-		  WHERE m.id = ANY($1) AND g.menu_item_id = $2`,
+		  WHERE m.id = ANY($1) AND g.menu_item_id = $2
+		    AND m.is_available = true`,
 		modifierIDs, menuItemID)
 	if err != nil {
 		return nil, 0, err

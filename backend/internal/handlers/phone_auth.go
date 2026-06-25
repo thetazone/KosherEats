@@ -60,12 +60,23 @@ func (h *Handler) StartPhoneLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Don't send a new code or reset the counters while the phone is in an active
+	// brute-force lockout — otherwise an attacker re-requests to wipe the lockout
+	// and keep guessing (and the victim gets spammed with SMS).
+	var lockedUntil *time.Time
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT locked_until FROM phone_otp_starts WHERE phone = $1`, phone).Scan(&lockedUntil)
+	if lockedUntil != nil && time.Now().Before(*lockedUntil) {
+		writeError(w, http.StatusTooManyRequests, "too many attempts — try again in a few minutes")
+		return
+	}
+
 	if err := h.sms.Start(r.Context(), phone); err != nil {
 		writeError(w, http.StatusBadGateway, "failed to send verification code")
 		return
 	}
 
-	// Record the start time and reset brute-force counters.
+	// Record the start time and reset brute-force counters (safe — not locked).
 	if _, err := h.db.Pool.Exec(r.Context(),
 		`INSERT INTO phone_otp_starts (phone, started_at, failed_attempts, locked_until)
 		 VALUES ($1, NOW(), 0, NULL)

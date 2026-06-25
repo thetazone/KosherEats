@@ -50,6 +50,21 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotent replay short-circuit: if an order already exists for this
+	// PaymentIntent (scoped to this user — the unique index is global, so the
+	// user filter prevents an IDOR), return it instead of reprocessing. Client
+	// retries after a network blip on the original response are common, and the
+	// first call already cleared the cart — so without this, a retry surfaces a
+	// 4xx for what was actually a success: "cart is empty", or for a deal order
+	// the "deal already used" check fires off the just-created order. A genuine
+	// new order always carries a fresh PaymentIntent, so it won't match here.
+	// The INSERT's ON CONFLICT below stays as the race-safe backstop for retries
+	// that arrive before this one has committed.
+	if existing, lerr := h.loadOrderByPaymentIntent(r, req.PaymentIntentID, user["user_id"]); lerr == nil {
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+
 	tx, err := h.db.Pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to start transaction")
