@@ -5,6 +5,15 @@ Last updated: 2026-06-23.
 
 ---
 
+## 🔬 Adversarial bug-hunt — cycle 1 (2026-06-25) — full list in `docs/bug-backlog-2026-06-25.md`
+Multi-agent hunt (8 lenses × 5 rounds, skeptic-verified): **102 confirmed — 3 critical, 36 high, 40 medium, 23 low.** Fixed + committed so far (branch `feat/seller-delivery-mode-ui`):
+- [x] **CRITICAL — anon admin self-registration** (auth/social/phone signup took `role` from the body, no allowlist → admin JWT → full /admin surface). Allowlist (`allowedSignupRole`) on all 3 creation paths + regression test. **Committed `d3dab2e0` and DEPLOYED — verified live: prod now returns `400 invalid role`.**
+- [x] **CRITICAL — scheduled orders auto-rejected+refunded on promotion** (stale-rejection keyed off `created_at`; scheduled orders are old by the time they go pending). Key off `updated_at`. Committed `664527cb`.
+- [x] **HIGH — CreateOrder built a partial order on a cart-scan error** (`rows.Err()` unchecked → undercharged, items missing). Committed `9fd6c0cf`.
+- [x] **HIGH — UpdateCartItem dropped edited notes** (read but never written). `*string` + COALESCE. Committed `9fd6c0cf`.
+- ⏳ **~34 high + 40 med + 23 low remain** in the backlog doc, triaged + with proposed fixes. NOTE: single-skeptic verify is permissive — re-verify before applying (e.g. the device-token "hijack" overwrite is intentional for login/logout hand-off; not fixed). Notable un-fixed highs: courier-payout double-pay (legacy↔Temporal idempotency-key mismatch), consumer apps have **no external/Uber delivery tracking** (frozen map), self-delivery tip dropped from seller earnings, external-cancel webhook strands orders, `dispatching` claim sentinel can leak (no reaper), couriers can poach self-delivery orders, checkout address change doesn't re-price.
+- Cycles 2 & 3 NOT yet run — pending decision (see report): burning down this backlog likely beats finding ~200 more.
+
 ## 🐛 Bug-fix cycle — 2026-06-25 (seller order/settings; all build-green, uncommitted)
 - [x] **iOS misleading delivery status (HIGH-frequency):** `courierStatusCard` showed "Waiting for a courier to claim this order…" (spinner, never resolves) for EVERY Uber-dispatched order — there's no platform courier row, so the no-courier branch fired. Now: when `external_delivery_id` is set, shows "Handed to a delivery partner — a courier is on the way" / "Out for delivery with a partner courier". (Fix enabled by the new `externalDeliveryId` model field.)
 - [x] **iOS escalate button lingered + stale status after escalate:** `escalateButton` calls the escalate API directly (returns `EscalateResponse`, not an `Order`) and never updated `vm.orders`; `syncOrderFromVM` is cache-first, so it kept the stale list copy (which doesn't even carry `external_delivery_id`) → button stayed on, status never flipped. Fixed by forcing `vm.fetchOrder(id:)` before sync. (Android was already correct — its VM escalate re-fetches via `getOrderDetail`.)
