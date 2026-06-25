@@ -174,7 +174,7 @@ private fun AvailableDeliveryCard(d: AvailableDelivery, onAccept: () -> Unit) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(d.deliveryFee.formatPrice(), color = Orange, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text((d.deliveryFee + d.courierTip).formatPrice(), color = Orange, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Restaurant, contentDescription = null, tint = Orange, modifier = Modifier.size(16.dp))
             Spacer(Modifier.size(6.dp))

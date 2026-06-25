@@ -162,6 +162,7 @@ data class AvailableDelivery(
     val status: String,
     val total: Int,
     @SerializedName("delivery_fee") val deliveryFee: Int,
+    @SerializedName("courier_tip") val courierTip: Int = 0,
     @SerializedName("delivery_address") val deliveryAddress: String,
     @SerializedName("delivery_lat") val deliveryLat: Double,
     @SerializedName("delivery_lng") val deliveryLng: Double,
