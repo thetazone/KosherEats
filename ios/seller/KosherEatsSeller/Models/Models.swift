@@ -569,8 +569,14 @@ struct Order: Codable, Identifiable {
     /// an external provider (nil otherwise). Lets the seller UI hide the
     /// "Dispatch to Uber" escalate action once a provider already owns it.
     let externalDeliveryId: String?
+    /// The restaurant's delivery mode for this order (platform | external |
+    /// restaurant). Drives the self-delivery action flow.
+    let deliveryMode: String
 
     var isPickup: Bool { fulfillmentType == "pickup" }
+    /// True when the restaurant self-delivers — the seller drives the order
+    /// ready→picked_up→delivered itself (no platform courier, no provider).
+    var isSelfDelivery: Bool { deliveryMode == "restaurant" }
 
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, discount, total, courier
@@ -589,6 +595,7 @@ struct Order: Codable, Identifiable {
         case courierPayout = "courier_payout"
         case fulfillmentType = "fulfillment_type"
         case externalDeliveryId = "external_delivery_id"
+        case deliveryMode = "delivery_mode"
     }
 
     init(from decoder: Decoder) throws {
@@ -619,6 +626,7 @@ struct Order: Codable, Identifiable {
         // (or any handler that doesn't yet emit the field) still decode.
         fulfillmentType = (try c.decodeIfPresent(String.self, forKey: .fulfillmentType)) ?? "delivery"
         externalDeliveryId = try c.decodeIfPresent(String.self, forKey: .externalDeliveryId)
+        deliveryMode = (try c.decodeIfPresent(String.self, forKey: .deliveryMode)) ?? "platform"
     }
 
     /// Dollars display for the total. Every UI using $%.2f on order.total

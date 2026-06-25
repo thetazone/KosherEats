@@ -795,10 +795,23 @@ actor APIService {
         try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/complete"))
     }
 
-    // NOTE: Sellers no longer mark delivery orders delivered. Once
-    // status == 'ready' on a delivery order, a courier claims it and drives
-    // it through picked_up -> delivered. Pickup orders use markOrderCompleted
-    // above instead.
+    // NOTE: For PLATFORM/EXTERNAL delivery orders the seller doesn't mark
+    // delivered — a courier (or Uber/DoorDash) drives picked_up -> delivered.
+    // But SELF-DELIVERY ('restaurant' mode) orders are driven by the seller
+    // through the two endpoints below. Pickup orders use markOrderCompleted.
+
+    /// Self-delivery: the seller's own driver collected the order (ready ->
+    /// picked_up). Backend enforces delivery_mode == 'restaurant'. Returns a
+    /// status map, not an Order — callers re-fetch.
+    func sellerPickupOrder(id: String) async throws {
+        try await requestVoid("PATCH", path: await sellerPath("/seller/orders/\(id)/pickup"))
+    }
+
+    /// Self-delivery: the seller's own driver delivered the order (picked_up ->
+    /// delivered) and is credited 50% of the delivery fee server-side.
+    func sellerDeliverOrder(id: String) async throws {
+        try await requestVoid("PATCH", path: await sellerPath("/seller/orders/\(id)/deliver"))
+    }
 
     // MARK: - Dashboard
 

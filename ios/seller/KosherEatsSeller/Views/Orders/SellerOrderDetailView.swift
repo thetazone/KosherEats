@@ -442,6 +442,40 @@ struct SellerOrderDetailView: View {
                 // completed when the customer arrives. Backend's CompleteOrder
                 // handler enforces the same status='ready' guard.
                 pickupReadyCard(order)
+            } else if order.isSelfDelivery && order.courier == nil && (order.externalDeliveryId ?? "").isEmpty {
+                // Self-delivery ('restaurant' mode), not handed off: the seller
+                // drives ready -> picked_up -> delivered with its own driver.
+                // (Once escalated to Uber, externalDeliveryId is set and we fall
+                // through to the partner-status card below.)
+                VStack(spacing: 10) {
+                    if order.status == .ready {
+                        actionButton("Mark Picked Up (self-delivery)", icon: "bag.fill", color: .kePrimary) {
+                            guard !isActing else { return }
+                            isActing = true
+                            Task {
+                                vm.errorMessage = nil
+                                await vm.markSelfPickup(id: order.id)
+                                await syncOrderFromVM()
+                                isActing = false
+                            }
+                        }
+                        .disabled(isActing)
+                        // Driver fell through? Hand it to Uber instead.
+                        escalateButton(order)
+                    } else { // .pickedUp
+                        actionButton("Mark Delivered", icon: "checkmark.circle.fill", color: .keSuccess) {
+                            guard !isActing else { return }
+                            isActing = true
+                            Task {
+                                vm.errorMessage = nil
+                                await vm.markSelfDeliver(id: order.id)
+                                await syncOrderFromVM()
+                                isActing = false
+                            }
+                        }
+                        .disabled(isActing)
+                    }
+                }
             } else {
                 VStack(spacing: 10) {
                     // Courier now owns the handoff. Show who's handling delivery

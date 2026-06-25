@@ -396,6 +396,40 @@ class OrdersViewModel: ObservableObject {
         }
     }
 
+    /// Self-delivery: the seller's own driver collected the order (ready ->
+    /// picked_up). The endpoint returns a status map, so re-fetch the order.
+    func markSelfPickup(id: String) async {
+        guard !inFlightOrderIDs.contains(id) else { return }
+        inFlightOrderIDs.insert(id)
+        defer { inFlightOrderIDs.remove(id) }
+        do {
+            try await APIService.shared.sellerPickupOrder(id: id)
+            await fetchOrder(id: id)
+            Haptics.success()
+            flash("Marked picked up")
+        } catch {
+            errorMessage = error.localizedDescription
+            if let fresh = try? await APIService.shared.getOrder(id: id) { updateOrder(fresh) }
+        }
+    }
+
+    /// Self-delivery: the seller's own driver delivered the order (picked_up ->
+    /// delivered). Credits 50% of the delivery fee server-side.
+    func markSelfDeliver(id: String) async {
+        guard !inFlightOrderIDs.contains(id) else { return }
+        inFlightOrderIDs.insert(id)
+        defer { inFlightOrderIDs.remove(id) }
+        do {
+            try await APIService.shared.sellerDeliverOrder(id: id)
+            await fetchOrder(id: id)
+            Haptics.success()
+            flash("Marked delivered")
+        } catch {
+            errorMessage = error.localizedDescription
+            if let fresh = try? await APIService.shared.getOrder(id: id) { updateOrder(fresh) }
+        }
+    }
+
     private func updateOrder(_ updated: Order) {
         if let idx = orders.firstIndex(where: { $0.id == updated.id }) {
             orders[idx] = updated
