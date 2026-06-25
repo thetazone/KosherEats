@@ -251,11 +251,40 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 		}
 	}()
 
+	d.reapStaleDispatchClaims(ctx)
 	d.sweepScheduled(ctx)
 	d.sweepAutoDispatch(ctx)
 	d.sweepStaleRejection(ctx)
 	d.sweepOrphanPayments(ctx)
 	d.sweepCourierPayouts(ctx)
+}
+
+// reapStaleDispatchClaims releases the external-dispatch claim sentinel
+// (external_provider = 'dispatching') when it's been held too long. The
+// ExternalDispatcher flips a row to 'dispatching' before calling the provider's
+// paid CreateDelivery, and resets it to NULL / a real provider afterward — but
+// if the process dies in that window the sentinel leaks, and because the claim
+// CAS and the courier ClaimOrder both require external_provider IS NULL, the
+// order is then stranded with no delivery path. A real dispatch completes in
+// seconds, so anything still 'dispatching' after a couple of minutes is dead:
+// reset it to NULL (only while still unclaimed/undispatched) so the next
+// sweepAutoDispatch retries it. Keyed off updated_at, which the claim stamps.
+func (d *Dispatcher) reapStaleDispatchClaims(ctx context.Context) {
+	tag, err := d.db.Exec(ctx, `
+		UPDATE orders
+		   SET external_provider = NULL, updated_at = NOW()
+		 WHERE external_provider = 'dispatching'
+		   AND external_delivery_id IS NULL
+		   AND courier_id IS NULL
+		   AND updated_at < NOW() - INTERVAL '2 minutes'`)
+	if err != nil {
+		slog.Error("reap-dispatch-claims: failed", slog.String("error", err.Error()))
+		return
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		slog.Warn("reap-dispatch-claims: released stale 'dispatching' claims for re-dispatch",
+			slog.Int64("count", n))
+	}
 }
 
 // sweepOrphanPayments is the charged-but-no-order safety net that sits behind
