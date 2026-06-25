@@ -1,6 +1,17 @@
 # Environment
 .env
 .env.local
+# Local .env backups (carry secrets — DB creds, SMTP, Stripe keys). Never commit.
+.env.bak
+.env.bak.*
+*.env.bak
+
+# Local DB dumps / data exports — large + contain prod data/PII. Never commit.
+backups/
+
+# Docker Compose local override (auto-loaded; here it just maps postgres->5433).
+# Machine-specific, not shared.
+docker-compose.override.yml
 
 # Go
 backend/koshereats-api
