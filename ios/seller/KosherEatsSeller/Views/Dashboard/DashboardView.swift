@@ -196,6 +196,14 @@ struct DashboardView: View {
             )
 
             StatCard(
+                title: "Delivery Earnings",
+                // Seller's 50% of delivery fees on self-delivered orders today.
+                value: CurrencyFormat.string(fromCents: vm.stats.todayDeliveryEarnings),
+                icon: "car.circle.fill",
+                iconColor: .keSuccess
+            )
+
+            StatCard(
                 title: "Avg Prep Time",
                 value: String(format: "%.0f min", vm.stats.avgPrepTime),
                 icon: "clock.fill",

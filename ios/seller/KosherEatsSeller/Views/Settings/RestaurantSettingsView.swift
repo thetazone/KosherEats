@@ -19,6 +19,9 @@ struct RestaurantSettingsView: View {
     @State private var minOrder = ""
     @State private var estDeliveryMin = ""
     @State private var estDeliveryMax = ""
+    // "restaurant" = seller self-delivers; "external" = auto-Uber. ('platform'
+    // collapses to external for this two-way toggle since there's no own fleet.)
+    @State private var deliveryMode = "external"
     @State private var kosherCert: KosherCertification = .OU
     @State private var certifyingAgency = ""
     @State private var isCholovYisroel = false
@@ -97,6 +100,23 @@ struct RestaurantSettingsView: View {
 
                     // Delivery Settings
                     settingsSection("Delivery", icon: "car.fill") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Who delivers")
+                                .font(.caption)
+                                .foregroundColor(.keTextSecondary)
+                            Picker("Who delivers", selection: $deliveryMode) {
+                                Text("I deliver").tag("restaurant")
+                                Text("KosherEats (Uber)").tag("external")
+                            }
+                            .pickerStyle(.segmented)
+                            Text(deliveryMode == "restaurant"
+                                 ? "Your own driver delivers — you keep 50% of the delivery fee. You can still send any order to Uber if you get slammed."
+                                 : "Orders auto-dispatch to an Uber courier the moment you tap Ready.")
+                                .font(.caption2)
+                                .foregroundColor(.keTextMuted)
+                        }
+                        .padding(.bottom, 4)
+
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Delivery Fee")
@@ -599,6 +619,7 @@ struct RestaurantSettingsView: View {
         minOrder = String(format: "%.2f", Double(r.minOrder) / 100)
         estDeliveryMin = "\(r.estDeliveryMin)"
         estDeliveryMax = "\(r.estDeliveryMax)"
+        deliveryMode = r.deliveryMode == "restaurant" ? "restaurant" : "external"
         kosherCert = r.kosherCertification
         certifyingAgency = r.certifyingAgency
         isCholovYisroel = r.isCholovYisroel
@@ -678,6 +699,15 @@ struct RestaurantSettingsView: View {
         restaurant.city = city
         restaurant.state = state
         restaurant.zipCode = zipCode
+        // Only commit the toggle when the seller actually moved it off its seeded
+        // position. The toggle can't represent "platform" mode (it shows such a
+        // restaurant as "external"), so blindly assigning here would flip a
+        // platform-fleet restaurant to Uber on any unrelated settings save.
+        // Mirrors the Android seeded-compare in buildRestaurantChanges.
+        let seededDeliveryMode = restaurant.deliveryMode == "restaurant" ? "restaurant" : "external"
+        if deliveryMode != seededDeliveryMode {
+            restaurant.deliveryMode = deliveryMode
+        }
         // Dollars in the text fields → cents on the wire, matching the
         // backend contract (delivery_fee / min_order are INTEGER cents).
         restaurant.deliveryFee = CurrencyFormat.parseCents(deliveryFee) ?? 0

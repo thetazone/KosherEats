@@ -247,6 +247,10 @@ struct Restaurant: Codable, Identifiable {
     /// the open/closed toggle and shows a "Pending approval" caption, mirroring
     /// Android DashboardScreen.kt's `isApproved` gating.
     var approvalStatus: String?
+    /// Delivery routing default: "platform" (own fleet + Uber fallback) |
+    /// "restaurant" (seller self-delivers) | "external" (auto-Uber). The seller
+    /// toggle picks restaurant vs external.
+    var deliveryMode: String = "platform"
 
     /// True only when the platform admin has approved this restaurant. A nil
     /// (field absent) or any non-"approved" value reads as not-yet-approved so
@@ -278,6 +282,7 @@ struct Restaurant: Codable, Identifiable {
         case isOpen = "is_open"
         case isActive = "is_active"
         case approvalStatus = "approval_status"
+        case deliveryMode = "delivery_mode"
     }
 }
 
@@ -315,6 +320,7 @@ extension Restaurant {
         isOpen = try c.decode(Bool.self, forKey: .isOpen)
         isActive = try c.decode(Bool.self, forKey: .isActive)
         approvalStatus = try c.decodeIfPresent(String.self, forKey: .approvalStatus)
+        deliveryMode = try c.decodeIfPresent(String.self, forKey: .deliveryMode) ?? "platform"
     }
 }
 
@@ -559,6 +565,10 @@ struct Order: Codable, Identifiable {
     /// status='ready'. Decoded from the backend's `fulfillment_type` column
     /// (migration 021); defaults to "delivery" when older responses omit it.
     let fulfillmentType: String
+    /// Uber Direct / DoorDash delivery id once the order has been dispatched to
+    /// an external provider (nil otherwise). Lets the seller UI hide the
+    /// "Dispatch to Uber" escalate action once a provider already owns it.
+    let externalDeliveryId: String?
 
     var isPickup: Bool { fulfillmentType == "pickup" }
 
@@ -578,6 +588,7 @@ struct Order: Codable, Identifiable {
         case courierTip = "courier_tip"
         case courierPayout = "courier_payout"
         case fulfillmentType = "fulfillment_type"
+        case externalDeliveryId = "external_delivery_id"
     }
 
     init(from decoder: Decoder) throws {
@@ -607,6 +618,7 @@ struct Order: Codable, Identifiable {
         // Default to "delivery" so responses from pre-migration-021 backends
         // (or any handler that doesn't yet emit the field) still decode.
         fulfillmentType = (try c.decodeIfPresent(String.self, forKey: .fulfillmentType)) ?? "delivery"
+        externalDeliveryId = try c.decodeIfPresent(String.self, forKey: .externalDeliveryId)
     }
 
     /// Dollars display for the total. Every UI using $%.2f on order.total
@@ -839,6 +851,8 @@ struct DashboardStats: Codable {
     var todayOrders: Int = 0
     /// Cents. Divide by 100 to display.
     var todayRevenue: Int = 0
+    /// Cents. Seller's 50% of delivery fees on orders they self-delivered today.
+    var todayDeliveryEarnings: Int = 0
     var activeOrders: Int = 0
     /// Minutes, averaged across today's delivered orders.
     var avgPrepTime: Double = 0
@@ -846,6 +860,7 @@ struct DashboardStats: Codable {
     enum CodingKeys: String, CodingKey {
         case todayOrders = "today_orders"
         case todayRevenue = "today_revenue"
+        case todayDeliveryEarnings = "today_delivery_earnings"
         case activeOrders = "active_orders"
         case avgPrepTime = "avg_prep_time"
     }

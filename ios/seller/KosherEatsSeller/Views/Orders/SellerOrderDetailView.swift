@@ -10,6 +10,7 @@ struct SellerOrderDetailView: View {
     @State private var showRejectAlert = false
     @State private var rejectReason = ""
     @State private var isActing = false
+    @State private var escalateMessage: String?
 
     init(vm: OrdersViewModel, order: Order) {
         self._vm = ObservedObject(wrappedValue: vm)
@@ -117,6 +118,14 @@ struct SellerOrderDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(vm.errorMessage ?? "")
+        }
+        .alert("Uber dispatch",
+               isPresented: Binding(
+                get: { escalateMessage != nil },
+                set: { if !$0 { escalateMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(escalateMessage ?? "")
         }
         .task {
             if order == nil {
@@ -389,30 +398,38 @@ struct SellerOrderDetailView: View {
             }
 
         case .accepted:
-            actionButton("Start Preparing", icon: "flame.fill", color: .kePrimary) {
-                guard !isActing else { return }
-                isActing = true
-                Task {
-                    vm.errorMessage = nil
-                    await vm.markPreparing(id: order.id)
-                    await syncOrderFromVM()
-                    isActing = false
+            VStack(spacing: 10) {
+                actionButton("Start Preparing", icon: "flame.fill", color: .kePrimary) {
+                    guard !isActing else { return }
+                    isActing = true
+                    Task {
+                        vm.errorMessage = nil
+                        await vm.markPreparing(id: order.id)
+                        await syncOrderFromVM()
+                        isActing = false
+                    }
                 }
+                .disabled(isActing)
+
+                if !order.isPickup { escalateButton(order) }
             }
-            .disabled(isActing)
 
         case .preparing:
-            actionButton("Mark as Ready for Pickup", icon: "bag.fill", color: .keSuccess) {
-                guard !isActing else { return }
-                isActing = true
-                Task {
-                    vm.errorMessage = nil
-                    await vm.markReady(id: order.id)
-                    await syncOrderFromVM()
-                    isActing = false
+            VStack(spacing: 10) {
+                actionButton("Mark as Ready for Pickup", icon: "bag.fill", color: .keSuccess) {
+                    guard !isActing else { return }
+                    isActing = true
+                    Task {
+                        vm.errorMessage = nil
+                        await vm.markReady(id: order.id)
+                        await syncOrderFromVM()
+                        isActing = false
+                    }
                 }
+                .disabled(isActing)
+
+                if !order.isPickup { escalateButton(order) }
             }
-            .disabled(isActing)
 
         case .ready, .pickedUp:
             if order.isPickup && order.status == .ready {
@@ -421,9 +438,23 @@ struct SellerOrderDetailView: View {
                 // handler enforces the same status='ready' guard.
                 pickupReadyCard(order)
             } else {
-                // Courier now owns the handoff. Show who's handling delivery
-                // instead of an action — same UX pattern as the UberEats merchant app.
-                courierStatusCard(order)
+                VStack(spacing: 10) {
+                    // Courier now owns the handoff. Show who's handling delivery
+                    // instead of an action — same UX pattern as the UberEats merchant app.
+                    courierStatusCard(order)
+
+                    // A ready delivery order that nobody is handling yet (no courier
+                    // claimed it, not already on a provider) can still be punted to
+                    // Uber — the seller's own driver may have fallen through. Once a
+                    // courier claims it or it's dispatched, this drops off. Mirrors the
+                    // backend escalate guard: courier_id IS NULL AND external_delivery_id
+                    // IS NULL, status IN (accepted, preparing, ready).
+                    if order.status == .ready
+                        && order.courier == nil
+                        && (order.externalDeliveryId ?? "").isEmpty {
+                        escalateButton(order)
+                    }
+                }
             }
 
         case .delivered, .cancelled, .rejected, .scheduled, .unknown:
@@ -443,6 +474,35 @@ struct SellerOrderDetailView: View {
         case .completed:
             EmptyView()
         }
+    }
+
+    /// Secondary action on an open delivery order: hand it off to an Uber
+    /// courier when the seller is overwhelmed. One-way — the backend rejects
+    /// orders already on a courier/provider; the result surfaces via an alert.
+    @ViewBuilder
+    private func escalateButton(_ order: Order) -> some View {
+        actionButton("Dispatch to Uber", icon: "car.circle.fill", color: .kePrimary) {
+            guard !isActing else { return }
+            isActing = true
+            Task {
+                vm.errorMessage = nil
+                do {
+                    _ = try await APIService.shared.escalateOrderToUber(id: order.id)
+                    Haptics.success()
+                    escalateMessage = "Sent to Uber — a courier is on the way."
+                } catch {
+                    escalateMessage = "Couldn't send to Uber — it may already be dispatched."
+                }
+                // Escalate sets external_delivery_id but NOT status, and the cached
+                // list copy doesn't carry external_delivery_id — so syncOrderFromVM's
+                // cache-first path would keep the stale order (escalate button stuck
+                // on, status unchanged). Force a fresh detail fetch first.
+                await vm.fetchOrder(id: order.id)
+                await syncOrderFromVM()
+                isActing = false
+            }
+        }
+        .disabled(isActing)
     }
 
     /// Replaces the courier card on pickup-fulfillment orders that are
@@ -534,6 +594,25 @@ struct SellerOrderDetailView: View {
                     }
                 }
             }
+            .padding()
+            .background(Color.keCard)
+            .cornerRadius(14)
+        } else if let ext = order.externalDeliveryId, !ext.isEmpty {
+            // Dispatched to an external partner (Uber Direct / DoorDash): there is
+            // no platform courier row, so the generic "waiting for a courier"
+            // spinner below would wrongly imply the order is stuck/unclaimed. It's
+            // been handed off — a partner courier is en route. This is the common
+            // case now that external dispatch is the default delivery path.
+            HStack(spacing: 10) {
+                Image(systemName: order.status == .pickedUp ? "car.fill" : "shippingbox.fill")
+                    .foregroundColor(.kePrimary)
+                Text(order.status == .pickedUp
+                     ? "Out for delivery with a partner courier"
+                     : "Handed to a delivery partner — a courier is on the way")
+                    .font(.subheadline)
+                    .foregroundColor(.keTextSecondary)
+            }
+            .frame(maxWidth: .infinity)
             .padding()
             .background(Color.keCard)
             .cornerRadius(14)

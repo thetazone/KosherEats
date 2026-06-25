@@ -768,6 +768,25 @@ actor APIService {
         try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/ready"))
     }
 
+    /// Response of escalating a self-delivery order to an external courier.
+    struct EscalateResponse: Codable {
+        let status: String
+        let provider: String
+        let deliveryId: String
+        let trackingUrl: String
+        enum CodingKeys: String, CodingKey {
+            case status, provider
+            case deliveryId = "delivery_id"
+            case trackingUrl = "tracking_url"
+        }
+    }
+
+    /// Hands an open self-delivery order off to Uber/DoorDash when the seller is
+    /// overwhelmed. One-way — once dispatched it can't revert to self-delivery.
+    func escalateOrderToUber(id: String) async throws -> EscalateResponse {
+        try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/escalate"))
+    }
+
     /// Marks a pickup-fulfillment order completed when the customer arrives
     /// to collect it. No-op for delivery orders — the courier owns the
     /// picked_up → delivered transition. Backend's CompleteOrder handler
