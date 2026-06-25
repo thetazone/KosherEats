@@ -276,7 +276,11 @@ func (d *Dispatcher) reapStaleDispatchClaims(ctx context.Context) {
 		 WHERE external_provider = 'dispatching'
 		   AND external_delivery_id IS NULL
 		   AND courier_id IS NULL
-		   AND updated_at < NOW() - INTERVAL '2 minutes'`)
+		   -- 10 min, not 2: a real Dispatch (quote + CreateDelivery) completes in
+		   -- seconds and the provider HTTP client times out long before this, so
+		   -- only a crashed/dead claim is ever this old. A shorter window risked
+		   -- resetting a still-in-flight dispatch and orphaning a paid delivery.
+		   AND updated_at < NOW() - INTERVAL '10 minutes'`)
 	if err != nil {
 		slog.Error("reap-dispatch-claims: failed", slog.String("error", err.Error()))
 		return
