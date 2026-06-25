@@ -340,7 +340,8 @@ func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
 		   AND r.is_active = true
 		   AND r.approval_status = 'approved'
 		   AND r.vertical = $1
-		 ORDER BY d.expires_at ASC`, vertical)
+		 ORDER BY d.expires_at ASC
+		 LIMIT 100`, vertical)
 	if err != nil {
 		slog.Error("ListNearbyDeals query failed", slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "failed to list deals")

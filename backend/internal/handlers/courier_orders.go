@@ -295,7 +295,21 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 		        AND o2.status IN ('ready', 'picked_up')
 		   )`,
 		user["user_id"], orderID)
-	if err != nil || result.RowsAffected() == 0 {
+	if err != nil {
+		// uq_courier_one_active_order (migration 050) is the race-safe backstop
+		// for the NOT EXISTS above: if a concurrent claim slipped past the
+		// snapshot check, this courier's second active assignment violates the
+		// partial-unique index. Surface it as the same "busy" message, not a 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+			pgErr.ConstraintName == "uq_courier_one_active_order" {
+			writeError(w, http.StatusConflict, "finish your current delivery before claiming another")
+			return
+		}
+		writeError(w, http.StatusConflict, "order no longer available")
+		return
+	}
+	if result.RowsAffected() == 0 {
 		writeError(w, http.StatusConflict, "order no longer available")
 		return
 	}

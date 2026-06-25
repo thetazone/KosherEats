@@ -165,40 +165,48 @@ func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect all items first, then fetch modifier groups/modifiers in two
-	// batched queries by restaurant. Avoids N+1 queries as the menu grows.
+	// Fetch every available item for the restaurant in ONE query and bucket by
+	// category_id, instead of a per-category query (1+N round trips that grew
+	// with the menu). Modifier groups/modifiers are then attached in two more
+	// batched queries. Mirrors the `= ANY` batching attachModifierGroups uses.
 	var allItemIDs []string
 	itemByID := map[string]*models.MenuItem{}
+	itemsByCat := map[string][]models.MenuItem{}
 
-	for i, cat := range categories {
-		itemRows, err := h.db.Pool.Query(r.Context(),
-			`SELECT id, restaurant_id, category_id, name, description, image_url,
-			 price, is_meat, is_dairy, is_pareve, is_available, sort_order
-			 FROM menu_items
-			 WHERE category_id = $1 AND restaurant_id = $2 AND is_available = true
-			 ORDER BY sort_order`, cat.ID, id)
-		if err != nil {
+	itemRows, err := h.db.Pool.Query(r.Context(),
+		`SELECT id, restaurant_id, category_id, name, description, image_url,
+		 price, is_meat, is_dairy, is_pareve, is_available, sort_order
+		 FROM menu_items
+		 WHERE restaurant_id = $1 AND is_available = true
+		 ORDER BY category_id, sort_order`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
+	for itemRows.Next() {
+		var item models.MenuItem
+		if err := itemRows.Scan(&item.ID, &item.RestaurantID, &item.CategoryID,
+			&item.Name, &item.Description, &item.ImageURL, &item.Price,
+			&item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable,
+			&item.SortOrder); err != nil {
 			continue
 		}
+		itemsByCat[item.CategoryID] = append(itemsByCat[item.CategoryID], item)
+		allItemIDs = append(allItemIDs, item.ID)
+	}
+	itemRows.Close()
+	if err := itemRows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
 
-		for itemRows.Next() {
-			var item models.MenuItem
-			if err := itemRows.Scan(&item.ID, &item.RestaurantID, &item.CategoryID,
-				&item.Name, &item.Description, &item.ImageURL, &item.Price,
-				&item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable,
-				&item.SortOrder); err != nil {
-				continue
-			}
-			categories[i].Items = append(categories[i].Items, item)
-			allItemIDs = append(allItemIDs, item.ID)
-		}
-		itemRows.Close()
-		if err := itemRows.Err(); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to fetch menu")
-			return
-		}
-
-		// Build pointer map into the slice so we can attach modifier groups after.
+	// Assign items to their category first (so each Items slice gets its final
+	// backing array), THEN take pointers for modifier attachment — taking
+	// pointers before the slice is final would dangle after a reallocation.
+	for i := range categories {
+		categories[i].Items = itemsByCat[categories[i].ID]
+	}
+	for i := range categories {
 		for j := range categories[i].Items {
 			itemByID[categories[i].Items[j].ID] = &categories[i].Items[j]
 		}

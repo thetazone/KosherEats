@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/doordash"
@@ -563,16 +564,27 @@ func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
 		 RETURNING c.user_id, c.first_name`,
 		o.restLng, o.restLat, o.orderID).Scan(&courierID, &courierFirstName)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		var pgErr *pgconn.PgError
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
 			// Either no free courier, or someone beat us to the order in the
 			// interval between sweep and assign — fall through to external.
 			d.tryExternalDispatch(ctx, o)
 			return
+		case errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+			pgErr.ConstraintName == "uq_courier_one_active_order":
+			// The picked courier got an active order from a concurrent manual
+			// claim between this statement's snapshot and its write (the race
+			// the partial-unique index, migration 050, guards). Treat like "no
+			// free courier" and fall through; the next sweep retries.
+			d.tryExternalDispatch(ctx, o)
+			return
+		default:
+			slog.Error("auto-dispatch: claim update failed",
+				slog.String("order_id", o.orderID),
+				slog.String("error", err.Error()))
+			return
 		}
-		slog.Error("auto-dispatch: claim update failed",
-			slog.String("order_id", o.orderID),
-			slog.String("error", err.Error()))
-		return
 	}
 
 	slog.Info("auto-dispatch: order assigned",

@@ -509,34 +509,48 @@ func (h *Handler) GetSellerMenu(w http.ResponseWriter, r *http.Request) {
 		if err := catRows.Scan(&cat.ID, &cat.RestaurantID, &cat.Name, &cat.SortOrder); err != nil {
 			continue
 		}
-
-		itemRows, err := h.db.Pool.Query(r.Context(),
-			`SELECT id, restaurant_id, category_id, name, description, image_url,
-			 price, is_meat, is_dairy, is_pareve, is_available, sort_order
-			 FROM menu_items WHERE category_id = $1 AND restaurant_id = $2
-			 ORDER BY sort_order`, cat.ID, restID)
-		if err != nil {
-			continue
-		}
-
-		for itemRows.Next() {
-			var item models.MenuItem
-			if err := itemRows.Scan(&item.ID, &item.RestaurantID, &item.CategoryID,
-				&item.Name, &item.Description, &item.ImageURL, &item.Price,
-				&item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable,
-				&item.SortOrder); err != nil {
-				continue
-			}
-			cat.Items = append(cat.Items, item)
-			allItemIDs = append(allItemIDs, item.ID)
-		}
-		itemRows.Close()
-
 		categories = append(categories, cat)
 	}
+	if err := catRows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
 
-	// Build pointer map AFTER categories is fully populated — the slice
-	// backing cat.Items gets its final allocation once we stop appending.
+	// One batched item query for the whole restaurant (no is_available filter —
+	// the seller editor wants paused items too), bucketed by category_id,
+	// instead of a per-category query (1+N round trips that grew with the menu).
+	itemsByCat := map[string][]models.MenuItem{}
+	itemRows, err := h.db.Pool.Query(r.Context(),
+		`SELECT id, restaurant_id, category_id, name, description, image_url,
+		 price, is_meat, is_dairy, is_pareve, is_available, sort_order
+		 FROM menu_items WHERE restaurant_id = $1
+		 ORDER BY category_id, sort_order`, restID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
+	for itemRows.Next() {
+		var item models.MenuItem
+		if err := itemRows.Scan(&item.ID, &item.RestaurantID, &item.CategoryID,
+			&item.Name, &item.Description, &item.ImageURL, &item.Price,
+			&item.IsMeat, &item.IsDairy, &item.IsPareve, &item.IsAvailable,
+			&item.SortOrder); err != nil {
+			continue
+		}
+		itemsByCat[item.CategoryID] = append(itemsByCat[item.CategoryID], item)
+		allItemIDs = append(allItemIDs, item.ID)
+	}
+	itemRows.Close()
+	if err := itemRows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
+		return
+	}
+
+	// Assign items to their category first (final backing array), THEN take
+	// pointers for modifier attachment so a reallocation can't dangle them.
+	for i := range categories {
+		categories[i].Items = itemsByCat[categories[i].ID]
+	}
 	for i := range categories {
 		for j := range categories[i].Items {
 			itemByID[categories[i].Items[j].ID] = &categories[i].Items[j]
@@ -1033,39 +1047,49 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var stats models.DashboardStats
+
+	// "Today" aggregates, pruned to same-day rows with a SARGABLE lower bound so
+	// the planner can use idx_orders_restaurant_created (migration 049) instead
+	// of scanning the restaurant's lifetime orders on every 30s poll. The bound
+	// is the timestamptz instant of today's NY-local midnight; since no order is
+	// in the future, `created_at >= that` is exactly "today in NY" — equivalent
+	// to the old `(created_at AT TIME ZONE 'NY')::date = today` filter but
+	// index-friendly (no function wrapper on the indexed column).
+	//
+	// Revenue is FOOD SALES only — the discounted item subtotal the seller earns
+	// on (subtotal - discount_cents, matching discountedSubtotal in CreateOrder);
+	// tips/tax/fees are pass-throughs. Delivery earnings is the seller's 50% of
+	// the delivery fee on self-delivered orders (0 otherwise).
 	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT
-		    COUNT(*) FILTER (WHERE (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
-		                      AND o.status NOT IN ('cancelled','rejected'))   AS today_orders,
-		    -- Seller revenue is FOOD SALES only — the discounted item subtotal
-		    -- the seller actually earns on (subtotal - discount_cents, matching
-		    -- discountedSubtotal in CreateOrder). Courier tip, tax, delivery and
-		    -- service fees are pass-throughs / not restaurant money, so SUM(o.total)
-		    -- overstated it. discount_cents is the canonical column (migration 040).
-		    COALESCE(SUM(o.subtotal - o.discount_cents) FILTER (
-		        WHERE (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
-		          AND o.status NOT IN ('cancelled','rejected')
-		    ), 0)                                                              AS today_revenue_cents,
-		    -- Self-delivery earnings: the seller's 50% of the delivery fee on
-		    -- orders they delivered with their own driver (0 on Uber/KE-courier
-		    -- orders). Separate line from food sales so each is unambiguous.
-		    COALESCE(SUM(o.seller_delivery_earnings) FILTER (
-		        WHERE (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
-		          AND o.status NOT IN ('cancelled','rejected')
-		    ), 0)                                                              AS today_delivery_earnings_cents,
-		    -- Active includes picked_up: the seller should still see an order
-		    -- in flight after the courier grabs it, until it's marked delivered.
-		    -- Matches OrderStatus.isActive on the iOS side.
-		    COUNT(*) FILTER (WHERE o.status IN ('pending','accepted','preparing','ready','picked_up'))
-		                                                                       AS active_orders,
-		    COALESCE(AVG(EXTRACT(EPOCH FROM (o.updated_at - o.created_at)) / 60)
-		             FILTER (WHERE o.status = 'delivered'
-		                     AND (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date), 0)       AS avg_prep_time_min
-		   FROM orders o
-		  WHERE o.restaurant_id = $1`, restID,
-	).Scan(&stats.TodayOrders, &stats.TodayRevenueCents, &stats.TodayDeliveryEarningsCents, &stats.ActiveOrders, &stats.AvgPrepTime)
+		    COUNT(*) FILTER (WHERE status NOT IN ('cancelled','rejected'))                                   AS today_orders,
+		    COALESCE(SUM(subtotal - discount_cents) FILTER (WHERE status NOT IN ('cancelled','rejected')), 0) AS today_revenue_cents,
+		    COALESCE(SUM(seller_delivery_earnings)  FILTER (WHERE status NOT IN ('cancelled','rejected')), 0) AS today_delivery_earnings_cents,
+		    COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) / 60)
+		             FILTER (WHERE status = 'delivered'), 0)                                                  AS avg_prep_time_min
+		   FROM orders
+		  WHERE restaurant_id = $1
+		    AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'`,
+		restID,
+	).Scan(&stats.TodayOrders, &stats.TodayRevenueCents, &stats.TodayDeliveryEarningsCents, &stats.AvgPrepTime)
 	if err != nil {
-		slog.Error("GetDashboardStats query failed", "error", err, "restaurant_id", restID)
+		slog.Error("GetDashboardStats today query failed", "error", err, "restaurant_id", restID)
+		writeError(w, http.StatusInternalServerError, "failed to load dashboard stats")
+		return
+	}
+
+	// Active orders are status-based (not date-bound) — an order placed before
+	// today can still be in flight — so this stays a separate status-indexed
+	// count rather than getting swept into the date-pruned query above. Includes
+	// picked_up: the seller should still see it until delivered (matches
+	// OrderStatus.isActive on the clients).
+	if err = h.db.Pool.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM orders
+		  WHERE restaurant_id = $1
+		    AND status IN ('pending','accepted','preparing','ready','picked_up')`,
+		restID,
+	).Scan(&stats.ActiveOrders); err != nil {
+		slog.Error("GetDashboardStats active query failed", "error", err, "restaurant_id", restID)
 		writeError(w, http.StatusInternalServerError, "failed to load dashboard stats")
 		return
 	}

@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -35,9 +36,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/config"
 	"github.com/koshereats/backend/internal/database"
+	"github.com/koshereats/backend/internal/models"
 )
 
 const defaultTestDatabaseURL = "postgres://postgres:postgres@localhost:5433/koshereats_test?sslmode=disable"
@@ -474,6 +477,90 @@ func TestIntegration_GetMenuVisibilityGate(t *testing.T) {
 		"/api/v1/restaurants/"+harness.pendingRestID+"/menu", "", nil)
 	if pending.Code != http.StatusNotFound {
 		t.Fatalf("pending menu: status %d (want 404), body %s", pending.Code, pending.Body.String())
+	}
+
+	// Guard the batched-items rewrite (single query bucketed by category_id):
+	// the seeded item must land under its category, not a sibling/none.
+	var cats []models.MenuCategory
+	if err := json.Unmarshal(approved.Body.Bytes(), &cats); err != nil {
+		t.Fatalf("menu decode: %v", err)
+	}
+	var found bool
+	for _, c := range cats {
+		for _, it := range c.Items {
+			if it.ID == harness.menuItemID {
+				if c.Name != "Mains" {
+					t.Fatalf("seeded item bucketed under %q, want category %q", c.Name, "Mains")
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("seeded menu item %s not present under any category; body %s",
+			harness.menuItemID, approved.Body.String())
+	}
+}
+
+// (5) uq_courier_one_active_order (migration 050) must reject a courier being
+// assigned a second active order. This is the race-safe backstop behind the
+// busy-guard pre-check; it enforces the one-active-delivery invariant at the DB
+// even if two concurrent claims slip past the app-level NOT EXISTS check.
+func TestIntegration_CourierOneActiveOrderUniqueIndex(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+	pool := harness.h.db.Pool
+
+	var courierID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical)
+		 VALUES ($1, '', 'Courier', 'One', '', 'courier', 'kosher') RETURNING id`,
+		uniqueEmail("courier"),
+	).Scan(&courierID); err != nil {
+		t.Fatalf("seed courier: %v", err)
+	}
+
+	mkReadyOrder := func() string {
+		var id string
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO orders (user_id, restaurant_id, status, subtotal, total,
+			   delivery_address, fulfillment_type)
+			 VALUES ($1, $2, 'ready', 1000, 1000, '1 Main St', 'delivery') RETURNING id`,
+			courierID, harness.approvedRestID,
+		).Scan(&id); err != nil {
+			t.Fatalf("insert ready order: %v", err)
+		}
+		return id
+	}
+	orderA, orderB := mkReadyOrder(), mkReadyOrder()
+
+	// First active assignment succeeds.
+	if _, err := pool.Exec(ctx,
+		`UPDATE orders SET courier_id = $1 WHERE id = $2`, courierID, orderA); err != nil {
+		t.Fatalf("assign first order: %v", err)
+	}
+
+	// Second active assignment to the SAME courier must violate the index.
+	_, err := pool.Exec(ctx,
+		`UPDATE orders SET courier_id = $1 WHERE id = $2`, courierID, orderB)
+	if err == nil {
+		t.Fatalf("expected unique violation assigning a 2nd active order to the courier, got nil")
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" ||
+		pgErr.ConstraintName != "uq_courier_one_active_order" {
+		t.Fatalf("expected 23505 on uq_courier_one_active_order, got %v", err)
+	}
+
+	// Once the first order leaves the active set (delivered), the courier frees
+	// up and the second assignment succeeds.
+	if _, err := pool.Exec(ctx,
+		`UPDATE orders SET status = 'delivered' WHERE id = $1`, orderA); err != nil {
+		t.Fatalf("deliver first order: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE orders SET courier_id = $1 WHERE id = $2`, courierID, orderB); err != nil {
+		t.Fatalf("assign second order after first delivered: %v", err)
 	}
 }
 
