@@ -358,6 +358,9 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	// failure (which rolls back the dedupe row and triggers a Stripe retry)
 	// cannot re-send the same email.
 	var alertSubject, alertBody string
+	// Order whose pending courier payout must be halted (refund/dispute means
+	// the customer isn't paying, so the courier shouldn't be paid out of it).
+	var haltPayoutOrderID string
 
 	switch event.Type {
 	case "account.updated":
@@ -410,6 +413,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("status", dispute.Status))
 		alertSubject = "Stripe dispute opened"
 		alertBody = disputeAlertBody(dispute.ID, dispute.Charge, dispute.PaymentIntent, orderID, dispute.Amount, dispute.Reason)
+		haltPayoutOrderID = orderID
 
 	case "charge.refunded":
 		// A charge was refunded (manually in the dashboard, by our auto-refund
@@ -433,6 +437,23 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.Int("amount_refunded_cents", charge.AmountRefunded))
 		alertSubject = "Stripe charge refunded"
 		alertBody = refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded)
+		haltPayoutOrderID = orderID
+	}
+
+	// Halt the courier payout for a refunded/disputed order — but only a still-
+	// PENDING queue row (a 'processing'/'completed' transfer is already moving or
+	// moved; that needs a manual reversal, which the admin alert above flags).
+	// In the tx so it commits atomically with the dedupe row; fail-closed so a
+	// failure triggers a Stripe retry rather than silently paying the courier.
+	if haltPayoutOrderID != "" {
+		if _, herr := tx.Exec(r.Context(),
+			`UPDATE courier_payout_queue SET status = 'failed_permanent', updated_at = NOW()
+			  WHERE order_id = $1 AND status = 'pending'`, haltPayoutOrderID); herr != nil {
+			slog.Error("StripeWebhook: failed to halt courier payout on refund/dispute",
+				slog.String("order_id", haltPayoutOrderID), slog.String("error", herr.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {
