@@ -555,6 +555,13 @@ func (h *Handler) ListCourierActiveOrders(w http.ResponseWriter, r *http.Request
 		o.CustomerPhone = strOr(consumerPhone, "")
 		list = append(list, o)
 	}
+	// A mid-iteration error stops Next() like end-of-rows; without this the
+	// courier's in-flight delivery would silently vanish from their active list
+	// (looks delivered/cancelled), stranding the handoff. Fail instead.
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load active orders")
+		return
+	}
 	if list == nil {
 		list = []models.Order{}
 	}
