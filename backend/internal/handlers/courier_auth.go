@@ -32,6 +32,10 @@ func (h *Handler) CourierRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize email to lowercase to match Register / the lower(email) lookups
+	// (login, password reset) so case variants can't create duplicate accounts.
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
 	if req.Email == "" || req.Password == "" || req.FirstName == "" || req.Phone == "" {
 		writeError(w, http.StatusBadRequest, "email, password, first_name, and phone are required")
 		return

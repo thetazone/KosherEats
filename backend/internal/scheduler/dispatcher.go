@@ -93,6 +93,12 @@ const staleRejectionBatchLimit = 20
 // want comfortable headroom. 20 keeps us well under a minute in the worst case.
 const payoutBatchLimit = 20
 
+// pendingRefundBatchLimit caps how many committed-but-unrefunded cancellations/
+// rejections the reconcile reaper retries per sweep (each is a blocking Stripe
+// refund call). The 3-minute grace in the query keeps the reaper from racing a
+// cancel/reject handler's own post-commit refund.
+const pendingRefundBatchLimit = 20
+
 // sweepAdvisoryLockKey is the fixed Postgres advisory-lock key that gates the
 // per-tick sweep run. When the backend runs as multiple instances, only the
 // instance that holds this session-level lock executes runAll on a given tick;
@@ -257,6 +263,7 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 	d.sweepAutoDispatch(ctx)
 	d.sweepStaleRejection(ctx)
 	d.sweepOrphanPayments(ctx)
+	d.sweepPendingRefunds(ctx)
 	d.sweepCourierPayouts(ctx)
 }
 
@@ -370,6 +377,103 @@ func (d *Dispatcher) sweepOrphanPayments(ctx context.Context) {
 			slog.String("payment_intent", c.PaymentIntentID),
 			slog.String("user_id", c.UserID),
 			slog.Int("amount_cents", c.AmountCents))
+	}
+}
+
+// sweepPendingRefunds is the reconcile half of the refund-atomicity fix.
+// CancelOrder / RejectOrder / tryStaleReject now flip the order to a terminal
+// status and COMMIT before issuing the Stripe refund, so a refund that fails (or
+// whose refunded_at write was lost) after the commit leaves a cancelled/rejected
+// order with refunded_at IS NULL. This sweep finds those and retries the refund
+// idempotently — RefundPaymentIntent treats an already-refunded charge as
+// success — then stamps refunded_at so the order leaves idx_orders_refund_pending.
+//
+// The 1-minute grace keeps this from racing the handler's own post-commit refund
+// of an order it just cancelled. Existing terminal orders were backfilled
+// refunded_at by migration 051, so the reaper only ever acts on cancellations
+// that happen after that migration.
+func (d *Dispatcher) sweepPendingRefunds(ctx context.Context) {
+	if d.stripe == nil {
+		return
+	}
+
+	// 3-minute grace (> Stripe's ~80s client timeout) so the reaper can't fire
+	// while a cancel/reject handler's own post-commit refund of the SAME order is
+	// still in flight — belt-and-suspenders alongside the refund idempotency key.
+	// refund_attempts < 10 must match the partial index predicate (migration 051).
+	rows, err := d.db.Query(ctx,
+		`SELECT id, COALESCE(stripe_payment_id, '') FROM orders
+		  WHERE status IN ('cancelled', 'rejected')
+		    AND refunded_at IS NULL
+		    AND refund_attempts < 10
+		    AND updated_at < NOW() - INTERVAL '3 minutes'
+		  ORDER BY updated_at
+		  LIMIT $1`,
+		pendingRefundBatchLimit)
+	if err != nil {
+		slog.Error("pending-refund: list failed", slog.String("error", err.Error()))
+		return
+	}
+	type pend struct{ id, paymentID string }
+	var pending []pend
+	for rows.Next() {
+		var p pend
+		if err := rows.Scan(&p.id, &p.paymentID); err != nil {
+			continue
+		}
+		pending = append(pending, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		slog.Error("pending-refund: row iteration failed", slog.String("error", err.Error()))
+		return
+	}
+
+	for _, p := range pending {
+		// No payment to refund (free order / dev stub). The handlers stamp
+		// refunded_at inline for these, so this only covers edge/historical rows —
+		// settle it so it leaves the index.
+		if p.paymentID == "" {
+			if _, err := d.db.Exec(ctx, `UPDATE orders SET refunded_at = NOW() WHERE id = $1`, p.id); err != nil {
+				slog.Error("pending-refund: settle no-payment order failed",
+					slog.String("order_id", p.id), slog.String("error", err.Error()))
+			}
+			continue
+		}
+		if err := d.stripe.RefundPaymentIntent(p.paymentID); err != nil {
+			// Bump the attempt counter. Once it reaches the cap (10, matching the
+			// partial index predicate) the row drops out of the sweep and needs
+			// manual reconciliation — alert loudly rather than spin forever.
+			var attempts int
+			if uerr := d.db.QueryRow(ctx,
+				`UPDATE orders SET refund_attempts = refund_attempts + 1 WHERE id = $1 RETURNING refund_attempts`,
+				p.id).Scan(&attempts); uerr != nil {
+				slog.Error("pending-refund: bump refund_attempts failed",
+					slog.String("order_id", p.id), slog.String("error", uerr.Error()))
+			}
+			if attempts >= 10 {
+				slog.Error("pending-refund: refund EXHAUSTED retries — MANUAL RECONCILIATION required (customer charged on a cancelled/rejected order)",
+					slog.String("order_id", p.id),
+					slog.String("payment_intent", p.paymentID),
+					slog.Int("attempts", attempts),
+					slog.String("error", err.Error()))
+			} else {
+				slog.Error("pending-refund: refund failed, will retry next sweep",
+					slog.String("order_id", p.id),
+					slog.String("payment_intent", p.paymentID),
+					slog.Int("attempts", attempts),
+					slog.String("error", err.Error()))
+			}
+			continue
+		}
+		if _, err := d.db.Exec(ctx, `UPDATE orders SET refunded_at = NOW() WHERE id = $1`, p.id); err != nil {
+			slog.Error("pending-refund: refund ok but marking refunded_at failed, will retry",
+				slog.String("order_id", p.id), slog.String("error", err.Error()))
+			continue
+		}
+		slog.Warn("pending-refund: reconciled a refund that didn't settle at cancel/reject time",
+			slog.String("order_id", p.id),
+			slog.String("payment_intent", p.paymentID))
 	}
 }
 
@@ -727,21 +831,13 @@ func (d *Dispatcher) tryStaleReject(ctx context.Context, o stalePending) {
 		return
 	}
 
-	// Refund first. If the order had no payment intent stored (shouldn't
-	// happen in prod, but possible in dev stub data) we skip the refund
-	// call and just reject the order so the stuck state clears.
-	if lockedPaymentID != "" && d.stripe != nil {
-		if err := d.stripe.RefundPaymentIntent(lockedPaymentID); err != nil {
-			slog.Error("stale-rejection: refund failed, leaving order pending",
-				slog.String("order_id", o.orderID),
-				slog.String("payment_intent", lockedPaymentID),
-				slog.String("error", err.Error()))
-			return
-		}
-	}
-
+	// Flip to 'rejected' and commit BEFORE refunding. Refunding before commit
+	// risked a refunded order that stayed 'pending' (and thus fulfillable) if the
+	// commit failed (see CancelOrder). Mark refunded_at inline when there's no
+	// payment so a no-payment order doesn't linger as refund-pending.
 	_, err = tx.Exec(ctx,
-		`UPDATE orders SET status = 'rejected', updated_at = NOW()
+		`UPDATE orders SET status = 'rejected', updated_at = NOW(),
+		   refunded_at = CASE WHEN COALESCE(stripe_payment_id, '') = '' THEN NOW() ELSE refunded_at END
 		 WHERE id = $1`,
 		o.orderID)
 	if err != nil {
@@ -756,6 +852,21 @@ func (d *Dispatcher) tryStaleReject(ctx context.Context, o stalePending) {
 			slog.String("order_id", o.orderID),
 			slog.String("error", err.Error()))
 		return
+	}
+
+	// Refund after the rejection is durable. A failure here is retried by the
+	// reconcile reaper (sweepPendingRefunds) — RefundPaymentIntent is idempotent.
+	if lockedPaymentID != "" && d.stripe != nil {
+		if err := d.stripe.RefundPaymentIntent(lockedPaymentID); err != nil {
+			slog.Error("stale-rejection: refund failed post-commit — reaper will retry",
+				slog.String("order_id", o.orderID),
+				slog.String("payment_intent", lockedPaymentID),
+				slog.String("error", err.Error()))
+		} else if _, err := d.db.Exec(ctx,
+			`UPDATE orders SET refunded_at = NOW() WHERE id = $1`, o.orderID); err != nil {
+			slog.Error("stale-rejection: refund ok but marking refunded_at failed — reaper will reconcile",
+				slog.String("order_id", o.orderID), slog.String("error", err.Error()))
+		}
 	}
 
 	slog.Info("stale-rejection: order auto-rejected",

@@ -183,6 +183,8 @@ func buildRouter(h *Handler) http.Handler {
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/phone/start", h.StartPhoneLogin)
 	r.Post("/api/v1/auth/phone/verify", h.VerifyPhoneLogin)
+	r.Post("/api/v1/auth/password/forgot", h.ForgotPassword)
+	r.Post("/api/v1/auth/password/reset", h.ResetPassword)
 
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(h.OptionalAuthMiddleware)
@@ -195,6 +197,7 @@ func buildRouter(h *Handler) http.Handler {
 		r.Use(h.AuthMiddleware)
 		r.Post("/", h.CreateOrder)
 		r.Get("/by-payment-intent/{pi}", h.GetOrderByPaymentIntent)
+		r.Patch("/{id}/cancel", h.CancelOrder)
 	})
 
 	r.Route("/api/v1/cart", func(r chi.Router) {
@@ -757,5 +760,119 @@ func TestIntegration_PublicRestaurantsRedactOwnerID(t *testing.T) {
 	}
 	for _, raw := range arr {
 		assertRedacted(t, raw)
+	}
+}
+
+// (6) CancelOrder must flip the order to cancelled AND stamp refunded_at (the
+// refund-atomicity fix: commit the cancel first, then refund, then record it).
+// With the Stripe stub the refund "succeeds", so refunded_at must be set.
+func TestIntegration_CancelOrderStampsRefundedAt(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+
+	token, _ := harness.registerUser(t, "canceller")
+	pi := fmt.Sprintf("pi_cancel_%d", time.Now().UnixNano())
+	orderID := harness.placeOrder(t, token, harness.approvedRestID, harness.menuItemID, pi)
+
+	rec := harness.do(http.MethodPatch, "/api/v1/orders/"+orderID+"/cancel", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cancel: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	var status string
+	var refundedAt *time.Time
+	if err := harness.h.db.Pool.QueryRow(ctx,
+		`SELECT status, refunded_at FROM orders WHERE id = $1`, orderID,
+	).Scan(&status, &refundedAt); err != nil {
+		t.Fatalf("reload order: %v", err)
+	}
+	if status != string(models.OrderCancelled) {
+		t.Fatalf("status = %q, want cancelled", status)
+	}
+	if refundedAt == nil {
+		t.Fatalf("refunded_at not stamped after a successful cancel+refund — order would look refund-pending to the reaper forever")
+	}
+}
+
+// (7) The legacy email-only password-reset fallback must skip an unverified
+// phone/OAuth squatter row (auth_provider filter) and target the real password
+// account, even when the squatter row is older.
+func TestIntegration_PasswordResetSkipsPhoneSquatter(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+	pool := harness.h.db.Pool
+
+	email := uniqueEmail("reset-victim")
+	regRec := harness.do(http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"email": email, "password": "password123", "first_name": "Victim",
+	})
+	if regRec.Code != http.StatusCreated {
+		t.Fatalf("register: %d %s", regRec.Code, regRec.Body.String())
+	}
+	var reg AuthResponse
+	if err := json.Unmarshal(regRec.Body.Bytes(), &reg); err != nil {
+		t.Fatalf("register decode: %v", err)
+	}
+	victimID := reg.User.ID
+
+	// An OLDER phone-signup squatter carrying the SAME email under a different
+	// role (allowed by the (email,role,vertical) unique key). Without the
+	// auth_provider filter, the legacy oldest-row lookup would resolve to this.
+	var squatterID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical, auth_provider, created_at)
+		 VALUES ($1, '', 'Squat', 'Ter', '', 'courier', 'kosher', 'phone', NOW() - INTERVAL '1 day')
+		 RETURNING id`, strings.ToLower(email),
+	).Scan(&squatterID); err != nil {
+		t.Fatalf("seed squatter: %v", err)
+	}
+
+	// Legacy email-only forgot-password (no role).
+	fpRec := harness.do(http.MethodPost, "/api/v1/auth/password/forgot", "", map[string]any{"email": email})
+	if fpRec.Code != http.StatusOK {
+		t.Fatalf("forgot: %d %s", fpRec.Code, fpRec.Body.String())
+	}
+
+	var victimHasCode, squatterHasCode bool
+	if err := pool.QueryRow(ctx, `SELECT reset_code_hash IS NOT NULL FROM users WHERE id=$1`, victimID).Scan(&victimHasCode); err != nil {
+		t.Fatalf("victim check: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT reset_code_hash IS NOT NULL FROM users WHERE id=$1`, squatterID).Scan(&squatterHasCode); err != nil {
+		t.Fatalf("squatter check: %v", err)
+	}
+	if !victimHasCode {
+		t.Fatalf("reset code was NOT written to the real password account")
+	}
+	if squatterHasCode {
+		t.Fatalf("reset code leaked to the phone-squatter row — auth_provider filter failed")
+	}
+
+	// Role-scoped path: a phone squatter sharing the victim's EXACT role+vertical
+	// via a mixed-case raw email (distinct under the case-sensitive unique index,
+	// same under lower(email)) must also be skipped. Older, so it would win an
+	// undeterministic/unfiltered lookup.
+	var roleSquatterID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical, auth_provider, created_at)
+		 VALUES ($1, '', 'Case', 'Squat', '', 'consumer', 'kosher', 'phone', NOW() - INTERVAL '2 days')
+		 RETURNING id`, strings.ToUpper(email),
+	).Scan(&roleSquatterID); err != nil {
+		t.Fatalf("seed role-scoped squatter: %v", err)
+	}
+
+	fp2 := harness.do(http.MethodPost, "/api/v1/auth/password/forgot", "", map[string]any{
+		"email": email, "role": "consumer", "vertical": "kosher",
+	})
+	if fp2.Code != http.StatusOK {
+		t.Fatalf("role-scoped forgot: %d %s", fp2.Code, fp2.Body.String())
+	}
+	var victimHasCode2, roleSquatterHasCode bool
+	pool.QueryRow(ctx, `SELECT reset_code_hash IS NOT NULL FROM users WHERE id=$1`, victimID).Scan(&victimHasCode2)
+	pool.QueryRow(ctx, `SELECT reset_code_hash IS NOT NULL FROM users WHERE id=$1`, roleSquatterID).Scan(&roleSquatterHasCode)
+	if !victimHasCode2 {
+		t.Fatalf("role-scoped reset code was NOT written to the real password account")
+	}
+	if roleSquatterHasCode {
+		t.Fatalf("role-scoped reset code leaked to the same-role phone squatter — filter/ordering failed")
 	}
 }

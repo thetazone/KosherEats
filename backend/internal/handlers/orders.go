@@ -734,30 +734,45 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Allow cancel while pending OR accepted (before kitchen starts preparing).
+	// Mark refunded_at now when there's nothing to refund, so a no-payment order
+	// never lingers as refund-pending for the reconcile reaper.
 	if _, err = tx.Exec(r.Context(),
-		`UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2`,
+		`UPDATE orders SET status = $1, updated_at = NOW(),
+		   refunded_at = CASE WHEN COALESCE(stripe_payment_id, '') = '' THEN NOW() ELSE refunded_at END
+		 WHERE id = $2`,
 		models.OrderCancelled, id,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, "cannot cancel this order")
 		return
 	}
 
-	// Refund before commit so both succeed or both fail — if the refund
-	// fails, the order stays in its original state and the customer isn't
-	// charged without recourse. Mirrors the pattern in RejectOrder.
-	if paymentID != "" {
-		if err := h.stripe.RefundPaymentIntent(paymentID); err != nil {
-			slog.Error("cancel refund failed",
-				slog.String("order_id", id),
-				slog.String("error", err.Error()))
-			writeError(w, http.StatusInternalServerError, "refund failed — order not cancelled")
-			return
-		}
-	}
-
+	// Commit the cancel FIRST, then refund. Doing the refund before commit was a
+	// money bug: a real Stripe refund is not part of the Postgres tx, so if the
+	// commit failed after a successful refund, the deferred rollback reverted the
+	// status flip and left a REFUNDED order still fulfillable (free food). Now the
+	// order is definitively cancelled before any money moves; a refund that fails
+	// post-commit (rare) leaves the customer charged-but-cancelled, which the
+	// reconcile reaper (sweepPendingRefunds) retries idempotently — strictly
+	// better than the unrecoverable free-food failure.
 	if err = tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "cannot cancel this order")
 		return
+	}
+
+	if paymentID != "" {
+		if err := h.stripe.RefundPaymentIntent(paymentID); err != nil {
+			// The cancel succeeded; only the refund is pending. Don't fail the
+			// request — log loudly and let the reaper settle it.
+			slog.Error("cancel: refund failed post-commit — reaper will retry",
+				slog.String("order_id", id),
+				slog.String("error", err.Error()))
+		} else {
+			if _, err := h.db.Pool.Exec(r.Context(),
+				`UPDATE orders SET refunded_at = NOW() WHERE id = $1`, id); err != nil {
+				slog.Error("cancel: refund succeeded but marking refunded_at failed — reaper will reconcile",
+					slog.String("order_id", id), slog.String("error", err.Error()))
+			}
+		}
 	}
 
 	order, err := h.loadOrderWithCourier(r, id, "user_id", user["user_id"])
@@ -1276,7 +1291,7 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 
 	var paymentIntentID string
 	err = tx.QueryRow(r.Context(),
-		`SELECT orders.stripe_payment_id
+		`SELECT COALESCE(orders.stripe_payment_id, '')
 		   FROM orders JOIN restaurants ON orders.restaurant_id = restaurants.id
 		  WHERE orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = $3
 		  FOR UPDATE OF orders`,
@@ -1287,15 +1302,9 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if paymentIntentID != "" && h.stripe != nil {
-		if err := h.stripe.RefundPaymentIntent(paymentIntentID); err != nil {
-			writeError(w, http.StatusBadGateway, "refund failed, order not rejected")
-			return
-		}
-	}
-
 	result, err := tx.Exec(r.Context(),
-		`UPDATE orders SET status = $1, updated_at = NOW()
+		`UPDATE orders SET status = $1, updated_at = NOW(),
+		   refunded_at = CASE WHEN COALESCE(stripe_payment_id, '') = '' THEN NOW() ELSE refunded_at END
 		 WHERE id = $2 AND status = $3`,
 		models.OrderRejected, id, models.OrderPending)
 	if err != nil || result.RowsAffected() == 0 {
@@ -1303,9 +1312,23 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Commit the rejection FIRST, then refund. Refunding before commit risked a
+	// refunded-but-still-fulfillable order if the commit failed (see CancelOrder).
+	// A post-commit refund failure is retried by the reconcile reaper.
 	if err = tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "cannot reject this order")
 		return
+	}
+
+	if paymentIntentID != "" && h.stripe != nil {
+		if err := h.stripe.RefundPaymentIntent(paymentIntentID); err != nil {
+			slog.Error("reject: refund failed post-commit — reaper will retry",
+				slog.String("order_id", id), slog.String("error", err.Error()))
+		} else if _, err := h.db.Pool.Exec(r.Context(),
+			`UPDATE orders SET refunded_at = NOW() WHERE id = $1`, id); err != nil {
+			slog.Error("reject: refund succeeded but marking refunded_at failed — reaper will reconcile",
+				slog.String("order_id", id), slog.String("error", err.Error()))
+		}
 	}
 
 	order, err := h.loadOrderWithCourier(r, id, "restaurant_owner", user["user_id"])

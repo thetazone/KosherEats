@@ -48,12 +48,30 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var userID string
 	var lookupErr error
 	if req.Role != "" {
+		// Even the exact (email, role, vertical) match can be ambiguous: the unique
+		// index is on RAW case-sensitive email, so "victim@x.com" and "Victim@x.com"
+		// can coexist with the same role+vertical (including an unverified phone/OAuth
+		// squatter under the victim's role). Filter to real password accounts and
+		// order deterministically so ForgotPassword and ResetPassword always resolve
+		// the SAME single row.
 		lookupErr = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id FROM users WHERE lower(email) = $1 AND role = $2 AND vertical = $3`,
+			`SELECT id FROM users
+			 WHERE lower(email) = $1 AND role = $2 AND vertical = $3
+			   AND (auth_provider IS NULL OR auth_provider = 'email')
+			 ORDER BY created_at LIMIT 1`,
 			email, req.Role, normalizeVertical(req.Vertical)).Scan(&userID)
 	} else {
+		// Legacy email-only path (clients that don't send role). Restrict to real
+		// password accounts: a phone/OAuth row carries no resettable password and,
+		// because createPhoneUser/Register accept an UNVERIFIED email, an attacker
+		// could squat the victim's email string on such a row. Excluding them keeps
+		// the oldest-row fallback from ever resolving to a squatter. (Current iOS
+		// clients always send role; Android uses a mailto — so nothing relies on
+		// this branch in practice, but old installs might.)
 		lookupErr = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id FROM users WHERE lower(email) = $1 ORDER BY created_at LIMIT 1`,
+			`SELECT id FROM users WHERE lower(email) = $1
+			   AND (auth_provider IS NULL OR auth_provider = 'email')
+			 ORDER BY created_at LIMIT 1`,
 			email).Scan(&userID)
 	}
 	if lookupErr != nil {
@@ -122,15 +140,25 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	// still works. Must mirror ForgotPassword's lookup so the same row is hit.
 	var lookupErr error
 	if req.Role != "" {
+		// Mirror ForgotPassword's role-scoped lookup exactly (real password accounts
+		// only, deterministic order) so the code is verified against the same row it
+		// was written to.
 		lookupErr = h.db.Pool.QueryRow(r.Context(),
 			`SELECT id, COALESCE(reset_code_hash, ''), reset_code_expires_at, reset_code_attempts
-			 FROM users WHERE lower(email) = $1 AND role = $2 AND vertical = $3`,
+			 FROM users WHERE lower(email) = $1 AND role = $2 AND vertical = $3
+			   AND (auth_provider IS NULL OR auth_provider = 'email')
+			 ORDER BY created_at LIMIT 1`,
 			email, req.Role, normalizeVertical(req.Vertical),
 		).Scan(&userID, &codeHash, &expires, &attempts)
 	} else {
+		// Legacy email-only path — must mirror ForgotPassword's restricted lookup
+		// (real password accounts only) so both resolve to the same row and a
+		// squatter phone/OAuth row can never absorb the reset.
 		lookupErr = h.db.Pool.QueryRow(r.Context(),
 			`SELECT id, COALESCE(reset_code_hash, ''), reset_code_expires_at, reset_code_attempts
-			 FROM users WHERE lower(email) = $1 ORDER BY created_at LIMIT 1`,
+			 FROM users WHERE lower(email) = $1
+			   AND (auth_provider IS NULL OR auth_provider = 'email')
+			 ORDER BY created_at LIMIT 1`,
 			email,
 		).Scan(&userID, &codeHash, &expires, &attempts)
 	}

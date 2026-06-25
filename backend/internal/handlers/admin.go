@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -494,6 +495,9 @@ func (h *Handler) AdminCreateSeller(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	// Normalize email to lowercase to match Register / the lower(email) lookups
+	// so case variants can't create duplicate seller accounts.
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	if req.Email == "" || req.Password == "" {
 		writeError(w, http.StatusBadRequest, "email and password required")
 		return

@@ -12,6 +12,7 @@ package payments
 import (
 	"context"
 	cryptorand "crypto/rand"
+	"errors"
 	"fmt"
 	"log"
 	"net/mail"
@@ -291,9 +292,27 @@ func (c *Client) RefundPaymentIntent(paymentIntentID string) error {
 	if paymentIntentID == "" {
 		return fmt.Errorf("refund: empty payment intent id")
 	}
-	_, err := refund.New(&stripe.RefundParams{
+	params := &stripe.RefundParams{
 		PaymentIntent: stripe.String(paymentIntentID),
-	})
+	}
+	// Stable idempotency key keyed on the PI so two genuinely CONCURRENT full
+	// refunds of the same payment (e.g. a cancel handler's post-commit refund
+	// still in flight when the reconcile reaper fires) collapse to ONE refund at
+	// Stripe — the already_refunded swallow below only protects sequential
+	// retries, not an in-flight overlap. One full refund per PI is the only
+	// refund we ever issue, so a fixed key is safe.
+	params.SetIdempotencyKey("refund:" + paymentIntentID)
+	_, err := refund.New(params)
+	// Idempotent: a PaymentIntent that's already fully refunded (by a prior
+	// attempt, the reconcile reaper, or a human in the Dashboard) is success,
+	// not an error. This lets every caller — and the retry reaper — call refund
+	// repeatedly without double-refunding or getting stuck on a hard error.
+	if err != nil {
+		var se *stripe.Error
+		if errors.As(err, &se) && se.Code == stripe.ErrorCodeChargeAlreadyRefunded {
+			return nil
+		}
+	}
 	return err
 }
 

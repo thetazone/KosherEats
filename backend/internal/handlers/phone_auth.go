@@ -366,7 +366,10 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 // UNIQUE index on users.email stays happy; the "@phone.koshereats.local"
 // suffix makes these accounts easy to spot in the DB and migrate later.
 func (h *Handler) createPhoneUser(r *http.Request, phone, vertical string, req PhoneVerifyRequest) (models.User, error) {
-	email := strings.TrimSpace(req.Email)
+	// Lowercase to match Register and the lower(email) lookups elsewhere (login,
+	// password reset). Storing mixed case let "Victim@x.com" and "victim@x.com"
+	// coexist as distinct rows that both match a lower(email) reset lookup.
+	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email == "" {
 		email = fmt.Sprintf("%s@phone.koshereats.local", strings.TrimPrefix(phone, "+"))
 	}
