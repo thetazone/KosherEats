@@ -55,6 +55,9 @@ func (n *Notifier) tokensForUser(ctx context.Context, userID string, app App) []
 		}
 		devices = append(devices, d)
 	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[notify] iterate tokens for user=%s app=%s: %v", userID, app, err)
+	}
 	return devices
 }
 
@@ -80,6 +83,9 @@ func (n *Notifier) tokensForOnlineCouriers(ctx context.Context) []device {
 			continue
 		}
 		devices = append(devices, d)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[notify] iterate online courier tokens: %v", err)
 	}
 	return devices
 }

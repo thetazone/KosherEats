@@ -251,6 +251,9 @@ type Order struct {
 	DeliveryLng     float64   `json:"delivery_lng"`
 	StripePaymentID string    `json:"stripe_payment_id,omitempty"`
 	EstDeliveryTime time.Time `json:"est_delivery_time"`
+	// ScheduledFor is the consumer-chosen scheduled delivery time, when the
+	// order was placed as a scheduled (vs ASAP) order; nil for ASAP orders.
+	ScheduledFor *time.Time `json:"scheduled_for,omitempty"`
 
 	// Courier assignment
 	CourierID     *string        `json:"courier_id,omitempty"`

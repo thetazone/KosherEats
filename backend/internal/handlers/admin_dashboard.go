@@ -78,6 +78,11 @@ func (h *Handler) AdminRestaurantsPage(w http.ResponseWriter, r *http.Request) {
 			htmlMeta("Address", addr), htmlMeta("Phone", phone), htmlMeta("Cuisine", cuisine),
 			created.Format("Jan 2, 2006"), action, action))
 	}
+	if err := rows.Err(); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeAdminPage(w, "Error", `<p>Could not load restaurants.</p>`)
+		return
+	}
 	if count == 0 {
 		body.WriteString(`<p><em>No pending restaurants — all caught up. 🎉</em></p>`)
 	}

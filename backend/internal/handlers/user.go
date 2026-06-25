@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -129,6 +130,10 @@ func (h *Handler) ListAddresses(w http.ResponseWriter, r *http.Request) {
 		}
 		addresses = append(addresses, a)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch addresses")
+		return
+	}
 
 	if addresses == nil {
 		addresses = []models.Address{}
@@ -232,30 +237,38 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Delete related data in dependency order
-	tx.Exec(ctx, `DELETE FROM device_tokens WHERE user_id = $1`, uid)
-	tx.Exec(ctx, `DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id = $1)`, uid)
-	tx.Exec(ctx, `DELETE FROM carts WHERE user_id = $1`, uid)
-	tx.Exec(ctx, `DELETE FROM addresses WHERE user_id = $1`, uid)
-	// Anonymize orders (keep for accounting) rather than deleting
-	tx.Exec(ctx, `UPDATE orders SET user_id = NULL WHERE user_id = $1`, uid)
-	// Deactivate restaurants owned by this seller and unlink owner
-	tx.Exec(ctx, `UPDATE restaurants SET is_active = false, owner_id = NULL WHERE owner_id = $1`, uid)
-	// Anonymize courier assignments on orders
-	tx.Exec(ctx, `UPDATE orders SET courier_id = NULL WHERE courier_id = $1`, uid)
-	// Clean up courier locations
-	tx.Exec(ctx, `DELETE FROM courier_locations WHERE courier_id = $1`, uid)
-	// Delete courier profile if exists
-	tx.Exec(ctx, `DELETE FROM courier_profiles WHERE user_id = $1`, uid)
-	// Delete chat messages sent by this user
-	tx.Exec(ctx, `DELETE FROM chat_messages WHERE sender_user_id = $1`, uid)
-	// Delete courier ratings left by this consumer
-	tx.Exec(ctx, `DELETE FROM courier_ratings WHERE consumer_id = $1`, uid)
-	// Delete the user
-	_, err = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, uid)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to delete account")
-		return
+	// Delete related data in dependency order. Each step is checked so a failure
+	// short-circuits with the real root-cause logged, rather than only surfacing
+	// at the final DELETE/Commit with the underlying error lost.
+	steps := []struct {
+		desc string
+		sql  string
+	}{
+		{"delete device_tokens", `DELETE FROM device_tokens WHERE user_id = $1`},
+		{"delete cart_items", `DELETE FROM cart_items WHERE cart_id IN (SELECT id FROM carts WHERE user_id = $1)`},
+		{"delete carts", `DELETE FROM carts WHERE user_id = $1`},
+		{"delete addresses", `DELETE FROM addresses WHERE user_id = $1`},
+		// Anonymize orders (keep for accounting) rather than deleting.
+		{"anonymize orders.user_id", `UPDATE orders SET user_id = NULL WHERE user_id = $1`},
+		// Deactivate restaurants owned by this seller and unlink owner.
+		{"deactivate restaurants", `UPDATE restaurants SET is_active = false, owner_id = NULL WHERE owner_id = $1`},
+		// Anonymize courier assignments on orders.
+		{"anonymize orders.courier_id", `UPDATE orders SET courier_id = NULL WHERE courier_id = $1`},
+		{"delete courier_locations", `DELETE FROM courier_locations WHERE courier_id = $1`},
+		{"delete courier_profiles", `DELETE FROM courier_profiles WHERE user_id = $1`},
+		{"delete chat_messages", `DELETE FROM chat_messages WHERE sender_user_id = $1`},
+		{"delete courier_ratings", `DELETE FROM courier_ratings WHERE consumer_id = $1`},
+		// Delete the user.
+		{"delete users", `DELETE FROM users WHERE id = $1`},
+	}
+	for _, step := range steps {
+		if _, err := tx.Exec(ctx, step.sql, uid); err != nil {
+			slog.Error("DeleteAccount step failed",
+				slog.String("user_id", uid), slog.String("step", step.desc),
+				slog.String("error", err.Error()))
+			writeError(w, http.StatusInternalServerError, "failed to delete account")
+			return
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

@@ -97,12 +97,17 @@ func orderPayload(order *models.Order) map[string]any {
 			"note":     it.Notes,
 		})
 	}
+	// Deliberately omit a top-level "total": order.Total is the customer-paid
+	// amount (subtotal − discount + delivery/service fees + tax + tip), which is
+	// inconsistent with the full-price line-item sum and misrepresents what the
+	// kitchen ticket should show. Let Clover compute the total from the line
+	// items so the printed ticket is internally consistent. (Money settles via
+	// Stripe, not Clover — this is a print-the-kitchen-ticket path only.)
 	return map[string]any{
 		"state":     "open",
 		"title":     "KosherEats order " + shortID(order.ID),
 		"note":      fmt.Sprintf("Customer: %s · %s", order.CustomerName, order.CustomerPhone),
 		"lineItems": items,
-		"total":     order.Total,
 	}
 }
 

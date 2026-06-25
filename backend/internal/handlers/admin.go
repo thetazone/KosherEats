@@ -267,6 +267,11 @@ func (h *Handler) AdminListCouriers(w http.ResponseWriter, r *http.Request) {
 		c.CreatedAt = createdAt.Format(time.RFC3339)
 		out = append(out, c)
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("AdminListCouriers: row iteration failed", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list couriers")
+		return
+	}
 	if out == nil {
 		out = []CourierAdminRow{}
 	}
@@ -421,6 +426,11 @@ func (h *Handler) AdminListOrders(w http.ResponseWriter, r *http.Request) {
 		o.CreatedAt = createdAt.Format(time.RFC3339)
 		out = append(out, o)
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("AdminListOrders: row iteration failed", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list orders")
+		return
+	}
 	if out == nil {
 		out = []OrderRow{}
 	}
@@ -447,8 +457,12 @@ func (h *Handler) AdminStats(w http.ResponseWriter, r *http.Request) {
 		  (SELECT COUNT(*) FROM users WHERE role = 'courier'),
 		  (SELECT COUNT(*) FROM courier_profiles WHERE onboarding_status = 'approved'),
 		  (SELECT COUNT(*) FROM courier_profiles WHERE onboarding_status != 'approved' AND onboarding_status != 'rejected'),
-		  (SELECT COUNT(*) FROM orders WHERE created_at::date = CURRENT_DATE),
-		  (SELECT COALESCE(SUM(total), 0) FROM orders WHERE created_at::date = CURRENT_DATE),
+		  (SELECT COUNT(*) FROM orders
+		     WHERE (created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
+		       AND status NOT IN ('cancelled', 'rejected')),
+		  (SELECT COALESCE(SUM(total), 0) FROM orders
+		     WHERE (created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
+		       AND status NOT IN ('cancelled', 'rejected')),
 		  (SELECT COUNT(*) FROM orders)
 	`).Scan(&s.TotalRestaurants, &s.ActiveRestaurants, &s.TotalCouriers,
 		&s.ApprovedCouriers, &s.PendingCouriers, &s.TodayOrders, &s.TodayRevenue, &s.LifetimeOrders); err != nil {

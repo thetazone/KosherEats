@@ -187,6 +187,10 @@ func (h *Handler) ListLinkedProviders(w http.ResponseWriter, r *http.Request) {
 		}
 		providers = append(providers, p)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list providers")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, providers)
 }

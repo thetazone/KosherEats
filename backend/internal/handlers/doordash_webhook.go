@@ -60,7 +60,11 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 	// arrived_at_pickup, picked_up, enroute_to_dropoff, arrived_at_dropoff,
 	// delivered, cancelled
 	switch status {
-	case "confirmed", "enroute_to_pickup":
+	case "confirmed":
+		// Fire the consumer "a courier is on the way" push on exactly ONE status.
+		// The DoorDash Drive lifecycle emits both 'confirmed' and 'enroute_to_pickup';
+		// firing on both double-sent the push. 'enroute_to_pickup' is now a no-op,
+		// matching the Uber Direct webhook (single-status OrderClaimed).
 		dasherName := "DoorDash courier"
 		if payload.DasherName != "" {
 			dasherName = payload.DasherName

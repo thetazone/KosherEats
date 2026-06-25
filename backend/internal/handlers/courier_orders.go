@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/models"
 	// Aliased because DeliverOrder has a local int named `payout`.
@@ -50,12 +51,25 @@ func (h *Handler) SetCourierOnline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE courier_profiles
-		   SET is_online = $1, last_lat = $2, last_lng = $3, last_location_at = NOW(),
-		       updated_at = NOW()
-		 WHERE user_id = $4 AND onboarding_status = 'approved'`,
-		req.Online, req.Lat, req.Lng, user["user_id"])
+	// Only require approval to go ONLINE. A suspended/rejected courier must
+	// always be able to go offline, otherwise a stuck is_online=true lingers
+	// forever.
+	var result pgconn.CommandTag
+	if req.Online {
+		result, err = h.db.Pool.Exec(r.Context(),
+			`UPDATE courier_profiles
+			   SET is_online = $1, last_lat = $2, last_lng = $3, last_location_at = NOW(),
+			       updated_at = NOW()
+			 WHERE user_id = $4 AND onboarding_status = 'approved'`,
+			req.Online, req.Lat, req.Lng, user["user_id"])
+	} else {
+		result, err = h.db.Pool.Exec(r.Context(),
+			`UPDATE courier_profiles
+			   SET is_online = false, last_lat = $1, last_lng = $2, last_location_at = NOW(),
+			       updated_at = NOW()
+			 WHERE user_id = $3`,
+			req.Lat, req.Lng, user["user_id"])
+	}
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusForbidden, "courier not approved to go online")
 		return
@@ -130,6 +144,10 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 		}
 		list = append(list, d)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch available deliveries")
+		return
+	}
 
 	if list == nil {
 		list = []AvailableDelivery{}
@@ -203,6 +221,10 @@ func (h *Handler) ListUpcomingDeliveries(w http.ResponseWriter, r *http.Request)
 			continue
 		}
 		list = append(list, d)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch upcoming deliveries")
+		return
 	}
 
 	if list == nil {
@@ -472,8 +494,11 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	// Detached context: the response is already committed and this lookup only
+	// drives a best-effort push. A client disconnect must not cancel it (which
+	// would silently drop the "order delivered" notification).
 	var consumerID string
-	if err := h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(context.Background(),
 		`SELECT user_id FROM orders WHERE id = $1`, orderID).Scan(&consumerID); err != nil {
 		slog.Warn("failed to fetch consumer for delivery notification",
 			slog.String("order_id", orderID), slog.String("error", err.Error()))
@@ -501,6 +526,13 @@ func (h *Handler) UpdateCourierLocation(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.Lat < -90 || req.Lat > 90 || req.Lng < -180 || req.Lng > 180 {
 		writeError(w, http.StatusBadRequest, "lat must be [-90,90] and lng must be [-180,180]")
+		return
+	}
+
+	// Reject heartbeats from non-approved (e.g. suspended) couriers, matching
+	// PickupOrder/DeliverOrder — otherwise a suspended courier keeps writing GPS
+	// and SSE-broadcasting their location.
+	if !h.requireApprovedCourier(w, r, user["user_id"]) {
 		return
 	}
 

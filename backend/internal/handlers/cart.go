@@ -195,7 +195,8 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO cart_items (cart_id, menu_item_id, quantity, notes, unit_price, selected_modifiers)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (cart_id, menu_item_id, selected_modifiers)
-		 DO UPDATE SET quantity = cart_items.quantity + excluded.quantity`,
+		 DO UPDATE SET quantity = cart_items.quantity + excluded.quantity,
+		     notes = COALESCE(NULLIF(excluded.notes, ''), cart_items.notes)`,
 		cartID, req.MenuItemID, req.Quantity, req.Notes, unitPrice, selectedJSON)
 
 	if err != nil {

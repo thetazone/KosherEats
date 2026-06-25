@@ -93,15 +93,28 @@ func (a *Activities) ReservePayout(ctx context.Context, in PayoutInput) error {
 	return err
 }
 
-// StripeTransfer moves the money. The idempotency key (WorkflowID) makes a retry
-// charge at-most-once.
+// StripeTransfer moves the money. The Stripe idempotency key must match the
+// legacy sweep's key (the courier_payout_queue row id, p.id in dispatcher.go) so
+// that a payout re-attempted across a Temporal on/off cutover is deduped by
+// Stripe rather than double-paid. order_id is UNIQUE in the queue, so the row id
+// is stable for the order. The incoming idemKey (the WorkflowID) is ignored for
+// the Stripe key for exactly this cross-path parity reason.
 func (a *Activities) StripeTransfer(ctx context.Context, in PayoutInput, idemKey string) error {
-	activity.GetLogger(ctx).Info("StripeTransfer", "order", in.OrderID, "key", idemKey)
 	if in.StripeConnectID == "" || in.AmountCents <= 0 {
 		// Non-retryable: bad payout data won't fix itself on retry.
 		return temporal.NewNonRetryableApplicationError("invalid payout parameters", "InvalidPayout", nil)
 	}
-	return a.stripe.TransferToCourier(in.StripeConnectID, in.AmountCents, in.OrderID, idemKey)
+	// Resolve the canonical idempotency key (queue row id) shared with the legacy
+	// path. Falls back to the WorkflowID-derived key only if the row is missing.
+	stripeKey := idemKey
+	var rowID string
+	if err := a.pool.QueryRow(ctx,
+		`SELECT id::text FROM courier_payout_queue WHERE order_id = $1`, in.OrderID,
+	).Scan(&rowID); err == nil && rowID != "" {
+		stripeKey = rowID
+	}
+	activity.GetLogger(ctx).Info("StripeTransfer", "order", in.OrderID, "key", stripeKey)
+	return a.stripe.TransferToCourier(in.StripeConnectID, in.AmountCents, in.OrderID, stripeKey)
 }
 
 func (a *Activities) MarkComplete(ctx context.Context, in PayoutInput) error {

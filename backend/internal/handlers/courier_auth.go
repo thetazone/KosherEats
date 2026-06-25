@@ -309,6 +309,21 @@ func (h *Handler) VerifyCourierPhone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bind the OTP'd phone to the courier's own account: flipping phone_verified
+	// for a number that isn't the user's registered phone lets a courier "verify"
+	// any number they control. Require a match before marking verified.
+	var registeredPhone string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT COALESCE(phone, '') FROM users WHERE id = $1`, user["user_id"],
+	).Scan(&registeredPhone); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify phone")
+		return
+	}
+	if normalizePhone(registeredPhone) != phone {
+		writeError(w, http.StatusBadRequest, "verified phone does not match your account phone")
+		return
+	}
+
 	// Successful verification — clear the OTP row and mark phone verified.
 	if _, err := h.db.Pool.Exec(r.Context(),
 		`DELETE FROM phone_otp_starts WHERE phone = $1`, phone); err != nil {

@@ -199,7 +199,15 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	discountedSubtotal := subtotal - discount
-	tax := discountedSubtotal * h.cfg.TaxRatePercent / 100
+	// Mirror CreatePaymentIntent's tax seam exactly so the PI total and the order
+	// total can never diverge once Stripe Tax (taxForOrder) is wired — divergence
+	// here would trip the amount-match guard and produce charged-but-no-order.
+	var tax int
+	if h.cfg.StripeTaxEnabled {
+		tax = h.taxForOrder(discountedSubtotal)
+	} else {
+		tax = discountedSubtotal * h.cfg.TaxRatePercent / 100
+	}
 	tip := req.Tip
 	if tip < 0 {
 		tip = 0
@@ -338,8 +346,14 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	order.Items = items
 
-	// Notify the seller that a new order just came in.
-	go h.notify.OrderCreated(context.Background(), order.RestaurantID, order.RestaurantName, order.ID, order.Total)
+	// Notify the seller that a new order just came in — but only for orders that
+	// are actually pending. A far-future scheduled order isn't acceptable yet, so
+	// firing the "New order — tap to accept" push now would be noise the seller
+	// can't act on; the dispatcher re-fires OrderCreated when it promotes the
+	// scheduled order to pending.
+	if order.Status == models.OrderPending {
+		go h.notify.OrderCreated(context.Background(), order.RestaurantID, order.RestaurantName, order.ID, order.Total)
+	}
 
 	writeJSON(w, http.StatusCreated, order)
 }
@@ -370,7 +384,7 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
 			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
-			        o.est_delivery_time, o.fulfillment_type, o.stripe_payment_id, o.created_at, o.updated_at
+			        o.est_delivery_time, o.scheduled_for, o.fulfillment_type, o.stripe_payment_id, o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 			  WHERE o.user_id = $1 AND o.created_at < $2
 			  ORDER BY o.created_at DESC LIMIT $3`,
@@ -380,7 +394,7 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
 			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.delivery_lat, o.delivery_lng,
-			        o.est_delivery_time, o.fulfillment_type, o.stripe_payment_id, o.created_at, o.updated_at
+			        o.est_delivery_time, o.scheduled_for, o.fulfillment_type, o.stripe_payment_id, o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 			  WHERE o.user_id = $1
 			  ORDER BY o.created_at DESC LIMIT $2`,
@@ -399,7 +413,7 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
 			&o.Subtotal, &o.Discount, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 			&o.CourierTip, &o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
-			&o.EstDeliveryTime, &o.FulfillmentType, &o.StripePaymentID, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&o.EstDeliveryTime, &o.ScheduledFor, &o.FulfillmentType, &o.StripePaymentID, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			continue
 		}
 		orders = append(orders, o)
@@ -551,7 +565,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			SELECT o.id, o.user_id, o.restaurant_id, rest.name, rest.lat, rest.lng, o.status,
 			       o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			       o.delivery_address, o.delivery_lat, o.delivery_lng,
-			       o.stripe_payment_id, o.est_delivery_time,
+			       o.stripe_payment_id, o.est_delivery_time, o.scheduled_for,
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
 			       o.courier_payout, o.courier_tip,
 			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url, COALESCE(rest.delivery_mode, 'platform'),
@@ -574,7 +588,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			SELECT o.id, o.user_id, o.restaurant_id, rest.name, rest.lat, rest.lng, o.status,
 			       o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			       o.delivery_address, o.delivery_lat, o.delivery_lng,
-			       o.stripe_payment_id, o.est_delivery_time,
+			       o.stripe_payment_id, o.est_delivery_time, o.scheduled_for,
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
 			       o.courier_payout, o.courier_tip,
 			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url, COALESCE(rest.delivery_mode, 'platform'),
@@ -610,7 +624,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 		&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.RestaurantLat, &o.RestaurantLng, &o.Status,
 		&o.Subtotal, &o.Discount, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 		&o.DeliveryAddress, &o.DeliveryLat, &o.DeliveryLng,
-		&o.StripePaymentID, &o.EstDeliveryTime,
+		&o.StripePaymentID, &o.EstDeliveryTime, &o.ScheduledFor,
 		&courierID, &o.ClaimedAt, &o.PickedUpAt, &o.DeliveredAt,
 		&o.CourierPayout, &o.CourierTip,
 		&o.FulfillmentType, &o.ExternalDeliveryID, &o.ExternalProvider, &o.ExternalTrackingURL, &o.DeliveryMode,
@@ -1002,7 +1016,10 @@ func (h *Handler) AcceptOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	orderID := chi.URLParam(r, "id")
-	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r, orderID)
+	// Detached context: updateSellerOrderStatus already flushed the response, so
+	// r.Context() is effectively done — a client disconnect must not cancel the
+	// consumer-push lookup.
+	consumerID, restaurantName := h.consumerAndRestaurantForOrder(context.Background(), orderID)
 	if consumerID != "" && restaurantName != "" {
 		go h.notify.OrderAccepted(context.Background(), orderID, consumerID, restaurantName)
 	}
@@ -1053,19 +1070,24 @@ func (h *Handler) loadOrderByID(ctx context.Context, orderID string) (*models.Or
 	); err != nil {
 		return nil, err
 	}
+	// Items are load-critical for the POS kitchen ticket: an item-less or
+	// truncated ticket must surface as an error rather than be silently pushed.
 	rows, err := h.db.Pool.Query(ctx,
 		`SELECT id, order_id, menu_item_id, name, price, quantity, COALESCE(notes,'')
 		   FROM order_items WHERE order_id = $1 ORDER BY id`, orderID)
 	if err != nil {
-		return &o, nil
+		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var it models.OrderItem
 		if err := rows.Scan(&it.ID, &it.OrderID, &it.MenuItemID, &it.Name, &it.Price, &it.Quantity, &it.Notes); err != nil {
-			continue
+			return nil, err
 		}
 		o.Items = append(o.Items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return &o, nil
 }
@@ -1074,7 +1096,9 @@ func (h *Handler) MarkOrderPreparing(w http.ResponseWriter, r *http.Request) {
 	if !h.updateSellerOrderStatus(w, r, models.OrderPreparing, models.OrderAccepted) {
 		return
 	}
-	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r, chi.URLParam(r, "id"))
+	// Detached context: the status flip already flushed the response, so a client
+	// disconnect must not cancel the consumer-push lookup.
+	consumerID, restaurantName := h.consumerAndRestaurantForOrder(context.Background(), chi.URLParam(r, "id"))
 	if consumerID != "" && restaurantName != "" {
 		go h.notify.OrderPreparing(context.Background(), chi.URLParam(r, "id"), consumerID, restaurantName)
 	}
@@ -1084,9 +1108,9 @@ func (h *Handler) MarkOrderPreparing(w http.ResponseWriter, r *http.Request) {
 // status-transition handlers to fan a push to the consumer. Returns empty
 // strings on failure — caller skips the push rather than surfacing a 500
 // because the underlying status flip already succeeded.
-func (h *Handler) consumerAndRestaurantForOrder(r *http.Request, orderID string) (string, string) {
+func (h *Handler) consumerAndRestaurantForOrder(ctx context.Context, orderID string) (string, string) {
 	var consumerID, restaurantName string
-	if err := h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(ctx,
 		`SELECT o.user_id, rest.name
 		   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1`, orderID,
@@ -1209,8 +1233,13 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 
 	// Own-fleet marketplace broadcast only for 'platform' delivery orders.
 	// 'restaurant' mode = seller self-delivers (no courier); pickup = no delivery.
-	if fulfillmentType == "delivery" && deliveryMode == "platform" && restaurantName != "" {
-		go h.notify.OrderReady(context.Background(), orderID, restaurantName, deliveryFee)
+	// externalDeliveryID guard: an order already escalated to Uber/DoorDash must
+	// not be broadcast to KE couriers (spurious "new delivery available" push).
+	if fulfillmentType == "delivery" && deliveryMode == "platform" && externalDeliveryID == nil && restaurantName != "" {
+		// Advertise the payout the courier will actually receive (delivery fee +
+		// 100% of the tip), matching the DeliverOrder payout and the auto-assign
+		// broadcast — not the bare delivery fee, which under-states earnings.
+		go h.notify.OrderReady(context.Background(), orderID, restaurantName, deliveryFee+courierTip)
 	}
 }
 
@@ -1292,7 +1321,7 @@ func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Notify the consumer that the seller manually rejected (and the refund
 	// was already issued above).
-	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r, id)
+	consumerID, restaurantName := h.consumerAndRestaurantForOrder(r.Context(), id)
 	if consumerID != "" && restaurantName != "" {
 		go h.notify.OrderRejected(context.Background(), id, consumerID, restaurantName, rejectBody.Reason)
 	}
@@ -1505,8 +1534,10 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Detached context: the response/commit is done and this lookup only drives a
+	// best-effort push, so a client disconnect must not cancel it.
 	var consumerID string
-	if err := h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(context.Background(),
 		`SELECT user_id FROM orders WHERE id = $1`, id).Scan(&consumerID); err != nil {
 		slog.Warn("failed to fetch consumer for delivery notification",
 			slog.String("order_id", id), slog.String("error", err.Error()))

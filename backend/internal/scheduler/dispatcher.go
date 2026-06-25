@@ -406,7 +406,12 @@ func (d *Dispatcher) sweepScheduled(ctx context.Context) {
 		}
 		due = append(due, o)
 	}
+	rowsErr := rows.Err()
 	rows.Close()
+	if rowsErr != nil {
+		slog.Error("scheduler sweep: row iteration failed", slog.String("error", rowsErr.Error()))
+		return
+	}
 
 	for _, o := range due {
 		_, err := d.db.Exec(ctx,
@@ -501,7 +506,12 @@ func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
 		}
 		stale = append(stale, o)
 	}
+	rowsErr := rows.Err()
 	rows.Close()
+	if rowsErr != nil {
+		slog.Error("auto-dispatch: row iteration failed", slog.String("error", rowsErr.Error()))
+		return
+	}
 
 	for _, o := range stale {
 		d.tryAutoAssign(ctx, o)
@@ -521,52 +531,47 @@ func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
 		return
 	}
 
+	// Atomic select-and-claim in a single statement so the courier's "unbusy"
+	// predicate is re-evaluated at write time. Picking the courier in a separate
+	// SELECT and then writing left a TOCTOU window where the same courier could
+	// manually ClaimOrder a different order in the gap and get double-booked. The
+	// order CAS (status='ready', courier_id IS NULL, external_provider IS NULL)
+	// mirrors handlers.ClaimOrder so the two paths can't double-assign the order.
 	var courierID, courierFirstName string
 	err := d.db.QueryRow(ctx, `
-		SELECT cp.user_id, u.first_name
-		  FROM courier_profiles cp
-		  JOIN users u ON u.id = cp.user_id
-		 WHERE cp.is_online = true
-		   AND cp.onboarding_status = 'approved'
-		   AND u.role = 'courier'
-		   AND NOT EXISTS (
-		     SELECT 1 FROM orders o2
-		      WHERE o2.courier_id = cp.user_id
-		        AND o2.status IN ('ready', 'picked_up')
-		   )
-		 ORDER BY point(cp.last_lng, cp.last_lat) <-> point($1, $2)
-		 LIMIT 1`,
-		o.restLng, o.restLat).Scan(&courierID, &courierFirstName)
+		UPDATE orders
+		   SET courier_id = c.user_id, claimed_at = NOW(), updated_at = NOW()
+		  FROM (
+		    SELECT cp.user_id, u.first_name
+		      FROM courier_profiles cp
+		      JOIN users u ON u.id = cp.user_id
+		     WHERE cp.is_online = true
+		       AND cp.onboarding_status = 'approved'
+		       AND u.role = 'courier'
+		       AND NOT EXISTS (
+		         SELECT 1 FROM orders o2
+		          WHERE o2.courier_id = cp.user_id
+		            AND o2.status IN ('ready', 'picked_up')
+		       )
+		     ORDER BY point(cp.last_lng, cp.last_lat) <-> point($1, $2)
+		     LIMIT 1
+		  ) AS c
+		 WHERE orders.id = $3
+		   AND orders.status = 'ready'
+		   AND orders.courier_id IS NULL
+		   AND orders.external_provider IS NULL
+		 RETURNING c.user_id, c.first_name`,
+		o.restLng, o.restLat, o.orderID).Scan(&courierID, &courierFirstName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// Either no free courier, or someone beat us to the order in the
+			// interval between sweep and assign — fall through to external.
 			d.tryExternalDispatch(ctx, o)
 			return
 		}
-		slog.Error("auto-dispatch: courier lookup failed",
-			slog.String("order_id", o.orderID),
-			slog.String("error", err.Error()))
-		return
-	}
-
-	// Atomic claim: only succeeds if nobody self-claimed between the stale
-	// query and now. Mirrors the CAS in handlers.ClaimOrder so the two paths
-	// can't double-assign.
-	result, err := d.db.Exec(ctx, `
-		UPDATE orders
-		   SET courier_id = $1, claimed_at = NOW(), updated_at = NOW()
-		 WHERE id = $2 AND status = 'ready' AND courier_id IS NULL
-		   AND external_provider IS NULL`,
-		courierID, o.orderID)
-	if err != nil {
 		slog.Error("auto-dispatch: claim update failed",
 			slog.String("order_id", o.orderID),
-			slog.String("courier_id", courierID),
 			slog.String("error", err.Error()))
-		return
-	}
-	if result.RowsAffected() == 0 {
-		// Someone beat us to it in the interval between sweep and assign;
-		// not an error, just the marketplace working as intended.
 		return
 	}
 
@@ -666,7 +671,12 @@ func (d *Dispatcher) sweepStaleRejection(ctx context.Context) {
 		}
 		stale = append(stale, o)
 	}
+	rowsErr := rows.Err()
 	rows.Close()
+	if rowsErr != nil {
+		slog.Error("stale-rejection: row iteration failed", slog.String("error", rowsErr.Error()))
+		return
+	}
 
 	for _, o := range stale {
 		d.tryStaleReject(ctx, o)
@@ -806,7 +816,12 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 			}
 			due = append(due, p)
 		}
+		rowsErr := rows.Err()
 		rows.Close()
+		if rowsErr != nil {
+			slog.Error("payout-sweep: row iteration failed", slog.String("error", rowsErr.Error()))
+			return
+		}
 
 		for _, p := range due {
 			if err := d.payoutStarter.Start(ctx, payout.PayoutInput{
@@ -885,7 +900,12 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		}
 		due = append(due, p)
 	}
+	rowsErr := rows.Err()
 	rows.Close()
+	if rowsErr != nil {
+		slog.Error("payout-sweep: row iteration failed", slog.String("error", rowsErr.Error()))
+		return
+	}
 
 	for _, p := range due {
 		d.tryPayout(ctx, p)

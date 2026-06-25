@@ -225,6 +225,9 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		"tax":                   tax,
 		"tip":                   tip,
 		"total":                 total,
+		// Saved-card preview (empty when no default card; iOS treats "" as none).
+		"default_card_brand": bundle.DefaultCardBrand,
+		"default_card_last4": bundle.DefaultCardLast4,
 	})
 }
 

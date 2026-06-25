@@ -578,7 +578,11 @@ func (h *Handler) attachSellerModifierGroups(r *http.Request, itemIDs []string, 
 		groups = append(groups, g)
 		groupIDs = append(groupIDs, g.ID)
 	}
+	groupErr := groupRows.Err()
 	groupRows.Close()
+	if groupErr != nil {
+		return
+	}
 
 	if len(groupIDs) == 0 {
 		return
@@ -602,6 +606,9 @@ func (h *Handler) attachSellerModifierGroups(r *http.Request, itemIDs []string, 
 			continue
 		}
 		modsByGroup[m.GroupID] = append(modsByGroup[m.GroupID], m)
+	}
+	if modRows.Err() != nil {
+		return
 	}
 
 	for _, g := range groups {
@@ -962,6 +969,10 @@ func (h *Handler) ListMenuImports(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read imports")
+		return
 	}
 	writeJSON(w, http.StatusOK, jobs)
 }

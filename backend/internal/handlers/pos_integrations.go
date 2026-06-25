@@ -164,6 +164,11 @@ func (h *Handler) ListPOSIntegrations(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, x)
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("ListPOSIntegrations: row iteration failed", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list integrations")
+		return
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

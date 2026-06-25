@@ -188,6 +188,10 @@ func (h *Handler) ListSellerDeals(w http.ResponseWriter, r *http.Request) {
 		}
 		deals = append(deals, d)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list deals")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, deals)
 }
@@ -357,6 +361,11 @@ func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
 		}
 		deals = append(deals, d)
 	}
+	if err := rows.Err(); err != nil {
+		slog.Error("ListNearbyDeals row iteration failed", slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to list deals")
+		return
+	}
 
 	writeJSON(w, http.StatusOK, interleaveDeals(deals))
 }
@@ -380,6 +389,7 @@ func (h *Handler) ListRestaurantDeals(w http.ResponseWriter, r *http.Request) {
 		   AND d.is_active = true
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
+		   AND r.is_active = true
 		   AND r.approval_status = 'approved'
 		   AND r.vertical = $2
 		 ORDER BY d.expires_at ASC`, restaurantID, vertical)
@@ -401,6 +411,10 @@ func (h *Handler) ListRestaurantDeals(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		deals = append(deals, d)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list deals")
+		return
 	}
 
 	writeJSON(w, http.StatusOK, deals)

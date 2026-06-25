@@ -123,6 +123,10 @@ func (h *Handler) ListChatMessages(w http.ResponseWriter, r *http.Request) {
 		m.CreatedAt = createdAt.Format(time.RFC3339)
 		out = append(out, m)
 	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch messages")
+		return
+	}
 	if out == nil {
 		out = []ChatMessage{}
 	}
