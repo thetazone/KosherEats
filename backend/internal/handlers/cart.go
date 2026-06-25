@@ -19,8 +19,10 @@ type AddToCartRequest struct {
 }
 
 type UpdateCartItemRequest struct {
-	Quantity int    `json:"quantity"`
-	Notes    string `json:"notes"`
+	Quantity int `json:"quantity"`
+	// Pointer so we can tell "notes omitted" (keep existing) from "notes set to
+	// empty" (explicit clear). A quantity-only update must not wipe notes.
+	Notes *string `json:"notes"`
 }
 
 func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
@@ -273,11 +275,18 @@ func (h *Handler) UpdateCartItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "quantity cannot exceed 99")
 		return
 	}
+	if req.Notes != nil && len(*req.Notes) > 500 {
+		writeError(w, http.StatusBadRequest, "notes cannot exceed 500 characters")
+		return
+	}
 
+	// notes = COALESCE($2, notes): persist edited special instructions, but keep
+	// the existing notes when the client sends a quantity-only update (req.Notes
+	// nil). Previously notes were read off the body and silently dropped.
 	result, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE cart_items SET quantity = $1
-		 WHERE id = $2 AND cart_id IN (SELECT id FROM carts WHERE user_id = $3)`,
-		req.Quantity, itemID, user["user_id"])
+		`UPDATE cart_items SET quantity = $1, notes = COALESCE($2, notes)
+		 WHERE id = $3 AND cart_id IN (SELECT id FROM carts WHERE user_id = $4)`,
+		req.Quantity, req.Notes, itemID, user["user_id"])
 
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusNotFound, "cart item not found")

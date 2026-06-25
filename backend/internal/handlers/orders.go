@@ -104,6 +104,14 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 		modifierJSONs = append(modifierJSONs, modJSON)
 	}
+	// A mid-iteration error makes Next() return false just like a clean end of
+	// rows. Without this check a partial cart would build an order missing items
+	// (wrong subtotal, customer shorted) — fail the whole create instead.
+	if err := itemRows.Err(); err != nil {
+		slog.Error("cart item iteration failed during order creation", "cart_id", cart.ID, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to read cart items")
+		return
+	}
 
 	if len(items) == 0 {
 		writeError(w, http.StatusBadRequest, "cart is empty")
