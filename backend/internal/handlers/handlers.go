@@ -8,6 +8,7 @@ import (
 	"github.com/koshereats/backend/internal/broker"
 	"github.com/koshereats/backend/internal/config"
 	"github.com/koshereats/backend/internal/database"
+	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/email"
 	"github.com/koshereats/backend/internal/notify"
@@ -34,12 +35,17 @@ type Handler struct {
 	doordash      *doordash.Client
 	posRegistry   *pos.Registry
 	payoutStarter *payout.Starter
+	// dispatcher is the shared external-courier dispatcher, used inline to
+	// dispatch Uber/DoorDash the instant a seller marks an 'external'-mode order
+	// ready or escalates a self-delivery order. Same claim-before-create logic as
+	// the scheduler's sweep.
+	dispatcher *dispatch.ExternalDispatcher
 }
 
 func New(db *database.DB, cfg *config.Config) *Handler {
 	apns := notify.New(cfg)
 	fcm := notify.NewFCM(cfg)
-	return &Handler{
+	h := &Handler{
 		db:       db,
 		cfg:      cfg,
 		notify:   notify.NewNotifier(db.Pool, apns, fcm),
@@ -63,6 +69,8 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 		}),
 		posRegistry: pos.NewRegistry(db.Pool, clover.New()),
 	}
+	h.dispatcher = dispatch.New(h.db.Pool, h.uber, h.doordash)
+	return h
 }
 
 // SetPayoutStarter injects the Temporal payout-workflow starter. When nil (the

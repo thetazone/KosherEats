@@ -212,11 +212,14 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Atomic claim: only succeeds if courier_id is still NULL
+	// Atomic claim: only succeeds if courier_id is still NULL AND the order isn't
+	// mid/post external dispatch (external_provider set to 'dispatching' or a real
+	// provider) — a KE courier must not claim an order already going to Uber.
 	result, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE orders
 		   SET courier_id = $1, claimed_at = NOW(), updated_at = NOW()
-		 WHERE id = $2 AND status = 'ready' AND courier_id IS NULL`,
+		 WHERE id = $2 AND status = 'ready' AND courier_id IS NULL
+		   AND external_provider IS NULL`,
 		user["user_id"], orderID)
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusConflict, "order no longer available")

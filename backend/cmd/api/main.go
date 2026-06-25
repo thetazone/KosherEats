@@ -333,6 +333,7 @@ func main() {
 			r.Patch("/{id}/reject", h.RejectOrder)
 			r.Patch("/{id}/pickup", h.SellerPickupOrder)
 			r.Patch("/{id}/deliver", h.SellerDeliverOrder)
+			r.Patch("/{id}/escalate", h.EscalateToUber)
 		})
 
 		r.Route("/deals", func(r chi.Router) {

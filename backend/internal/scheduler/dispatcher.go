@@ -40,6 +40,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
@@ -137,6 +138,10 @@ type Dispatcher struct {
 	stripe   *payments.Client
 	uber     *uberdirect.Client
 	doordash *doordash.Client
+	// external is the shared external-courier dispatcher (also used inline by the
+	// handlers). Created from the same clients so both paths quote+create+claim
+	// identically.
+	external *dispatch.ExternalDispatcher
 
 	// payoutStarter, when non-nil and Enabled(), switches the courier-payout
 	// sweep from direct Stripe transfers to a Temporal reconcile: each due row
@@ -171,7 +176,8 @@ func (d *Dispatcher) alert(subject, body string) {
 }
 
 func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
-	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd}
+	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd,
+		external: dispatch.New(db, u, dd)}
 }
 
 // Start launches a goroutine that runs both sweeps every minute. Runs once
@@ -515,7 +521,8 @@ func (d *Dispatcher) tryAutoAssign(ctx context.Context, o staleOrder) {
 	result, err := d.db.Exec(ctx, `
 		UPDATE orders
 		   SET courier_id = $1, claimed_at = NOW(), updated_at = NOW()
-		 WHERE id = $2 AND status = 'ready' AND courier_id IS NULL`,
+		 WHERE id = $2 AND status = 'ready' AND courier_id IS NULL
+		   AND external_provider IS NULL`,
 		courierID, o.orderID)
 	if err != nil {
 		slog.Error("auto-dispatch: claim update failed",
@@ -564,152 +571,20 @@ func (d *Dispatcher) tryExternalDispatch(ctx context.Context, o staleOrder) {
 		return
 	}
 
-	type externalQuote struct {
-		provider    string
-		feeCents    int
-		uberQuoteID string
-	}
-	var quotes []externalQuote
-
-	if uberEnabled {
-		pickup := uberdirect.Address{
-			Street: []string{o.restAddress}, Country: "US",
-		}
-		dropoff := uberdirect.Address{
-			Street: []string{o.deliveryAddress}, Country: "US",
-		}
-		q, err := d.uber.GetQuote(ctx, pickup, dropoff)
-		if err != nil {
-			slog.Warn("external-dispatch: uber quote failed",
-				slog.String("order_id", o.orderID),
-				slog.String("error", err.Error()))
-		} else {
-			quotes = append(quotes, externalQuote{
-				provider: "uber_direct", feeCents: q.Fee, uberQuoteID: q.ID,
-			})
-		}
-	}
-
-	if ddEnabled {
-		q, err := d.doordash.GetQuote(ctx, doordash.CreateDeliveryRequest{
-			ExternalDeliveryID: o.orderID + "_quote",
-			PickupAddress:      o.restAddress,
-			PickupBusinessName: o.restaurantName,
-			PickupPhone:        o.restPhone,
-			DropoffAddress:     o.deliveryAddress,
-			DropoffContactName: o.customerName,
-			DropoffPhone:       o.customerPhone,
-			OrderValue:         o.subtotal,
-		})
-		if err != nil {
-			slog.Warn("external-dispatch: doordash quote failed",
-				slog.String("order_id", o.orderID),
-				slog.String("error", err.Error()))
-		} else {
-			quotes = append(quotes, externalQuote{
-				provider: "doordash_drive", feeCents: q.Fee,
-			})
-		}
-	}
-
-	if len(quotes) == 0 {
-		slog.Error("external-dispatch: all providers failed",
-			slog.String("order_id", o.orderID))
-		return
-	}
-
-	// Pick cheapest.
-	best := quotes[0]
-	for _, q := range quotes[1:] {
-		if q.feeCents < best.feeCents {
-			best = q
-		}
-	}
-
-	slog.Info("external-dispatch: cheapest quote selected",
-		slog.String("order_id", o.orderID),
-		slog.String("provider", best.provider),
-		slog.Int("fee_cents", best.feeCents))
-
-	var deliveryID, trackingURL string
-	var fee int
-
-	switch best.provider {
-	case "uber_direct":
-		pickup := uberdirect.Address{
-			Street: []string{o.restAddress}, Country: "US",
-		}
-		dropoff := uberdirect.Address{
-			Street: []string{o.deliveryAddress}, Country: "US",
-		}
-		del, err := d.uber.CreateDelivery(ctx, uberdirect.CreateDeliveryRequest{
-			QuoteID:        best.uberQuoteID,
-			ExternalID:     o.orderID,
-			PickupName:     o.restaurantName,
-			PickupAddress:  pickup,
-			PickupPhone:    o.restPhone,
-			DropoffName:    o.customerName,
-			DropoffAddress: dropoff,
-			DropoffPhone:   o.customerPhone,
-			TotalCents:     o.subtotal,
-			TipCents:       o.tipCents,
-			Items: []uberdirect.ManifestItem{
-				{Name: "Food order from " + o.restaurantName, Quantity: 1, Price: o.subtotal},
-			},
-		})
-		if err != nil {
-			slog.Error("external-dispatch: uber create failed",
-				slog.String("order_id", o.orderID),
-				slog.String("error", err.Error()))
-			return
-		}
-		deliveryID = del.ID
-		trackingURL = del.TrackingURL
-		fee = del.Fee
-
-	case "doordash_drive":
-		del, err := d.doordash.CreateDelivery(ctx, doordash.CreateDeliveryRequest{
-			ExternalDeliveryID: o.orderID,
-			PickupAddress:      o.restAddress,
-			PickupBusinessName: o.restaurantName,
-			PickupPhone:        o.restPhone,
-			DropoffAddress:     o.deliveryAddress,
-			DropoffContactName: o.customerName,
-			DropoffPhone:       o.customerPhone,
-			OrderValue:         o.subtotal,
-			TipCents:           o.tipCents,
-		})
-		if err != nil {
-			slog.Error("external-dispatch: doordash create failed",
-				slog.String("order_id", o.orderID),
-				slog.String("error", err.Error()))
-			return
-		}
-		deliveryID = del.ExternalDeliveryID
-		trackingURL = del.TrackingURL
-		fee = del.Fee
-	}
-
-	_, err := d.db.Exec(ctx, `
-		UPDATE orders
-		   SET external_delivery_id = $1,
-		       external_provider = $2,
-		       external_tracking_url = $3,
-		       updated_at = NOW()
-		 WHERE id = $4 AND courier_id IS NULL`,
-		deliveryID, best.provider, trackingURL, o.orderID)
-	if err != nil {
-		slog.Error("external-dispatch: db update failed",
-			slog.String("order_id", o.orderID),
-			slog.String("error", err.Error()))
-		return
-	}
-
-	slog.Info("external-dispatch: delivery created",
-		slog.String("order_id", o.orderID),
-		slog.String("provider", best.provider),
-		slog.String("delivery_id", deliveryID),
-		slog.Int("fee_cents", fee))
+	// Hand off to the shared dispatcher (claim-before-create guarded). The grace
+	// wait above is scheduler-only; the inline/escalate handler callers dispatch
+	// immediately.
+	d.external.Dispatch(ctx, dispatch.Input{
+		OrderID:         o.orderID,
+		RestaurantName:  o.restaurantName,
+		RestAddress:     o.restAddress,
+		RestPhone:       o.restPhone,
+		DeliveryAddress: o.deliveryAddress,
+		CustomerName:    o.customerName,
+		CustomerPhone:   o.customerPhone,
+		Subtotal:        o.subtotal,
+		TipCents:        o.tipCents,
+	})
 }
 
 // stalePending is the projection of a pending order that overshot the SLA.

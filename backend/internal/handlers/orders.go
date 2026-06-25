@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/models"
 )
 
@@ -21,7 +22,7 @@ type CreateOrderRequest struct {
 	DeliveryLat     float64    `json:"delivery_lat"`
 	DeliveryLng     float64    `json:"delivery_lng"`
 	PaymentIntentID string     `json:"payment_intent_id"`
-	Tip             int        `json:"tip"` // cents
+	Tip             int        `json:"tip"`           // cents
 	ScheduledFor    *time.Time `json:"scheduled_for"` // nil = ASAP; otherwise RFC3339
 	// FulfillmentType is "delivery" (default) or "pickup". Pickup orders
 	// skip the courier handoff entirely — the seller marks them completed
@@ -542,14 +543,14 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 
 	var o models.Order
 	var (
-		courierID                                 *string
-		cFirst, cPhone, cAvatar                   *string
-		cVehType, cMake, cModel, cColor, cPlate   *string
-		cRating                                   *float64
-		cTotal                                    *int
-		cLat, cLng                                *float64
-		ratingStars                               *int
-		consumerFirst, consumerPhone              *string
+		courierID                               *string
+		cFirst, cPhone, cAvatar                 *string
+		cVehType, cMake, cModel, cColor, cPlate *string
+		cRating                                 *float64
+		cTotal                                  *int
+		cLat, cLng                              *float64
+		ratingStars                             *int
+		consumerFirst, consumerPhone            *string
 	)
 
 	err := h.db.Pool.QueryRow(r.Context(), query, orderID, scopeValue).Scan(
@@ -1087,21 +1088,63 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// After marking ready, broadcast a "new delivery available" push to
-	// every currently-online courier. We re-query for the order's restaurant
-	// name + delivery fee so the notification has context.
+	// After marking ready we route the order. Re-query everything needed for
+	// either the own-fleet courier broadcast OR an inline external dispatch.
+	// updateSellerOrderStatus already wrote the HTTP response, so all downstream
+	// work is fire-and-forget on context.Background() (r.Context() is now dead).
 	orderID := chi.URLParam(r, "id")
-	var restaurantName string
-	var deliveryFee int
-	if err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT rest.name, o.delivery_fee
-		   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
+	var (
+		restaurantName, restAddress, restPhone       string
+		deliveryAddress, customerName, customerPhone string
+		deliveryMode, fulfillmentType                string
+		externalDeliveryID                           *string
+		deliveryFee, subtotal, courierTip            int
+	)
+	// context.Background(): the HTTP response is already sent, so r.Context() is
+	// dead. Using it here would let a client disconnect abort the query that
+	// DECIDES whether to dispatch, silently skipping the courier entirely.
+	if err := h.db.Pool.QueryRow(context.Background(),
+		`SELECT rest.name,
+		        COALESCE(rest.street || ', ' || rest.city || ', ' || rest.state || ' ' || rest.zip_code, ''),
+		        COALESCE(rest.phone, ''), COALESCE(rest.delivery_mode, 'platform'),
+		        COALESCE(o.delivery_address, ''),
+		        COALESCE(u.first_name || ' ' || u.last_name, ''), COALESCE(u.phone, ''),
+		        o.fulfillment_type, o.external_delivery_id,
+		        o.delivery_fee, o.subtotal, COALESCE(o.courier_tip, 0)
+		   FROM orders o
+		   JOIN restaurants rest ON o.restaurant_id = rest.id
+		   JOIN users u ON u.id = o.user_id
 		  WHERE o.id = $1`, orderID,
-	).Scan(&restaurantName, &deliveryFee); err != nil {
-		slog.Warn("failed to fetch order data for ready notification",
+	).Scan(&restaurantName, &restAddress, &restPhone, &deliveryMode,
+		&deliveryAddress, &customerName, &customerPhone,
+		&fulfillmentType, &externalDeliveryID,
+		&deliveryFee, &subtotal, &courierTip); err != nil {
+		slog.Warn("failed to fetch order data for ready handling",
 			slog.String("order_id", orderID), slog.String("error", err.Error()))
+		return
 	}
-	if restaurantName != "" {
+
+	// 'external' delivery → dispatch Uber/DoorDash immediately (no 60s sweep
+	// wait), and DON'T broadcast to KE couriers (the order is already going to a
+	// provider). hasExternal guard avoids a re-dispatch on a retried /ready.
+	if fulfillmentType == "delivery" && deliveryMode == "external" && externalDeliveryID == nil {
+		in := dispatch.Input{
+			OrderID: orderID, RestaurantName: restaurantName, RestAddress: restAddress,
+			RestPhone: restPhone, DeliveryAddress: deliveryAddress, CustomerName: customerName,
+			CustomerPhone: customerPhone, Subtotal: subtotal, TipCents: courierTip,
+		}
+		go func() {
+			if _, _, _, err := h.dispatcher.Dispatch(context.Background(), in); err != nil {
+				slog.Error("mark-ready: inline external dispatch failed",
+					slog.String("order_id", orderID), slog.String("error", err.Error()))
+			}
+		}()
+		return
+	}
+
+	// Own-fleet marketplace broadcast only for 'platform' delivery orders.
+	// 'restaurant' mode = seller self-delivers (no courier); pickup = no delivery.
+	if fulfillmentType == "delivery" && deliveryMode == "platform" && restaurantName != "" {
 		go h.notify.OrderReady(context.Background(), orderID, restaurantName, deliveryFee)
 	}
 }
@@ -1252,6 +1295,72 @@ func (h *Handler) SellerPickupOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "picked_up"})
 }
 
+// EscalateToUber lets a seller hand an open self-delivery order off to an
+// external courier (Uber Direct / DoorDash) when they're overwhelmed. One-way:
+// once an order has a platform courier or an external delivery it can't revert
+// to self-delivery. Synchronous (unlike the fire-and-forget mark-ready hook) so
+// the seller gets a real success/failure + tracking. Concurrency is handled by
+// Dispatch's claim-before-create CAS — NOT a FOR UPDATE row lock here, which
+// would deadlock against Dispatch's own UPDATEs on the same row.
+func (h *Handler) EscalateToUber(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.dispatcher == nil || !h.dispatcher.AnyProviderEnabled() {
+		writeError(w, http.StatusServiceUnavailable, "no delivery provider configured")
+		return
+	}
+
+	// Eligibility + dispatch inputs in one ownership-scoped query. The one-way
+	// lock (courier_id IS NULL AND external_delivery_id IS NULL) filters here AND
+	// is re-asserted atomically inside Dispatch's claim, so no row lock is needed.
+	var in dispatch.Input
+	err = h.db.Pool.QueryRow(r.Context(),
+		`SELECT o.id, rest.name,
+		        COALESCE(rest.street || ', ' || rest.city || ', ' || rest.state || ' ' || rest.zip_code, ''),
+		        COALESCE(rest.phone, ''),
+		        COALESCE(o.delivery_address, ''),
+		        COALESCE(u.first_name || ' ' || u.last_name, ''), COALESCE(u.phone, ''),
+		        o.subtotal, COALESCE(o.courier_tip, 0)
+		   FROM orders o
+		   JOIN restaurants rest ON o.restaurant_id = rest.id
+		   JOIN users u ON u.id = o.user_id
+		  WHERE o.id = $1 AND rest.owner_id = $2
+		    AND o.fulfillment_type = 'delivery'
+		    AND o.status IN ('accepted','preparing','ready')
+		    AND o.courier_id IS NULL AND o.external_delivery_id IS NULL`,
+		id, user["user_id"]).Scan(&in.OrderID, &in.RestaurantName, &in.RestAddress,
+		&in.RestPhone, &in.DeliveryAddress, &in.CustomerName, &in.CustomerPhone,
+		&in.Subtotal, &in.TipCents)
+	if err != nil {
+		writeError(w, http.StatusBadRequest,
+			"order not eligible for Uber dispatch (already dispatched, or not an open delivery order)")
+		return
+	}
+
+	provider, deliveryID, _, derr := h.dispatcher.Dispatch(r.Context(), in)
+	if derr != nil {
+		writeError(w, http.StatusBadGateway, "could not dispatch a courier — please try again")
+		return
+	}
+	if provider == "" {
+		// Claim lost — a sweep or a concurrent tap already owns it.
+		writeError(w, http.StatusConflict, "order is already being dispatched")
+		return
+	}
+
+	var trackingURL string
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT COALESCE(external_tracking_url, '') FROM orders WHERE id = $1`, id).Scan(&trackingURL)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "dispatched", "provider": provider,
+		"delivery_id": deliveryID, "tracking_url": trackingURL,
+	})
+}
+
 // SellerDeliverOrder marks an order as delivered by the restaurant's own
 // courier. Only allowed when delivery_mode is 'restaurant'.
 func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
@@ -1272,12 +1381,13 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context()) //nolint:errcheck
 
 	var deliveryMode string
+	var deliveryFee int
 	err = tx.QueryRow(r.Context(),
-		`SELECT rest.delivery_mode FROM orders o
+		`SELECT rest.delivery_mode, o.delivery_fee FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'picked_up'
 		  FOR UPDATE OF o`,
-		id, user["user_id"]).Scan(&deliveryMode)
+		id, user["user_id"]).Scan(&deliveryMode, &deliveryFee)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "order not found or not picked up")
 		return
@@ -1287,11 +1397,22 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 50/50 delivery-fee split for self-delivered orders: the seller keeps half
+	// of the customer-paid delivery_fee, KE keeps the remainder (including the
+	// odd-cent floor remainder — never compute KE's half independently). Folded
+	// into the status CAS below so a replayed deliver request can't double-count.
+	// The CASE guard keys off who ACTUALLY delivered (courier_id / external_
+	// delivery_id), not delivery_mode, so an order escalated to Uber pays 0 here.
+	sellerShare := deliveryFee / 2
+
 	result, err := tx.Exec(r.Context(),
-		`UPDATE orders SET status = 'delivered', delivered_at = NOW(), updated_at = NOW()
+		`UPDATE orders SET status = 'delivered', delivered_at = NOW(), updated_at = NOW(),
+		    seller_delivery_earnings = CASE
+		        WHEN orders.courier_id IS NULL AND orders.external_delivery_id IS NULL THEN $3
+		        ELSE 0 END
 		   FROM restaurants WHERE orders.restaurant_id = restaurants.id
 		   AND orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = 'picked_up'`,
-		id, user["user_id"])
+		id, user["user_id"], sellerShare)
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot update order status")
 		return

@@ -55,20 +55,20 @@ type UpdateRestaurantRequest struct {
 	ZipCode     *string  `json:"zip_code"`
 	CuisineType []string `json:"cuisine_type"`
 	// Money fields are cents to match the DB (delivery_fee / min_order are INTEGER).
-	DeliveryFee         *int    `json:"delivery_fee"`
-	MinOrder            *int    `json:"min_order"`
-	EstDeliveryMin      *int    `json:"est_delivery_min"`
-	EstDeliveryMax      *int    `json:"est_delivery_max"`
-	IsOpen              *bool   `json:"is_open"`
-	KosherCertification *string `json:"kosher_certification"`
-	CertifyingAgency    *string `json:"certifying_agency"`
-	IsCholovYisroel     *bool   `json:"is_cholov_yisroel"`
-	IsPasYisroel        *bool   `json:"is_pas_yisroel"`
-	IsGlattKosher       *bool   `json:"is_glatt_kosher"`
+	DeliveryFee          *int    `json:"delivery_fee"`
+	MinOrder             *int    `json:"min_order"`
+	EstDeliveryMin       *int    `json:"est_delivery_min"`
+	EstDeliveryMax       *int    `json:"est_delivery_max"`
+	IsOpen               *bool   `json:"is_open"`
+	KosherCertification  *string `json:"kosher_certification"`
+	CertifyingAgency     *string `json:"certifying_agency"`
+	IsCholovYisroel      *bool   `json:"is_cholov_yisroel"`
+	IsPasYisroel         *bool   `json:"is_pas_yisroel"`
+	IsGlattKosher        *bool   `json:"is_glatt_kosher"`
 	KosherCertificateURL *string `json:"kosher_certificate_url"`
-	DeliveryMode        *string `json:"delivery_mode"`
-	ImageURL            *string `json:"image_url"`
-	LogoURL             *string `json:"logo_url"`
+	DeliveryMode         *string `json:"delivery_mode"`
+	ImageURL             *string `json:"image_url"`
+	LogoURL              *string `json:"logo_url"`
 }
 
 type CreateMenuItemRequest struct {
@@ -137,7 +137,7 @@ type CreateRestaurantRequest struct {
 	// FromImport: the seller is importing their menu from UberEats, so the
 	// address/phone/picture get filled by the import worker afterward — relax
 	// those required-field checks (name/email/cert stay required up front).
-	FromImport           bool     `json:"from_import"`
+	FromImport bool `json:"from_import"`
 }
 
 // CreateRestaurant inserts a new restaurant owned by the calling seller.
@@ -841,7 +841,7 @@ func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 // --- Menu import (self-serve UberEats import) --------------------------------
 
 // menuImportSelectCols is shared by the import read/return queries so the scan
-// order in scanMenuImport stays in lockstep. error is coalesced to '' so the
+// order in scanMenuImport stays in lockstep. error is coalesced to ” so the
 // destination *string never sees a NULL.
 const menuImportSelectCols = `id, restaurant_id, source, source_url, status, items_total, items_created, COALESCE(error, ''), created_at, updated_at`
 
@@ -1035,6 +1035,13 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 		        WHERE o.created_at::date = CURRENT_DATE
 		          AND o.status NOT IN ('cancelled','rejected')
 		    ), 0)                                                              AS today_revenue_cents,
+		    -- Self-delivery earnings: the seller's 50% of the delivery fee on
+		    -- orders they delivered with their own driver (0 on Uber/KE-courier
+		    -- orders). Separate line from food sales so each is unambiguous.
+		    COALESCE(SUM(o.seller_delivery_earnings) FILTER (
+		        WHERE o.created_at::date = CURRENT_DATE
+		          AND o.status NOT IN ('cancelled','rejected')
+		    ), 0)                                                              AS today_delivery_earnings_cents,
 		    -- Active includes picked_up: the seller should still see an order
 		    -- in flight after the courier grabs it, until it's marked delivered.
 		    -- Matches OrderStatus.isActive on the iOS side.
@@ -1045,7 +1052,7 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 		                     AND o.created_at::date = CURRENT_DATE), 0)       AS avg_prep_time_min
 		   FROM orders o
 		  WHERE o.restaurant_id = $1`, restID,
-	).Scan(&stats.TodayOrders, &stats.TodayRevenueCents, &stats.ActiveOrders, &stats.AvgPrepTime)
+	).Scan(&stats.TodayOrders, &stats.TodayRevenueCents, &stats.TodayDeliveryEarningsCents, &stats.ActiveOrders, &stats.AvgPrepTime)
 	if err != nil {
 		slog.Error("GetDashboardStats query failed", "error", err, "restaurant_id", restID)
 		writeError(w, http.StatusInternalServerError, "failed to load dashboard stats")

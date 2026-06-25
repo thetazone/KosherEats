@@ -35,47 +35,47 @@ const (
 type KosherCertification string
 
 const (
-	CertOU       KosherCertification = "OU"
-	CertOK       KosherCertification = "OK"
-	CertKof      KosherCertification = "Kof-K"
-	CertStar     KosherCertification = "Star-K"
-	CertCRC      KosherCertification = "cRc"
-	CertBadatz   KosherCertification = "Badatz"
-	CertChofetz  KosherCertification = "Chof-K"
-	CertOther    KosherCertification = "other"
+	CertOU      KosherCertification = "OU"
+	CertOK      KosherCertification = "OK"
+	CertKof     KosherCertification = "Kof-K"
+	CertStar    KosherCertification = "Star-K"
+	CertCRC     KosherCertification = "cRc"
+	CertBadatz  KosherCertification = "Badatz"
+	CertChofetz KosherCertification = "Chof-K"
+	CertOther   KosherCertification = "other"
 )
 
 type OrderStatus string
 
 const (
-	OrderScheduled  OrderStatus = "scheduled"
-	OrderPending    OrderStatus = "pending"
-	OrderAccepted   OrderStatus = "accepted"
-	OrderPreparing  OrderStatus = "preparing"
-	OrderReady      OrderStatus = "ready"
-	OrderPickedUp   OrderStatus = "picked_up"
-	OrderDelivered  OrderStatus = "delivered"
-	OrderCompleted  OrderStatus = "completed"
-	OrderCancelled  OrderStatus = "cancelled"
-	OrderRejected   OrderStatus = "rejected"
+	OrderScheduled OrderStatus = "scheduled"
+	OrderPending   OrderStatus = "pending"
+	OrderAccepted  OrderStatus = "accepted"
+	OrderPreparing OrderStatus = "preparing"
+	OrderReady     OrderStatus = "ready"
+	OrderPickedUp  OrderStatus = "picked_up"
+	OrderDelivered OrderStatus = "delivered"
+	OrderCompleted OrderStatus = "completed"
+	OrderCancelled OrderStatus = "cancelled"
+	OrderRejected  OrderStatus = "rejected"
 )
 
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
-	FirstName    string    `json:"first_name"`
-	LastName     string    `json:"last_name"`
-	Phone        string    `json:"phone"`
-	Role         UserRole  `json:"role"`
+	ID           string   `json:"id"`
+	Email        string   `json:"email"`
+	PasswordHash string   `json:"-"`
+	FirstName    string   `json:"first_name"`
+	LastName     string   `json:"last_name"`
+	Phone        string   `json:"phone"`
+	Role         UserRole `json:"role"`
 	// Vertical scopes the account to a specific branded app. Values:
 	// 'kosher' (KosherEats) | 'vegan' (GreenEats). The (email, vertical)
 	// pair is unique, so the same email can register on both apps and
 	// gets a fully independent account in each.
-	Vertical     string    `json:"vertical"`
-	AvatarURL    string    `json:"avatar_url,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Vertical  string    `json:"vertical"`
+	AvatarURL string    `json:"avatar_url,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Address struct {
@@ -93,40 +93,40 @@ type Address struct {
 }
 
 type Restaurant struct {
-	ID                  string              `json:"id"`
-	OwnerID             string              `json:"owner_id"`
-	Name                string              `json:"name"`
-	Description         string              `json:"description"`
-	ImageURL            string              `json:"image_url"`
-	CoverImageURL       string              `json:"cover_image_url,omitempty"`
-	LogoURL             string              `json:"logo_url"`
-	Phone               string              `json:"phone"`
-	Email               string              `json:"email"`
-	Street              string              `json:"street"`
-	City                string              `json:"city"`
-	State               string              `json:"state"`
-	ZipCode             string              `json:"zip_code"`
-	Lat                 float64             `json:"lat"`
-	Lng                 float64             `json:"lng"`
-	KosherCertification KosherCertification `json:"kosher_certification"`
-	CertifyingAgency    string              `json:"certifying_agency"`
-	IsCholovYisroel     bool                `json:"is_cholov_yisroel"`
-	IsPasYisroel        bool                `json:"is_pas_yisroel"`
-	IsGlattKosher       bool                `json:"is_glatt_kosher"`
-	KosherCertificateURL string             `json:"kosher_certificate_url"`
-	CuisineType         []string            `json:"cuisine_type"`
-	Rating              float64             `json:"rating"`
-	ReviewCount         int                 `json:"review_count"`
-	DeliveryFee         int                 `json:"delivery_fee"`
-	MinOrder            int                 `json:"min_order"`
-	EstDeliveryMin      int                 `json:"est_delivery_min"`
-	EstDeliveryMax      int                 `json:"est_delivery_max"`
-	IsOpen              bool                `json:"is_open"`
-	IsActive            bool                `json:"is_active"`
-	ApprovalStatus      string              `json:"approval_status,omitempty"`
-	DeliveryMode        string              `json:"delivery_mode"`
-	CreatedAt           time.Time           `json:"created_at"`
-	UpdatedAt           time.Time           `json:"updated_at"`
+	ID                   string              `json:"id"`
+	OwnerID              string              `json:"owner_id"`
+	Name                 string              `json:"name"`
+	Description          string              `json:"description"`
+	ImageURL             string              `json:"image_url"`
+	CoverImageURL        string              `json:"cover_image_url,omitempty"`
+	LogoURL              string              `json:"logo_url"`
+	Phone                string              `json:"phone"`
+	Email                string              `json:"email"`
+	Street               string              `json:"street"`
+	City                 string              `json:"city"`
+	State                string              `json:"state"`
+	ZipCode              string              `json:"zip_code"`
+	Lat                  float64             `json:"lat"`
+	Lng                  float64             `json:"lng"`
+	KosherCertification  KosherCertification `json:"kosher_certification"`
+	CertifyingAgency     string              `json:"certifying_agency"`
+	IsCholovYisroel      bool                `json:"is_cholov_yisroel"`
+	IsPasYisroel         bool                `json:"is_pas_yisroel"`
+	IsGlattKosher        bool                `json:"is_glatt_kosher"`
+	KosherCertificateURL string              `json:"kosher_certificate_url"`
+	CuisineType          []string            `json:"cuisine_type"`
+	Rating               float64             `json:"rating"`
+	ReviewCount          int                 `json:"review_count"`
+	DeliveryFee          int                 `json:"delivery_fee"`
+	MinOrder             int                 `json:"min_order"`
+	EstDeliveryMin       int                 `json:"est_delivery_min"`
+	EstDeliveryMax       int                 `json:"est_delivery_max"`
+	IsOpen               bool                `json:"is_open"`
+	IsActive             bool                `json:"is_active"`
+	ApprovalStatus       string              `json:"approval_status,omitempty"`
+	DeliveryMode         string              `json:"delivery_mode"`
+	CreatedAt            time.Time           `json:"created_at"`
+	UpdatedAt            time.Time           `json:"updated_at"`
 }
 
 type MenuCategory struct {
@@ -229,28 +229,28 @@ type CartItem struct {
 }
 
 type Order struct {
-	ID              string      `json:"id"`
-	UserID          string      `json:"user_id"`
-	RestaurantID    string      `json:"restaurant_id"`
-	RestaurantName  string      `json:"restaurant_name"`
-	RestaurantLat   float64     `json:"restaurant_lat,omitempty"`
-	RestaurantLng   float64     `json:"restaurant_lng,omitempty"`
-	Status          OrderStatus `json:"status"`
-	Items           []OrderItem `json:"items"`
-	Subtotal        int         `json:"subtotal"`
+	ID             string      `json:"id"`
+	UserID         string      `json:"user_id"`
+	RestaurantID   string      `json:"restaurant_id"`
+	RestaurantName string      `json:"restaurant_name"`
+	RestaurantLat  float64     `json:"restaurant_lat,omitempty"`
+	RestaurantLng  float64     `json:"restaurant_lng,omitempty"`
+	Status         OrderStatus `json:"status"`
+	Items          []OrderItem `json:"items"`
+	Subtotal       int         `json:"subtotal"`
 	// Discount is the deal discount applied to the subtotal before tax, in
 	// cents (0 when no deal). The totals reconcile as
 	// subtotal - discount + delivery_fee + service_fee + tax + courier_tip == total.
-	Discount        int         `json:"discount"`
-	DeliveryFee     int         `json:"delivery_fee"`
-	ServiceFee      int         `json:"service_fee"`
-	Tax             int         `json:"tax"`
-	Total           int         `json:"total"`
-	DeliveryAddress string      `json:"delivery_address"`
-	DeliveryLat     float64     `json:"delivery_lat"`
-	DeliveryLng     float64     `json:"delivery_lng"`
-	StripePaymentID string      `json:"stripe_payment_id,omitempty"`
-	EstDeliveryTime time.Time   `json:"est_delivery_time"`
+	Discount        int       `json:"discount"`
+	DeliveryFee     int       `json:"delivery_fee"`
+	ServiceFee      int       `json:"service_fee"`
+	Tax             int       `json:"tax"`
+	Total           int       `json:"total"`
+	DeliveryAddress string    `json:"delivery_address"`
+	DeliveryLat     float64   `json:"delivery_lat"`
+	DeliveryLng     float64   `json:"delivery_lng"`
+	StripePaymentID string    `json:"stripe_payment_id,omitempty"`
+	EstDeliveryTime time.Time `json:"est_delivery_time"`
 
 	// Courier assignment
 	CourierID     *string        `json:"courier_id,omitempty"`
@@ -344,10 +344,11 @@ type CourierLocationPing struct {
 // DashboardStats is what GET /seller/dashboard/stats returns. Matches the
 // shape expected by the iOS seller client's StatCard layout.
 type DashboardStats struct {
-	TodayOrders       int     `json:"today_orders"`
-	TodayRevenueCents int     `json:"today_revenue"`
-	ActiveOrders      int     `json:"active_orders"`
-	AvgPrepTime       float64 `json:"avg_prep_time"`
+	TodayOrders                int     `json:"today_orders"`
+	TodayRevenueCents          int     `json:"today_revenue"`
+	TodayDeliveryEarningsCents int     `json:"today_delivery_earnings"`
+	ActiveOrders               int     `json:"active_orders"`
+	AvgPrepTime                float64 `json:"avg_prep_time"`
 }
 
 type OrderItem struct {
