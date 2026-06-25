@@ -5,6 +5,12 @@ Last updated: 2026-06-23.
 
 ---
 
+## 🐛 Bug-fix cycle — 2026-06-25 (seller order/settings; all build-green, uncommitted)
+- [x] **iOS misleading delivery status (HIGH-frequency):** `courierStatusCard` showed "Waiting for a courier to claim this order…" (spinner, never resolves) for EVERY Uber-dispatched order — there's no platform courier row, so the no-courier branch fired. Now: when `external_delivery_id` is set, shows "Handed to a delivery partner — a courier is on the way" / "Out for delivery with a partner courier". (Fix enabled by the new `externalDeliveryId` model field.)
+- [x] **iOS escalate button lingered + stale status after escalate:** `escalateButton` calls the escalate API directly (returns `EscalateResponse`, not an `Order`) and never updated `vm.orders`; `syncOrderFromVM` is cache-first, so it kept the stale list copy (which doesn't even carry `external_delivery_id`) → button stayed on, status never flipped. Fixed by forcing `vm.fetchOrder(id:)` before sync. (Android was already correct — its VM escalate re-fetches via `getOrderDetail`.)
+- [x] **iOS silently flipped `platform`→`external` on any settings save:** the whole-object `PUT` always wrote `restaurant.deliveryMode = deliveryMode`, and the toggle seeds a platform restaurant to "external" — so an unrelated settings save rerouted a platform-fleet restaurant's orders to Uber. Now guarded by a seeded-compare (only commit when the seller actually moved the toggle), matching the Android `buildRestaurantChanges` protection.
+- Verification: backend `go vet` clean + full handler integration suite green (test PG on :5433); iOS `xcodebuild` BUILD SUCCEEDED. Reviewed dispatch claim-CAS / escalate guard / 50-50 split / scheduler mode-filter — all correct (no fix needed).
+
 ## ✅ Done 2026-06-23
 - [x] T1 — land branch (merged `4bc667e5`)
 - [x] T2 — Fly DB pre-flight (validated by clean boot; migration 043 unique index applied → zero dup redemptions)
@@ -16,10 +22,42 @@ Last updated: 2026-06-23.
 - [x] Committed deployed changes (`0c0c1875` on main; HEAD == prod)
 - [x] Consumer **4.2 (3)** archived + uploaded to TestFlight
 
+## 🚚 DELIVERY DISPATCH — launch-blocker (added 6/24)
+**Strategy:** bootstrap delivery with 3rd-party couriers (Uber Direct now, DoorDash when verified) — a brand-new app has NO courier supply, so the in-house courier app is a LATER channel. Backend `external-dispatch` (dispatcher.go ~590) already picks cheapest provider per order + falls back.
+- [x] Uber Direct **quote** confirmed working (live keys, prod `api.uber.com`, the $11.99).
+- [ ] **Uber Direct DISPATCH (`CreateDelivery`) UNVERIFIED in prod** — wired in `external-dispatch`, fires after seller accepts/ready. Never exercised (pickup test bypassed it). MUST verify before delivery launch.
+- [x] **Uber account mode = TESTING/sandbox** (6/24). Uber Direct account "Kosher Shop" has prod + testing envs; backend deploys the **testing** creds (customer `5fe655a7-…-badfe1fa180b`, client `oE-dcKx…`) — NOT prod (`54c8a18a…`/`jjKE4k30g…`). So CreateDelivery = robo-courier sim, safe to test. **GO-LIVE later: swap backend UBER_DIRECT_* to the production creds** (like the Stripe cutover).
+- [x] **Prereqs fixed 6/24 for the dispatch test:** (a) set placeholder phones on both consumer accounts (`+13477120001/2`) — Uber requires a dropoff phone; **swap for Salto's real # if live**; (b) dispatch graces now env-tunable (`AUTO_DISPATCH_GRACE_SECONDS`/`EXTERNAL_DISPATCH_GRACE_SECONDS`), default **30s** (was 5min) so Uber dispatches ~1min after 'ready' instead of idling. Restaurant data (Pizza Kids N Action) already valid: phone, address, lat/lng. Platform mode falls through to Uber when no own courier (confirmed).
+- [ ] **Verify Uber status webhook** (assigned→picked_up→delivered) flows back (`UBER_DIRECT_WEBHOOK_SECRET` set, handler exists).
+- [ ] **DoorDash Drive = OFF** (no `DOORDASH_*` keys → stub). Needs merchant onboarding/verification (business task); code ready, just needs keys.
+- [ ] **Courier-dedicated app = DEFERRED** until there's demand/supply (3rd-party covers delivery at launch).
+- [ ] Make the seller-accept verification test a **delivery** order so it exercises dispatch + push + completion together.
+
+## 💸 Delivery pricing — REWORKED & SHIPPED 6/24 (pass-through model)
+Per Salto's model (replaced the earlier min/free-delivery attempt): **consumer pays the cheapest courier (Uber/DoorDash) quote + a flat markup we keep. No minimum, no free delivery, no floor/ceiling.**
+- [x] Pass-through markup shipped (`71311735`, deployed): **+$1 normally, +$2 once item subtotal > $40**. Everything is deliverable regardless of order size. `quoteDeliveryFee` takes subtotal for the tier; floor/ceiling clamps removed; `/delivery/quote` preview matches checkout.
+- [ ] **Evaluate:** tune live — `DELIVERY_MARKUP_CENTS` (100), `DELIVERY_MARKUP_LARGE_CENTS` (200), `DELIVERY_LARGE_ORDER_CENTS` (4000) via `fly secrets set … -a koshereats-api`.
+- [ ] **Note — no cap anymore:** removed the old $11.99 ceiling, so an extreme courier quote passes straight through (+markup). Tied to verifying Uber quotes are sane for real routes (see delivery-dispatch section). Re-add a sanity cap if quotes ever spike.
+
+## 🛵 DELIVERY MODEL — spec from Salto (6/24); BACKEND BUILT 6/25
+- [x] **Uber Direct dispatch PROVEN** (6/24): order 8b939d41 → external mode → `CreateDelivery` → `del_75os5…` (test/robo).
+- [x] **BACKEND BUILT, VERIFIED & DEPLOYED** (`73eddd1f`, 6/25; migration 044 confirmed applied in prod). Adversarial verify caught + fixed 3 real bugs pre-deploy (double-charge race via courier-claim-between-claim-and-create; silent dispatch-skip on client disconnect; courier-vs-dispatch collision). Gates all green.
+  - New `internal/dispatch` pkg — shared dispatch fn with **claim-before-create CAS** (fixes a double-create money-loss race the mapping caught). Scheduler + handlers both call it.
+  - **Instant inline dispatch** on 'ready' for `external` mode (fire-and-forget, no 60s wait); courier broadcast suppressed for external/restaurant.
+  - **Per-order `PATCH /seller/orders/{id}/escalate`** (own→Uber, one-way lock via the claim CAS, synchronous, returns tracking URL).
+  - **50/50 split**: migration `044_seller_delivery_earnings`; recorded once in `SellerDeliverOrder`'s status CAS, keyed off who actually delivered (courier_id/external_delivery_id); surfaced on the seller dashboard (`today_delivery_earnings`).
+  - **Toggle**: no backend change needed — `PUT /seller/restaurant` already handles `delivery_mode`.
+- [x] **Seller-app UI — iOS** (built + demoed live in sim 6/25, logged in as jo@ke against prod): (1) "Who delivers" segmented toggle in Settings→Delivery w/ dynamic caption (Uber: auto-dispatch on Ready; "I deliver": keep 50%, can still escalate); (2) "Delivery Earnings" dashboard card (`today_delivery_earnings`); (3) "Dispatch to Uber" escalate button on accepted/preparing delivery orders. `xcodebuild` green; 3 screenshots captured.
+- [x] **Seller-app UI — Android (koshereats `android/seller`)** (6/25): mirrored all 4 pieces — `DashboardStats.today_delivery_earnings` + `EscalateResponse` models, `PATCH .../escalate` in ApiService, `escalateOrderToUber` in OrdersViewModel, "Dispatch to Uber" (`EscalateToUberButton`), "Who delivers" toggle (`DeliveryModeSegment`) in Settings threaded through `buildRestaurantChanges` (compares vs seeded mode so untouched saves don't flip platform→external), "Delivery Earnings" StatCard on Dashboard. **Demoed live in Pixel 8 emulator (6/25)** — all 4 elements + escalate-at-Ready confirmed; 3 screenshots captured. (Demo used a temp `DEV_BASE_URL=prod` in local.properties, since reverted; the debug→localhost guardrail is restored.)
+- [ ] **`android/greeneats-seller` intentionally NOT touched** — it's a stale copy-paste fork (frozen ~May 31, slated for **deletion** per `docs/white-label-consolidation.md`); it inherits this feature when both brands collapse into one flavored module. Porting into the fork now would deepen the drift the plan warns against.
+- [x] **Escalate-at-Ready — CLOSED (6/25, both platforms + backend deployed):** "Dispatch to Uber" now also shows on **Ready** delivery orders that are unclaimed/undispatched. Unified the gate to `courier == null && external_delivery_id == null && !isPickup` (matches the backend escalate guard) across accepted/preparing/ready. Backend now serializes `external_delivery_id` in `loadOrderWithCourier` (was never scanned before) so the button hides once a provider owns the order — deployed to Fly 6/25. iOS `externalDeliveryId` model field + Ready branch; Android `externalDeliveryId` field + `canEscalate` param. Verified live in the Android emulator (self-delivery Ready order shows both "Mark Picked Up" + "Dispatch to Uber"). Also observed: the instant-dispatch scheduler re-dispatches an external-mode Ready order within ~1 min of `external_delivery_id` going null — confirms auto-dispatch is aggressive/working.
+- [ ] **Product flags from the build (confirm):** KE keeps 50% on self-delivered but 0% on KE-courier orders (earns more self-delivered — intended?); escalating a self-delivery order to Uber: platform absorbs the provider-cost-vs-customer-fee delta (no re-charge); consumer app must use `external_tracking_url` for Uber-delivered orders (the SSE courier stream doesn't apply).
+- [ ] **Cleanup:** offline seed test courier `courier@koshereats.dev`; refund delivery-test charges `pi_3Tm2R4…` ($17.26) + `pi_3Tm2cZ…` ($17.80).
+
 ## 🔴 NOW / urgent
 - [ ] **Payment methods** (investigated 6/23). Target: **iOS = Apple Pay + card**, **Android = Google Pay + card**.
   - [x] **Link**: account-level → disabled on the **KE** Stripe account. No rebuild; gone on next fresh checkout (reopen the sheet). Removes Link on BOTH platforms.
-  - [x] **Android Google Pay + no-ACH**: FIXED in code (`CheckoutScreen.kt` — added `GooglePayConfiguration`, env tracks the Stripe key; `allowsDelayedPaymentMethods=false`). Compiles green. **Needs an Android rebuild to ship.**
+  - [x] **Android Google Pay + no-ACH**: FIXED (`CheckoutScreen.kt` — `GooglePayConfiguration` env-tracks the Stripe key; `allowsDelayedPaymentMethods=false`). Committed `892fa81c`. **Signed release AAB built (v1.0.9 / versionCode 12) at `android/consumer/app/build/outputs/bundle/release/app-release.aab` — needs MANUAL upload to Google Play Console (no Play automation configured).**
   - [ ] **iOS Bank**: checkout PI is card-only server-side AND 4.2(2) already has `allowsDelayedPaymentMethods=false`, so Bank should NOT show on the checkout sheet against the current backend. The Bank in the screenshot is most likely an **older build** and/or a **stale saved us_bank_account** on the Stripe Customer. Verify on 4.2(3); if it persists, delete the saved bank PM in the Dashboard. (No new iOS code needed for checkout.)
   - [ ] **iOS "add a card" screen**: used automatic methods (Link+ACH) until today's `0c0c1875` fix → needs build 4.2(3) to land.
   - [ ] Confirm live `/payments/intent` returns `payment_method_types:["card"]` (create a test PI + inspect)
@@ -27,9 +65,18 @@ Last updated: 2026-06-23.
 - [ ] **Public App Store app is months-old** vs a backend 43+ commits ahead → current public users may be broken. Submit current consumer build (4.2(3)) for review.
 - [ ] **Seller + courier flows untested in prod** — exercise end-to-end (only consumer checkout tested so far)
 
-## 🔴 Stripe / payments
-- [ ] **Still in TEST mode — cannot take real money.** Go-live per `docs/stripe-go-live.md` (must null `stripe_customer_id` on cutover; live webhook secret; Connect courier re-onboarding). Real-money decision.
-- [ ] Confirm KE backend Stripe keys point to the **KE** account (`acct_1TJKmfJiyQbKV7Jz`), not HoneyOcean (there are multiple Stripe accounts)
+## 🟢 Stripe / payments — LIVE KEYS SET (6/23 cutover)
+- [x] **Account activated + live-ready** ("Go live" all green; live keys exist).
+- [x] **Live Fly secrets set** by Salto (`STRIPE_SECRET_KEY`/`PUBLISHABLE_KEY`/`WEBHOOK_SECRET`); machine restarted, `/health` 200, not stub mode.
+- [x] **`stripe_customer_id` nulled** at cutover (8 cleared, 0 remain).
+- [x] **Live test order SUCCEEDED 6/23** — real CC, pickup: `/payments/intent` 200 → `POST /orders` **201** (order e31359d3). Confirmed live + the delivery-fee fix holds. (Refund the test charge in live Dashboard.)
+- [x] Webhook confirmed LIVE (Stripe sent a live event) — but see webhook-version bug below.
+- [x] **Webhook API-version mismatch** — FIXED (`38e6b96d`): `ConstructEventWithOptions{IgnoreAPIVersionMismatch:true}` (signature still verified). Unblocks payout-ready + dispute events. Stripe will retry the 400'd events automatically (or hit Resend in the dashboard).
+- [x] **`location/stream` 500** — FIXED (`38e6b96d`): root cause was the logger's `statusRecorder` hiding `http.Flusher` → 500'd EVERY SSE stream (delivery tracking too, not just pickup). Added `Unwrap()` + flush via `http.ResponseController`.
+- [~] **Push root-caused + fixed 6/24** — pushes WERE firing but APNs returned **400 BadDeviceToken**: the seller device's token is a **sandbox** token (registered by a dev/Xcode build), while the backend sends to **production** APNs (`APNS_PRODUCTION=true`). Ruled out: topic (matches `com.koshereats.seller`), token format (valid 64-hex), auth key (would be 403). **Fix deployed:** `apns.go` now retries on the alternate APNs host on BadDeviceToken (dev + TestFlight + App Store all deliver). Added reason logging. **Pending: confirm banner actually arrives after this deploy.**
+- [x] First live order verified: $3.27 charge succeeded + order created, then **auto-rejected+refunded 10 min later** by `sweepStaleRejection` (no seller accepted). Correct protective behavior — not a bug. Charge already refunded (no manual refund needed).
+- [ ] **Next E2E test (collapses 3 questions into 1):** log into seller app → place order → ACCEPT as seller → confirms (a) order stays/doesn't auto-refund, (b) seller PUSH fires, (c) accept flow. Note: real sellers must accept within ~10 min or orders auto-cancel+refund.
+- [ ] Did NOT roll the `sk_live_` key (was exposed in a Google Doc; Salto deleted the doc, chose not to roll). Residual risk accepted.
 
 ## 🟠 Known HIGH-severity bugs (deferred 6/21) — UPDATE 6/23: appear FIXED in main
 - [x] Verify the **6 "safe fixes"** from 6/21 — **ALL SURVIVED**, committed in `c20a9859` + `2152afd1`, ancestors of deployed main. Nothing lost.
@@ -37,12 +84,8 @@ Last updated: 2026-06-23.
 - [~] Password-reset **cross-account** — appears fixed in main (migrations `037`+`041_reset_code_attempts`; password_reset.go scopes by (email, role, vertical) + caps attempts). **Confirm + needs the matching client to be shipped.**
 
 ## 🟠 Unshipped fixes & review gaps
-- [ ] **PR #1** (`fix/koshereats-backend-review`) — **do NOT blind-merge** (conflicts on 5 files + regresses the web — main is more evolved). Branch tip is `283cc093` (not `0c4f556d`). **Cherry-pick these 4 still-unshipped fixes, then CLOSE the PR:**
-  - [ ] (a) `UpdateMenuItem` category move = silent no-op (seller.go — no `category_id` in SET clause)
-  - [ ] (b) Seller dashboard "Today's Revenue" overstated (`SUM(o.total)` includes tip/tax/fees) — re-express vs **`discount_cents`** (NOT the branch's `discount_amount`)
-  - [ ] (c) webp upload support (`uploads.go` + `s3.go`)
-  - [ ] (d) `web/.dockerignore` + `web/Dockerfile.local` (real Fly web build fix)
-  - [ ] (e) `CancelOrder` scheduled-order cancel — re-apply ONLY paired with the mobile client change
+- [x] **PR #1** — cherry-picked (a)+(b)+(c)+(d) into main as `4614e86a` and **CLOSED** the PR. (a) category move, (b) today-revenue re-expressed vs `discount_cents`, (c) webp, (d) web `.dockerignore`+`Dockerfile.local`. Backend redeployed.
+  - [ ] (e) `CancelOrder` scheduled-order cancel — still deferred, re-apply ONLY paired with the mobile client change
 - [ ] Run **`/security-review`** on backend money paths (skipped before deploy)
 
 ## 🟡 App releases (all stale)
