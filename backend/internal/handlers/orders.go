@@ -686,10 +686,16 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context()) //nolint:errcheck
 
 	// FOR UPDATE locks the row; the status guard ensures only one caller wins.
+	// external_delivery_id IS NULL: an order escalated to Uber/DoorDash sits at
+	// 'accepted' while a PAID provider delivery is already in flight — cancelling
+	// + refunding it here would leave the platform paying for a delivery on a
+	// refunded order, with no provider cancel. Block the customer cancel once a
+	// provider owns it (it's out for delivery).
 	var paymentID string
 	err = tx.QueryRow(r.Context(),
 		`SELECT COALESCE(stripe_payment_id, '') FROM orders
 		 WHERE id = $1 AND user_id = $2 AND status IN ($3, $4)
+		   AND external_delivery_id IS NULL
 		 FOR UPDATE`,
 		id, user["user_id"], models.OrderPending, models.OrderAccepted,
 	).Scan(&paymentID)

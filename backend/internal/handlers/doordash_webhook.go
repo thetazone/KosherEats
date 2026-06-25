@@ -98,14 +98,21 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 
 	case "delivered":
 		now := time.Now()
-		_, err := h.db.Pool.Exec(ctx,
+		// Accept any pre-delivered external-dispatched state (a dropped pickup
+		// webhook would otherwise strand the order); mirrors the Uber webhook.
+		tag, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'picked_up' AND external_delivery_id IS NOT NULL`,
+			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
+			    AND external_delivery_id IS NOT NULL`,
 			now, orderID)
 		if err != nil {
 			slog.Error("doordash webhook: delivered update failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))
+			break
+		}
+		// Don't fire a duplicate "delivered" push on a 0-row (late/duplicate) match.
+		if tag.RowsAffected() == 0 {
 			break
 		}
 

@@ -127,14 +127,25 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 
 	case "delivered":
 		now := time.Now()
-		_, err := h.db.Pool.Exec(ctx,
+		// Accept any pre-delivered external-dispatched state, not just 'picked_up':
+		// if the pickup_complete webhook was dropped/out-of-order the order is still
+		// 'ready', and keying only on 'picked_up' would strand it permanently. A
+		// 'delivered' event is authoritative.
+		tag, err := h.db.Pool.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'picked_up' AND external_delivery_id IS NOT NULL`,
+			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
+			    AND external_delivery_id IS NOT NULL`,
 			now, externalID)
 		if err != nil {
 			slog.Error("uber webhook: delivered update failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
+			break
+		}
+		// Only notify when WE actually flipped it to delivered — a 0-row match is a
+		// duplicate/late webhook on an already-terminal order, which must not fire a
+		// second "delivered" push.
+		if tag.RowsAffected() == 0 {
 			break
 		}
 
