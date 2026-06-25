@@ -76,8 +76,11 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 
 	case "picked_up":
 		_, err := h.db.Pool.Exec(ctx,
+			// Match any pre-pickup state: an order can be escalated to a provider
+			// while still 'accepted'/'preparing' (EscalateToUber allows those), so
+			// keying only on 'ready' stranded those orders. Mirrors the Uber webhook.
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status = 'ready' AND external_delivery_id IS NOT NULL`,
+			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready') AND external_delivery_id IS NOT NULL`,
 			time.Now(), orderID)
 		if err != nil {
 			slog.Error("doordash webhook: pickup update failed",

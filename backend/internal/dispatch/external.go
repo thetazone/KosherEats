@@ -75,7 +75,12 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		 WHERE id = $1
 		   AND courier_id IS NULL
 		   AND external_delivery_id IS NULL
-		   AND external_provider IS NULL`, in.OrderID)
+		   AND external_provider IS NULL
+		   -- Don't dispatch an order that's already past 'ready' (e.g. a seller
+		   -- just self-picked-it-up). Closes the other half of the
+		   -- SellerPickupOrder ↔ EscalateToUber race; without it the claim CAS
+		   -- ignored status and could pay for a delivery on a picked-up order.
+		   AND status IN ('accepted','preparing','ready')`, in.OrderID)
 	if err != nil {
 		return "", "", 0, err
 	}

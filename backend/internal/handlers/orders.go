@@ -1290,13 +1290,19 @@ func (h *Handler) SellerPickupOrder(w http.ResponseWriter, r *http.Request) {
 
 	var deliveryMode string
 	err = tx.QueryRow(r.Context(),
+		// Guard external_provider/external_delivery_id too: a self-delivery order
+		// can be escalated to Uber concurrently (EscalateToUber takes no row lock),
+		// and without this a seller could mark an order picked-up that a provider
+		// is already paid-dispatching → double delivery. The matching guard in
+		// dispatch.Dispatch's status check closes the other side of the window.
 		`SELECT rest.delivery_mode FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'ready'
+		    AND o.external_provider IS NULL AND o.external_delivery_id IS NULL
 		  FOR UPDATE OF o`,
 		id, user["user_id"]).Scan(&deliveryMode)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "order not found or not ready")
+		writeError(w, http.StatusBadRequest, "order not found, not ready, or already dispatched")
 		return
 	}
 	if deliveryMode != "restaurant" {
@@ -1307,7 +1313,8 @@ func (h *Handler) SellerPickupOrder(w http.ResponseWriter, r *http.Request) {
 	result, err := tx.Exec(r.Context(),
 		`UPDATE orders SET status = 'picked_up', picked_up_at = NOW(), updated_at = NOW()
 		   FROM restaurants WHERE orders.restaurant_id = restaurants.id
-		   AND orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = 'ready'`,
+		   AND orders.id = $1 AND restaurants.owner_id = $2 AND orders.status = 'ready'
+		   AND orders.external_provider IS NULL AND orders.external_delivery_id IS NULL`,
 		id, user["user_id"])
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusBadRequest, "cannot update order status")

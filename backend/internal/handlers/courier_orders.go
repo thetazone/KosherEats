@@ -240,6 +240,10 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 		 WHERE orders.id = $2 AND orders.restaurant_id = rest.id
 		   AND orders.status = 'ready' AND orders.courier_id IS NULL
 		   AND orders.external_provider IS NULL
+		   -- Couriers only deliver — a pickup order is collected by the customer,
+		   -- never claimed/paid out to a courier (the feed already hides them, but
+		   -- guard the direct claim call too).
+		   AND orders.fulfillment_type = 'delivery'
 		   -- A self-delivery ('restaurant') order has external_provider NULL, so the
 		   -- guard above doesn't stop a KE courier from poaching it — exclude
 		   -- non-platform delivery modes explicitly.
