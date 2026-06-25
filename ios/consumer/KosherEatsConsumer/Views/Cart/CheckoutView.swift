@@ -123,6 +123,16 @@ struct CheckoutView: View {
             pendingBundleRefresh = false
             bundleRefreshTask = Task { await vm.refreshBundle() }
         }
+        .onChange(of: vm.selectedAddress?.id) { _, _ in
+            // A new delivery address can fall in a different delivery-fee zone, so
+            // re-price the bundle (mirrors the tip handlers) — otherwise the
+            // customer is charged the previous address's fee. Address is not
+            // Equatable, so key the observer on its id.
+            guard vm.fulfillmentType == "delivery" else { return }
+            bundleRefreshTask?.cancel()
+            pendingBundleRefresh = false
+            bundleRefreshTask = Task { await vm.refreshBundle() }
+        }
         .onChange(of: vm.customTipText) { _, _ in
             if vm.tipSelection == .custom {
                 // Mark a refresh pending BEFORE the debounce sleep so canPay
@@ -147,7 +157,8 @@ struct CheckoutView: View {
                     // Guarding on selectedAddress here made Retry a silent
                     // no-op for pickup customers with no saved address.
                     if vm.fulfillmentType == "delivery", vm.selectedAddress == nil { return }
-                    if let order = await vm.placeOrder(address: vm.selectedAddress, bundle: bundle) {
+                    let retryAddress = vm.fulfillmentType == "pickup" ? nil : vm.selectedAddress
+                    if let order = await vm.placeOrder(address: retryAddress, bundle: bundle) {
                         Haptics.success()
                         showAddressPicker = false
                         placedOrder = order
@@ -265,7 +276,11 @@ struct CheckoutView: View {
 
     private func finishIfSucceeded(bundle: APIService.PaymentSheetBundle, address: Address?) async {
         if vm.paymentSucceeded {
-            if let order = await vm.placeOrder(address: address, bundle: bundle) {
+            // Pickup orders have no dropoff — never record the customer's saved
+            // home address as the delivery_address (the pickup screens would then
+            // show "Pickup from: <home address>" with a home pin on the map).
+            let orderAddress = vm.fulfillmentType == "pickup" ? nil : address
+            if let order = await vm.placeOrder(address: orderAddress, bundle: bundle) {
                 Haptics.success()
                 showAddressPicker = false
                 placedOrder = order

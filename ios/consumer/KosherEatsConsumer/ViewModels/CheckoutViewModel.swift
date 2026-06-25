@@ -132,8 +132,13 @@ final class CheckoutViewModel: NSObject, ObservableObject {
         if text.isEmpty { customTipText = text; return }
         let filtered = text.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
         if filtered.components(separatedBy: ".").count > 2 { return }
-        if let value = Double(filtered), value > Double(Self.maxTipCents) / 100.0 {
-            errorMessage = "Maximum tip is $\(Self.maxTipCents / 100)"
+        // The backend rejects tip > subtotal (400), so cap against the subtotal,
+        // not just the flat $500 ceiling — otherwise a $50 tip on a $10 cart
+        // passes here and then fails the order server-side. Fall back to the flat
+        // cap until the bundle (and its subtotal) has loaded.
+        let cap = min(Self.maxTipCents, bundle?.subtotal ?? Self.maxTipCents)
+        if let value = Double(filtered), value > Double(cap) / 100.0 {
+            errorMessage = "Tip can't exceed $\(cap / 100)"
             return
         }
         errorMessage = nil
@@ -152,7 +157,9 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             // updateCustomTip; Money.parseCents reproduces the same parse and
             // rounds (not truncates) so exact-cent inputs like $4.10 stay 410¢.
             let cents = Money.parseCents(customTipText) ?? 0
-            return min(max(0, cents), Self.maxTipCents)
+            // Clamp to the subtotal too (backend enforces tip <= subtotal), so a
+            // stale over-cap custom value can never be sent and 400 the order.
+            return min(max(0, cents), min(Self.maxTipCents, subtotal))
         }
     }
 
