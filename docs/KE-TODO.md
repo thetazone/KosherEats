@@ -123,3 +123,12 @@ Per Salto's model (replaced the earlier min/free-delivery attempt): **consumer p
 ## ⚪ Housekeeping
 - [ ] Confirm Fly `APNS_KEY_ID == 77W7RLLZTB` (or let the order-push test confirm it)
 - [ ] Clean up ~30 stale `agent/*` worktree branches
+
+## 🔬 Adversarial bug-hunt — cycles 2-3 (2026-06-25) — full list in `docs/bug-backlog-2026-06-25-cycles23.md`
+Second sweep (cycle-1's 102 excluded): **136 NEW confirmed — 1 critical, 45 high, 48 medium, 42 low.** Fixed + deployed:
+- [x] **CRITICAL — phone/OAuth account takeover** via derivable synthetic password ("phone-"+phone) + no auth_provider guard in /login. Login guard + crypto-random synthetic passwords + migration 045 + regression test. Deployed + live.
+- [x] **HIGH — self-pickup ↔ Uber-escalate TOCTOU** (double delivery): guards on both SellerPickupOrder + dispatch claim CAS.
+- [x] **HIGH — courier could claim a pickup order**: `fulfillment_type='delivery'` guard on ClaimOrder.
+- [x] **HIGH — DoorDash pickup webhook too narrow** (stranded escalated-while-preparing orders): widened to match Uber.
+- ⏳ **Client highs (16) being fixed** by a per-app worktree workflow (ios/android seller, android consumer/courier, ios courier).
+- ⏳ **~38 backend/other highs + 48 med + 42 low remain** — documented with fixes. Many need product/migration decisions; the med/low tier is single-skeptic-verified so expect some false positives. **This is a real backlog larger than one session — needs prioritization.**
