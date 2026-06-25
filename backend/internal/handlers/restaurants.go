@@ -52,7 +52,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to fetch restaurants")
 		return
 	}
-	writeJSON(w, http.StatusOK, restaurants)
+	writeJSON(w, http.StatusOK, redactPublicRestaurants(restaurants))
 }
 
 // scanRestaurants drains a pgx.Rows into a slice of models.Restaurant.
@@ -73,6 +73,24 @@ func scanRestaurants(rows pgx.Rows) ([]models.Restaurant, error) {
 		out = append(out, rest)
 	}
 	return out, rows.Err()
+}
+
+// redactPublicRestaurants clears fields that consumer / anonymous callers must
+// not see. owner_id is the seller's internal users.id — opaque (non-enumerable)
+// but PII-adjacent and unused by any consumer client: iOS decodes the key but
+// never reads the value, Android ignores it entirely. We blank the value rather
+// than drop the JSON key, because already-shipped consumer iOS apps do a
+// *required* decode of `owner_id` (Models.swift: try decode(String.self)) and
+// would fail to parse the whole restaurant if the key disappeared.
+//
+// scanRestaurants is shared with the seller (ListSellerRestaurants) and admin
+// (AdminListRestaurants) views, which legitimately need owner_id — those paths
+// intentionally do NOT call this, so only the consumer-facing handlers redact.
+func redactPublicRestaurants(rs []models.Restaurant) []models.Restaurant {
+	for i := range rs {
+		rs[i].OwnerID = ""
+	}
+	return rs
 }
 
 func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +118,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rest.OwnerID = "" // see redactPublicRestaurants — consumer endpoint, don't leak the seller's user id
 	writeJSON(w, http.StatusOK, rest)
 }
 
@@ -307,7 +326,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, restaurants)
+	writeJSON(w, http.StatusOK, redactPublicRestaurants(restaurants))
 }
 
 // SuggestedRestaurants returns a personalised alternating list of restaurants:
@@ -463,7 +482,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 		result = []models.Restaurant{}
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, redactPublicRestaurants(result))
 }
 
 // --- Favorites ---
@@ -529,7 +548,7 @@ func (h *Handler) ListFavorites(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to list favorites")
 		return
 	}
-	writeJSON(w, http.StatusOK, restaurants)
+	writeJSON(w, http.StatusOK, redactPublicRestaurants(restaurants))
 }
 
 func (h *Handler) ListFavoriteIDs(w http.ResponseWriter, r *http.Request) {

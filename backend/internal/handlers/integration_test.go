@@ -183,7 +183,9 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(h.OptionalAuthMiddleware)
+		r.Get("/", h.ListRestaurants)
 		r.Get("/{id}/menu", h.GetMenu)
+		r.Get("/{id}", h.GetRestaurant)
 	})
 
 	r.Route("/api/v1/orders", func(r chi.Router) {
@@ -617,4 +619,56 @@ func (e *testEnv) placeOrder(t *testing.T, token, restID, itemID, pi string) str
 		t.Fatalf("create order returned empty id, body %s", rec.Body.String())
 	}
 	return order.ID
+}
+
+// (4) The public consumer restaurant endpoints must NOT leak the seller's
+// internal owner_id (users.id), but MUST keep the `owner_id` JSON key present
+// (blank) so already-shipped consumer apps that do a required decode of the
+// field keep parsing. Covers GetRestaurant + ListRestaurants.
+func TestIntegration_PublicRestaurantsRedactOwnerID(t *testing.T) {
+	harness.resetVolatile(t)
+
+	// assertRedacted parses one restaurant object from raw JSON and asserts the
+	// owner_id key is present and empty.
+	assertRedacted := func(t *testing.T, raw json.RawMessage) {
+		t.Helper()
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("decode restaurant object: %v (raw %s)", err, raw)
+		}
+		val, ok := m["owner_id"]
+		if !ok {
+			t.Fatalf("owner_id key missing — would break shipped iOS required decode; raw %s", raw)
+		}
+		var owner string
+		if err := json.Unmarshal(val, &owner); err != nil {
+			t.Fatalf("owner_id is not a string: %v", err)
+		}
+		if owner != "" {
+			t.Fatalf("owner_id leaked to consumer endpoint: %q (want empty)", owner)
+		}
+	}
+
+	// GetRestaurant (single object)
+	one := harness.do(http.MethodGet, "/api/v1/restaurants/"+harness.approvedRestID, "", nil)
+	if one.Code != http.StatusOK {
+		t.Fatalf("GetRestaurant: status %d, body %s", one.Code, one.Body.String())
+	}
+	assertRedacted(t, one.Body.Bytes())
+
+	// ListRestaurants (array) — every element must be redacted.
+	list := harness.do(http.MethodGet, "/api/v1/restaurants/", "", nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("ListRestaurants: status %d, body %s", list.Code, list.Body.String())
+	}
+	var arr []json.RawMessage
+	if err := json.Unmarshal(list.Body.Bytes(), &arr); err != nil {
+		t.Fatalf("ListRestaurants decode: %v", err)
+	}
+	if len(arr) == 0 {
+		t.Fatalf("ListRestaurants returned no restaurants; fixtures expected at least the approved ones")
+	}
+	for _, raw := range arr {
+		assertRedacted(t, raw)
+	}
 }
