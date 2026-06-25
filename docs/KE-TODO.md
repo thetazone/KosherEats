@@ -1,7 +1,19 @@
 # KosherEats — Master TODO (live tracker)
 
 The single working checklist. Deeper context in `docs/KE-WORK-HANDOFF.md`.
-Last updated: 2026-06-23.
+Last updated: 2026-06-25.
+
+---
+
+## ✅ Medium/low backlog pass — DONE (2026-06-25)
+Re-triaged the cycle 1–3 med/low tail (153 raw → 132 real); fixed the 16 worth-fixing, intentionally skipped the noise (per Salto: "skip the med/low noise for now").
+- [x] **Backend mediums (5)** — committed `da3e8324`, pushed, **DEPLOYED** (`fly deploy`, clean boot, `/health` 200):
+  - `cart.go` snapshotModifiers rejects paused modifiers (`AND m.is_available = true`) → can't order/charge for an unavailable add-on.
+  - `courier_orders.go` ListCourierHistory checks `rows.Err()` (no silently-truncated history); ClaimOrder gains the auto-dispatch busy-guard (friendly pre-check + race-safe `NOT EXISTS` in the CAS) so a courier can't manually stack concurrent deliveries.
+  - `orders.go` CreateOrder idempotent-replay short-circuit by PaymentIntent (user-scoped, no IDOR) before any cart/deal processing — a retry now returns the existing order (200) instead of "cart is empty" / "deal already used".
+  - `phone_auth.go` StartPhoneLogin rejects a new code during an active brute-force lockout (no lockout-wipe, no SMS spam).
+- [x] **Client mediums (11 across 4 apps)** — committed `42cf8e4a`, pushed; all build-green in the main tree (3× Android `compileDebugKotlin` + iOS `xcodebuild` BUILD SUCCEEDED). android-seller (5: decimal deal %, per-order delivery_mode chip/address gating, self-delivery action from per-order field, local-zone "Activates"), android-consumer (4: tip≤subtotal, 409 recover by PI, paused-modifier + unavailable-item gating), android-courier (1: lifetime delivery count from profile, not capped-history sum), ios-consumer (1: reorder routes through restaurant-switch confirm). **Client builds NOT shipped to TestFlight/Play — that's Salto's release step.**
+- **Intentionally NOT fixed (noise, documented only):** ~94 low + ~20 trivial findings from the re-triage. Revisit only if a specific one surfaces in the field.
 
 ---
 
