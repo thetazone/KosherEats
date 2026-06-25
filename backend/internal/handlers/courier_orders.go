@@ -91,6 +91,12 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.status = 'ready' AND o.courier_id IS NULL
 		    AND o.fulfillment_type = 'delivery'
+		    -- Only KE-fleet ('platform') orders are claimable here. Self-delivery
+		    -- ('restaurant') orders are the seller's; external-mode or already-
+		    -- escalated orders go to Uber/DoorDash (external_provider set). Showing
+		    -- or letting a courier claim those = double delivery + wrong payout.
+		    AND o.external_provider IS NULL
+		    AND COALESCE(rest.delivery_mode, 'platform') = 'platform'
 		  ORDER BY o.created_at ASC
 		  LIMIT 50`)
 	if err != nil {
@@ -160,6 +166,11 @@ func (h *Handler) ListUpcomingDeliveries(w http.ResponseWriter, r *http.Request)
 		  WHERE o.status IN ('accepted', 'preparing')
 		    AND o.courier_id IS NULL
 		    AND o.fulfillment_type = 'delivery'
+		    -- KE-fleet orders only — don't surface self-delivery or external-mode
+		    -- restaurants' orders for couriers to pre-position on (parity with
+		    -- ListAvailableDeliveries).
+		    AND o.external_provider IS NULL
+		    AND COALESCE(rest.delivery_mode, 'platform') = 'platform'
 		  ORDER BY o.created_at ASC
 		  LIMIT 50`)
 	if err != nil {
@@ -218,8 +229,14 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 	result, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE orders
 		   SET courier_id = $1, claimed_at = NOW(), updated_at = NOW()
-		 WHERE id = $2 AND status = 'ready' AND courier_id IS NULL
-		   AND external_provider IS NULL`,
+		  FROM restaurants rest
+		 WHERE orders.id = $2 AND orders.restaurant_id = rest.id
+		   AND orders.status = 'ready' AND orders.courier_id IS NULL
+		   AND orders.external_provider IS NULL
+		   -- A self-delivery ('restaurant') order has external_provider NULL, so the
+		   -- guard above doesn't stop a KE courier from poaching it — exclude
+		   -- non-platform delivery modes explicitly.
+		   AND COALESCE(rest.delivery_mode, 'platform') = 'platform'`,
 		user["user_id"], orderID)
 	if err != nil || result.RowsAffected() == 0 {
 		writeError(w, http.StatusConflict, "order no longer available")

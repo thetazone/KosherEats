@@ -1055,13 +1055,19 @@ func (h *Handler) CompleteOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For pickup orders, allow completing from 'preparing' as well as 'ready'
-	// since there is no courier handoff step.
+	// CompleteOrder is the PICKUP terminal step (customer collects at the
+	// counter) — allowed from 'preparing' or 'ready' since there's no courier
+	// handoff. Delivery orders must NOT be completable here: a courier drives
+	// ready->picked_up->delivered (and earns payout on delivery), and a
+	// self-delivery seller uses sellerPickup/sellerDeliver. Without the pickup
+	// guard a seller could force a ready delivery order straight to completed,
+	// stranding the assigned courier and skipping their payout.
 	result, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE orders SET status = $1, updated_at = NOW()
 		 FROM restaurants WHERE orders.restaurant_id = restaurants.id
 		 AND orders.id = $2 AND restaurants.owner_id = $3
-		 AND (orders.status = $4 OR (orders.status = $5 AND orders.fulfillment_type = 'pickup'))`,
+		 AND orders.fulfillment_type = 'pickup'
+		 AND (orders.status = $4 OR orders.status = $5)`,
 		models.OrderCompleted, id, user["user_id"], models.OrderReady, models.OrderPreparing)
 
 	if err != nil || result.RowsAffected() == 0 {
