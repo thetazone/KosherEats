@@ -178,6 +178,8 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Post("/api/v1/auth/register", h.Register)
 	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/phone/start", h.StartPhoneLogin)
+	r.Post("/api/v1/auth/phone/verify", h.VerifyPhoneLogin)
 
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(h.OptionalAuthMiddleware)
@@ -422,6 +424,37 @@ func TestIntegration_SignupRejectsPrivilegedRole(t *testing.T) {
 	}
 	if reg.User.Role != "seller" {
 		t.Fatalf("seller register role = %q, want seller", reg.User.Role)
+	}
+}
+
+// TestIntegration_PhoneAccountNotPasswordLoginable locks in the fix for the
+// phone-OTP account-takeover: a phone account's synthetic password was derivable
+// from the public phone number ("phone-"+phone) and /login had no auth_provider
+// guard, so anyone who knew a victim's number could log in as them. After the
+// fix, /login must reject the synthetic email + derivable password.
+func TestIntegration_PhoneAccountNotPasswordLoginable(t *testing.T) {
+	harness.resetVolatile(t)
+	const phone = "+13475550142"
+
+	start := harness.do(http.MethodPost, "/api/v1/auth/phone/start", "", map[string]any{"phone": phone})
+	if start.Code != http.StatusOK {
+		t.Fatalf("phone/start: %d %s", start.Code, start.Body.String())
+	}
+	verify := harness.do(http.MethodPost, "/api/v1/auth/phone/verify", "", map[string]any{
+		"phone": phone, "code": "1234", "first_name": "Phoney",
+	})
+	if verify.Code != http.StatusOK {
+		t.Fatalf("phone/verify: %d %s", verify.Code, verify.Body.String())
+	}
+
+	// The attack: synthetic email (digits@phone.koshereats.local) + the
+	// historically-derivable password must NOT authenticate.
+	attack := harness.do(http.MethodPost, "/api/v1/auth/login", "", map[string]any{
+		"email":    "13475550142@phone.koshereats.local",
+		"password": "phone-" + phone,
+	})
+	if attack.Code != http.StatusUnauthorized {
+		t.Fatalf("phone-derived password login must be 401 (account takeover), got %d %s", attack.Code, attack.Body.String())
 	}
 }
 

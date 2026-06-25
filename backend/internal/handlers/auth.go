@@ -228,8 +228,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var user models.User
 	err := h.db.Pool.QueryRow(r.Context(),
+		// SECURITY: only real password accounts (auth_provider NULL/'email') may
+		// authenticate here. Phone-OTP and OAuth accounts are provisioned with a
+		// synthetic password and MUST NOT be reachable via /login — their
+		// synthetic secret was historically derivable from public data
+		// (phone-OTP: "phone-"+phone), so matching them here was a deterministic
+		// account-takeover bypass of the OTP/OAuth flow. They sign in through
+		// their own provider path instead.
 		`SELECT id, email, password_hash, first_name, last_name, phone, role, vertical, created_at, updated_at
-		 FROM users WHERE email = $1 AND role = $2 AND vertical = $3`,
+		 FROM users WHERE email = $1 AND role = $2 AND vertical = $3
+		   AND (auth_provider IS NULL OR auth_provider = 'email')`,
 		req.Email, role, vertical,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
 		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -247,9 +248,16 @@ func (h *Handler) createPhoneUser(r *http.Request, phone, vertical string, req P
 	}
 
 	// Synthetic password hash — phone auth doesn't use it, but the schema
-	// requires a non-null value. Keyed off the phone so the same input
-	// always produces the same hash input (still salted by bcrypt).
-	dummyHash, err := bcrypt.GenerateFromPassword([]byte("phone-"+phone), bcrypt.DefaultCost)
+	// requires a non-null value. SECURITY: must be over CRYPTO-RANDOM bytes, not
+	// a function of the phone ("phone-"+phone was derivable from public data and
+	// let an attacker password-login as any phone user). The Login guard already
+	// blocks password login for auth_provider='phone', but never store a
+	// guessable secret.
+	randPwd := make([]byte, 32)
+	if _, rerr := rand.Read(randPwd); rerr != nil {
+		return models.User{}, rerr
+	}
+	dummyHash, err := bcrypt.GenerateFromPassword(randPwd, bcrypt.DefaultCost)
 	if err != nil {
 		return models.User{}, err
 	}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -153,7 +154,16 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		// A different role's account on the same provider/email is a
 		// separate row and does not conflict.
 		isNewUser = true
-		dummyHash, _ := bcrypt.GenerateFromPassword([]byte("oauth-"+providerID), bcrypt.DefaultCost)
+		// SECURITY: synthetic password over crypto-random bytes, not a function
+		// of the provider id ("oauth-"+providerID was derivable). The Login guard
+		// blocks password login for auth_provider != email anyway, but never
+		// store a guessable secret. OAuth users authenticate via the social path.
+		randPwd := make([]byte, 32)
+		if _, rerr := rand.Read(randPwd); rerr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to create user")
+			return
+		}
+		dummyHash, _ := bcrypt.GenerateFromPassword(randPwd, bcrypt.DefaultCost)
 
 		err = h.db.Pool.QueryRow(r.Context(),
 			`INSERT INTO users (email, password_hash, first_name, last_name, role, vertical, avatar_url, auth_provider, auth_provider_id)
