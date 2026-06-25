@@ -83,9 +83,16 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 	}
 
 	rows, err := h.db.Pool.Query(r.Context(),
+		// PRIVACY: this feed is visible to EVERY approved courier before anyone
+		// claims, so it must not expose a customer's exact home. Withhold the
+		// street/unit string and coarsen the dropoff coords to ~block level
+		// (3 decimals ≈ 110m) — enough for a courier to judge distance/area and
+		// decide whether to claim. The full address + precise coords are revealed
+		// only to the assigned courier after claim (loadOrderWithCourier).
 		`SELECT o.id, o.restaurant_id, rest.name, o.status, o.subtotal, o.delivery_fee,
-		        o.service_fee, o.tax, o.total, o.courier_tip, o.delivery_address,
-		        o.delivery_lat, o.delivery_lng,
+		        o.service_fee, o.tax, o.total, o.courier_tip, '' AS delivery_address,
+		        ROUND(o.delivery_lat::numeric, 3)::double precision AS delivery_lat,
+		        ROUND(o.delivery_lng::numeric, 3)::double precision AS delivery_lng,
 		        rest.lat, rest.lng, o.est_delivery_time, o.created_at, o.updated_at
 		   FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
@@ -262,10 +269,28 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 
 // PickupOrder: courier has arrived at restaurant and collected the food.
 // Transitions 'ready' -> 'picked_up'.
+// requireApprovedCourier re-asserts the caller is a CURRENTLY-approved courier.
+// Approval at claim time isn't enough: an admin can suspend a courier
+// mid-delivery, and a suspended courier must not keep progressing orders (taking
+// the food, getting paid). Writes a 403 and returns false when not approved.
+func (h *Handler) requireApprovedCourier(w http.ResponseWriter, r *http.Request, userID string) bool {
+	var status models.CourierOnboardingStatus
+	err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT onboarding_status FROM courier_profiles WHERE user_id = $1`, userID).Scan(&status)
+	if err != nil || status != models.OnboardingApproved {
+		writeError(w, http.StatusForbidden, "courier not approved")
+		return false
+	}
+	return true
+}
+
 func (h *Handler) PickupOrder(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !h.requireApprovedCourier(w, r, user["user_id"]) {
 		return
 	}
 	orderID := chi.URLParam(r, "id")
@@ -299,6 +324,9 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(r)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !h.requireApprovedCourier(w, r, user["user_id"]) {
 		return
 	}
 	orderID := chi.URLParam(r, "id")

@@ -154,9 +154,17 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("delivery_id", payload.DeliveryID))
 
 		_, err := h.db.Pool.Exec(ctx,
-			`UPDATE orders SET external_delivery_id = NULL, external_provider = NULL,
-			        external_tracking_url = NULL, updated_at = NOW()
-			  WHERE id = $1`,
+			`UPDATE orders
+			    SET external_delivery_id = NULL, external_provider = NULL,
+			        external_tracking_url = NULL,
+			        -- A provider cancel after we recorded pickup would otherwise
+			        -- strand the order past 'ready' forever (sweepAutoDispatch only
+			        -- re-dispatches 'ready' orders). Reset picked_up -> ready so it
+			        -- re-enters the dispatch pipeline; a 'ready' cancel just clears
+			        -- the linkage and is picked up by the next sweep as before.
+			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
+			        updated_at = NOW()
+			  WHERE id = $1 AND status IN ('ready', 'picked_up')`,
 			externalID)
 		if err != nil {
 			slog.Error("uber webhook: cancel cleanup failed",

@@ -1024,7 +1024,7 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 	var stats models.DashboardStats
 	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT
-		    COUNT(*) FILTER (WHERE o.created_at::date = CURRENT_DATE
+		    COUNT(*) FILTER (WHERE (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
 		                      AND o.status NOT IN ('cancelled','rejected'))   AS today_orders,
 		    -- Seller revenue is FOOD SALES only — the discounted item subtotal
 		    -- the seller actually earns on (subtotal - discount_cents, matching
@@ -1032,14 +1032,14 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 		    -- service fees are pass-throughs / not restaurant money, so SUM(o.total)
 		    -- overstated it. discount_cents is the canonical column (migration 040).
 		    COALESCE(SUM(o.subtotal - o.discount_cents) FILTER (
-		        WHERE o.created_at::date = CURRENT_DATE
+		        WHERE (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
 		          AND o.status NOT IN ('cancelled','rejected')
 		    ), 0)                                                              AS today_revenue_cents,
 		    -- Self-delivery earnings: the seller's 50% of the delivery fee on
 		    -- orders they delivered with their own driver (0 on Uber/KE-courier
 		    -- orders). Separate line from food sales so each is unambiguous.
 		    COALESCE(SUM(o.seller_delivery_earnings) FILTER (
-		        WHERE o.created_at::date = CURRENT_DATE
+		        WHERE (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date
 		          AND o.status NOT IN ('cancelled','rejected')
 		    ), 0)                                                              AS today_delivery_earnings_cents,
 		    -- Active includes picked_up: the seller should still see an order
@@ -1049,7 +1049,7 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 		                                                                       AS active_orders,
 		    COALESCE(AVG(EXTRACT(EPOCH FROM (o.updated_at - o.created_at)) / 60)
 		             FILTER (WHERE o.status = 'delivered'
-		                     AND o.created_at::date = CURRENT_DATE), 0)       AS avg_prep_time_min
+		                     AND (o.created_at AT TIME ZONE 'America/New_York')::date = (NOW() AT TIME ZONE 'America/New_York')::date), 0)       AS avg_prep_time_min
 		   FROM orders o
 		  WHERE o.restaurant_id = $1`, restID,
 	).Scan(&stats.TodayOrders, &stats.TodayRevenueCents, &stats.TodayDeliveryEarningsCents, &stats.ActiveOrders, &stats.AvgPrepTime)

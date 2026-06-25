@@ -120,9 +120,12 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("doordash delivery canceled — order needs re-dispatch",
 			slog.String("order_id", orderID))
 		_, _ = h.db.Pool.Exec(ctx,
-			`UPDATE orders SET external_delivery_id = NULL, external_provider = NULL,
-			        external_tracking_url = NULL, updated_at = NOW()
-			  WHERE id = $1`, orderID)
+			`UPDATE orders
+			    SET external_delivery_id = NULL, external_provider = NULL,
+			        external_tracking_url = NULL,
+			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
+			        updated_at = NOW()
+			  WHERE id = $1 AND status IN ('ready', 'picked_up')`, orderID)
 	}
 
 	w.WriteHeader(http.StatusOK)
