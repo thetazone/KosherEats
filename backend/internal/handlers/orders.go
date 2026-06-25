@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/models"
 )
@@ -248,6 +250,24 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		// A unique-violation on the once-per-user deal index (043,
+		// uq_orders_user_deal_active) means this user already redeemed this deal
+		// (a retry, or a race past the app-level EXISTS check). The PaymentIntent
+		// is already captured, so the previous behavior (500, no order) left the
+		// customer charged with nothing. Refund and return a clear 409 instead.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+			strings.Contains(pgErr.ConstraintName, "user_deal") {
+			tx.Rollback(r.Context()) //nolint:errcheck
+			if rerr := h.stripe.RefundPaymentIntent(req.PaymentIntentID); rerr != nil {
+				slog.Error("CreateOrder: deal-conflict refund FAILED — customer charged with no order, manual reconcile",
+					slog.String("payment_intent_id", req.PaymentIntentID),
+					slog.String("user_id", user["user_id"]),
+					slog.String("error", rerr.Error()))
+			}
+			writeError(w, http.StatusConflict, "this deal has already been used — your payment was refunded")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to create order")
 		return
 	}
