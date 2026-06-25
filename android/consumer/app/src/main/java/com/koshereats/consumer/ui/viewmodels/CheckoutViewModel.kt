@@ -462,6 +462,10 @@ class CheckoutViewModel @Inject constructor(
         // subtotal a dead branch (and zeroing percent tips on process-death recovery
         // where _localSubtotalCents is 0).
         val tipBase = _uiState.value.bundle?.subtotal ?: _localSubtotalCents
+        // On process-death recovery the tip base is 0 (no prior bundle, local cart
+        // not yet synced), so a percent tip prices to $0 here. Capture that we'll
+        // need a second pass once the server returns the real subtotal (mirrors iOS).
+        val needsReRefresh = _uiState.value.tipChoice is TipChoice.Percent && tipBase == 0
         _uiState.update { it.copy(isLoadingBundle = true, bundle = null, errorMessage = null, pendingPaymentSheet = null) }
         try {
             val address = _uiState.value.selectedAddress
@@ -476,7 +480,17 @@ class CheckoutViewModel @Inject constructor(
                 ),
             )
             if (resp.isSuccessful) {
-                _uiState.update { it.copy(bundle = resp.body(), isLoadingBundle = false) }
+                val body = resp.body()
+                _uiState.update { it.copy(bundle = body, isLoadingBundle = false) }
+                // If recovery priced a percent tip against a 0 subtotal, the server
+                // now knows the real subtotal — re-refresh once so the percent applies.
+                if (needsReRefresh &&
+                    _uiState.value.tipChoice is TipChoice.Percent &&
+                    (body?.tip ?: 0) == 0 &&
+                    (body?.subtotal ?: 0) > 0
+                ) {
+                    refreshBundle()
+                }
             } else {
                 _uiState.update {
                     it.copy(

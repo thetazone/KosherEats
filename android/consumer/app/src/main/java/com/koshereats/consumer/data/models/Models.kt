@@ -406,7 +406,15 @@ data class Order(
     @SerializedName("fulfillment_type") val fulfillmentType: String = "delivery",
     @SerializedName("scheduled_for") val scheduledFor: String? = null,
     @SerializedName("courier_rating") val courierRating: Int? = null,
-)
+    // External delivery (Uber Direct / DoorDash Drive): no platform courier or SSE stream.
+    @SerializedName("external_provider") val externalProvider: String? = null,
+    @SerializedName("external_delivery_id") val externalDeliveryId: String? = null,
+    @SerializedName("external_tracking_url") val externalTrackingUrl: String? = null,
+) {
+    /** True when delivery is fulfilled by a third-party provider (no platform courier). */
+    val isExternalDelivery: Boolean
+        get() = !externalDeliveryId.isNullOrBlank() || !externalTrackingUrl.isNullOrBlank()
+}
 
 data class OrderItem(
     val id: String = "",

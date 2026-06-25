@@ -66,7 +66,20 @@ fun MenuItemSheet(
     var specialInstructions by remember(menuItem.id) { mutableStateOf("") }
 
     val modifierGroups = remember(menuItem.id) { menuItem.modifierGroups }
-    val selections = remember(menuItem.id) { mutableStateMapOf<String, Set<String>>() }
+    // Pre-select each group's default modifiers so required single-select groups
+    // start valid (mirrors iOS MenuItemView.onAppear). Skip unavailable options and
+    // honor the single-select cap by taking at most maxSelections defaults per group.
+    val selections = remember(menuItem.id) {
+        mutableStateMapOf<String, Set<String>>().apply {
+            for (group in modifierGroups) {
+                val defaults = group.modifiers
+                    .filter { it.isDefault && it.isAvailable }
+                    .map { it.id }
+                    .take(group.maxSelections.coerceAtLeast(1))
+                if (defaults.isNotEmpty()) put(group.id, defaults.toSet())
+            }
+        }
+    }
 
     fun isSelected(groupId: String, optionId: String): Boolean =
         selections[groupId]?.contains(optionId) == true

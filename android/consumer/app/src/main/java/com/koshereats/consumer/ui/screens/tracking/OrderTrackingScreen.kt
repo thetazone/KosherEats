@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import android.content.ActivityNotFoundException
@@ -164,7 +166,17 @@ fun OrderTrackingScreen(
                 }
             }
         } else {
-            TrackingMap(order = order, modifier = Modifier.fillMaxWidth().height(340.dp))
+            // External delivery (Uber Direct / DoorDash) has no platform courier
+            // and no live location stream, so the frozen map / "finding a courier"
+            // UI is replaced by a simple provider card.
+            if (order.isExternalDelivery) {
+                ExternalDeliveryCard(
+                    provider = order.externalProvider,
+                    trackingUrl = order.externalTrackingUrl,
+                )
+            } else {
+                TrackingMap(order = order, modifier = Modifier.fillMaxWidth().height(340.dp))
+            }
             StatusHeader(status = order.status, estimatedDeliveryTime = order.estimatedDeliveryTime)
 
             state.errorMessage?.let { msg ->
@@ -468,6 +480,78 @@ private fun CourierCard(
             }
         }
     }
+}
+
+/**
+ * Card shown in place of the live map for orders fulfilled by a third-party
+ * delivery provider (Uber Direct / DoorDash Drive). These have no platform
+ * courier and no live location stream, so the map / "finding a courier" UI
+ * would sit frozen forever; instead we link out to the provider's tracker.
+ */
+@Composable
+private fun ExternalDeliveryCard(provider: String?, trackingUrl: String?) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.DirectionsCar,
+                    contentDescription = null,
+                    tint = Orange,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.size(10.dp))
+                Column {
+                    Text(
+                        text = "Delivered by ${humanizeProvider(provider)}",
+                        color = TextWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                    )
+                    Text(
+                        text = "Your order is on its way.",
+                        color = TextTertiary,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+            if (!trackingUrl.isNullOrBlank()) {
+                Button(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trackingUrl))
+                            context.startActivity(intent)
+                        } catch (_: ActivityNotFoundException) {
+                            // No browser available; nothing more we can do here.
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Orange),
+                ) {
+                    Text("Track delivery", color = TextWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
+        }
+    }
+}
+
+/** Maps a backend provider slug to a user-facing brand name. */
+private fun humanizeProvider(provider: String?): String = when (provider) {
+    "uber_direct" -> "Uber"
+    "doordash_drive" -> "DoorDash"
+    else -> "our delivery partner"
 }
 
 @Composable
