@@ -90,8 +90,11 @@ class OrdersViewModel: ObservableObject {
         do {
             let fresh = try await APIService.shared.getOrders()
             guard gen == loadGeneration else { return }
-            self.orders = fresh
-            applyFilter()
+            // Preserve any order with a mutation in flight (an accept/prepare/ready
+            // tap the seller is watching) — a push-driven load() landing the
+            // pre-mutation server state would otherwise stomp the optimistic
+            // update. mergeFresh keeps in-flight rows and calls applyFilter.
+            mergeFresh(fresh)
         } catch APIError.unauthorized {
             guard gen == loadGeneration else { return }
             // Session died mid-use (refresh token expired/revoked). Route to

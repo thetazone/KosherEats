@@ -128,9 +128,14 @@ struct SellerOrderDetailView: View {
             Text(escalateMessage ?? "")
         }
         .task {
-            if order == nil {
-                await vm.fetchOrder(id: orderID)
-                order = vm.orders.first(where: { $0.id == orderID })
+            // Always fetch the authoritative full order. The seeded copy comes
+            // from the list (ListSellerOrders), which doesn't carry `courier` or
+            // `external_delivery_id` — so the courier card and escalate gating
+            // would render off incomplete data until some later refresh. The list
+            // copy stays only as an instant-render placeholder.
+            await vm.fetchOrder(id: orderID)
+            if let fresh = vm.orders.first(where: { $0.id == orderID }) {
+                order = fresh
             }
         }
         .onReceive(vm.$orders) { updated in
