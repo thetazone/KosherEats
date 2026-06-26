@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/models"
+	"github.com/koshereats/backend/internal/payments"
 )
 
 type CreateOrderRequest struct {
@@ -156,6 +157,22 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if stamped, ok, ferr := h.stripe.StampedFulfillmentType(req.PaymentIntentID); ferr == nil && ok && stamped != fulfillmentType {
 		writeError(w, http.StatusBadRequest, "payment was created for a different fulfillment type")
 		return
+	}
+
+	// SECURITY: the delivery destination must match the one the PaymentIntent's
+	// fee was quoted against. The fee scales with distance, so without this a
+	// client quotes a cheap fee against a nearby address, then redeems the same PI
+	// on a distant-address order. CreateOrder reuses the stamped (cheap) fee
+	// verbatim, so the dispatch ships far for the near price and the platform eats
+	// the delta (external provider) or under-pays its own courier. ok=false means
+	// a pickup/pre-stamp/flat-rate-fallback PI with no stamp — skip for compat.
+	// Same shape as the fulfillment-type guard above.
+	if fulfillmentType == "delivery" {
+		if stamped, ok, aerr := h.stripe.StampedDeliveryAddrHash(req.PaymentIntentID); aerr == nil && ok &&
+			stamped != payments.DeliveryAddrHash(req.DeliveryAddress) {
+			writeError(w, http.StatusBadRequest, "payment was created for a different delivery address")
+			return
+		}
 	}
 
 	deliveryFee := 0
@@ -1261,10 +1278,12 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 // Sellers no longer mark orders delivered — that transition is owned by the
 // courier app (picked_up → delivered). Keeping only reject.
 
-// RejectOrder refunds the customer first, then flips status to 'rejected'.
-// Refund-then-flip mirrors tryStaleReject in the dispatcher: a Stripe failure
-// leaves the order 'pending' for a retry instead of stranding the customer
-// in a "rejected but not refunded" state.
+// RejectOrder commits the status flip to 'rejected' FIRST, then issues the
+// refund (commit-then-refund, matching CancelOrder and tryStaleReject). Flipping
+// before refunding is deliberate: a refunded-but-still-fulfillable order (free
+// food) is worse than a rejected-but-refund-pending one, and a post-commit refund
+// failure is recovered idempotently by the reconcile reaper (refund key is fixed
+// per PI). Do NOT reorder this to refund-first.
 func (h *Handler) RejectOrder(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	user, err := getUserFromContext(r)

@@ -42,6 +42,46 @@ func (h *Handler) CheckrWebhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	_ = h.checkr.HandleWebhook(r.Context(), payload)
+
+	ctx := r.Context()
+	eventID := webhookEventID(body)
+
+	// Idempotency: skip an already-processed event. HandleWebhook runs on its own
+	// connection (not a tx we control), so we record AFTER it succeeds rather than
+	// claiming up front — a failed attempt leaves no ledger row, so Checkr's retry
+	// reprocesses instead of being permanently dropped. A ledger-read failure
+	// falls through to processing (HandleWebhook is idempotent) rather than block.
+	var seen bool
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM external_webhook_events WHERE provider = 'checkr' AND event_id = $1)`,
+		eventID).Scan(&seen); err != nil {
+		slog.Warn("checkr webhook: idempotency check failed, processing anyway",
+			slog.String("error", err.Error()))
+	}
+	if seen {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Background checks gate who is allowed to drive — a dropped 'report.completed'
+	// leaves a courier's clearance state wrong. Surface processing failures as 5xx
+	// so Checkr retries instead of silently giving up (it swallowed the error and
+	// always 200'd before).
+	if err := h.checkr.HandleWebhook(ctx, payload); err != nil {
+		slog.Error("checkr webhook: processing failed — returning 500 so Checkr retries",
+			slog.String("type", payload.Type), slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := h.db.Pool.Exec(ctx,
+		`INSERT INTO external_webhook_events (provider, event_id, type)
+		 VALUES ('checkr', $1, $2) ON CONFLICT (provider, event_id) DO NOTHING`,
+		eventID, payload.Type); err != nil {
+		// Non-fatal: the event was processed; a missing ledger row only risks one
+		// idempotent reprocess on a retry. Log so it's visible if systematic.
+		slog.Warn("checkr webhook: failed to record event for idempotency",
+			slog.String("error", err.Error()))
+	}
 	w.WriteHeader(http.StatusOK)
 }

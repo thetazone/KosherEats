@@ -20,6 +20,7 @@ import (
 	"github.com/koshereats/backend/internal/handlers"
 	kemiddleware "github.com/koshereats/backend/internal/middleware"
 	"github.com/koshereats/backend/internal/observability"
+	"github.com/koshereats/backend/internal/payments"
 	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/redisclient"
 	"github.com/koshereats/backend/internal/scheduler"
@@ -42,6 +43,14 @@ func main() {
 
 	if len(cfg.JWTSecret) < 32 {
 		log.Fatal("JWT_SECRET must be set to a random value of at least 32 characters")
+	}
+
+	// Refuse to start in prod without a real Stripe key: the dev stub bypasses
+	// VerifyPaymentSucceeded entirely, so a misconfigured prod instance would
+	// create orders for free at any total the client claims. Better a failed
+	// deploy than a silent free-checkout window.
+	if os.Getenv("APP_ENV") == "production" && !payments.HasRealKey(cfg) {
+		log.Fatal("STRIPE_SECRET_KEY must be a real key in production (refusing to start in dev stub mode — stub bypasses payment verification)")
 	}
 
 	// ── Sentry error reporting (no-op unless SENTRY_DSN is set) ──────────

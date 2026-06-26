@@ -18,6 +18,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -147,8 +148,10 @@ func (c *Client) CancelDelivery(ctx context.Context, externalID string) error {
 	if err != nil {
 		return err
 	}
+	// Escape the id into the path defensively (it's our own order id today, but a
+	// raw path segment from any future caller could redirect the request).
 	_, err = c.doReq(ctx, "PUT", token,
-		fmt.Sprintf("%s/deliveries/%s/cancel", apiBase, externalID), nil)
+		fmt.Sprintf("%s/deliveries/%s/cancel", apiBase, url.PathEscape(externalID)), nil)
 	return err
 }
 

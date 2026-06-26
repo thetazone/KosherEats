@@ -196,7 +196,15 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	if isPickup {
 		fulfillmentType = "pickup"
 	}
-	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType)
+	// Pass the delivery address so the PI is stamped with its fingerprint; the
+	// fee was quoted against this destination and CreateOrder rejects a swap.
+	// Empty for pickup (and when no address was supplied → flat-rate fallback),
+	// in which case nothing is stamped and CreateOrder skips the match.
+	deliveryAddrToStamp := req.DeliveryAddress
+	if isPickup {
+		deliveryAddrToStamp = ""
+	}
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp)
 	if err != nil {
 		// Surface the real Stripe error to the logs so future "failed to
 		// create payment" reports take seconds, not an hour, to diagnose.

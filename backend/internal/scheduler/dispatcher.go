@@ -912,16 +912,26 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 	// flips them to 'processing' — so it keeps the original SELECT ... FOR
 	// UPDATE SKIP LOCKED read rather than the legacy atomic claim below.
 	if d.payoutStarter.Enabled() {
+		// Pick up two kinds of rows: pending-and-due, AND rows stuck in
+		// 'processing' past the timeout. A workflow whose StripeTransfer succeeded
+		// but whose MarkComplete then failed for all retries leaves the row at
+		// 'processing' with no MarkFailed and no automated recovery — the legacy
+		// reaper below never runs in Temporal mode (it's past the early return).
+		// Re-Starting such a row is safe: ReservePayout reclaims 'processing', and
+		// StripeTransfer re-runs under the SAME stable idempotency key so Stripe
+		// dedupes the re-transfer rather than paying twice.
 		rows, err := d.db.Query(ctx, `
 			SELECT id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count
 			  FROM courier_payout_queue
-			 WHERE status = 'pending'
-			   AND stripe_connect_id IS NOT NULL
-			   AND next_retry_at <= NOW()
+			 WHERE stripe_connect_id IS NOT NULL
+			   AND (
+			        (status = 'pending' AND next_retry_at <= NOW())
+			     OR (status = 'processing' AND updated_at < NOW() - make_interval(secs => $2))
+			   )
 			 ORDER BY next_retry_at ASC
 			 LIMIT $1
 			 FOR UPDATE SKIP LOCKED`,
-			payoutBatchLimit)
+			payoutBatchLimit, int(payoutProcessingTimeout.Seconds()))
 		if err != nil {
 			slog.Error("payout-sweep: load queue failed",
 				slog.String("error", err.Error()))

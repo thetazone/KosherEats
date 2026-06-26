@@ -12,11 +12,14 @@ package payments
 import (
 	"context"
 	cryptorand "crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"net/mail"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,6 +63,33 @@ const deliveryFeeMetaKey = "delivery_fee"
 // delivery order for free delivery.
 const fulfillmentMetaKey = "fulfillment_type"
 
+// deliveryAddrMetaKey records a hash of the delivery destination the
+// PaymentIntent's delivery fee was quoted against. The fee depends on the
+// distance to that address; binding it stops the "quote near, deliver far"
+// exploit — a client could otherwise quote a cheap fee against a nearby address,
+// then submit CreateOrder with the same PI but a distant address. CreateOrder
+// reuses the stamped (cheap) fee verbatim, so without this guard the platform
+// eats the real distance cost on the external dispatch (or under-pays its own
+// courier). CreateOrder rejects a delivery order whose destination doesn't match
+// this stamp — the exact analogue of fulfillmentMetaKey. We store a hash, not the
+// raw address, to keep PII out of Stripe metadata.
+const deliveryAddrMetaKey = "delivery_addr_hash"
+
+// DeliveryAddrHash normalizes a free-text delivery address (lowercase, trimmed,
+// internal whitespace collapsed) and returns a stable hex SHA-256 fingerprint of
+// it. Both CreatePaymentSheet (stamp) and CreateOrder (verify) derive the
+// fingerprint the same way, so the legitimate flow — where the same selected
+// address is sent to both endpoints — always matches, while a swapped address
+// does not. Empty in → empty out (pickup orders / pre-stamp PIs carry no stamp).
+func DeliveryAddrHash(addr string) string {
+	norm := strings.Join(strings.Fields(strings.ToLower(addr)), " ")
+	if norm == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(norm))
+	return hex.EncodeToString(sum[:])
+}
+
 // looksLikeRealStripeKey filters out the "sk_test_your_stripe_secret_key"
 // placeholders commonly left in .env.example files. Any real Stripe secret
 // key starts with "sk_" and contains either "_live_" or "_test_" followed
@@ -78,6 +108,13 @@ func looksLikeRealStripeKey(k string) bool {
 	}
 	return true
 }
+
+// HasRealKey reports whether the configured Stripe secret key is a real key
+// rather than empty/placeholder — i.e. whether New() will run in live mode
+// instead of the dev stub. Lets startup hard-fail when prod is misconfigured:
+// stub mode makes VerifyPaymentSucceeded a no-op, so a missing key in prod = free
+// orders at attacker-chosen totals.
+func HasRealKey(cfg *config.Config) bool { return looksLikeRealStripeKey(cfg.StripeSecretKey) }
 
 func New(cfg *config.Config) *Client {
 	c := &Client{cfg: cfg}
@@ -244,6 +281,27 @@ func (c *Client) StampedFulfillmentType(paymentIntentID string) (value string, o
 		return "", false, fmt.Errorf("retrieve payment intent: %w", err)
 	}
 	raw, present := pi.Metadata[fulfillmentMetaKey]
+	if !present || raw == "" {
+		return "", false, nil
+	}
+	return raw, true, nil
+}
+
+// StampedDeliveryAddrHash returns the delivery-address fingerprint the
+// PaymentIntent's fee was quoted against (see deliveryAddrMetaKey). ok is false
+// when the PI predates this stamp, was a pickup (no address stamped), or in dev
+// stub mode — callers then skip the destination-match check. Compare the return
+// value against payments.DeliveryAddrHash(orderAddress) to detect a swapped
+// delivery destination.
+func (c *Client) StampedDeliveryAddrHash(paymentIntentID string) (hash string, ok bool, err error) {
+	if !c.enabled || paymentIntentID == "" {
+		return "", false, nil
+	}
+	pi, err := paymentintent.Get(paymentIntentID, nil)
+	if err != nil {
+		return "", false, fmt.Errorf("retrieve payment intent: %w", err)
+	}
+	raw, present := pi.Metadata[deliveryAddrMetaKey]
 	if !present || raw == "" {
 		return "", false, nil
 	}
@@ -505,7 +563,7 @@ func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, us
 // In dev stub mode (no STRIPE_SECRET_KEY), returns fake values. The iOS app
 // detects the stub prefix and skips actually presenting PaymentSheet, which
 // keeps local dev functional without real Stripe keys.
-func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType string) (*PaymentSheetBundle, error) {
+func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType, deliveryAddr string) (*PaymentSheetBundle, error) {
 	if !c.enabled {
 		return &PaymentSheetBundle{
 			PaymentIntentSecret: "pi_stub_" + fakeID() + "_secret_stub",
@@ -540,6 +598,22 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 	// from "Saved" without re-entering details. The iOS PaymentSheet also
 	// sets the newly added method as the Customer's default automatically,
 	// which satisfies the "most recent payment = default" requirement.
+	piMetadata := map[string]string{
+		"user_id":       userID,
+		orphanMarkerKey: orphanMarkerValue,
+		// Stamp the delivery fee that this charge total was computed
+		// against. CreateOrder reuses it (see StampedDeliveryFee) instead
+		// of re-quoting the courier API, which would return a slightly
+		// different live quote and fail the amount-match guard. This is
+		// what binds the recorded order total to the charged amount.
+		deliveryFeeMetaKey: strconv.Itoa(deliveryFeeCents),
+		fulfillmentMetaKey: fulfillmentType,
+	}
+	// Bind the destination the fee was quoted for (delivery orders only). This
+	// closes the "quote near, deliver far" gap — see deliveryAddrMetaKey.
+	if h := DeliveryAddrHash(deliveryAddr); h != "" {
+		piMetadata[deliveryAddrMetaKey] = h
+	}
 	pi, err := paymentintent.New(&stripe.PaymentIntentParams{
 		Amount:             stripe.Int64(int64(amountCents)),
 		Currency:           stripe.String(string(stripe.CurrencyUSD)),
@@ -547,17 +621,7 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 		PaymentMethodTypes: stripe.StringSlice([]string{"card"}),
 		SetupFutureUsage:   stripe.String("off_session"),
 		Params: stripe.Params{
-			Metadata: map[string]string{
-				"user_id":       userID,
-				orphanMarkerKey: orphanMarkerValue,
-				// Stamp the delivery fee that this charge total was computed
-				// against. CreateOrder reuses it (see StampedDeliveryFee) instead
-				// of re-quoting the courier API, which would return a slightly
-				// different live quote and fail the amount-match guard. This is
-				// what binds the recorded order total to the charged amount.
-				deliveryFeeMetaKey: strconv.Itoa(deliveryFeeCents),
-				fulfillmentMetaKey: fulfillmentType,
-			},
+			Metadata: piMetadata,
 		},
 	})
 	if err != nil {

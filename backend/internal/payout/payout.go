@@ -4,8 +4,10 @@
 // in internal/scheduler/dispatcher.go does not:
 //   - WorkflowID = "payout-<orderID>" → Temporal refuses a second running
 //     execution per order, so a duplicate enqueue can't start a second transfer.
-//   - The transfer activity passes a Stripe idempotency key (the WorkflowID), so
-//     a Temporal activity RETRY (at-least-once) still charges at-most-once.
+//   - The transfer activity passes a Stripe idempotency key (the courier_payout_queue
+//     row id, shared with the legacy sweep), so a Temporal activity RETRY
+//     (at-least-once) still charges at-most-once. The key is resolved with no
+//     fallback — a read failure retries with the same key rather than swapping it.
 //
 // It is DISABLED BY DEFAULT and wired in behind cfg.Temporal.HostPort != "".
 // When off, the existing sweep is unchanged. Turning it on requires a Temporal
@@ -14,8 +16,11 @@ package payout
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/payments"
 	enums "go.temporal.io/api/enums/v1"
@@ -28,9 +33,10 @@ import (
 
 const DefaultTaskQueue = "payout-task-queue"
 
-// WorkflowID is deterministic per order: dedups duplicate enqueues AND seeds the
-// Stripe idempotency key. order_id is UNIQUE in courier_payout_queue, so there
-// is exactly one payout per order.
+// WorkflowID is deterministic per order: dedups duplicate enqueues (Temporal
+// refuses a second running execution with the same id). The Stripe idempotency
+// key is the queue row id, resolved in StripeTransfer — not this id. order_id is
+// UNIQUE in courier_payout_queue, so there is exactly one payout per order.
 func WorkflowID(orderID string) string { return "payout-" + orderID }
 
 type PayoutInput struct {
@@ -59,8 +65,7 @@ func PayoutWorkflow(ctx workflow.Context, in PayoutInput) error {
 		return err
 	}
 
-	idemKey := workflow.GetInfo(ctx).WorkflowExecution.ID // == WorkflowID(orderID)
-	transferErr := workflow.ExecuteActivity(ctx, a.StripeTransfer, in, idemKey).Get(ctx, nil)
+	transferErr := workflow.ExecuteActivity(ctx, a.StripeTransfer, in).Get(ctx, nil)
 	if transferErr != nil {
 		// Best-effort: record terminal failure so the queue row is an accurate
 		// ledger and admin can see it (don't mask the original error).
@@ -83,53 +88,84 @@ func NewActivities(stripe *payments.Client, pool *pgxpool.Pool) *Activities {
 }
 
 // ReservePayout atomically claims the payout row (pending|processing ->
-// processing). Idempotent: re-running is a no-op (Temporal activities are
-// at-least-once). The row is the durable ledger written in-tx by DeliverOrder.
+// processing) and gates the transfer: if no row is claimable the workflow must
+// NOT proceed to move money. The row is the durable ledger written in-tx by
+// DeliverOrder. A reclaim of an already-'processing' row is intentional — it
+// lets the reconcile reaper re-drive a stuck row, which is safe because
+// StripeTransfer's idempotency key is stable per order (Stripe dedupes the
+// re-transfer).
 func (a *Activities) ReservePayout(ctx context.Context, in PayoutInput) error {
 	activity.GetLogger(ctx).Info("ReservePayout", "order", in.OrderID, "cents", in.AmountCents)
-	_, err := a.pool.Exec(ctx,
+	ct, err := a.pool.Exec(ctx,
 		`UPDATE courier_payout_queue SET status='processing', updated_at=NOW()
 		  WHERE order_id=$1 AND status IN ('pending','processing')`, in.OrderID)
-	return err
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		// Row is missing, or already terminal ('completed'/'failed_permanent').
+		// Stop the workflow non-retryably BEFORE the transfer — without this gate
+		// the claim was decorative and a completed payout could be re-sent (the
+		// Stripe key is the only thing that would have caught it).
+		return temporal.NewNonRetryableApplicationError(
+			"payout row not claimable (already terminal or missing)", "PayoutNotClaimable", nil)
+	}
+	return nil
 }
 
 // StripeTransfer moves the money. The Stripe idempotency key must match the
 // legacy sweep's key (the courier_payout_queue row id, p.id in dispatcher.go) so
 // that a payout re-attempted across a Temporal on/off cutover is deduped by
 // Stripe rather than double-paid. order_id is UNIQUE in the queue, so the row id
-// is stable for the order. The incoming idemKey (the WorkflowID) is ignored for
-// the Stripe key for exactly this cross-path parity reason.
-func (a *Activities) StripeTransfer(ctx context.Context, in PayoutInput, idemKey string) error {
+// is stable for the order. CRITICAL: this key must be a SINGLE stable value
+// across every retry of this logical transfer — so if the row read fails we
+// return an error and retry rather than transferring with a divergent fallback
+// key (a per-attempt key change is a direct double-pay vector on a DB blip).
+func (a *Activities) StripeTransfer(ctx context.Context, in PayoutInput) error {
 	if in.StripeConnectID == "" || in.AmountCents <= 0 {
 		// Non-retryable: bad payout data won't fix itself on retry.
 		return temporal.NewNonRetryableApplicationError("invalid payout parameters", "InvalidPayout", nil)
 	}
 	// Resolve the canonical idempotency key (queue row id) shared with the legacy
-	// path. Falls back to the WorkflowID-derived key only if the row is missing.
-	stripeKey := idemKey
+	// path. NO fallback: a transient read failure is retried with the SAME key,
+	// never swapped for a different one.
 	var rowID string
-	if err := a.pool.QueryRow(ctx,
+	err := a.pool.QueryRow(ctx,
 		`SELECT id::text FROM courier_payout_queue WHERE order_id = $1`, in.OrderID,
-	).Scan(&rowID); err == nil && rowID != "" {
-		stripeKey = rowID
+	).Scan(&rowID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No ledger row to pay against — don't transfer; surface terminally.
+		return temporal.NewNonRetryableApplicationError(
+			"no payout queue row for order", "MissingPayoutRow", nil)
 	}
-	activity.GetLogger(ctx).Info("StripeTransfer", "order", in.OrderID, "key", stripeKey)
-	return a.stripe.TransferToCourier(in.StripeConnectID, in.AmountCents, in.OrderID, stripeKey)
+	if err != nil {
+		// Transient: retry with the same key once the DB recovers.
+		return fmt.Errorf("resolve payout idempotency key for order %s: %w", in.OrderID, err)
+	}
+	activity.GetLogger(ctx).Info("StripeTransfer", "order", in.OrderID, "key", rowID)
+	return a.stripe.TransferToCourier(in.StripeConnectID, in.AmountCents, in.OrderID, rowID)
 }
 
+// MarkComplete flips the claimed row to 'completed'. Status-guarded to
+// 'processing' so it can never resurrect a 'failed_permanent' row into
+// 'completed' (a halt set by the Stripe refund/dispute webhook must stick). A
+// 0-row update is treated as an idempotent no-op, not an error.
 func (a *Activities) MarkComplete(ctx context.Context, in PayoutInput) error {
 	activity.GetLogger(ctx).Info("MarkComplete", "order", in.OrderID)
 	_, err := a.pool.Exec(ctx,
 		`UPDATE courier_payout_queue SET status='completed', completed_at=NOW(), updated_at=NOW()
-		  WHERE order_id=$1`, in.OrderID)
+		  WHERE order_id=$1 AND status='processing'`, in.OrderID)
 	return err
 }
 
+// MarkFailed records a terminal transfer failure. Status-guarded to 'processing'
+// so it can't overwrite an already-'completed' row (e.g. a late MarkFailed after
+// a successful retry committed completion).
 func (a *Activities) MarkFailed(ctx context.Context, in PayoutInput, reason string) error {
 	activity.GetLogger(ctx).Warn("MarkFailed", "order", in.OrderID, "reason", reason)
 	_, err := a.pool.Exec(ctx,
 		`UPDATE courier_payout_queue SET status='failed_permanent', last_error=$2, updated_at=NOW()
-		  WHERE order_id=$1`, in.OrderID, reason)
+		  WHERE order_id=$1 AND status='processing'`, in.OrderID, reason)
 	return err
 }
 

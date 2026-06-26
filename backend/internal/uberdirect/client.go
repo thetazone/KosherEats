@@ -211,8 +211,11 @@ func (c *Client) CancelDelivery(ctx context.Context, deliveryID, reason string) 
 		"reason":           reason,
 		"cancelling_party": "MERCHANT",
 	}
+	// Escape the id into the path: it comes from our own CreateDelivery response
+	// today, but escaping is defensive against any future caller passing a value
+	// derived from webhook/user input (a raw "../" / "?" could redirect the call).
 	_, err = c.post(ctx, token,
-		fmt.Sprintf("%s/eats/orders/%s/cancel", apiBase, deliveryID), body)
+		fmt.Sprintf("%s/eats/orders/%s/cancel", apiBase, url.PathEscape(deliveryID)), body)
 	return err
 }
 

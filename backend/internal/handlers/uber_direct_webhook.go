@@ -84,6 +84,34 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Idempotency + atomicity: claim the event and apply the order-state change in
+	// one transaction (see migration 052). A replayed 'canceled' would otherwise
+	// re-clear the provider linkage and re-arm auto-dispatch → a new paid delivery.
+	tx, err := h.db.Pool.Begin(ctx)
+	if err != nil {
+		slog.Error("uber webhook: begin tx failed", slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	fresh, err := claimWebhookEvent(ctx, tx, "uber_direct", webhookEventID(body), status)
+	if err != nil {
+		slog.Error("uber webhook: claim event failed",
+			slog.String("order_id", externalID), slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if !fresh {
+		slog.Info("uber webhook: duplicate event ignored", slog.String("order_id", externalID))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Notifications are side effects that must escape the tx exactly-once: capture
+	// them here and fire only after Commit so a rollback can't send a stray push.
+	var postCommit []func()
+
 	switch status {
 	case "pickup":
 		courierName := "Uber courier"
@@ -92,37 +120,45 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var consumerID, restaurantID string
-		err := h.db.Pool.QueryRow(ctx,
+		err := tx.QueryRow(ctx,
 			`SELECT user_id, restaurant_id FROM orders WHERE id = $1`,
 			externalID).Scan(&consumerID, &restaurantID)
 		if err != nil {
+			// 'pickup' only drives a notification (no state mutation); a lookup miss
+			// is non-recoverable context, so record the event and skip the push
+			// rather than forcing endless provider retries.
 			slog.Error("uber webhook: order lookup failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
 			break
 		}
-
 		if h.notify != nil {
-			h.notify.OrderClaimed(ctx, externalID, consumerID, restaurantID, courierName)
+			postCommit = append(postCommit, func() {
+				h.notify.OrderClaimed(context.Background(), externalID, consumerID, restaurantID, courierName)
+			})
 		}
 
 	case "pickup_complete":
-		_, err := h.db.Pool.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready') AND external_delivery_id IS NOT NULL`,
-			time.Now(), externalID)
-		if err != nil {
+			time.Now(), externalID); err != nil {
+			// State mutation failed — fail closed so Uber retries (the rolled-back
+			// claim lets the retry reprocess) rather than stranding the order.
 			slog.Error("uber webhook: pickup_complete update failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
-			break
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 
 		var consumerID string
-		_ = h.db.Pool.QueryRow(ctx,
+		_ = tx.QueryRow(ctx,
 			`SELECT user_id FROM orders WHERE id = $1`, externalID).Scan(&consumerID)
 		if h.notify != nil && consumerID != "" {
-			h.notify.OrderPickedUp(ctx, externalID, consumerID)
+			postCommit = append(postCommit, func() {
+				h.notify.OrderPickedUp(context.Background(), externalID, consumerID)
+			})
 		}
 
 	case "delivered":
@@ -131,7 +167,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		// if the pickup_complete webhook was dropped/out-of-order the order is still
 		// 'ready', and keying only on 'picked_up' would strand it permanently. A
 		// 'delivered' event is authoritative.
-		tag, err := h.db.Pool.Exec(ctx,
+		tag, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
 			    AND external_delivery_id IS NOT NULL`,
@@ -140,23 +176,26 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.Error("uber webhook: delivered update failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
-			break
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 		// Only notify when WE actually flipped it to delivered — a 0-row match is a
-		// duplicate/late webhook on an already-terminal order, which must not fire a
-		// second "delivered" push.
+		// late webhook on an already-terminal order, which must not fire a second
+		// "delivered" push. Still commit the claim so the event is recorded.
 		if tag.RowsAffected() == 0 {
 			break
 		}
 
 		var consumerID string
-		if err := h.db.Pool.QueryRow(ctx,
+		if err := tx.QueryRow(ctx,
 			`SELECT user_id FROM orders WHERE id = $1`, externalID).Scan(&consumerID); err != nil {
 			slog.Warn("uber webhook: failed to fetch consumer for delivery notification",
 				slog.String("order_id", externalID), slog.String("error", err.Error()))
 		}
 		if consumerID != "" && h.notify != nil {
-			go h.notify.OrderDelivered(context.Background(), externalID, consumerID)
+			postCommit = append(postCommit, func() {
+				h.notify.OrderDelivered(context.Background(), externalID, consumerID)
+			})
 		}
 
 	case "canceled":
@@ -164,7 +203,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("order_id", externalID),
 			slog.String("delivery_id", payload.DeliveryID))
 
-		_, err := h.db.Pool.Exec(ctx,
+		if _, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
@@ -176,12 +215,23 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
 			  WHERE id = $1 AND status IN ('ready', 'picked_up')`,
-			externalID)
-		if err != nil {
+			externalID); err != nil {
 			slog.Error("uber webhook: cancel cleanup failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("uber webhook: commit failed",
+			slog.String("order_id", externalID), slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	for _, f := range postCommit {
+		f()
 	}
 
 	w.WriteHeader(http.StatusOK)
