@@ -1,7 +1,7 @@
 # KosherEats — Master TODO (live tracker)
 
 The single working checklist. Deeper context in `docs/KE-WORK-HANDOFF.md`.
-Last updated: 2026-06-25.
+Last updated: 2026-06-26.
 
 ---
 
@@ -140,7 +140,14 @@ Per Salto's model (replaced the earlier min/free-delivery attempt): **consumer p
 ## 🟠 Unshipped fixes & review gaps
 - [x] **PR #1** — cherry-picked (a)+(b)+(c)+(d) into main as `4614e86a` and **CLOSED** the PR. (a) category move, (b) today-revenue re-expressed vs `discount_cents`, (c) webp, (d) web `.dockerignore`+`Dockerfile.local`. Backend redeployed.
   - [ ] (e) `CancelOrder` scheduled-order cancel — still deferred, re-apply ONLY paired with the mobile client change
-- [ ] Run **`/security-review`** on backend money paths (skipped before deploy)
+- [x] **`/security-review` on backend money paths — DONE & DEPLOYED (2026-06-26, commit `cd5e582e`).** 4-agent adversarial review of order/payment/payout/webhook paths; 8 findings fixed, full test suite + migration-chain green, deployed to Fly (`/health` 200, migration 052 applied on boot, Stripe confirmed live — no stub).
+  - **#1 (sev 7) delivery-address binding** — fee scaled with distance but only the fee, not the destination, was stamped on the PI → "quote near, deliver far" drained the platform on external dispatch. Now stamp a SHA-256 of the normalized address + reject mismatched CreateOrder (analogue of the fulfillment_type guard). Verified iOS+Android send identical address strings to both endpoints; backward-compatible (no stamp → skip).
+  - **#2–#5 webhook idempotency ledger** (migration 052 `external_webhook_events`) — Uber/DoorDash/Checkr were replay-able (a replayed `canceled` re-armed auto-dispatch → unlimited new *paid* deliveries). Now claim `(provider, sha256(body))` in the same tx as the state change; fail-closed 5xx on DB/handler error (was silent 200 → dropped transitions / dropped Checkr clearance).
+  - **#6/#8 payout idempotency** (Temporal path, off in prod) — Stripe key had a divergent per-attempt fallback (double-pay on a DB blip); now stable row-id key, no fallback; ReservePayout gates on RowsAffected; MarkComplete/MarkFailed status-guarded.
+  - **#7** processing-reaper added to the Temporal reconcile branch (stuck `processing` rows now re-driven; safe under the stable key).
+  - **#9** prod refuses to boot without a real Stripe key (stub bypasses payment verification).
+  - **#10 + defensive** — corrected stale RejectOrder / payout-key doc comments; `url.PathEscape` on CancelDelivery ids.
+  - **Audited Uber dispatch wiring (lane 2): clean** — claim-CAS, release-on-failure, detached-context paid call, orphan detection, all inputs server-side. Only money risks in the path were #1 + #2, both now fixed. Pre-live-test gate: confirm Fly has `UBER_*` client creds (all 3 gate `Enabled()`) + `UBER_DIRECT_WEBHOOK_SECRET`.
 
 ## 🟡 App releases (all stale)
 - [ ] Consumer → **App Store submission** (4.2(3) uploaded, ready)
