@@ -11,6 +11,8 @@ struct SellerOrderDetailView: View {
     @State private var rejectReason = ""
     @State private var isActing = false
     @State private var escalateMessage: String?
+    @State private var showDispatchConfirm = false
+    @State private var isDispatching = false
 
     init(vm: OrdersViewModel, order: Order) {
         self._vm = ObservedObject(wrappedValue: vm)
@@ -565,28 +567,76 @@ struct SellerOrderDetailView: View {
     /// orders already on a courier/provider; the result surfaces via an alert.
     @ViewBuilder
     private func escalateButton(_ order: Order) -> some View {
-        actionButton("Dispatch to Uber", icon: "car.circle.fill", color: .kePrimary) {
-            guard !isActing else { return }
-            isActing = true
-            Task {
-                vm.errorMessage = nil
-                do {
-                    _ = try await APIService.shared.escalateOrderToUber(id: order.id)
-                    Haptics.success()
-                    escalateMessage = "Sent to Uber — a courier is on the way."
-                } catch {
-                    escalateMessage = "Couldn't send to Uber — it may already be dispatched."
+        // Secondary (outlined) style so it reads as the lower-priority escalation
+        // lever, not a co-equal of the filled primary action above it.
+        Button {
+            Haptics.warning()
+            showDispatchConfirm = true
+        } label: {
+            HStack(spacing: 8) {
+                if isDispatching {
+                    ProgressView().tint(.kePrimary)
+                    Text("Dispatching…").font(.headline)
+                } else {
+                    Image(systemName: "car.circle.fill")
+                    Text("Dispatch to Uber").font(.headline)
                 }
-                // Escalate sets external_delivery_id but NOT status, and the cached
-                // list copy doesn't carry external_delivery_id — so syncOrderFromVM's
-                // cache-first path would keep the stale order (escalate button stuck
-                // on, status unchanged). Force a fresh detail fetch first.
-                await vm.fetchOrder(id: order.id)
-                await syncOrderFromVM()
-                isActing = false
             }
+            .foregroundColor(.kePrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(Color.keCard)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.kePrimary, lineWidth: 1.5)
+            )
+            .cornerRadius(14)
         }
-        .disabled(isActing)
+        .disabled(isActing || isDispatching)
+        // One-way, irreversible action → confirm first (Reject has one too).
+        .confirmationDialog(
+            "Dispatch this order to an Uber courier?",
+            isPresented: $showDispatchConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Dispatch to Uber") { performDispatch(order) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("A courier will be sent to pick up this order. This can't be undone.")
+        }
+    }
+
+    /// Runs the escalate request, mapping the backend's distinct status codes to
+    /// honest copy. A 409 ("already being dispatched" — a sweep or a second tap
+    /// won the claim) is NOT a failure: it means a courier IS coming, so we show
+    /// a neutral message rather than the old scary "couldn't send" error.
+    private func performDispatch(_ order: Order) {
+        guard !isActing, !isDispatching else { return }
+        isActing = true
+        isDispatching = true
+        Task {
+            vm.errorMessage = nil
+            do {
+                _ = try await APIService.shared.escalateOrderToUber(id: order.id)
+                Haptics.success()
+                escalateMessage = "Sent to Uber — a courier is on the way."
+            } catch APIError.serverError(let code, _) where code == 409 {
+                Haptics.success()
+                escalateMessage = "This order is already being dispatched to a courier."
+            } catch APIError.serverError(let code, _) where code == 503 {
+                escalateMessage = "No delivery partner is available right now. Please try again shortly."
+            } catch {
+                escalateMessage = "Couldn't reach a courier. Please try again."
+            }
+            // Escalate sets external_delivery_id but NOT status, and the cached
+            // list copy doesn't carry external_delivery_id — so syncOrderFromVM's
+            // cache-first path would keep the stale order (escalate button stuck
+            // on, status unchanged). Force a fresh detail fetch first.
+            await vm.fetchOrder(id: order.id)
+            await syncOrderFromVM()
+            isDispatching = false
+            isActing = false
+        }
     }
 
     /// Replaces the courier card on pickup-fulfillment orders that are
@@ -687,16 +737,48 @@ struct SellerOrderDetailView: View {
             // spinner below would wrongly imply the order is stuck/unclaimed. It's
             // been handed off — a partner courier is en route. This is the common
             // case now that external dispatch is the default delivery path.
-            HStack(spacing: 10) {
-                Image(systemName: order.status == .pickedUp ? "car.fill" : "shippingbox.fill")
-                    .foregroundColor(.kePrimary)
-                Text(order.status == .pickedUp
-                     ? "Out for delivery with a partner courier"
-                     : "Handed to a delivery partner — a courier is on the way")
-                    .font(.subheadline)
-                    .foregroundColor(.keTextSecondary)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: order.status == .pickedUp ? "car.fill" : "shippingbox.fill")
+                        .foregroundColor(.kePrimary)
+                    Text(order.status == .pickedUp
+                         ? "Out for delivery with \(order.externalProviderName)"
+                         : "Handed to \(order.externalProviderName) — a courier is on the way")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.keTextPrimary)
+                }
+
+                // The provider's tracking URL is the only courier visibility we
+                // get on the external path (Uber Direct / DoorDash don't expose
+                // courier name/phone to us). Surface it so the seller — or the
+                // customer they're on the phone with — can see live ETA/location.
+                if let urlStr = order.externalTrackingUrl, !urlStr.isEmpty,
+                   let url = URL(string: urlStr) {
+                    Link(destination: url) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "location.fill.viewfinder")
+                            Text("Track delivery")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "arrow.up.right").font(.caption)
+                        }
+                        .foregroundColor(.kePrimary)
+                        .padding(.vertical, 11)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.keBorder.opacity(0.5))
+                        .cornerRadius(10)
+                    }
+                }
+
+                if let ext = order.externalDeliveryId, !ext.isEmpty {
+                    Text("Delivery ID: \(ext)")
+                        .font(.caption2)
+                        .foregroundColor(.keTextMuted)
+                        .textSelection(.enabled)
+                }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(Color.keCard)
             .cornerRadius(14)

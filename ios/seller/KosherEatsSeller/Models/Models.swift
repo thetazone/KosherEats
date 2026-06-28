@@ -569,6 +569,14 @@ struct Order: Codable, Identifiable {
     /// an external provider (nil otherwise). Lets the seller UI hide the
     /// "Dispatch to Uber" escalate action once a provider already owns it.
     let externalDeliveryId: String?
+    /// Which external provider owns the dispatched delivery ("uber_direct" |
+    /// "doordash_drive"), set alongside externalDeliveryId. Drives the
+    /// partner-status card's provider label.
+    let externalProvider: String?
+    /// The provider's customer-facing tracking URL for the dispatched delivery.
+    /// On the external path this is the seller's only window into courier ETA /
+    /// location, so the partner-status card surfaces it as a "Track delivery" link.
+    let externalTrackingUrl: String?
     /// The restaurant's delivery mode for this order (platform | external |
     /// restaurant). Drives the self-delivery action flow.
     let deliveryMode: String
@@ -577,6 +585,14 @@ struct Order: Codable, Identifiable {
     /// True when the restaurant self-delivers — the seller drives the order
     /// ready→picked_up→delivered itself (no platform courier, no provider).
     var isSelfDelivery: Bool { deliveryMode == "restaurant" }
+    /// Human label for the external delivery provider on the partner-status card.
+    var externalProviderName: String {
+        switch externalProvider {
+        case "uber_direct": return "Uber"
+        case "doordash_drive": return "DoorDash"
+        default: return "a delivery partner"
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, status, items, subtotal, tax, discount, total, courier
@@ -595,6 +611,8 @@ struct Order: Codable, Identifiable {
         case courierPayout = "courier_payout"
         case fulfillmentType = "fulfillment_type"
         case externalDeliveryId = "external_delivery_id"
+        case externalProvider = "external_provider"
+        case externalTrackingUrl = "external_tracking_url"
         case deliveryMode = "delivery_mode"
     }
 
@@ -626,6 +644,8 @@ struct Order: Codable, Identifiable {
         // (or any handler that doesn't yet emit the field) still decode.
         fulfillmentType = (try c.decodeIfPresent(String.self, forKey: .fulfillmentType)) ?? "delivery"
         externalDeliveryId = try c.decodeIfPresent(String.self, forKey: .externalDeliveryId)
+        externalProvider = try c.decodeIfPresent(String.self, forKey: .externalProvider)
+        externalTrackingUrl = try c.decodeIfPresent(String.self, forKey: .externalTrackingUrl)
         deliveryMode = (try c.decodeIfPresent(String.self, forKey: .deliveryMode)) ?? "platform"
     }
 
@@ -665,6 +685,8 @@ struct Order: Codable, Identifiable {
         // Detail-only too: the list endpoint omits external_delivery_id, so keep
         // the open detail copy's value when the fresh list copy lacks it.
         externalDeliveryId = fresh.externalDeliveryId ?? old.externalDeliveryId
+        externalProvider = fresh.externalProvider ?? old.externalProvider
+        externalTrackingUrl = fresh.externalTrackingUrl ?? old.externalTrackingUrl
         deliveryMode = fresh.deliveryMode
     }
 
