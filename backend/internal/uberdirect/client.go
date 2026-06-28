@@ -31,11 +31,17 @@ type Config struct {
 	ClientSecret string
 	CustomerID   string
 	WebhookSec   string
+	// Stub (dev-only) makes the client report Enabled() == true so the dispatch
+	// path will select it, while every network method returns a canned response
+	// instead of calling Uber. Lets the dispatch happy-path be exercised locally
+	// with no credentials and no charge. NEVER enable in production.
+	Stub bool
 }
 
 type Client struct {
 	cfg     Config
 	enabled bool
+	stub    bool
 	http    *http.Client
 
 	mu    sync.RWMutex
@@ -45,8 +51,12 @@ type Client struct {
 
 func New(cfg Config) *Client {
 	return &Client{
-		cfg:     cfg,
-		enabled: cfg.ClientID != "" && cfg.ClientSecret != "" && cfg.CustomerID != "",
+		cfg: cfg,
+		// In stub mode we must report Enabled() so the dispatcher actually picks
+		// this provider; the stub guard on each network method then returns canned
+		// data without touching the wire.
+		enabled: cfg.Stub || (cfg.ClientID != "" && cfg.ClientSecret != "" && cfg.CustomerID != ""),
+		stub:    cfg.Stub,
 		http:    &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -106,7 +116,7 @@ type ManifestItem struct {
 }
 
 func (c *Client) GetQuote(ctx context.Context, pickup, dropoff Address) (*Quote, error) {
-	if !c.enabled {
+	if !c.enabled || c.stub {
 		return &Quote{
 			ID: "stub_quote_" + fmt.Sprintf("%d", time.Now().UnixMilli()),
 			Fee: 799, Currency: "usd", DurationMinutes: 25, PickupDuration: 12,
@@ -137,7 +147,7 @@ func (c *Client) GetQuote(ctx context.Context, pickup, dropoff Address) (*Quote,
 }
 
 func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) (*Delivery, error) {
-	if !c.enabled {
+	if !c.enabled || c.stub {
 		slog.Info("uberdirect stub: would create delivery",
 			slog.String("external_id", req.ExternalID))
 		return &Delivery{
@@ -196,7 +206,7 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 }
 
 func (c *Client) CancelDelivery(ctx context.Context, deliveryID, reason string) error {
-	if !c.enabled {
+	if !c.enabled || c.stub {
 		slog.Info("uberdirect stub: would cancel delivery",
 			slog.String("delivery_id", deliveryID))
 		return nil

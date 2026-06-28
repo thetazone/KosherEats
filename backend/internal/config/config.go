@@ -69,6 +69,10 @@ type Config struct {
 	UberDirectClientSecret string
 	UberDirectCustomerID   string
 	UberDirectWebhookSec   string
+	// Dev-only: force the Uber client to report Enabled() AND return canned stub
+	// responses (no network call, no charge), so the dispatch happy-path can be
+	// exercised locally without real credentials. NEVER set in production.
+	UberDirectStub bool
 
 	// DoorDash Drive (second fallback courier). Empty → stub mode.
 	DoorDashDeveloperID string
@@ -173,6 +177,7 @@ func Load() *Config {
 		UberDirectClientSecret: getEnv("UBER_DIRECT_CLIENT_SECRET", ""),
 		UberDirectCustomerID:   getEnv("UBER_DIRECT_CUSTOMER_ID", ""),
 		UberDirectWebhookSec:   getEnv("UBER_DIRECT_WEBHOOK_SECRET", ""),
+		UberDirectStub:         getEnv("UBER_DIRECT_STUB", "") == "true",
 
 		DoorDashDeveloperID: getEnv("DOORDASH_DEVELOPER_ID", ""),
 		DoorDashKeyID:       getEnv("DOORDASH_KEY_ID", ""),

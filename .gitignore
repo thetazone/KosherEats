@@ -71,3 +71,6 @@ android/**/release/*.aab
 
 # Gradle flavor-task output dirs (app/<flavor>/release/) — never source
 android/**/app/*/release/
+
+# local stub-mode API binary (dev testing of dispatch happy-path)
+backend/ke-api-stub
