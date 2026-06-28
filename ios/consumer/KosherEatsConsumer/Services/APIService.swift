@@ -78,18 +78,29 @@ class APIService: ObservableObject {
     private var baseURL = "https://koshereats-api.fly.dev/api/v1"
     #endif
 
+    // In-memory copies are the session source of truth; the keychain is the
+    // durable backup. Keychain writes can silently fail on unsigned/dev builds
+    // (SecItemAdd -> errSecMissingEntitlement), and the setter below discards
+    // that Bool result — without an in-memory copy that would drop the session
+    // and 401 every authenticated call right after a successful login. The
+    // seller app already keeps token state in memory for the same reason.
+    private var cachedToken: String?
+    private var cachedRefreshToken: String?
+
     private var token: String? {
-        get { KeychainHelper.load(forKey: "auth_token") }
+        get { cachedToken ?? KeychainHelper.load(forKey: "auth_token") }
         set {
-            if let v = newValue { KeychainHelper.save(v, forKey: "auth_token") }
+            cachedToken = newValue
+            if let v = newValue { _ = KeychainHelper.save(v, forKey: "auth_token") }
             else { KeychainHelper.delete(forKey: "auth_token") }
         }
     }
 
     private var refreshToken: String? {
-        get { KeychainHelper.load(forKey: "refresh_token") }
+        get { cachedRefreshToken ?? KeychainHelper.load(forKey: "refresh_token") }
         set {
-            if let v = newValue { KeychainHelper.save(v, forKey: "refresh_token") }
+            cachedRefreshToken = newValue
+            if let v = newValue { _ = KeychainHelper.save(v, forKey: "refresh_token") }
             else { KeychainHelper.delete(forKey: "refresh_token") }
         }
     }
