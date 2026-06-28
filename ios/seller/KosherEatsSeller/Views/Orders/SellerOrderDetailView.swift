@@ -528,7 +528,16 @@ struct SellerOrderDetailView: View {
                     if order.status == .ready
                         && order.courier == nil
                         && (order.externalDeliveryId ?? "").isEmpty {
-                        if canChooseDeliveryMode(order) {
+                        if order.deliveryMode == "external" {
+                            // We've marked this ready for Uber; the dispatcher
+                            // creates the delivery within seconds. Switching to
+                            // self-delivery now races that create and the backend
+                            // rejects it, so present the option locked with a
+                            // reason rather than letting the tap fail. Once the
+                            // delivery exists the card above flips to "Handed to
+                            // Uber" and this row drops off.
+                            dispatchPendingSelfDeliverLock()
+                        } else if canChooseDeliveryMode(order) {
                             deliveryModeChoiceButton(order)
                         } else {
                             escalateButton(order)
@@ -620,6 +629,33 @@ struct SellerOrderDetailView: View {
             .cornerRadius(14)
         }
         .disabled(isActing)
+    }
+
+    /// Locked stand-in for the "Self-deliver this order" button shown while an
+    /// external (Uber) dispatch is in flight. Non-interactive — switching to
+    /// self-delivery here would race the dispatcher's create-delivery call and
+    /// the backend rejects it, so we explain the lock instead of erroring on tap.
+    private func dispatchPendingSelfDeliverLock() -> some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "car.side.fill")
+                Text("Self-deliver this order").font(.headline)
+            }
+            .foregroundColor(.keTextMuted)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(Color.keCard)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.keBorder, lineWidth: 1.5)
+            )
+            .cornerRadius(14)
+
+            Text("Dispatching to Uber — you can't switch once a courier is assigned.")
+                .font(.caption)
+                .foregroundColor(.keTextMuted)
+                .multilineTextAlignment(.center)
+        }
     }
 
     /// Secondary action on an open delivery order: hand it off to an Uber

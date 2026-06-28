@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.OrderStatus
@@ -677,6 +678,36 @@ private fun DeliveryModeChoiceButton(
     }
 }
 
+/** Locked stand-in for the "Self-deliver this order" button shown while an
+ *  external (Uber) dispatch is in flight. Non-interactive — switching to
+ *  self-delivery here would race the dispatcher's create-delivery call and the
+ *  backend rejects it, so we explain the lock instead of erroring on tap.
+ *  Parity with iOS dispatchPendingSelfDeliverLock(). */
+@Composable
+private fun DispatchPendingSelfDeliverLock() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        OutlinedButton(
+            onClick = {},
+            enabled = false,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Self-deliver this order", fontWeight = FontWeight.SemiBold)
+        }
+        Text(
+            "Dispatching to Uber — you can't switch once a courier is assigned.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
@@ -891,6 +922,13 @@ private fun OrderActionButtons(
                 // claims it or it's dispatched (canEscalate).
                 if (canEscalate) {
                     EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
+                } else if (!isPickup && !isSelfDelivery && !isExternallyDispatched) {
+                    // External (Uber) dispatch is in flight: we've marked this ready
+                    // for Uber and the dispatcher creates the delivery within seconds.
+                    // Switching to self-delivery now races that create and the backend
+                    // rejects it, so present the option locked with a reason rather
+                    // than erroring on tap. Flips to the handoff card once dispatched.
+                    DispatchPendingSelfDeliverLock()
                 } else if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
                     DeliveryModeChoiceButton(
                         isSelfDelivery = isSelfDelivery,

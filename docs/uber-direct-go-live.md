@@ -59,17 +59,30 @@ test account.
 - **Save.** The form has **no secret field** — Uber **auto-generates** the
   signing secret and shows it on creation.
 
-### 1b. Align the Fly secret to Uber's generated secret
-The backend verifies `X-Uber-Signature = HMAC-SHA256(raw_body, UBER_DIRECT_WEBHOOK_SECRET)`.
-The existing Fly value won't match the freshly-generated one, so update it:
+### 1b. Point Fly at the sandbox account + enable the robo courier
+Set the **test** credentials, align the webhook signing secret to the one Uber
+just generated, and turn on the simulated auto-advancing courier (restarts app):
 
 ```bash
-fly secrets set -a koshereats-api UBER_DIRECT_WEBHOOK_SECRET='<secret Uber showed>'
+fly secrets set -a koshereats-api \
+  UBER_DIRECT_CLIENT_ID='<test client_id, e.g. oE-dcK…>' \
+  UBER_DIRECT_CLIENT_SECRET='<test client_secret>' \
+  UBER_DIRECT_CUSTOMER_ID='<test customer_id, e.g. 5fe655a7…>' \
+  UBER_DIRECT_WEBHOOK_SECRET='<secret Uber showed on webhook creation>' \
+  UBER_DIRECT_ROBO=true
+fly secrets unset -a koshereats-api UBER_DIRECT_STUB   # ensure real sandbox calls go out
 ```
 
-(Restarts the app. Treat the secret like a password — don't paste it anywhere
-else.) If they don't match, every webhook is rejected with **400** and the
-backend logs `uber direct webhook signature verification failed`.
+- The backend verifies `X-Uber-Signature = HMAC-SHA256(raw_body, UBER_DIRECT_WEBHOOK_SECRET)`.
+  If it doesn't match the webhook's generated secret, every webhook is rejected
+  with **400** (logs `uber direct webhook signature verification failed`).
+- `UBER_DIRECT_ROBO=true` makes `CreateDelivery` include Uber's
+  `test_specifications.robo_courier { mode: auto }`, so the test delivery is run
+  by a **simulated courier that auto-advances** accepted → picked up → delivered
+  (~30s apart), firing real `event.delivery_status` webhooks the whole way. It's
+  sandbox-only (Uber rejects the field on prod creds) and is what lets Phase 1
+  validate the *full* lifecycle (see the caveat below).
+- Treat the secrets like passwords — don't paste them anywhere else.
 
 ### 1c. Fire a dispatch and watch it
 Pizza Kids is already `external` mode, so tapping **Ready** auto-dispatches.
@@ -91,11 +104,13 @@ SELECT id, status, external_delivery_id, picked_up_at, delivered_at, updated_at
 FROM orders WHERE id = '<order-id>';
 ```
 
-**Sandbox caveat:** Uber's test environment may not run a real courier through
-to `delivered` (the 6/25 test deliveries show "Failed"). The thing Phase 1 must
-prove is that **`event.delivery_status` webhooks ARRIVE and signature-verify**
-(rows land in `external_webhook_events`, no 400s in logs). Full
-`ready → picked_up → delivered` with a live courier is validated in Phase 3.
+**Sandbox caveat (resolved by `UBER_DIRECT_ROBO`):** Without the robo-courier
+spec, Uber's test environment does **not** run a courier through to `delivered`
+(the 6/25 test deliveries show "Failed" — they predate this flag). With
+`UBER_DIRECT_ROBO=true` the simulated courier auto-advances the whole way, so
+Phase 1 now validates `ready → picked_up → delivered` end to end — not just that
+`event.delivery_status` webhooks arrive and signature-verify (rows land in
+`external_webhook_events`, no 400s in logs).
 
 ---
 
@@ -122,6 +137,7 @@ to Uber, not a dashboard toggle:
      UBER_DIRECT_CLIENT_ID=<live> \
      UBER_DIRECT_CLIENT_SECRET=<live> \
      UBER_DIRECT_CUSTOMER_ID=<live>
+   fly secrets unset -a koshereats-api UBER_DIRECT_ROBO   # robo courier is sandbox-only
    ```
 2. Register the webhook on the **production** account (same URL as 1a) and align
    `UBER_DIRECT_WEBHOOK_SECRET` to *that* account's generated secret.

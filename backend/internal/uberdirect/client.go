@@ -36,6 +36,14 @@ type Config struct {
 	// instead of calling Uber. Lets the dispatch happy-path be exercised locally
 	// with no credentials and no charge. NEVER enable in production.
 	Stub bool
+	// Robo (test-only) injects Uber's test_specifications.robo_courier into
+	// CreateDelivery so a SIMULATED courier auto-advances the delivery through
+	// accepted → picked up → delivered (~30s apart), firing REAL webhooks the
+	// whole way. Requires TEST credentials — with prod creds Uber rejects the
+	// field. Unlike Stub it makes real API calls; it just asks the real API to
+	// drive a fake courier, so the full lifecycle + webhook/signature path are
+	// exercised at zero cost. NEVER enable in production.
+	Robo bool
 }
 
 type Client struct {
@@ -190,6 +198,14 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 	}
 	if req.TipCents > 0 {
 		body["tip"] = req.TipCents
+	}
+	// Test-only: ask Uber to run this delivery with a simulated auto-advancing
+	// courier. Real API call and real webhooks, but no real courier and no
+	// charge. Gated so the field is absent in production, where Uber rejects it.
+	if c.cfg.Robo {
+		body["test_specifications"] = map[string]any{
+			"robo_courier_specification": map[string]any{"mode": "auto"},
+		}
 	}
 
 	data, err := c.post(ctx, token,

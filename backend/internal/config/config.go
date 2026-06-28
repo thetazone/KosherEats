@@ -73,6 +73,10 @@ type Config struct {
 	// responses (no network call, no charge), so the dispatch happy-path can be
 	// exercised locally without real credentials. NEVER set in production.
 	UberDirectStub bool
+	// Test-only: with TEST credentials, drive each Uber delivery via a simulated
+	// auto-advancing courier (real API + real webhooks, no courier, no charge).
+	// Lets the full lifecycle be tested against the live API. NEVER set in prod.
+	UberDirectRoboCourier bool
 
 	// DoorDash Drive (second fallback courier). Empty → stub mode.
 	DoorDashDeveloperID string
@@ -178,6 +182,7 @@ func Load() *Config {
 		UberDirectCustomerID:   getEnv("UBER_DIRECT_CUSTOMER_ID", ""),
 		UberDirectWebhookSec:   getEnv("UBER_DIRECT_WEBHOOK_SECRET", ""),
 		UberDirectStub:         getEnv("UBER_DIRECT_STUB", "") == "true",
+		UberDirectRoboCourier:  getEnv("UBER_DIRECT_ROBO", "") == "true",
 
 		DoorDashDeveloperID: getEnv("DOORDASH_DEVELOPER_ID", ""),
 		DoorDashKeyID:       getEnv("DOORDASH_KEY_ID", ""),

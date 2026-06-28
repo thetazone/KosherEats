@@ -61,6 +61,7 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 			CustomerID:   cfg.UberDirectCustomerID,
 			WebhookSec:   cfg.UberDirectWebhookSec,
 			Stub:         cfg.UberDirectStub,
+			Robo:         cfg.UberDirectRoboCourier,
 		}),
 		doordash: doordash.New(doordash.Config{
 			DeveloperID: cfg.DoorDashDeveloperID,
