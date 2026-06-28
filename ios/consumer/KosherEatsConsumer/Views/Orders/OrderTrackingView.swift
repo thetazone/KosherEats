@@ -330,7 +330,7 @@ struct OrderTrackingView: View {
         if order.isExternalDelivery {
             let provider = Self.providerName(for: order.externalProvider)
             switch status {
-            case .ready: return "Your order is ready and a \(provider) courier is on the way to pick it up."
+            case .ready: return "Your order is ready and a courier from \(provider) is on the way to pick it up."
             case .pickedUp: return "Your order is on its way with \(provider)."
             default: break
             }
@@ -492,11 +492,11 @@ struct OrderTrackingView: View {
         let provider = providerName(for: order.externalProvider)
         switch order.status {
         case .scheduled:
-            return "Your order is scheduled. A \(provider) courier will deliver it."
+            return "Your order is scheduled. A courier from \(provider) will deliver it."
         case .pending, .accepted, .preparing:
-            return "The restaurant is preparing your order. A \(provider) courier will deliver it."
+            return "The restaurant is preparing your order. A courier from \(provider) will deliver it."
         case .ready:
-            return "Your order is ready and a \(provider) courier is on the way to pick it up."
+            return "Your order is ready and a courier from \(provider) is on the way to pick it up."
         case .pickedUp:
             return "Your order is on its way with \(provider)."
         case .delivered, .completed:
