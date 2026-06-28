@@ -194,7 +194,7 @@ export const orders = {
 
 // Payments
 export const payments = {
-  createIntent: (token: string, data: { tip?: number } = {}) =>
+  createIntent: (token: string, data: { tip?: number; delivery_address?: string } = {}) =>
     fetchAPI("/payments/intent", { method: "POST", token, body: JSON.stringify(data) }),
 };
 

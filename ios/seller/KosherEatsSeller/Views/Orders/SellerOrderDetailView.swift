@@ -453,12 +453,12 @@ struct SellerOrderDetailView: View {
                 }
                 .disabled(isActing)
 
-                if canEscalate(order) { escalateButton(order) }
+                if canChooseDeliveryMode(order) { deliveryModeChoiceButton(order) }
             }
 
         case .preparing:
             VStack(spacing: 10) {
-                actionButton("Mark as Ready for Pickup", icon: "bag.fill", color: .keSuccess) {
+                actionButton(readyButtonTitle(order), icon: "bag.fill", color: .keSuccess) {
                     guard !isActing else { return }
                     isActing = true
                     Task {
@@ -470,7 +470,7 @@ struct SellerOrderDetailView: View {
                 }
                 .disabled(isActing)
 
-                if canEscalate(order) { escalateButton(order) }
+                if canChooseDeliveryMode(order) { deliveryModeChoiceButton(order) }
             }
 
         case .ready, .pickedUp:
@@ -528,7 +528,11 @@ struct SellerOrderDetailView: View {
                     if order.status == .ready
                         && order.courier == nil
                         && (order.externalDeliveryId ?? "").isEmpty {
-                        escalateButton(order)
+                        if canChooseDeliveryMode(order) {
+                            deliveryModeChoiceButton(order)
+                        } else {
+                            escalateButton(order)
+                        }
                     }
                 }
             }
@@ -558,8 +562,64 @@ struct SellerOrderDetailView: View {
     /// doesn't appear on already-claimed/already-dispatched orders.
     private func canEscalate(_ order: Order) -> Bool {
         !order.isPickup
+            && order.status == .ready
+            && order.isSelfDelivery
             && order.courier == nil
             && (order.externalDeliveryId ?? "").isEmpty
+    }
+
+    private func canChooseDeliveryMode(_ order: Order) -> Bool {
+        !order.isPickup
+            && (order.status == .accepted || order.status == .preparing || order.status == .ready)
+            && order.courier == nil
+            && (order.externalDeliveryId ?? "").isEmpty
+    }
+
+    private func readyButtonTitle(_ order: Order) -> String {
+        if order.isPickup {
+            return "Ready for customer pickup"
+        }
+        if order.isSelfDelivery {
+            return "Ready for your driver"
+        }
+        if order.deliveryMode == "external" {
+            return "Ready for Uber pickup"
+        }
+        return "Ready for courier pickup"
+    }
+
+    @ViewBuilder
+    private func deliveryModeChoiceButton(_ order: Order) -> some View {
+        let switchingToSelfDelivery = !order.isSelfDelivery
+        let title = switchingToSelfDelivery ? "Self-deliver this order" : "Use Uber Direct for this order"
+        let icon = switchingToSelfDelivery ? "car.side.fill" : "car.circle.fill"
+        let nextMode = switchingToSelfDelivery ? "restaurant" : "external"
+
+        Button {
+            guard !isActing else { return }
+            isActing = true
+            Task {
+                vm.errorMessage = nil
+                await vm.setDeliveryMode(id: order.id, deliveryMode: nextMode)
+                await syncOrderFromVM()
+                isActing = false
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                Text(title).font(.headline)
+            }
+            .foregroundColor(.kePrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(Color.keCard)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.kePrimary, lineWidth: 1.5)
+            )
+            .cornerRadius(14)
+        }
+        .disabled(isActing)
     }
 
     /// Secondary action on an open delivery order: hand it off to an Uber

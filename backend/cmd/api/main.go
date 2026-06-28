@@ -337,6 +337,7 @@ func main() {
 			r.Get("/{id}", h.GetSellerOrder)
 			r.Patch("/{id}/accept", h.AcceptOrder)
 			r.Patch("/{id}/preparing", h.MarkOrderPreparing)
+			r.Patch("/{id}/delivery-mode", h.SetOrderDeliveryMode)
 			r.Patch("/{id}/ready", h.MarkOrderReady)
 			r.Patch("/{id}/complete", h.CompleteOrder)
 			r.Patch("/{id}/reject", h.RejectOrder)

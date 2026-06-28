@@ -42,6 +42,10 @@ type Input struct {
 	CustomerPhone   string
 	Subtotal        int
 	TipCents        int
+	// AllowRestaurantMode is true only for an explicit seller fallback action
+	// ("Dispatch to Uber"). Automatic dispatch must not grab an order the seller
+	// has just switched to self-delivery.
+	AllowRestaurantMode bool
 }
 
 // AnyProviderEnabled reports whether at least one external provider is usable.
@@ -80,7 +84,10 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		   -- just self-picked-it-up). Closes the other half of the
 		   -- SellerPickupOrder ↔ EscalateToUber race; without it the claim CAS
 		   -- ignored status and could pay for a delivery on a picked-up order.
-		   AND status IN ('accepted','preparing','ready')`, in.OrderID)
+		   AND status IN ('accepted','preparing','ready')
+		   AND ($2 OR COALESCE(delivery_mode, (
+		         SELECT rest.delivery_mode FROM restaurants rest WHERE rest.id = orders.restaurant_id
+		       ), 'platform') <> 'restaurant')`, in.OrderID, in.AllowRestaurantMode)
 	if err != nil {
 		return "", "", 0, err
 	}

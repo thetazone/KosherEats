@@ -15,6 +15,11 @@ data class SocialLoginRequest(
     val role: String = "seller",
 )
 
+@JsonClass(generateAdapter = true)
+data class OrderDeliveryModeRequest(
+    @Json(name = "delivery_mode") val deliveryMode: String,
+)
+
 interface ApiService {
 
     // --- Auth ---
@@ -66,6 +71,12 @@ interface ApiService {
     @PATCH("seller/orders/{orderId}/ready")
     suspend fun markOrderReady(
         @Path("orderId") orderId: String,
+    ): Response<Order>
+
+    @PATCH("seller/orders/{orderId}/delivery-mode")
+    suspend fun setOrderDeliveryMode(
+        @Path("orderId") orderId: String,
+        @Body body: OrderDeliveryModeRequest,
     ): Response<Order>
 
     @PATCH("seller/orders/{orderId}/complete")

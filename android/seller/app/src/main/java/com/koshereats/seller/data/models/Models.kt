@@ -202,9 +202,8 @@ data class Order(
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "scheduled_for") val scheduledFor: String? = null,
-    // The owning restaurant's delivery_mode, stamped per-order by the backend
-    // (COALESCE(rest.delivery_mode, 'platform')). "restaurant" means the
-    // restaurant self-delivers, so the seller drives ready→picked_up→delivered.
+    // Delivery mode for this order. Defaults from the restaurant, but can be
+    // changed per order before courier handoff.
     @Json(name = "delivery_mode") val deliveryMode: String = "platform",
 ) {
     val isPickup: Boolean get() = fulfillmentType == "pickup"
@@ -531,4 +530,3 @@ data class POSIntegration(
 data class CloverConnectURLResponse(
     @Json(name = "connect_url") val connectUrl: String,
 )
-

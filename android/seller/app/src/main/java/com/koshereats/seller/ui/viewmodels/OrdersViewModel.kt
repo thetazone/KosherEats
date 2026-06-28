@@ -15,6 +15,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
+import com.koshereats.seller.data.api.OrderDeliveryModeRequest
 import retrofit2.Response
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
@@ -496,7 +497,7 @@ class OrdersViewModel @Inject constructor(
             _state.update { it.copy(
                 pendingOrderIds = it.pendingOrderIds + orderId,
                 orders = it.orders.map { o -> if (o.id == orderId) o.copy(status = newStatus) else o },
-                selectedOrder = if (it.selectedOrder?.id == orderId) it.selectedOrder?.copy(status = newStatus) else it.selectedOrder,
+                selectedOrder = if (it.selectedOrder?.id == orderId) it.selectedOrder.copy(status = newStatus) else it.selectedOrder,
                 error = null,
                 updateSuccess = null,
             ) }
@@ -642,6 +643,49 @@ class OrdersViewModel @Inject constructor(
                     _state.update { it.copy(
                         pendingOrderIds = it.pendingOrderIds - orderId,
                         error = "Failed to mark order as picked up",
+                    ) }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _state.update { it.copy(
+                    pendingOrderIds = it.pendingOrderIds - orderId,
+                    error = "Connection error: ${e.localizedMessage}",
+                ) }
+            }
+        }
+    }
+
+    fun setOrderDeliveryMode(orderId: String, deliveryMode: String) {
+        if (_state.value.pendingOrderIds.contains(orderId)) return
+        viewModelScope.launch {
+            _state.update { it.copy(
+                pendingOrderIds = it.pendingOrderIds + orderId,
+                error = null,
+                updateSuccess = null,
+            ) }
+            try {
+                val response = apiService.setOrderDeliveryMode(
+                    orderId,
+                    OrderDeliveryModeRequest(deliveryMode),
+                )
+                val updatedOrder = response.body()
+                if (response.isSuccessful && updatedOrder != null) {
+                    _state.update { st ->
+                        st.copy(
+                            selectedOrder = updatedOrder,
+                            orders = st.orders.map { if (it.id == orderId) updatedOrder else it },
+                            pendingOrderIds = st.pendingOrderIds - orderId,
+                            updateSuccess = if (deliveryMode == "restaurant") {
+                                "Self-delivery selected"
+                            } else {
+                                "Uber Direct selected"
+                            },
+                        )
+                    }
+                } else {
+                    _state.update { it.copy(
+                        pendingOrderIds = it.pendingOrderIds - orderId,
+                        error = "Failed to update delivery choice",
                     ) }
                 }
             } catch (e: Exception) {

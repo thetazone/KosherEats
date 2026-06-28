@@ -493,7 +493,9 @@ fun SellerOrderDetailScreen(
                     // a provider, and a delivery (not pickup) order.
                     canEscalate = order.courier == null &&
                         order.externalDeliveryId.isNullOrEmpty() &&
-                        !order.isPickup,
+                        !order.isPickup &&
+                        order.isSelfDelivery &&
+                        order.status == OrderStatus.READY,
                     // A courier is attached or the order was handed to an external
                     // provider — the order is no longer seller-drivable.
                     isExternallyDispatched = order.courier != null ||
@@ -521,6 +523,9 @@ fun SellerOrderDetailScreen(
                     },
                     onEscalate = {
                         viewModel.escalateOrderToUber(orderId)
+                    },
+                    onSetDeliveryMode = { mode ->
+                        viewModel.setOrderDeliveryMode(orderId, mode)
                     },
                     onCancel = { showRejectConfirm = true },
                 )
@@ -626,6 +631,52 @@ private fun EscalateToUberButton(
     }
 }
 
+private fun readyButtonTitle(
+    isPickup: Boolean,
+    isSelfDelivery: Boolean,
+): String = when {
+    isPickup -> "Ready for customer pickup"
+    isSelfDelivery -> "Ready for your driver"
+    else -> "Ready for Uber pickup"
+}
+
+private fun canChooseDeliveryMode(
+    status: OrderStatus,
+    isPickup: Boolean,
+    isExternallyDispatched: Boolean,
+): Boolean =
+    !isPickup &&
+        !isExternallyDispatched &&
+        (status == OrderStatus.ACCEPTED || status == OrderStatus.PREPARING || status == OrderStatus.READY)
+
+@Composable
+private fun DeliveryModeChoiceButton(
+    isSelfDelivery: Boolean,
+    isUpdating: Boolean,
+    onSetDeliveryMode: (String) -> Unit,
+) {
+    val switchToSelfDelivery = !isSelfDelivery
+    val title = if (switchToSelfDelivery) {
+        "Self-deliver this order"
+    } else {
+        "Use Uber Direct for this order"
+    }
+    val icon = if (switchToSelfDelivery) Icons.Filled.LocalShipping else Icons.Filled.DirectionsCar
+    val nextMode = if (switchToSelfDelivery) "restaurant" else "external"
+
+    OutlinedButton(
+        onClick = { onSetDeliveryMode(nextMode) },
+        enabled = !isUpdating,
+        modifier = Modifier.fillMaxWidth().height(52.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(title, fontWeight = FontWeight.SemiBold)
+    }
+}
+
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
@@ -649,6 +700,7 @@ private fun OrderActionButtons(
     onSelfPickup: () -> Unit,
     onSelfDeliver: () -> Unit,
     onEscalate: () -> Unit,
+    onSetDeliveryMode: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
     Column(
@@ -740,7 +792,13 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                if (canEscalate) EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
+                if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
+                    DeliveryModeChoiceButton(
+                        isSelfDelivery = isSelfDelivery,
+                        isUpdating = isUpdating,
+                        onSetDeliveryMode = onSetDeliveryMode,
+                    )
+                }
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -755,10 +813,16 @@ private fun OrderActionButtons(
                     } else {
                         Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Mark as Ready", fontWeight = FontWeight.SemiBold)
+                        Text(readyButtonTitle(isPickup, isSelfDelivery), fontWeight = FontWeight.SemiBold)
                     }
                 }
-                if (canEscalate) EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
+                if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
+                    DeliveryModeChoiceButton(
+                        isSelfDelivery = isSelfDelivery,
+                        isUpdating = isUpdating,
+                        onSetDeliveryMode = onSetDeliveryMode,
+                    )
+                }
             }
             OrderStatus.READY -> {
                 if (isPickup) {
@@ -825,7 +889,15 @@ private fun OrderActionButtons(
                 // still be punted to Uber while the order sits in Ready — same
                 // one-way escalate as accepted/preparing. Drops off once a courier
                 // claims it or it's dispatched (canEscalate).
-                if (canEscalate) EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
+                if (canEscalate) {
+                    EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
+                } else if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
+                    DeliveryModeChoiceButton(
+                        isSelfDelivery = isSelfDelivery,
+                        isUpdating = isUpdating,
+                        onSetDeliveryMode = onSetDeliveryMode,
+                    )
+                }
             }
             OrderStatus.PICKED_UP -> {
                 if (isSelfDelivery) {

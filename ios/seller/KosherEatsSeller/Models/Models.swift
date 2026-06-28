@@ -577,8 +577,8 @@ struct Order: Codable, Identifiable {
     /// On the external path this is the seller's only window into courier ETA /
     /// location, so the partner-status card surfaces it as a "Track delivery" link.
     let externalTrackingUrl: String?
-    /// The restaurant's delivery mode for this order (platform | external |
-    /// restaurant). Drives the self-delivery action flow.
+    /// Delivery mode for this order (platform | external | restaurant). Defaults
+    /// from the restaurant, but can be changed per order before courier handoff.
     let deliveryMode: String
 
     var isPickup: Bool { fulfillmentType == "pickup" }

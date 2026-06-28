@@ -1,6 +1,6 @@
 export type UserRole = "consumer" | "seller" | "admin";
 export type KosherCertification = "OU" | "OK" | "Kof-K" | "Star-K" | "cRc" | "Badatz" | "Chof-K" | "other";
-export type OrderStatus = "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "delivered" | "cancelled" | "rejected";
+export type OrderStatus = "scheduled" | "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "delivered" | "cancelled" | "rejected";
 
 export interface User {
   id: string;

@@ -223,7 +223,7 @@ export default function AuthPage() {
                 className="input w-full"
                 placeholder="••••••••"
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
 

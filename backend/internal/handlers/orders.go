@@ -175,14 +175,20 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var restAddress string
+	restaurantDeliveryMode := "platform"
+	if err := tx.QueryRow(r.Context(),
+		`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+		        COALESCE(delivery_mode, 'platform')
+		   FROM restaurants WHERE id = $1`, cart.RestaurantID,
+	).Scan(&restAddress, &restaurantDeliveryMode); err != nil {
+		writeError(w, http.StatusBadRequest, "restaurant not found")
+		return
+	}
+
 	deliveryFee := 0
 	if fulfillmentType != "pickup" {
-		var restAddress string
-		err := tx.QueryRow(r.Context(),
-			`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, '')
-			   FROM restaurants WHERE id = $1`, cart.RestaurantID,
-		).Scan(&restAddress)
-		if err == nil && restAddress != "" {
+		if restAddress != "" {
 			quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
 			deliveryFee = quote.consumerFee
 		} else {
@@ -267,22 +273,22 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(r.Context(),
 		`INSERT INTO orders (user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, scheduled_for, fulfillment_type,
-		 applied_deal_id, discount_amount, discount_cents)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
+		 delivery_mode, applied_deal_id, discount_amount, discount_cents)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18)
 		 ON CONFLICT (stripe_payment_id) WHERE stripe_payment_id != '' DO NOTHING
 		 RETURNING id, user_id, restaurant_id, status, subtotal, discount_cents, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, est_delivery_time,
-		 fulfillment_type, created_at, updated_at`,
+		 fulfillment_type, delivery_mode, created_at, updated_at`,
 		user["user_id"], cart.RestaurantID, initialStatus,
 		subtotal, deliveryFee, serviceFee, tax, total,
 		req.DeliveryAddress, req.DeliveryLat, req.DeliveryLng, req.PaymentIntentID, tip, req.ScheduledFor,
-		fulfillmentType,
+		fulfillmentType, restaurantDeliveryMode,
 		dealIDArg, discount,
 	).Scan(&order.ID, &order.UserID, &order.RestaurantID, &order.Status,
 		&order.Subtotal, &order.Discount, &order.DeliveryFee, &order.ServiceFee, &order.Tax, &order.Total,
 		&order.DeliveryAddress, &order.DeliveryLat, &order.DeliveryLng,
 		&order.StripePaymentID, &order.CourierTip, &order.EstDeliveryTime,
-		&order.FulfillmentType, &order.CreatedAt, &order.UpdatedAt)
+		&order.FulfillmentType, &order.DeliveryMode, &order.CreatedAt, &order.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		// Duplicate payment_intent_id — the 034 unique index already has a row
 		// for this PaymentIntent (DO NOTHING returned no row). Treat this as an
@@ -585,7 +591,8 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			       o.stripe_payment_id, o.est_delivery_time, o.scheduled_for,
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
 			       o.courier_payout, o.courier_tip,
-			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url, COALESCE(rest.delivery_mode, 'platform'),
+			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url,
+			       COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
 			       o.created_at, o.updated_at,
 			       cu.first_name, cu.phone, cu.avatar_url,
 			       cp.vehicle_type, cp.vehicle_make, cp.vehicle_model, cp.vehicle_color,
@@ -608,7 +615,8 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			       o.stripe_payment_id, o.est_delivery_time, o.scheduled_for,
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
 			       o.courier_payout, o.courier_tip,
-			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url, COALESCE(rest.delivery_mode, 'platform'),
+			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url,
+			       COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
 			       o.created_at, o.updated_at,
 			       cu.first_name, cu.phone, cu.avatar_url,
 			       cp.vehicle_type, cp.vehicle_make, cp.vehicle_model, cp.vehicle_color,
@@ -924,7 +932,8 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
 			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.est_delivery_time,
-			        o.fulfillment_type, o.created_at, o.updated_at
+			        o.fulfillment_type, COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
+			        o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 			  WHERE o.restaurant_id = $1 AND o.created_at < $2
 			  ORDER BY o.created_at DESC LIMIT $3`,
@@ -934,7 +943,8 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
 			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
 			        o.courier_tip, o.delivery_address, o.est_delivery_time,
-			        o.fulfillment_type, o.created_at, o.updated_at
+			        o.fulfillment_type, COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
+			        o.created_at, o.updated_at
 			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
 			  WHERE o.restaurant_id = $1
 			  ORDER BY o.created_at DESC LIMIT $2`,
@@ -953,7 +963,7 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&o.ID, &o.UserID, &o.RestaurantID, &o.RestaurantName, &o.Status,
 			&o.Subtotal, &o.Discount, &o.DeliveryFee, &o.ServiceFee, &o.Tax, &o.Total,
 			&o.CourierTip, &o.DeliveryAddress, &o.EstDeliveryTime,
-			&o.FulfillmentType, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&o.FulfillmentType, &o.DeliveryMode, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			continue
 		}
 		orders = append(orders, o)
@@ -1136,6 +1146,69 @@ func (h *Handler) MarkOrderPreparing(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type SetOrderDeliveryModeRequest struct {
+	DeliveryMode string `json:"delivery_mode"`
+}
+
+// SetOrderDeliveryMode lets the seller choose who handles delivery for this
+// individual order before a courier/provider owns it. The restaurant-level
+// delivery_mode remains the default for new orders, but this endpoint gives the
+// kitchen a per-order override for busy/slow moments.
+func (h *Handler) SetOrderDeliveryMode(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	user, err := getUserFromContext(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	var req SetOrderDeliveryModeRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	switch req.DeliveryMode {
+	case "restaurant", "external":
+	default:
+		writeError(w, http.StatusBadRequest, "delivery_mode must be restaurant or external")
+		return
+	}
+
+	result, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE orders
+		    SET delivery_mode = $1, updated_at = NOW()
+		   FROM restaurants rest
+		  WHERE orders.restaurant_id = rest.id
+		    AND orders.id = $2
+		    AND rest.owner_id = $3
+		    AND orders.fulfillment_type = 'delivery'
+		    AND orders.status IN ('accepted', 'preparing', 'ready')
+		    AND orders.courier_id IS NULL
+		    AND orders.external_provider IS NULL
+		    AND orders.external_delivery_id IS NULL`,
+		req.DeliveryMode, id, user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot update delivery choice")
+		return
+	}
+	if result.RowsAffected() == 0 {
+		writeError(w, http.StatusBadRequest, "order is not eligible for delivery choice")
+		return
+	}
+
+	order, err := h.loadOrderWithCourier(r, id, "restaurant_owner", user["user_id"])
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reload order")
+		return
+	}
+	order.Items, err = h.loadOrderItems(r, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to reload order items")
+		return
+	}
+	writeJSON(w, http.StatusOK, order)
+}
+
 // consumerAndRestaurantForOrder is a small helper used by the seller-side
 // status-transition handlers to fan a push to the consumer. Returns empty
 // strings on failure — caller skips the push rather than surfacing a 500
@@ -1227,7 +1300,7 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.Pool.QueryRow(context.Background(),
 		`SELECT rest.name,
 		        COALESCE(rest.street || ', ' || rest.city || ', ' || rest.state || ' ' || rest.zip_code, ''),
-		        COALESCE(rest.phone, ''), COALESCE(rest.delivery_mode, 'platform'),
+		        COALESCE(rest.phone, ''), COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
 		        COALESCE(o.delivery_address, ''),
 		        COALESCE(u.first_name || ' ' || u.last_name, ''), COALESCE(u.phone, ''),
 		        o.fulfillment_type, o.external_delivery_id,
@@ -1397,7 +1470,7 @@ func (h *Handler) SellerPickupOrder(w http.ResponseWriter, r *http.Request) {
 		// and without this a seller could mark an order picked-up that a provider
 		// is already paid-dispatching → double delivery. The matching guard in
 		// dispatch.Dispatch's status check closes the other side of the window.
-		`SELECT rest.delivery_mode FROM orders o
+		`SELECT COALESCE(o.delivery_mode, rest.delivery_mode, 'platform') FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'ready'
 		    AND o.external_provider IS NULL AND o.external_delivery_id IS NULL
@@ -1491,6 +1564,7 @@ func (h *Handler) EscalateToUber(w http.ResponseWriter, r *http.Request) {
 	// Mirrors the MarkOrderReady inline-dispatch fix.
 	dispatchCtx, cancelDispatch := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancelDispatch()
+	in.AllowRestaurantMode = true
 	provider, deliveryID, _, derr := h.dispatcher.Dispatch(dispatchCtx, in)
 	if derr != nil {
 		writeError(w, http.StatusBadGateway, "could not dispatch a courier — please try again")
@@ -1533,7 +1607,7 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 	var deliveryMode string
 	var deliveryFee, courierTip int
 	err = tx.QueryRow(r.Context(),
-		`SELECT rest.delivery_mode, o.delivery_fee, COALESCE(o.courier_tip, 0) FROM orders o
+		`SELECT COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'), o.delivery_fee, COALESCE(o.courier_tip, 0) FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'picked_up'
 		  FOR UPDATE OF o`,

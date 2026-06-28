@@ -172,6 +172,7 @@ fun OrderTrackingScreen(
             if (order.isExternalDelivery) {
                 ExternalDeliveryCard(
                     provider = order.externalProvider,
+                    status = order.status,
                     trackingUrl = order.externalTrackingUrl,
                 )
             } else {
@@ -489,7 +490,7 @@ private fun CourierCard(
  * would sit frozen forever; instead we link out to the provider's tracker.
  */
 @Composable
-private fun ExternalDeliveryCard(provider: String?, trackingUrl: String?) {
+private fun ExternalDeliveryCard(provider: String?, status: OrderStatus, trackingUrl: String?) {
     val context = LocalContext.current
     Card(
         modifier = Modifier
@@ -514,13 +515,13 @@ private fun ExternalDeliveryCard(provider: String?, trackingUrl: String?) {
                 Spacer(Modifier.size(10.dp))
                 Column {
                     Text(
-                        text = "Delivered by ${humanizeProvider(provider)}",
+                        text = externalDeliveryTitle(provider, status),
                         color = TextWhite,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                     )
                     Text(
-                        text = "Your order is on its way.",
+                        text = externalDeliverySubtitle(provider, status),
                         color = TextTertiary,
                         fontSize = 13.sp,
                     )
@@ -552,6 +553,35 @@ private fun humanizeProvider(provider: String?): String = when (provider) {
     "uber_direct" -> "Uber"
     "doordash_drive" -> "DoorDash"
     else -> "our delivery partner"
+}
+
+private fun externalDeliveryTitle(provider: String?, status: OrderStatus): String {
+    val providerName = humanizeProvider(provider)
+    return when (status) {
+        OrderStatus.DELIVERED, OrderStatus.COMPLETED -> "Delivered by $providerName"
+        OrderStatus.CANCELLED, OrderStatus.REJECTED -> "Delivery canceled"
+        else -> "Delivery by $providerName"
+    }
+}
+
+private fun externalDeliverySubtitle(provider: String?, status: OrderStatus): String {
+    val providerName = humanizeProvider(provider)
+    return when (status) {
+        OrderStatus.SCHEDULED ->
+            "Your order is scheduled. A courier from $providerName will deliver it."
+        OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.PREPARING ->
+            "The restaurant is preparing your order. A courier from $providerName will deliver it."
+        OrderStatus.READY ->
+            "Your order is ready and a courier from $providerName is on the way to pick it up."
+        OrderStatus.PICKED_UP ->
+            "Your order is on its way with $providerName."
+        OrderStatus.DELIVERED, OrderStatus.COMPLETED ->
+            "Your order has been delivered."
+        OrderStatus.CANCELLED, OrderStatus.REJECTED ->
+            "This order will not be delivered."
+        OrderStatus.UNKNOWN ->
+            "We're working on your order. Check back shortly."
+    }
 }
 
 @Composable

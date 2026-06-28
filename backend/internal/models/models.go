@@ -285,10 +285,8 @@ type Order struct {
 	ExternalProvider    *string `json:"external_provider,omitempty"`
 	ExternalTrackingURL *string `json:"external_tracking_url,omitempty"`
 
-	// The restaurant's delivery mode for this order (platform | external |
-	// restaurant), surfaced so clients can branch: the seller app gates the
-	// self-delivery pickup/deliver actions on "restaurant", and the consumer app
-	// uses it (with external_tracking_url) to show external-courier tracking.
+	// Delivery mode for this order (platform | external | restaurant). Defaults
+	// from the restaurant, but can be overridden per order before courier handoff.
 	DeliveryMode string `json:"delivery_mode,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`

@@ -311,7 +311,7 @@ export default function Home() {
                   <span className="text-brand-500">kosher community</span>
                 </h2>
                 <p className="text-dark-300 text-lg mb-8 leading-relaxed">
-                  We're not a general delivery app with a kosher filter bolted on.
+                  We&apos;re not a general delivery app with a kosher filter bolted on.
                   Every restaurant on KosherEats is verified kosher. Every menu item
                   is labeled meat, dairy, or pareve.
                 </p>

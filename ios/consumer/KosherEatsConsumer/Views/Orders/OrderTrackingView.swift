@@ -465,7 +465,7 @@ struct OrderTrackingView: View {
                 .font(.system(size: 40))
                 .foregroundColor(.kePrimary)
             VStack(spacing: Theme.spacingXS) {
-                Text("Delivered by \(Self.providerName(for: order.externalProvider))")
+                Text(Self.externalCardTitle(for: order))
                     .font(.title3.bold())
                     .foregroundColor(.keTextPrimary)
                 Text(Self.externalCardSubtext(for: order))
@@ -505,6 +505,18 @@ struct OrderTrackingView: View {
             return "This order will not be delivered."
         case .unknown:
             return "We're working on your order. Check back shortly."
+        }
+    }
+
+    private static func externalCardTitle(for order: Order) -> String {
+        let provider = providerName(for: order.externalProvider)
+        switch order.status {
+        case .delivered, .completed:
+            return "Delivered by \(provider)"
+        case .cancelled, .rejected:
+            return "Delivery canceled"
+        default:
+            return "Delivery by \(provider)"
         }
     }
 

@@ -1,4 +1,4 @@
-// Package scheduler runs small in-process background loops. Four sweeps run
+// Package scheduler runs small in-process background loops. Several sweeps run
 // every minute off the same ticker:
 //
 //  1. sweepScheduled — promotes future-dated orders to 'pending' 30 minutes
@@ -11,12 +11,16 @@
 //     online, approved, unbusy courier and assigns them directly. This
 //     prevents an order from sitting unclaimed indefinitely.
 //
-//  3. sweepStaleRejection — the symmetric safety net on the seller side.
+//  3. sweepExternalDeliveryStatus — reconciles Uber Direct state when a
+//     provider webhook is delayed or dropped, so external deliveries do not sit
+//     in Ready forever.
+//
+//  4. sweepStaleRejection — the symmetric safety net on the seller side.
 //     If a seller doesn't accept/reject a 'pending' order within
 //     pendingOrderTTL, we auto-reject it and refund the customer so their
 //     money doesn't sit in limbo and they can reorder from somewhere else.
 //
-//  4. sweepCourierPayouts — durable processor for the courier_payout_queue.
+//  5. sweepCourierPayouts — durable processor for the courier_payout_queue.
 //     Delivery handlers enqueue rows; this sweep attempts the Stripe
 //     Connect transfer and retries with exponential backoff on failure.
 //     Replaces the old fire-and-forget goroutine that silently dropped
@@ -36,6 +40,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -84,9 +89,17 @@ const pendingOrderTTL = 10 * time.Minute
 // own fleet first crack once it exists. (Was a 5m const.)
 var externalDispatchGrace = graceSeconds("EXTERNAL_DISPATCH_GRACE_SECONDS", 30*time.Second)
 
+// externalStatusReconcileGrace is how long an externally-dispatched order may
+// sit unchanged before we poll the provider. Webhooks remain the primary path;
+// this is the backup for provider/test-mode stalls and dropped callbacks.
+var externalStatusReconcileGrace = graceSeconds("EXTERNAL_STATUS_RECONCILE_GRACE_SECONDS", 2*time.Minute)
+
 // staleRejectionBatchLimit caps orders auto-rejected per sweep. Protects
 // Stripe from a burst of refund requests if the API was down for a while.
 const staleRejectionBatchLimit = 20
+
+// externalStatusReconcileBatchLimit caps provider status polls per tick.
+const externalStatusReconcileBatchLimit = 20
 
 // payoutBatchLimit caps how many queued payouts we try per sweep tick. Each
 // try is a blocking Stripe API call (~500ms) so with 60s between ticks we
@@ -261,6 +274,7 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 	d.reapStaleDispatchClaims(ctx)
 	d.sweepScheduled(ctx)
 	d.sweepAutoDispatch(ctx)
+	d.sweepExternalDeliveryStatus(ctx)
 	d.sweepStaleRejection(ctx)
 	d.sweepOrphanPayments(ctx)
 	d.sweepPendingRefunds(ctx)
@@ -578,7 +592,7 @@ func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
 		       o.delivery_fee + COALESCE(o.courier_tip, 0) AS payout,
 		       o.updated_at,
 		       o.external_delivery_id IS NOT NULL AS has_external,
-		       COALESCE(rest.delivery_mode, 'platform')
+		       COALESCE(o.delivery_mode, rest.delivery_mode, 'platform')
 		  FROM orders o
 		  JOIN restaurants rest ON rest.id = o.restaurant_id
 		  JOIN users u ON u.id = o.user_id
@@ -739,6 +753,174 @@ func (d *Dispatcher) tryExternalDispatch(ctx context.Context, o staleOrder) {
 		Subtotal:        o.subtotal,
 		TipCents:        o.tipCents,
 	})
+}
+
+type externalDeliveryStatusOrder struct {
+	orderID    string
+	consumerID string
+	status     string
+	deliveryID string
+	updatedAt  time.Time
+}
+
+// sweepExternalDeliveryStatus polls active Uber Direct deliveries when their
+// local order row has not changed for a while. Uber webhooks are still the
+// source of truth for normal flow; this catches delayed/dropped callbacks and
+// test-mode deliveries that expose progress via tracking/polling first.
+func (d *Dispatcher) sweepExternalDeliveryStatus(ctx context.Context) {
+	if d.uber == nil || !d.uber.Enabled() {
+		return
+	}
+
+	rows, err := d.db.Query(ctx, `
+		SELECT id, user_id, status, external_delivery_id, updated_at
+		  FROM orders
+		 WHERE external_provider = 'uber_direct'
+		   AND external_delivery_id IS NOT NULL
+		   AND status IN ('accepted', 'preparing', 'ready', 'picked_up')
+		   AND updated_at < NOW() - make_interval(secs => $1)
+		 ORDER BY updated_at ASC
+		 LIMIT $2`,
+		int(externalStatusReconcileGrace.Seconds()), externalStatusReconcileBatchLimit)
+	if err != nil {
+		slog.Error("external-status: load active Uber deliveries failed",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	var orders []externalDeliveryStatusOrder
+	for rows.Next() {
+		var o externalDeliveryStatusOrder
+		if err := rows.Scan(&o.orderID, &o.consumerID, &o.status, &o.deliveryID, &o.updatedAt); err != nil {
+			slog.Error("external-status: scan failed", slog.String("error", err.Error()))
+			continue
+		}
+		orders = append(orders, o)
+	}
+	rowsErr := rows.Err()
+	rows.Close()
+	if rowsErr != nil {
+		slog.Error("external-status: row iteration failed", slog.String("error", rowsErr.Error()))
+		return
+	}
+
+	for _, o := range orders {
+		d.reconcileUberDeliveryStatus(ctx, o)
+	}
+}
+
+type uberDeliveryStatusAction int
+
+const (
+	uberDeliveryNoop uberDeliveryStatusAction = iota
+	uberDeliveryPickedUp
+	uberDeliveryDelivered
+	uberDeliveryCanceled
+)
+
+func mapUberDeliveryStatus(status string) uberDeliveryStatusAction {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "pickup_complete", "dropoff", "ongoing", "en_route_to_dropoff", "arrived_at_dropoff":
+		return uberDeliveryPickedUp
+	case "delivered", "completed":
+		return uberDeliveryDelivered
+	case "canceled", "cancelled", "failed":
+		return uberDeliveryCanceled
+	default:
+		return uberDeliveryNoop
+	}
+}
+
+func (d *Dispatcher) reconcileUberDeliveryStatus(ctx context.Context, o externalDeliveryStatusOrder) {
+	delivery, err := d.uber.GetDelivery(ctx, o.deliveryID)
+	if err != nil {
+		slog.Warn("external-status: Uber delivery lookup failed",
+			slog.String("order_id", o.orderID),
+			slog.String("delivery_id", o.deliveryID),
+			slog.String("error", err.Error()))
+		return
+	}
+
+	action := mapUberDeliveryStatus(delivery.Status)
+	if action == uberDeliveryNoop {
+		slog.Debug("external-status: Uber delivery has no local transition",
+			slog.String("order_id", o.orderID),
+			slog.String("delivery_id", o.deliveryID),
+			slog.String("uber_status", delivery.Status))
+		return
+	}
+
+	switch action {
+	case uberDeliveryPickedUp:
+		tag, err := d.db.Exec(ctx, `
+			UPDATE orders
+			   SET status = 'picked_up', picked_up_at = COALESCE(picked_up_at, NOW()),
+			       updated_at = NOW()
+			 WHERE id = $1
+			   AND external_provider = 'uber_direct'
+			   AND external_delivery_id = $2
+			   AND status IN ('accepted', 'preparing', 'ready')`,
+			o.orderID, o.deliveryID)
+		if err != nil {
+			slog.Error("external-status: picked_up reconcile failed",
+				slog.String("order_id", o.orderID),
+				slog.String("delivery_id", o.deliveryID),
+				slog.String("error", err.Error()))
+			return
+		}
+		if tag.RowsAffected() > 0 && d.notify != nil {
+			d.notify.OrderPickedUp(ctx, o.orderID, o.consumerID)
+		}
+
+	case uberDeliveryDelivered:
+		tag, err := d.db.Exec(ctx, `
+			UPDATE orders
+			   SET status = 'delivered',
+			       picked_up_at = COALESCE(picked_up_at, NOW()),
+			       delivered_at = COALESCE(delivered_at, NOW()),
+			       updated_at = NOW()
+			 WHERE id = $1
+			   AND external_provider = 'uber_direct'
+			   AND external_delivery_id = $2
+			   AND status IN ('accepted', 'preparing', 'ready', 'picked_up')`,
+			o.orderID, o.deliveryID)
+		if err != nil {
+			slog.Error("external-status: delivered reconcile failed",
+				slog.String("order_id", o.orderID),
+				slog.String("delivery_id", o.deliveryID),
+				slog.String("error", err.Error()))
+			return
+		}
+		if tag.RowsAffected() > 0 && d.notify != nil {
+			d.notify.OrderDelivered(ctx, o.orderID, o.consumerID)
+		}
+
+	case uberDeliveryCanceled:
+		tag, err := d.db.Exec(ctx, `
+			UPDATE orders
+			   SET external_delivery_id = NULL,
+			       external_provider = NULL,
+			       external_tracking_url = NULL,
+			       status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
+			       updated_at = NOW()
+			 WHERE id = $1
+			   AND external_provider = 'uber_direct'
+			   AND external_delivery_id = $2
+			   AND status IN ('ready', 'picked_up')`,
+			o.orderID, o.deliveryID)
+		if err != nil {
+			slog.Error("external-status: canceled reconcile failed",
+				slog.String("order_id", o.orderID),
+				slog.String("delivery_id", o.deliveryID),
+				slog.String("error", err.Error()))
+			return
+		}
+		if tag.RowsAffected() > 0 {
+			slog.Warn("external-status: Uber delivery canceled; order re-opened for dispatch",
+				slog.String("order_id", o.orderID),
+				slog.String("delivery_id", o.deliveryID))
+		}
+	}
 }
 
 // stalePending is the projection of a pending order that overshot the SLA.

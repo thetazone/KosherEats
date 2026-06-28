@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
+  scheduled: { label: "Scheduled", color: "text-yellow-300", bg: "bg-yellow-900/30" },
   pending: { label: "Pending", color: "text-yellow-400", bg: "bg-yellow-900/30" },
   accepted: { label: "Accepted", color: "text-blue-400", bg: "bg-blue-900/30" },
   preparing: { label: "Preparing", color: "text-brand-400", bg: "bg-brand-900/30" },
@@ -31,6 +32,8 @@ function formatUSD(cents: number): string {
 
 function activeProgressWidth(status: OrderStatus): string {
   switch (status) {
+    case "scheduled":
+      return "4%";
     case "pending":
       return "12%";
     case "accepted":

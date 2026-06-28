@@ -764,6 +764,12 @@ actor APIService {
         try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/preparing"))
     }
 
+    func setOrderDeliveryMode(id: String, deliveryMode: String) async throws -> Order {
+        try await request("PATCH",
+                          path: await sellerPath("/seller/orders/\(id)/delivery-mode"),
+                          body: ["delivery_mode": deliveryMode])
+    }
+
     func markOrderReady(id: String) async throws -> Order {
         try await request("PATCH", path: await sellerPath("/seller/orders/\(id)/ready"))
     }

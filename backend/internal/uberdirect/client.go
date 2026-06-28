@@ -118,7 +118,7 @@ type ManifestItem struct {
 func (c *Client) GetQuote(ctx context.Context, pickup, dropoff Address) (*Quote, error) {
 	if !c.enabled || c.stub {
 		return &Quote{
-			ID: "stub_quote_" + fmt.Sprintf("%d", time.Now().UnixMilli()),
+			ID:  "stub_quote_" + fmt.Sprintf("%d", time.Now().UnixMilli()),
 			Fee: 799, Currency: "usd", DurationMinutes: 25, PickupDuration: 12,
 			Expires: time.Now().Add(15 * time.Minute),
 		}, nil
@@ -151,9 +151,9 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 		slog.Info("uberdirect stub: would create delivery",
 			slog.String("external_id", req.ExternalID))
 		return &Delivery{
-			ID: "stub_del_" + fmt.Sprintf("%d", time.Now().UnixMilli()),
+			ID:          "stub_del_" + fmt.Sprintf("%d", time.Now().UnixMilli()),
 			TrackingURL: "https://stub.uber.com/track/test",
-			Fee: 799, Status: "pending",
+			Fee:         799, Status: "pending",
 		}, nil
 	}
 
@@ -196,6 +196,33 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 		fmt.Sprintf("%s/customers/%s/deliveries", apiBase, c.cfg.CustomerID), body)
 	if err != nil {
 		return nil, fmt.Errorf("uber create delivery: %w", err)
+	}
+
+	var d Delivery
+	if err := json.Unmarshal(data, &d); err != nil {
+		return nil, fmt.Errorf("uber delivery parse: %w", err)
+	}
+	return &d, nil
+}
+
+func (c *Client) GetDelivery(ctx context.Context, deliveryID string) (*Delivery, error) {
+	if !c.enabled || c.stub {
+		return &Delivery{
+			ID: deliveryID, TrackingURL: "https://stub.uber.com/track/test",
+			Fee: 799, Status: "pending",
+		}, nil
+	}
+
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("uber auth: %w", err)
+	}
+
+	data, err := c.get(ctx, token,
+		fmt.Sprintf("%s/customers/%s/deliveries/%s",
+			apiBase, c.cfg.CustomerID, url.PathEscape(deliveryID)))
+	if err != nil {
+		return nil, fmt.Errorf("uber get delivery: %w", err)
 	}
 
 	var d Delivery
@@ -302,6 +329,27 @@ func (c *Client) post(ctx context.Context, token, url string, body any) ([]byte,
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("uber %d: %s", resp.StatusCode, string(data))
+	}
+	return data, nil
+}
+
+func (c *Client) get(ctx context.Context, token, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}

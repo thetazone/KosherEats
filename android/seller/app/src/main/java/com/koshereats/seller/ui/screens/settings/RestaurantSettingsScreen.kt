@@ -184,11 +184,11 @@ fun RestaurantSettingsScreen(
     var certifyingAgency by remember(restaurantKey) {
         mutableStateOf(restaurant?.certificationDetails.orEmpty())
     }
-    // Who-delivers toggle. Seller-facing model is binary: "restaurant" = I deliver
-    // (keep 50% of the fee); anything else (platform/external) collapses to
-    // "external" = KosherEats dispatches an Uber courier. Mirrors iOS.
+    // Who-delivers selector: restaurant = seller self-delivers; external = Uber
+    // only. Platform courier mode is hidden while the KosherEats courier network
+    // is shelved for launch.
     var deliveryMode by remember(restaurantKey) {
-        mutableStateOf(if (restaurant?.deliveryMode == "restaurant") "restaurant" else "external")
+        mutableStateOf(normalizedDeliveryMode(restaurant?.deliveryMode))
     }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -597,8 +597,8 @@ fun RestaurantSettingsScreen(
 
             // Delivery / Pricing (editable)
             SettingsSectionCard(icon = Icons.Filled.AttachMoney, title = "Delivery") {
-                // Who delivers — own driver vs Uber Direct. Mirrors iOS "Who delivers"
-                // segmented Picker, including the dynamic caption per mode.
+                // Who delivers — own driver or Uber Direct.
+                // Mirrors iOS "Who delivers", including the dynamic caption per mode.
                 Text(
                     text = "Who delivers",
                     style = MaterialTheme.typography.bodySmall,
@@ -614,13 +614,13 @@ fun RestaurantSettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     DeliveryModeSegment(
-                        label = "I deliver",
+                        label = "Self-delivery",
                         selected = deliveryMode == "restaurant",
                         modifier = Modifier.weight(1f),
                         onClick = { deliveryMode = "restaurant" },
                     )
                     DeliveryModeSegment(
-                        label = "KosherEats (Uber)",
+                        label = "Uber Direct",
                         selected = deliveryMode == "external",
                         modifier = Modifier.weight(1f),
                         onClick = { deliveryMode = "external" },
@@ -628,11 +628,7 @@ fun RestaurantSettingsScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = if (deliveryMode == "restaurant") {
-                        "Your own driver delivers — you keep 50% of the delivery fee. You can still send any order to Uber if you get slammed."
-                    } else {
-                        "Orders auto-dispatch to an Uber courier the moment you tap Ready."
-                    },
+                    text = deliveryModeHelpText(deliveryMode),
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                 )
@@ -1184,14 +1180,22 @@ private fun buildRestaurantChanges(
     if (certifyingAgency != restaurant.certificationDetails) {
         changes["certifying_agency"] = certifyingAgency
     }
-    // Compare against the seeded toggle value (restaurant→"restaurant", else
-    // "external") so an untouched toggle never spuriously flips a platform-mode
-    // restaurant to external on an unrelated save.
-    val seededMode = if (restaurant.deliveryMode == "restaurant") "restaurant" else "external"
-    if (deliveryMode != seededMode) {
+    if (deliveryMode != restaurant.deliveryMode) {
         changes["delivery_mode"] = deliveryMode
     }
     return changes
+}
+
+private fun normalizedDeliveryMode(mode: String?): String = when (mode) {
+    "restaurant", "external" -> mode
+    else -> "external"
+}
+
+private fun deliveryModeHelpText(mode: String): String = when (mode) {
+    "restaurant" ->
+        "Your own driver handles pickup and delivery. You keep 50% of the delivery fee and can still send an order to Uber if you get slammed."
+    else ->
+        "Orders auto-dispatch to Uber Direct the moment you tap Ready."
 }
 
 /**

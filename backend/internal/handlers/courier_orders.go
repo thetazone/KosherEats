@@ -117,7 +117,7 @@ func (h *Handler) ListAvailableDeliveries(w http.ResponseWriter, r *http.Request
 		    -- escalated orders go to Uber/DoorDash (external_provider set). Showing
 		    -- or letting a courier claim those = double delivery + wrong payout.
 		    AND o.external_provider IS NULL
-		    AND COALESCE(rest.delivery_mode, 'platform') = 'platform'
+		    AND COALESCE(o.delivery_mode, rest.delivery_mode, 'platform') = 'platform'
 		  ORDER BY o.created_at ASC
 		  LIMIT 50`)
 	if err != nil {
@@ -195,7 +195,7 @@ func (h *Handler) ListUpcomingDeliveries(w http.ResponseWriter, r *http.Request)
 		    -- restaurants' orders for couriers to pre-position on (parity with
 		    -- ListAvailableDeliveries).
 		    AND o.external_provider IS NULL
-		    AND COALESCE(rest.delivery_mode, 'platform') = 'platform'
+		    AND COALESCE(o.delivery_mode, rest.delivery_mode, 'platform') = 'platform'
 		  ORDER BY o.created_at ASC
 		  LIMIT 50`)
 	if err != nil {
@@ -286,7 +286,7 @@ func (h *Handler) ClaimOrder(w http.ResponseWriter, r *http.Request) {
 		   -- A self-delivery ('restaurant') order has external_provider NULL, so the
 		   -- guard above doesn't stop a KE courier from poaching it — exclude
 		   -- non-platform delivery modes explicitly.
-		   AND COALESCE(rest.delivery_mode, 'platform') = 'platform'
+		   AND COALESCE(orders.delivery_mode, rest.delivery_mode, 'platform') = 'platform'
 		   -- Busy guard (race-safe form of the pre-check above): reject the claim
 		   -- if this courier already holds an active delivery.
 		   AND NOT EXISTS (

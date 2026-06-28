@@ -105,6 +105,7 @@ export default function CartPage() {
 
   const [intent, setIntent] = useState<PaymentIntentBundle | null>(null);
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
+  const [checkoutAddress, setCheckoutAddress] = useState<Address | null>(null);
   const [checkoutStarting, setCheckoutStarting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   // "finalizing" → charge captured, order POST in flight/retrying. We surface a
@@ -279,11 +280,17 @@ export default function CartPage() {
     setCheckoutError(null);
     setCheckoutStarting(true);
     try {
-      const bundle = (await paymentsApi.createIntent(token, {})) as PaymentIntentBundle;
+      const addr = addresses.find((a) => a.id === selectedAddressId);
+      if (!addr) throw new Error("No delivery address selected");
+      const deliveryAddress = formatAddress(addr);
+      const bundle = (await paymentsApi.createIntent(token, {
+        delivery_address: deliveryAddress,
+      })) as PaymentIntentBundle;
       if (!bundle.publishable_key || !bundle.payment_intent_secret) {
         throw new Error("Payment provider is not configured. Please try again later.");
       }
       setStripePromise(loadStripe(bundle.publishable_key));
+      setCheckoutAddress(addr);
       setIntent(bundle);
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -303,7 +310,7 @@ export default function CartPage() {
   // is never charged with no order.
   async function finalizeOrder(paymentIntentId: string) {
     if (!token || !cart) throw new Error("Session expired");
-    const addr = addresses.find((a) => a.id === selectedAddressId);
+    const addr = checkoutAddress ?? addresses.find((a) => a.id === selectedAddressId);
     if (!addr) throw new Error("No delivery address selected");
 
     const pending: PendingOrder = {
@@ -318,6 +325,7 @@ export default function CartPage() {
     // Close the Stripe modal and show the dedicated finishing/retry state.
     setIntent(null);
     setStripePromise(null);
+    setCheckoutAddress(null);
     setFinalizing(true);
     setFinalizeError(null);
 
@@ -731,6 +739,7 @@ export default function CartPage() {
               onClick={() => {
                 setIntent(null);
                 setStripePromise(null);
+                setCheckoutAddress(null);
               }}
               className="absolute top-3 right-3 text-dark-400 hover:text-white"
               aria-label="Close checkout"
