@@ -628,6 +628,14 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
                 Spacer(Modifier.height(8.dp))
                 TotalRow("Delivery fee", bundle.deliveryFee)
             }
+            deliveryMethodLabel(bundle.deliveryMethod)?.let { label ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary,
+                )
+            }
             Spacer(Modifier.height(8.dp))
             TotalRow("Service fee", bundle.serviceFee)
             Spacer(Modifier.height(8.dp))
@@ -658,6 +666,15 @@ private fun TotalsCard(bundle: PaymentSheetBundle) {
             }
         }
     }
+}
+
+/** Consumer-facing label for who delivers, from the bundle's delivery_method.
+ *  null for pickup / flat-rate fallback (no method line shown). */
+private fun deliveryMethodLabel(method: String?): String? = when (method) {
+    "uber_direct" -> "Delivered by Uber"
+    "doordash_drive" -> "Delivered by DoorDash"
+    "self_delivery" -> "Delivered by the restaurant"
+    else -> null
 }
 
 @Composable

@@ -543,6 +543,9 @@ data class PaymentSheetBundle(
     @SerializedName("payment_intent_secret") val paymentIntentSecret: String = "",
     val subtotal: Int = 0,
     @SerializedName("delivery_fee") val deliveryFee: Int = 0,
+    // How the order will be delivered: "uber_direct" | "doordash_drive" |
+    // "self_delivery" | "flat_rate". Nullable for resilience during rollout.
+    @SerializedName("delivery_method") val deliveryMethod: String? = null,
     @SerializedName("service_fee") val serviceFee: Int = 0,
     val tax: Int = 0,
     val tip: Int = 0,
