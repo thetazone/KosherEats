@@ -10,9 +10,6 @@ struct SellerOrderDetailView: View {
     @State private var showRejectAlert = false
     @State private var rejectReason = ""
     @State private var isActing = false
-    @State private var escalateMessage: String?
-    @State private var showDispatchConfirm = false
-    @State private var isDispatching = false
 
     init(vm: OrdersViewModel, order: Order) {
         self._vm = ObservedObject(wrappedValue: vm)
@@ -120,14 +117,6 @@ struct SellerOrderDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(vm.errorMessage ?? "")
-        }
-        .alert("Uber dispatch",
-               isPresented: Binding(
-                get: { escalateMessage != nil },
-                set: { if !$0 { escalateMessage = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(escalateMessage ?? "")
         }
         .task {
             // Always fetch the authoritative full order. The seeded copy comes
@@ -452,8 +441,9 @@ struct SellerOrderDetailView: View {
                     }
                 }
                 .disabled(isActing)
-
-                if canChooseDeliveryMode(order) { deliveryModeChoiceButton(order) }
+                // The per-order self-deliver / Uber switch lives on the next
+                // screen (beside "Ready for Uber pickup"), which is the natural
+                // dispatch-decision point — no need to duplicate it here.
             }
 
         case .preparing:
@@ -469,8 +459,6 @@ struct SellerOrderDetailView: View {
                     }
                 }
                 .disabled(isActing)
-
-                if canChooseDeliveryMode(order) { deliveryModeChoiceButton(order) }
             }
 
         case .ready, .pickedUp:
@@ -497,8 +485,6 @@ struct SellerOrderDetailView: View {
                             }
                         }
                         .disabled(isActing)
-                        // Driver fell through? Hand it to Uber instead.
-                        escalateButton(order)
                     } else { // .pickedUp
                         actionButton("Mark Delivered", icon: "checkmark.circle.fill", color: .keSuccess) {
                             guard !isActing else { return }
@@ -514,36 +500,10 @@ struct SellerOrderDetailView: View {
                     }
                 }
             } else {
-                VStack(spacing: 10) {
-                    // Courier now owns the handoff. Show who's handling delivery
-                    // instead of an action — same UX pattern as the UberEats merchant app.
-                    courierStatusCard(order)
-
-                    // A ready delivery order that nobody is handling yet (no courier
-                    // claimed it, not already on a provider) can still be punted to
-                    // Uber — the seller's own driver may have fallen through. Once a
-                    // courier claims it or it's dispatched, this drops off. Mirrors the
-                    // backend escalate guard: courier_id IS NULL AND external_delivery_id
-                    // IS NULL, status IN (accepted, preparing, ready).
-                    if order.status == .ready
-                        && order.courier == nil
-                        && (order.externalDeliveryId ?? "").isEmpty {
-                        if order.deliveryMode == "external" {
-                            // We've marked this ready for Uber; the dispatcher
-                            // creates the delivery within seconds. Switching to
-                            // self-delivery now races that create and the backend
-                            // rejects it, so present the option locked with a
-                            // reason rather than letting the tap fail. Once the
-                            // delivery exists the card above flips to "Handed to
-                            // Uber" and this row drops off.
-                            dispatchPendingSelfDeliverLock()
-                        } else if canChooseDeliveryMode(order) {
-                            deliveryModeChoiceButton(order)
-                        } else {
-                            escalateButton(order)
-                        }
-                    }
-                }
+                // Courier/provider owns the handoff now. Show who's handling
+                // delivery instead of an action — the delivery method is fixed at
+                // checkout, so there's nothing for the seller to switch here.
+                courierStatusCard(order)
             }
 
         case .delivered, .cancelled, .rejected, .scheduled, .unknown:
@@ -565,25 +525,6 @@ struct SellerOrderDetailView: View {
         }
     }
 
-    /// Whether the "Dispatch to Uber" button should be offered: a delivery
-    /// order that nobody is already handling. Mirrors the backend EscalateToUber
-    /// guard (courier_id IS NULL AND external_delivery_id IS NULL) so the button
-    /// doesn't appear on already-claimed/already-dispatched orders.
-    private func canEscalate(_ order: Order) -> Bool {
-        !order.isPickup
-            && order.status == .ready
-            && order.isSelfDelivery
-            && order.courier == nil
-            && (order.externalDeliveryId ?? "").isEmpty
-    }
-
-    private func canChooseDeliveryMode(_ order: Order) -> Bool {
-        !order.isPickup
-            && (order.status == .accepted || order.status == .preparing || order.status == .ready)
-            && order.courier == nil
-            && (order.externalDeliveryId ?? "").isEmpty
-    }
-
     private func readyButtonTitle(_ order: Order) -> String {
         if order.isPickup {
             return "Ready for customer pickup"
@@ -595,144 +536,6 @@ struct SellerOrderDetailView: View {
             return "Ready for Uber pickup"
         }
         return "Ready for courier pickup"
-    }
-
-    @ViewBuilder
-    private func deliveryModeChoiceButton(_ order: Order) -> some View {
-        let switchingToSelfDelivery = !order.isSelfDelivery
-        let title = switchingToSelfDelivery ? "Self-deliver this order" : "Use Uber Direct for this order"
-        let icon = switchingToSelfDelivery ? "car.side.fill" : "car.circle.fill"
-        let nextMode = switchingToSelfDelivery ? "restaurant" : "external"
-
-        Button {
-            guard !isActing else { return }
-            isActing = true
-            Task {
-                vm.errorMessage = nil
-                await vm.setDeliveryMode(id: order.id, deliveryMode: nextMode)
-                await syncOrderFromVM()
-                isActing = false
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                Text(title).font(.headline)
-            }
-            .foregroundColor(.kePrimary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(Color.keCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.kePrimary, lineWidth: 1.5)
-            )
-            .cornerRadius(14)
-        }
-        .disabled(isActing)
-    }
-
-    /// Locked stand-in for the "Self-deliver this order" button shown while an
-    /// external (Uber) dispatch is in flight. Non-interactive — switching to
-    /// self-delivery here would race the dispatcher's create-delivery call and
-    /// the backend rejects it, so we explain the lock instead of erroring on tap.
-    private func dispatchPendingSelfDeliverLock() -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Image(systemName: "car.side.fill")
-                Text("Self-deliver this order").font(.headline)
-            }
-            .foregroundColor(.keTextMuted)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(Color.keCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.keBorder, lineWidth: 1.5)
-            )
-            .cornerRadius(14)
-
-            Text("Dispatching to Uber — you can't switch once a courier is assigned.")
-                .font(.caption)
-                .foregroundColor(.keTextMuted)
-                .multilineTextAlignment(.center)
-        }
-    }
-
-    /// Secondary action on an open delivery order: hand it off to an Uber
-    /// courier when the seller is overwhelmed. One-way — the backend rejects
-    /// orders already on a courier/provider; the result surfaces via an alert.
-    @ViewBuilder
-    private func escalateButton(_ order: Order) -> some View {
-        // Secondary (outlined) style so it reads as the lower-priority escalation
-        // lever, not a co-equal of the filled primary action above it.
-        Button {
-            Haptics.warning()
-            showDispatchConfirm = true
-        } label: {
-            HStack(spacing: 8) {
-                if isDispatching {
-                    ProgressView().tint(.kePrimary)
-                    Text("Dispatching…").font(.headline)
-                } else {
-                    Image(systemName: "car.circle.fill")
-                    Text("Dispatch to Uber").font(.headline)
-                }
-            }
-            .foregroundColor(.kePrimary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(Color.keCard)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.kePrimary, lineWidth: 1.5)
-            )
-            .cornerRadius(14)
-        }
-        .disabled(isActing || isDispatching)
-        // One-way, irreversible action → confirm first (Reject has one too).
-        .confirmationDialog(
-            "Dispatch this order to an Uber courier?",
-            isPresented: $showDispatchConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Dispatch to Uber") { performDispatch(order) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("A courier will be sent to pick up this order. This can't be undone.")
-        }
-    }
-
-    /// Runs the escalate request, mapping the backend's distinct status codes to
-    /// honest copy. A 409 ("already being dispatched" — a sweep or a second tap
-    /// won the claim) is NOT a failure: it means a courier IS coming, so we show
-    /// a neutral message rather than the old scary "couldn't send" error.
-    private func performDispatch(_ order: Order) {
-        guard !isActing, !isDispatching else { return }
-        isActing = true
-        isDispatching = true
-        Task {
-            vm.errorMessage = nil
-            do {
-                _ = try await APIService.shared.escalateOrderToUber(id: order.id)
-                Haptics.success()
-                escalateMessage = "Sent to Uber — a courier is on the way."
-            } catch APIError.serverError(let code, _) where code == 409 {
-                Haptics.success()
-                escalateMessage = "This order is already being dispatched to a courier."
-            } catch APIError.serverError(let code, _) where code == 503 {
-                escalateMessage = "No delivery partner is available right now. Please try again shortly."
-            } catch {
-                escalateMessage = "Couldn't reach a courier. Please try again."
-            }
-            // Escalate sets external_delivery_id but NOT status, and the cached
-            // list copy doesn't carry external_delivery_id — so syncOrderFromVM's
-            // cache-first path would keep the stale order (escalate button stuck
-            // on, status unchanged). Force a fresh detail fetch first.
-            await vm.fetchOrder(id: order.id)
-            await syncOrderFromVM()
-            isDispatching = false
-            isActing = false
-        }
     }
 
     /// Replaces the courier card on pickup-fulfillment orders that are

@@ -209,7 +209,53 @@ struct DashboardView: View {
                 icon: "clock.fill",
                 iconColor: .keTextSecondary
             )
+
+            // 6th cell: the restaurant's default delivery method for NEW orders
+            // (existing orders keep their mode). The active mode is filled green
+            // so the seller sees the current method at a glance.
+            if let restaurant = vm.restaurant {
+                deliveryModeTile(restaurant)
+            }
         }
+    }
+
+    // MARK: - Delivery Method
+
+    private func deliveryModeTile(_ restaurant: Restaurant) -> some View {
+        let mode = restaurant.deliveryMode == "restaurant" ? "restaurant" : "external"
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "car.fill")
+                    .font(.title3)
+                    .foregroundColor(.kePrimary)
+                Spacer()
+            }
+            VStack(spacing: 6) {
+                deliveryModePill("Uber Direct", value: "external", selected: mode == "external")
+                deliveryModePill("Self-delivery", value: "restaurant", selected: mode == "restaurant")
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.keCard)
+        .cornerRadius(16)
+    }
+
+    private func deliveryModePill(_ title: String, value: String, selected: Bool) -> some View {
+        Button {
+            guard !vm.isTogglingDeliveryMode else { return }
+            Task { await vm.setRestaurantDeliveryMode(value) }
+        } label: {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(selected ? .white : .keTextSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(selected ? Color.keSuccess : Color.keBorder.opacity(0.4))
+                .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.isTogglingDeliveryMode)
     }
 
     // MARK: - Active Orders

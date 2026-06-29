@@ -359,23 +359,6 @@ class OrdersViewModel: ObservableObject {
         }
     }
 
-    func setDeliveryMode(id: String, deliveryMode: String) async {
-        guard !inFlightOrderIDs.contains(id) else { return }
-        inFlightOrderIDs.insert(id)
-        defer { inFlightOrderIDs.remove(id) }
-        do {
-            let updated = try await APIService.shared.setOrderDeliveryMode(id: id, deliveryMode: deliveryMode)
-            updateOrder(updated)
-            Haptics.success()
-            flash(deliveryMode == "restaurant" ? "Self-delivery selected" : "Uber Direct selected")
-        } catch {
-            errorMessage = error.localizedDescription
-            if let fresh = try? await APIService.shared.getOrder(id: id) {
-                updateOrder(fresh)
-            }
-        }
-    }
-
     func markReady(id: String) async {
         guard !inFlightOrderIDs.contains(id) else { return }
         inFlightOrderIDs.insert(id)

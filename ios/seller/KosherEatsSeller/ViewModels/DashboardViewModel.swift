@@ -176,6 +176,28 @@ class DashboardViewModel: ObservableObject {
         }
     }
 
+    @Published var isTogglingDeliveryMode = false
+
+    /// Restaurant-level default delivery method for NEW orders (existing orders
+    /// keep the mode they were created with). Surfaced on the Dashboard instead
+    /// of Settings since it sets how every new order is delivered and priced.
+    func setRestaurantDeliveryMode(_ mode: String) async {
+        guard !isTogglingDeliveryMode, var updated = restaurant, updated.deliveryMode != mode else { return }
+        isTogglingDeliveryMode = true
+        errorMessage = nil
+        let gen = loadGeneration
+        defer { isTogglingDeliveryMode = false }
+        updated.deliveryMode = mode
+        do {
+            let result = try await APIService.shared.updateRestaurant(updated)
+            guard gen == loadGeneration else { return }
+            self.restaurant = result
+        } catch {
+            guard gen == loadGeneration else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func fetchActiveOrders(generation: Int) async {
         do {
             let orders = try await APIService.shared.getOrders()

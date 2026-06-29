@@ -101,20 +101,10 @@ struct RestaurantSettingsView: View {
 
                     // Delivery Settings
                     settingsSection("Delivery", icon: "car.fill") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Who delivers")
-                                .font(.caption)
-                                .foregroundColor(.keTextSecondary)
-                            Picker("Who delivers", selection: $deliveryMode) {
-                                Text("Self-delivery").tag("restaurant")
-                                Text("Uber Direct").tag("external")
-                            }
-                            .pickerStyle(.segmented)
-                            Text(deliveryModeHelpText)
-                                .font(.caption2)
-                                .foregroundColor(.keTextMuted)
-                        }
-                        .padding(.bottom, 4)
+                        Text("Your self-delivery fee — what you charge and keep when you deliver an order yourself. Choose your delivery method (Self-delivery or Uber Direct) on the Dashboard.")
+                            .font(.caption2)
+                            .foregroundColor(.keTextMuted)
+                            .padding(.bottom, 4)
 
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 8) {
@@ -732,15 +722,6 @@ struct RestaurantSettingsView: View {
         }
 
         isSaving = false
-    }
-
-    private var deliveryModeHelpText: String {
-        switch deliveryMode {
-        case "restaurant":
-            return "Your own driver handles pickup and delivery. You keep 50% of the delivery fee and can still send an order to Uber if you get slammed."
-        default:
-            return "Orders auto-dispatch to Uber Direct the moment you tap Ready."
-        }
     }
 
     private func normalizedDeliveryMode(_ mode: String) -> String {
