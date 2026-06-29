@@ -8,18 +8,23 @@ struct EmailAuthView: View {
     @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss
 
-    enum Mode { case initial, existing, new }
+    // New-user signup is gated on an emailed OTP BEFORE the password is chosen
+    // (verified backend data): initial → verifyCode → new. Returning users skip
+    // straight to `existing`.
+    enum Mode { case initial, existing, verifyCode, new }
 
     @State private var email = ""
     @State private var password = ""
     @State private var firstName = ""
     @State private var lastName = ""
+    @State private var code = ""
     @State private var mode: Mode = .initial
     @State private var isChecking = false
     @State private var localError: String?
+    @State private var hasAutoSubmittedCode = false
     @FocusState private var focusedField: Field?
 
-    private enum Field: Hashable { case email, password, first, last }
+    private enum Field: Hashable { case email, password, first, last, code }
 
     var body: some View {
         ZStack {
@@ -48,6 +53,29 @@ struct EmailAuthView: View {
                                 .disabled(mode != .initial || authVM.isLoading)
                         }
 
+                        if mode == .verifyCode {
+                            field("Verification code") {
+                                TextField("123456", text: $code)
+                                    .keyboardType(.numberPad)
+                                    .textContentType(.oneTimeCode)
+                                    .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                                    .focused($focusedField, equals: .code)
+                                    .keTextField()
+                                    .accessibilityLabel("Email verification code")
+                                    .onChange(of: code) { _, v in
+                                        let digits = v.filter(\.isNumber)
+                                        if digits != v { code = digits }
+                                        if code.count > 6 { code = String(code.prefix(6)) }
+                                        if code.count == 6, !hasAutoSubmittedCode {
+                                            hasAutoSubmittedCode = true
+                                            Task { await primary() }
+                                        } else if code.count < 6 {
+                                            hasAutoSubmittedCode = false
+                                        }
+                                    }
+                            }
+                        }
+
                         if mode == .new {
                             field("First name") {
                                 TextField("First name", text: $firstName)
@@ -67,7 +95,7 @@ struct EmailAuthView: View {
                             }
                         }
 
-                        if mode != .initial {
+                        if mode == .existing || mode == .new {
                             field("Password") {
                                 SecureField(mode == .new ? "Create a password" : "Enter your password", text: $password)
                                     .textContentType(mode == .new ? .newPassword : .password)
@@ -149,6 +177,7 @@ struct EmailAuthView: View {
         switch mode {
         case .initial: return "Continue with email"
         case .existing: return "Welcome back"
+        case .verifyCode: return "Verify your email"
         case .new: return "Create your account"
         }
     }
@@ -157,6 +186,7 @@ struct EmailAuthView: View {
         switch mode {
         case .initial: return "We'll check if you already have an account."
         case .existing: return "Enter the password for \(email)."
+        case .verifyCode: return "Enter the 6-digit code we sent to \(email)."
         case .new: return "Just a few details to get you set up."
         }
     }
@@ -165,6 +195,7 @@ struct EmailAuthView: View {
         switch mode {
         case .initial: return "Continue"
         case .existing: return "Sign in"
+        case .verifyCode: return "Verify"
         case .new: return "Create account"
         }
     }
@@ -175,6 +206,8 @@ struct EmailAuthView: View {
             return isEmailShapedValid
         case .existing:
             return !password.isEmpty
+        case .verifyCode:
+            return code.count == 6
         case .new:
             return !password.isEmpty && password.count >= 8
                 && !firstName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -192,10 +225,14 @@ struct EmailAuthView: View {
         password = ""
         firstName = ""
         lastName = ""
+        code = ""
+        hasAutoSubmittedCode = false
         localError = nil
         authVM.errorMessage = nil
         focusedField = .email
     }
+
+    private var cleanEmail: String { email.trimmingCharacters(in: .whitespaces).lowercased() }
 
     private func primary() async {
         localError = nil
@@ -203,10 +240,15 @@ struct EmailAuthView: View {
         case .initial:
             await check()
         case .existing:
-            await authVM.login(email: email.trimmingCharacters(in: .whitespaces), password: password)
+            await authVM.login(email: cleanEmail, password: password)
+        case .verifyCode:
+            await verifyCode()
         case .new:
+            // Email already OTP-verified above; register creates the account
+            // with email_verified=true. Phone is collected next by the
+            // mandatory verification flow (no phone sent here).
             await authVM.register(
-                email: email.trimmingCharacters(in: .whitespaces),
+                email: cleanEmail,
                 password: password,
                 firstName: firstName.trimmingCharacters(in: .whitespaces),
                 lastName: lastName.trimmingCharacters(in: .whitespaces),
@@ -223,11 +265,36 @@ struct EmailAuthView: View {
         isChecking = true
         defer { isChecking = false }
         do {
-            let result = try await APIService.shared.checkEmail(email.trimmingCharacters(in: .whitespaces))
-            mode = result.exists ? .existing : .new
-            focusedField = result.exists ? .password : .first
+            let result = try await APIService.shared.checkEmail(cleanEmail)
+            if result.exists {
+                mode = .existing
+                focusedField = .password
+            } else {
+                // New account → send the email OTP and collect it before the
+                // user picks a password.
+                try await APIService.shared.startEmailSignup(email: cleanEmail)
+                code = ""
+                hasAutoSubmittedCode = false
+                mode = .verifyCode
+                focusedField = .code
+            }
         } catch {
-            localError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            localError = AuthViewModel.friendly(error)
+        }
+    }
+
+    private func verifyCode() async {
+        guard code.count == 6 else { return }
+        isChecking = true
+        defer { isChecking = false }
+        do {
+            try await APIService.shared.verifyEmailSignup(email: cleanEmail, code: code)
+            mode = .new
+            focusedField = .first
+        } catch {
+            localError = AuthViewModel.friendly(error)
+            code = ""
+            hasAutoSubmittedCode = false
         }
     }
 }

@@ -81,6 +81,9 @@ fun RegisterScreen(
     val scope = rememberCoroutineScope()
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
+    // Email is OTP-verified BEFORE the password is chosen: Email → Code → Details.
+    var step by remember { mutableStateOf(RegStep.Email) }
+    var emailCode by remember { mutableStateOf("") }
     val onTyping: () -> Unit = { if (state.error != null) viewModel.clearError() }
     val lastNameFocus = remember { FocusRequester() }
     val emailFocus = remember { FocusRequester() }
@@ -189,133 +192,157 @@ fun RegisterScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Name row
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = state.registerFirstName,
-                onValueChange = { viewModel.updateRegisterFirstName(it); onTyping() },
-                label = { Text("First Name") },
-                leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = TextMuted) },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp),
-                colors = textFieldColors,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { lastNameFocus.requestFocus() }),
-            )
-            OutlinedTextField(
-                value = state.registerLastName,
-                onValueChange = { viewModel.updateRegisterLastName(it); onTyping() },
-                label = { Text("Last Name") },
-                modifier = Modifier.weight(1f).focusRequester(lastNameFocus),
-                shape = RoundedCornerShape(12.dp),
-                colors = textFieldColors,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { emailFocus.requestFocus() }),
-            )
-        }
+        when (step) {
+            RegStep.Email -> {
+                OutlinedTextField(
+                    value = state.registerEmail,
+                    onValueChange = { viewModel.updateRegisterEmail(it); onTyping() },
+                    label = { Text("Email") },
+                    leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(emailFocus),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = textFieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        focusManager.clearFocus()
+                        viewModel.sendSignupEmailCode(state.registerEmail) { emailCode = ""; step = RegStep.Code }
+                    }),
+                )
 
-        Spacer(modifier = Modifier.height(16.dp))
+                state.error?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(text = msg, color = ErrorRed, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                RegPrimaryButton("Continue", state.isLoading) {
+                    viewModel.sendSignupEmailCode(state.registerEmail) { emailCode = ""; step = RegStep.Code }
+                }
+            }
 
-        OutlinedTextField(
-            value = state.registerEmail,
-            onValueChange = { viewModel.updateRegisterEmail(it); onTyping() },
-            label = { Text("Email") },
-            leadingIcon = { Icon(Icons.Filled.Email, contentDescription = null, tint = TextMuted) },
-            modifier = Modifier.fillMaxWidth().focusRequester(emailFocus),
-            shape = RoundedCornerShape(12.dp),
-            colors = textFieldColors,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { phoneFocus.requestFocus() }),
-        )
+            RegStep.Code -> {
+                Text(
+                    text = "Enter the 6-digit code we sent to ${state.registerEmail}.",
+                    color = TextTertiary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = emailCode,
+                    onValueChange = { emailCode = it.filter { c -> c.isDigit() }.take(6); onTyping() },
+                    label = { Text("Verification code") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = textFieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        viewModel.verifySignupEmailCode(state.registerEmail, emailCode) { step = RegStep.Details }
+                    }),
+                )
+                state.error?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(text = msg, color = ErrorRed, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                RegPrimaryButton("Verify", state.isLoading) {
+                    viewModel.verifySignupEmailCode(state.registerEmail, emailCode) { step = RegStep.Details }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Use a different email",
+                    color = TextTertiary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.clickable { emailCode = ""; viewModel.clearError(); step = RegStep.Email },
+                )
+            }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = state.registerPhone,
-            onValueChange = { viewModel.updateRegisterPhone(it); onTyping() },
-            label = { Text("Phone Number") },
-            leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null, tint = TextMuted) },
-            modifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
-            shape = RoundedCornerShape(12.dp),
-            colors = textFieldColors,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = state.registerPassword,
-            onValueChange = { viewModel.updateRegisterPassword(it); onTyping() },
-            label = { Text("Password") },
-            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
-                        tint = TextMuted,
+            RegStep.Details -> {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = state.registerFirstName,
+                        onValueChange = { viewModel.updateRegisterFirstName(it); onTyping() },
+                        label = { Text("First Name") },
+                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = TextMuted) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { lastNameFocus.requestFocus() }),
+                    )
+                    OutlinedTextField(
+                        value = state.registerLastName,
+                        onValueChange = { viewModel.updateRegisterLastName(it); onTyping() },
+                        label = { Text("Last Name") },
+                        modifier = Modifier.weight(1f).focusRequester(lastNameFocus),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = textFieldColors,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
                     )
                 }
-            },
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
-            shape = RoundedCornerShape(12.dp),
-            colors = textFieldColors,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(onNext = { confirmFocus.requestFocus() }),
-        )
 
-        Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = state.registerConfirmPassword,
-            onValueChange = { viewModel.updateRegisterConfirmPassword(it); onTyping() },
-            label = { Text("Confirm Password") },
-            leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
-            trailingIcon = {
-                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                    Icon(
-                        if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                        contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
-                        tint = TextMuted,
-                    )
+                OutlinedTextField(
+                    value = state.registerPassword,
+                    onValueChange = { viewModel.updateRegisterPassword(it); onTyping() },
+                    label = { Text("Password") },
+                    leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                                tint = TextMuted,
+                            )
+                        }
+                    },
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = textFieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { confirmFocus.requestFocus() }),
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                OutlinedTextField(
+                    value = state.registerConfirmPassword,
+                    onValueChange = { viewModel.updateRegisterConfirmPassword(it); onTyping() },
+                    label = { Text("Confirm Password") },
+                    leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = TextMuted) },
+                    trailingIcon = {
+                        IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                            Icon(
+                                if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
+                                tint = TextMuted,
+                            )
+                        }
+                    },
+                    visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(confirmFocus),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = textFieldColors,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.register() }),
+                )
+
+                state.error?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(text = msg, color = ErrorRed, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
                 }
-            },
-            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth().focusRequester(confirmFocus),
-            shape = RoundedCornerShape(12.dp),
-            colors = textFieldColors,
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.register() }),
-        )
 
-        state.error?.let { msg ->
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(text = msg, color = ErrorRed, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
-        }
+                Spacer(modifier = Modifier.height(24.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = { viewModel.register() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Orange),
-            enabled = !state.isLoading,
-        ) {
-            if (state.isLoading) {
-                CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
-            } else {
-                Text("Create Account", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                RegPrimaryButton("Create Account", state.isLoading) { viewModel.register() }
             }
         }
 
@@ -348,5 +375,27 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(32.dp))
     }
     SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** Steps of email signup: verify the email by OTP before choosing a password. */
+private enum class RegStep { Email, Code, Details }
+
+@Composable
+private fun RegPrimaryButton(label: String, loading: Boolean, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Orange),
+        enabled = !loading,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(color = TextWhite, modifier = Modifier.size(24.dp))
+        } else {
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
     }
 }

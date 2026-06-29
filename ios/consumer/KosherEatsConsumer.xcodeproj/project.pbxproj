@@ -34,6 +34,7 @@
 		67F925C2E7323359F323690D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E8FFFB4581ABB2A2E30737C6 /* GoogleService-Info.plist */; };
 		6801DEF5B50EC387269E4A5C /* ProfileCompletionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B59C4891D0A09370E706DBA2 /* ProfileCompletionSheet.swift */; };
 		6F9E0FBE81C995BCB59F5B61 /* EmailAuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884079FBF929F6618524724C /* EmailAuthView.swift */; };
+		AC0000000000000000000001 /* AccountVerificationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000002 /* AccountVerificationView.swift */; };
 		71A1AE995EC27A0E0CCF0209 /* PaymentMethodsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D438C700F30D552DCA0A050 /* PaymentMethodsView.swift */; };
 		71CE7B8B1DAEB5A6D8F15C0C /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D281D6A3AE606A35DE4EE8C8 /* HomeView.swift */; };
 		73E74372318EDDCB77158815 /* CartViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82571CD405C9C2761DCE5F31 /* CartViewModel.swift */; };
@@ -143,6 +144,7 @@
 		82571CD405C9C2761DCE5F31 /* CartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartViewModel.swift; sourceTree = "<group>"; };
 		83E2C9F909E8A999A70A517A /* CountryCodePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCodePickerSheet.swift; sourceTree = "<group>"; };
 		884079FBF929F6618524724C /* EmailAuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailAuthView.swift; sourceTree = "<group>"; };
+		AC0000000000000000000002 /* AccountVerificationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountVerificationView.swift; sourceTree = "<group>"; };
 		8C0C1448784B4D1C460276BF /* OrderTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrderTrackingView.swift; sourceTree = "<group>"; };
 		8D019A6271BC7CE6BB755EC9 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		8D10CA3E19A971ABBB3575FA /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
@@ -232,6 +234,7 @@
 				8124E76E1A861C7C238D53EE /* ConsumerPhoneOTPView.swift */,
 				83E2C9F909E8A999A70A517A /* CountryCodePickerSheet.swift */,
 				884079FBF929F6618524724C /* EmailAuthView.swift */,
+				AC0000000000000000000002 /* AccountVerificationView.swift */,
 				532AB806EDEAECDDD14F3C5F /* LoginView.swift */,
 				B59C4891D0A09370E706DBA2 /* ProfileCompletionSheet.swift */,
 				40C25F8CFF903E76F83DE658 /* RegisterView.swift */,
@@ -576,6 +579,7 @@
 				BD91E1FBCC9144DB4457E448 /* DeliveryActivityManager.swift in Sources */,
 				2C16F01F50E7D16D12007F35 /* DeliveryAttributes.swift in Sources */,
 				6F9E0FBE81C995BCB59F5B61 /* EmailAuthView.swift in Sources */,
+				AC0000000000000000000001 /* AccountVerificationView.swift in Sources */,
 				C8F8C4A3609E7CBF669D79AA /* ErrorStateView.swift in Sources */,
 				EA430880C9529EA6530A23A5 /* Haptics.swift in Sources */,
 				71CE7B8B1DAEB5A6D8F15C0C /* HomeView.swift in Sources */,

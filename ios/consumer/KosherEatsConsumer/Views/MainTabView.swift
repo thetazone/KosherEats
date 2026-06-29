@@ -80,13 +80,23 @@ struct MainTabView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        // Mandatory verification gate. Presented over everything for any
+        // signed-in consumer whose phone or email isn't verified yet. Cannot be
+        // dismissed by gesture — it closes only when both are verified (the
+        // backend enforces the same on order/payment) or the user signs out.
+        .fullScreenCover(isPresented: Binding(
+            get: { authVM.isAuthenticated && authVM.needsVerification },
+            set: { _ in }
+        )) {
+            AccountVerificationView()
+                .environmentObject(authVM)
+        }
         .sheet(isPresented: Binding(
-            // Triggered when an authenticated user is still missing core
-            // profile data — e.g. Apple sign-in where `fullName` was nil or
-            // the email is a @privaterelay.appleid.com forwarder. Cleared
-            // automatically once the PUT /user/profile response fills those in,
-            // or when the user taps "Not now" (consumer-only escape hatch).
-            get: { authVM.isAuthenticated && authVM.needsProfileCompletion && !profileSheetDismissed },
+            // Triggered when an authenticated, already-verified user is still
+            // missing a name — e.g. Apple sign-in where `fullName` was nil.
+            // Sequenced AFTER verification so two modals never race. Cleared
+            // once PUT /user/profile fills it in, or when the user taps "Not now".
+            get: { authVM.isAuthenticated && !authVM.needsVerification && authVM.needsProfileCompletion && !profileSheetDismissed },
             set: { newValue in
                 if !newValue { profileSheetDismissed = true }
             }

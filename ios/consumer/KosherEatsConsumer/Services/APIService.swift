@@ -18,6 +18,15 @@ enum APIError: LocalizedError {
         case .unauthorized: return "Please log in again"
         }
     }
+
+    /// True when the backend rejected a transaction because the consumer hasn't
+    /// finished phone + email verification (403 {"error":"verification_required"}).
+    /// Clients use this to route into the verification flow instead of showing a
+    /// raw error.
+    var isVerificationRequired: Bool {
+        if case let .httpError(code, msg) = self { return code == 403 && msg == "verification_required" }
+        return false
+    }
 }
 
 @MainActor
@@ -419,6 +428,49 @@ class APIService: ObservableObject {
                                   firstName: firstName, lastName: lastName))
         setToken(response.token, refresh: response.refreshToken)
         return response
+    }
+
+    // MARK: - Email verification
+    //
+    // Two flows share the backend email_otp store. The pre-register pair
+    // (/auth/email/*) verifies an email BEFORE the account exists, for the
+    // email-signup flow. The authenticated pair (/user/email/*) attaches and
+    // verifies a real inbox onto an existing account — used by the phone-first
+    // and Apple onboarding flows. Codes are 6 digits.
+
+    struct EmailBody: Encodable { let email: String }
+    struct EmailCodeBody: Encodable { let email: String; let code: String }
+
+    func startEmailSignup(email: String) async throws {
+        try await requestVoid(method: "POST", path: "/auth/email/start", body: EmailBody(email: email))
+    }
+
+    func verifyEmailSignup(email: String, code: String) async throws {
+        try await requestVoid(method: "POST", path: "/auth/email/verify", body: EmailCodeBody(email: email, code: code))
+    }
+
+    func startEmailChange(email: String) async throws {
+        try await requestVoid(method: "POST", path: "/user/email/start", body: EmailBody(email: email), authenticated: true)
+    }
+
+    func verifyEmailChange(email: String, code: String) async throws {
+        try await requestVoid(method: "POST", path: "/user/email/verify", body: EmailCodeBody(email: email, code: code), authenticated: true)
+    }
+
+    // MARK: - Phone change / add-phone (post sign-in onboarding)
+    //
+    // The "add a verified phone after social/email sign-in" step. Same Twilio
+    // Verify OTP as login, but authenticated and writing onto the existing
+    // account (UpdateProfile no longer writes phone). Code length matches login.
+
+    struct PhoneChangeVerifyBody: Encodable { let phone: String; let code: String }
+
+    func startPhoneChange(phone: String) async throws {
+        try await requestVoid(method: "POST", path: "/user/phone/change/start", body: PhoneStartBody(phone: phone), authenticated: true)
+    }
+
+    func verifyPhoneChange(phone: String, code: String) async throws {
+        try await requestVoid(method: "POST", path: "/user/phone/change/verify", body: PhoneChangeVerifyBody(phone: phone, code: code), authenticated: true)
     }
 
     func logout() {

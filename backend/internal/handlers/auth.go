@@ -124,13 +124,39 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	vertical := normalizeVertical(req.Vertical)
 
+	// Consumer email signups must prove ownership of the email with an OTP
+	// (POST /auth/email/start → /auth/email/verify) BEFORE the account is
+	// created — that's why register is the final step that carries the chosen
+	// password. Seller/courier onboarding is out of scope for this requirement
+	// and keeps its existing un-gated behavior (and is exempt from the
+	// consumer-transaction verification gate).
+	emailVerified := true
+	phoneVerified := role != models.RoleConsumer
+	if role == models.RoleConsumer {
+		verified, verr := h.signupEmailVerified(r.Context(), req.Email)
+		if verr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to verify email")
+			return
+		}
+		// When enforcement is ON the OTP proof is required. When OFF (rollout
+		// window, before the updated apps are widely adopted) we still accept
+		// registrations without it so old app builds keep working — the account
+		// is just recorded as email-unverified, and the updated app's mandatory
+		// verification flow (or a later enforcement flip) completes it.
+		if h.cfg.VerificationEnforced && !verified {
+			writeError(w, http.StatusBadRequest, "email not verified")
+			return
+		}
+		emailVerified = verified
+	}
+
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
-		 RETURNING id, email, first_name, last_name, phone, role, vertical, created_at, updated_at`,
-		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, role, vertical,
-	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical, email_verified, phone_verified)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 RETURNING id, email, first_name, last_name, phone, role, vertical, email_verified, phone_verified, created_at, updated_at`,
+		req.Email, string(hashedPassword), req.FirstName, req.LastName, req.Phone, role, vertical, emailVerified, phoneVerified,
+	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone, &user.Role, &user.Vertical, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
@@ -139,6 +165,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, "failed to create user")
 		return
+	}
+
+	// Account created — consume the signup OTP so the proof can't be reused.
+	// (Only when a proof actually backed this signup; none exists in the
+	// enforcement-off path where the email wasn't pre-verified.)
+	if role == models.RoleConsumer && emailVerified {
+		h.clearEmailOTP(r.Context(), req.Email, emailOTPPurposeSignup)
 	}
 
 	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
@@ -235,12 +268,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		// (phone-OTP: "phone-"+phone), so matching them here was a deterministic
 		// account-takeover bypass of the OTP/OAuth flow. They sign in through
 		// their own provider path instead.
-		`SELECT id, email, password_hash, first_name, last_name, phone, role, vertical, created_at, updated_at
+		`SELECT id, email, password_hash, first_name, last_name, phone, role, vertical, email_verified, phone_verified, created_at, updated_at
 		 FROM users WHERE email = $1 AND role = $2 AND vertical = $3
 		   AND (auth_provider IS NULL OR auth_provider = 'email')`,
 		req.Email, role, vertical,
 	).Scan(&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
+		&user.Phone, &user.Role, &user.Vertical, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")

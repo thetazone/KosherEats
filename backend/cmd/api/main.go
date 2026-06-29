@@ -144,6 +144,12 @@ func main() {
 	// looser /login burst budget. Distinct max/window => independent Redis +
 	// in-memory counters.
 	emailCheckLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(3.0/60), 3, 30*time.Minute)
+	// Email-OTP "send a code" endpoints (signup pre-verify + authenticated
+	// add-email) each dispatch a real email, so they're an inbox-bombing vector.
+	// Throttle the SEND on its own strict per-IP counter (3 per ~minute), like
+	// emailCheckLimiter. The matching verify endpoints ride the normal limiters
+	// and are additionally protected by the per-code attempt lockout + TTL.
+	emailOtpLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(3.0/60), 3, 30*time.Minute)
 
 	h := handlers.New(db, cfg)
 
@@ -190,6 +196,12 @@ func main() {
 		// code + new password for an updated credential.
 		r.Post("/password/forgot", h.ForgotPassword)
 		r.Post("/password/reset", h.ResetPassword)
+		// Email OTP for the email-signup flow: start emails a 6-digit code,
+		// verify stamps the proof that Register checks before creating the
+		// consumer account. The send is double-limited (group authLimiter +
+		// strict per-IP emailOtpLimiter) so it can't be used to bomb inboxes.
+		r.With(emailOtpLimiter.PerIP).Post("/email/start", h.StartEmailSignup)
+		r.Post("/email/verify", h.VerifyEmailSignup)
 	})
 
 	// Email-existence check: own stricter limiter (account-enumeration oracle).
@@ -241,7 +253,9 @@ func main() {
 	r.Route("/api/v1/orders", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
 		r.Use(apiLimiter.PerUser)
-		r.Post("/", h.CreateOrder)
+		// Hard gate: a consumer can browse and build a cart, but cannot place an
+		// order until both phone and email are verified (403 verification_required).
+		r.With(h.RequireVerifiedMiddleware).Post("/", h.CreateOrder)
 		r.Get("/", h.ListOrders)
 		// Idempotent client recovery: look up an order by the PaymentIntent
 		// the client just confirmed. Static segment so chi matches it ahead of
@@ -285,7 +299,9 @@ func main() {
 	r.Route("/api/v1/payments", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
 		r.Use(apiLimiter.PerUser)
-		r.Post("/intent", h.CreatePaymentIntent)
+		// Same gate as order creation — no PaymentIntent for an unverified
+		// consumer, so the money path can't be reached before verification.
+		r.With(h.RequireVerifiedMiddleware).Post("/intent", h.CreatePaymentIntent)
 		r.Post("/confirm", h.ConfirmPayment)
 		// Profile → Payment Methods screen (STPCustomerSheet).
 		r.Get("/customer", h.GetPaymentCustomer)
@@ -454,8 +470,14 @@ func main() {
 		r.Put("/profile", h.UpdateProfile)
 		// Verified phone-change flow (UpdateProfile no longer writes phone):
 		// start sends an OTP to the new number, verify sets it on the account.
+		// Also the "add phone" step of the social/email onboarding flows.
 		r.Post("/phone/change/start", h.StartPhoneChange)
 		r.Post("/phone/change/verify", h.VerifyPhoneChange)
+		// Verified add-email flow — the "attach a real, verified inbox" step of
+		// the phone-first and Apple onboarding flows. Start is strict per-IP
+		// (emailOtpLimiter) on top of the per-user limiter to bound sends.
+		r.With(emailOtpLimiter.PerIP).Post("/email/start", h.StartEmailChange)
+		r.Post("/email/verify", h.VerifyEmailChange)
 		r.Get("/addresses", h.ListAddresses)
 		r.Post("/addresses", h.AddAddress)
 		r.Delete("/addresses/{id}", h.DeleteAddress)

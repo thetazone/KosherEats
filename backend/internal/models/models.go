@@ -72,10 +72,17 @@ type User struct {
 	// 'kosher' (KosherEats) | 'vegan' (GreenEats). The (email, vertical)
 	// pair is unique, so the same email can register on both apps and
 	// gets a fully independent account in each.
-	Vertical  string    `json:"vertical"`
-	AvatarURL string    `json:"avatar_url,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Vertical  string `json:"vertical"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+	// EmailVerified / PhoneVerified gate consumer onboarding: a new account
+	// must confirm both (emailed OTP + Twilio SMS OTP) before it can transact.
+	// Existing accounts were grandfathered to true (migration 054). All three
+	// apps read these to drive the verification flow; the API enforces them on
+	// order/payment creation.
+	EmailVerified bool      `json:"email_verified"`
+	PhoneVerified bool      `json:"phone_verified"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Address struct {

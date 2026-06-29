@@ -41,10 +41,10 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	if err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at
+		`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, email_verified, phone_verified, created_at, updated_at
 		 FROM users WHERE id = $1`, user["user_id"],
 	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.Vertical, &u.AvatarURL,
-		&u.CreatedAt, &u.UpdatedAt); err != nil {
+		&u.EmailVerified, &u.PhoneVerified, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
 	}
@@ -96,10 +96,10 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	var u models.User
 	err := h.db.Pool.QueryRow(ctx,
-		`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at
+		`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, email_verified, phone_verified, created_at, updated_at
 		 FROM users WHERE id = $1`, user["user_id"],
 	).Scan(&u.ID, &u.Email, &u.FirstName, &u.LastName, &u.Phone, &u.Role, &u.Vertical, &u.AvatarURL,
-		&u.CreatedAt, &u.UpdatedAt)
+		&u.EmailVerified, &u.PhoneVerified, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return

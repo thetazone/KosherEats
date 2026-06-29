@@ -198,7 +198,7 @@ func (h *Handler) VerifyPhoneChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE users SET phone = $1, updated_at = NOW() WHERE id = $2`,
+		`UPDATE users SET phone = $1, phone_verified = true, updated_at = NOW() WHERE id = $2`,
 		phone, user["user_id"]); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -294,20 +294,20 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 	// the same phone can hold separate KosherEats and GreenEats accounts.
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.vertical, u.created_at, u.updated_at
+		`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.vertical, u.email_verified, u.phone_verified, u.created_at, u.updated_at
 		 FROM users u
 		 JOIN user_auth_providers uap ON u.id = uap.user_id
 		 WHERE uap.provider = 'phone' AND uap.provider_id = $1 AND u.role = $2 AND u.vertical = $3`,
 		phone, req.Role, vertical,
 	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
+		&user.Phone, &user.Role, &user.Vertical, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id, email, first_name, last_name, phone, role, vertical, created_at, updated_at
+			`SELECT id, email, first_name, last_name, phone, role, vertical, email_verified, phone_verified, created_at, updated_at
 			   FROM users WHERE phone = $1 AND role = $2 AND vertical = $3`, phone, req.Role, vertical,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName,
-			&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
+			&user.Phone, &user.Role, &user.Vertical, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 	}
 
 	switch {
@@ -323,6 +323,19 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "lookup failed")
 		return
+	}
+
+	// The OTP just proved control of this number — mark the account
+	// phone-verified. Covers a brand-new phone signup AND an older account
+	// (e.g. an email signup that listed this phone) logging in by phone for the
+	// first time. New phone accounts still need to verify a real email next.
+	if !user.PhoneVerified {
+		if _, err := h.db.Pool.Exec(r.Context(),
+			`UPDATE users SET phone_verified = true, updated_at = NOW() WHERE id = $1`, user.ID); err != nil {
+			slog.Warn("failed to set phone_verified on phone login",
+				slog.String("user_id", user.ID), slog.String("error", err.Error()))
+		}
+		user.PhoneVerified = true
 	}
 
 	// Ensure user_auth_providers has the phone link.
@@ -406,14 +419,18 @@ func (h *Handler) createPhoneUser(r *http.Request, phone, vertical string, req P
 		vertical = "kosher"
 	}
 
+	// phone_verified=true: this row is only created after a successful Twilio
+	// OTP. email_verified=false: the email here is either client-supplied
+	// (unverified) or the synthesized @phone.koshereats.local placeholder — the
+	// consumer must verify a real inbox next via /user/email/start + /verify.
 	var user models.User
 	err = h.db.Pool.QueryRow(r.Context(),
-		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical, auth_provider)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'phone')
-		 RETURNING id, email, first_name, last_name, phone, role, vertical, created_at, updated_at`,
+		`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical, auth_provider, email_verified, phone_verified)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'phone', false, true)
+		 RETURNING id, email, first_name, last_name, phone, role, vertical, email_verified, phone_verified, created_at, updated_at`,
 		email, string(dummyHash), firstName, lastName, phone, role, vertical,
 	).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName,
-		&user.Phone, &user.Role, &user.Vertical, &user.CreatedAt, &user.UpdatedAt)
+		&user.Phone, &user.Role, &user.Vertical, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 	return user, err
 }
 
