@@ -394,6 +394,11 @@ class AuthViewModel @Inject constructor(
                         toggleError = "Failed to update restaurant status",
                     )
                 }
+            } catch (e: CancellationException) {
+                // Coroutine cancelled (screen left, or a refresh superseded this
+                // write). Rethrow to preserve structured concurrency, and don't
+                // surface it as a "Network error: cancelled" — parity with iOS.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isTogglingOpen = false,
@@ -445,6 +450,9 @@ class AuthViewModel @Inject constructor(
                         toggleError = "Failed to update delivery method",
                     )
                 }
+            } catch (e: CancellationException) {
+                // Benign cancellation (see toggleOpen) — rethrow, don't show it.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isTogglingDeliveryMode = false,
