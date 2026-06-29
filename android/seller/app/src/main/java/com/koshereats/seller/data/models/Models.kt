@@ -276,19 +276,6 @@ data class DashboardStats(
     @Json(name = "today_delivery_earnings") val todayDeliveryEarnings: Int = 0,
 )
 
-/**
- * Result of escalating a self-delivery order to Uber Direct
- * (PATCH /seller/orders/{id}/escalate). Mirrors iOS EscalateResponse and the
- * backend's writeJSON map (status/provider/delivery_id/tracking_url).
- */
-@JsonClass(generateAdapter = true)
-data class EscalateResponse(
-    val status: String = "",
-    val provider: String = "",
-    @Json(name = "delivery_id") val deliveryId: String = "",
-    @Json(name = "tracking_url") val trackingUrl: String = "",
-)
-
 // --- Device tokens (push notifications) ---
 
 @JsonClass(generateAdapter = true)

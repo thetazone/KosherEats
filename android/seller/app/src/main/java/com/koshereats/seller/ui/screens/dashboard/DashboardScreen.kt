@@ -63,6 +63,7 @@ import com.koshereats.seller.ui.theme.StatusAccepted
 import com.koshereats.seller.ui.theme.StatusPreparing
 import com.koshereats.seller.ui.theme.SuccessGreen
 import com.koshereats.seller.ui.theme.SurfaceDark
+import com.koshereats.seller.ui.theme.SurfaceDarkElevated
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
@@ -302,9 +303,23 @@ fun DashboardScreen(
                         iconTint = StatusPreparing,
                         modifier = Modifier.weight(1f),
                     )
-                    // Keep the trailing card half-width (grid parity with iOS's
-                    // last-row single card) rather than stretching it full-width.
-                    Spacer(modifier = Modifier.weight(1f))
+                    // 6th cell: the restaurant's default delivery method for NEW
+                    // orders (existing orders keep their mode). The active mode's
+                    // pill is filled green so the seller sees the current method at a
+                    // glance. Mirrors iOS deliveryModeTile. Falls back to a half-width
+                    // spacer until the restaurant has loaded so the grid stays aligned.
+                    val dashRestaurant = authState.restaurant
+                    if (dashRestaurant != null) {
+                        DeliveryModeTile(
+                            // "restaurant" => Self-delivery; "platform"/"external" => Uber Direct.
+                            isSelfDelivery = dashRestaurant.deliveryMode == "restaurant",
+                            isUpdating = authState.isTogglingDeliveryMode,
+                            onSelect = { authViewModel.setRestaurantDeliveryMode(it) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
 
@@ -447,5 +462,98 @@ fun StatCard(
                 color = TextMuted,
             )
         }
+    }
+}
+
+/**
+ * The restaurant's default delivery method, shown as the 6th stats-grid cell.
+ * Matches the [StatCard] footprint (same background / corner radius / padding):
+ * a car icon up top and two stacked full-width pills. The active mode's pill is
+ * filled [SuccessGreen] with white text; the inactive pill is a subtle gray.
+ * Tapping a pill writes the restaurant default for NEW orders. Mirrors iOS
+ * deliveryModeTile.
+ */
+@Composable
+private fun DeliveryModeTile(
+    isSelfDelivery: Boolean,
+    isUpdating: Boolean,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Orange.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DirectionsCar,
+                    contentDescription = null,
+                    tint = Orange,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Delivery",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMuted,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            DeliveryModePill(
+                label = "Uber Direct",
+                selected = !isSelfDelivery,
+                enabled = !isUpdating,
+                onClick = { onSelect("external") },
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            DeliveryModePill(
+                label = "Self-delivery",
+                selected = isSelfDelivery,
+                enabled = !isUpdating,
+                onClick = { onSelect("restaurant") },
+            )
+        }
+    }
+}
+
+/**
+ * One full-width pill in [DeliveryModeTile]. Selected = filled [SuccessGreen]
+ * (the app's open/closed success-green) with white text; unselected = subtle gray.
+ */
+@Composable
+private fun DeliveryModePill(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) SuccessGreen else SurfaceDarkElevated)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) TextWhite else TextSecondary,
+            maxLines = 1,
+        )
     }
 }

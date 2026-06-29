@@ -41,6 +41,7 @@ data class AuthState(
      */
     val toggleError: String? = null,
     val isTogglingOpen: Boolean = false,
+    val isTogglingDeliveryMode: Boolean = false,
     /** null = not yet checked, true = seller owns at least one restaurant. */
     val hasRestaurants: Boolean? = null,
     // Phone auth
@@ -405,6 +406,51 @@ class AuthViewModel @Inject constructor(
     fun clearToggleError() {
         if (_state.value.toggleError != null) {
             _state.value = _state.value.copy(toggleError = null)
+        }
+    }
+
+    /**
+     * Restaurant-level default delivery method for NEW orders (existing orders keep
+     * the mode they were created with). Surfaced on the Dashboard — tapping a pill
+     * persists it via the same `PUT /seller/restaurant` endpoint Settings uses, then
+     * refreshes [AuthState.restaurant] so the active pill updates. Mirrors the
+     * open/closed toggle's persistence pattern and iOS setRestaurantDeliveryMode.
+     */
+    fun setRestaurantDeliveryMode(mode: String) {
+        if (_state.value.isTogglingDeliveryMode) return
+        // No-op when the default already matches — avoids a redundant write (iOS guards the same).
+        if (_state.value.restaurant?.deliveryMode == mode) return
+        _state.value = _state.value.copy(isTogglingDeliveryMode = true, toggleError = null)
+        viewModelScope.launch {
+            try {
+                val response = apiService.updateRestaurant(mapOf("delivery_mode" to mode))
+                if (response.isSuccessful) {
+                    val updated = response.body()
+                    if (updated != null) {
+                        _state.value = _state.value.copy(
+                            restaurant = updated,
+                            isTogglingDeliveryMode = false,
+                        )
+                    } else {
+                        // Keep the existing restaurant so the tile doesn't blank out
+                        // on an empty 200 body (matches toggleOpen).
+                        _state.value = _state.value.copy(
+                            isTogglingDeliveryMode = false,
+                            toggleError = "Server returned empty response.",
+                        )
+                    }
+                } else {
+                    _state.value = _state.value.copy(
+                        isTogglingDeliveryMode = false,
+                        toggleError = "Failed to update delivery method",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isTogglingDeliveryMode = false,
+                    toggleError = e.localizedMessage ?: "Network error",
+                )
+            }
         }
     }
 

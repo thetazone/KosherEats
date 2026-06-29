@@ -15,7 +15,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
-import com.koshereats.seller.data.api.OrderDeliveryModeRequest
 import retrofit2.Response
 import com.koshereats.seller.data.models.Order
 import com.koshereats.seller.data.models.OrderStatus
@@ -655,49 +654,6 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
-    fun setOrderDeliveryMode(orderId: String, deliveryMode: String) {
-        if (_state.value.pendingOrderIds.contains(orderId)) return
-        viewModelScope.launch {
-            _state.update { it.copy(
-                pendingOrderIds = it.pendingOrderIds + orderId,
-                error = null,
-                updateSuccess = null,
-            ) }
-            try {
-                val response = apiService.setOrderDeliveryMode(
-                    orderId,
-                    OrderDeliveryModeRequest(deliveryMode),
-                )
-                val updatedOrder = response.body()
-                if (response.isSuccessful && updatedOrder != null) {
-                    _state.update { st ->
-                        st.copy(
-                            selectedOrder = updatedOrder,
-                            orders = st.orders.map { if (it.id == orderId) updatedOrder else it },
-                            pendingOrderIds = st.pendingOrderIds - orderId,
-                            updateSuccess = if (deliveryMode == "restaurant") {
-                                "Self-delivery selected"
-                            } else {
-                                "Uber Direct selected"
-                            },
-                        )
-                    }
-                } else {
-                    _state.update { it.copy(
-                        pendingOrderIds = it.pendingOrderIds - orderId,
-                        error = "Failed to update delivery choice",
-                    ) }
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                _state.update { it.copy(
-                    pendingOrderIds = it.pendingOrderIds - orderId,
-                    error = "Connection error: ${e.localizedMessage}",
-                ) }
-            }
-        }
-    }
-
     fun sellerDeliverOrder(orderId: String) {
         if (_state.value.pendingOrderIds.contains(orderId)) return
         viewModelScope.launch {
@@ -723,48 +679,6 @@ class OrdersViewModel @Inject constructor(
                     _state.update { it.copy(
                         pendingOrderIds = it.pendingOrderIds - orderId,
                         error = "Failed to mark order as delivered",
-                    ) }
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                _state.update { it.copy(
-                    pendingOrderIds = it.pendingOrderIds - orderId,
-                    error = "Connection error: ${e.localizedMessage}",
-                ) }
-            }
-        }
-    }
-
-    /**
-     * Escalate an open self-delivery order to Uber Direct. One-way — the backend
-     * rejects orders already on a courier/provider (409), surfaced as an error
-     * Toast. On success the order is re-fetched so the UI reflects the handoff.
-     */
-    fun escalateOrderToUber(orderId: String) {
-        if (_state.value.pendingOrderIds.contains(orderId)) return
-        viewModelScope.launch {
-            _state.update { it.copy(
-                pendingOrderIds = it.pendingOrderIds + orderId,
-                error = null,
-                updateSuccess = null,
-            ) }
-            try {
-                val response = apiService.escalateOrderToUber(orderId)
-                if (response.isSuccessful) {
-                    val detail = apiService.getOrderDetail(orderId)
-                    val updatedOrder = detail.body()
-                    _state.update { st ->
-                        st.copy(
-                            selectedOrder = updatedOrder ?: st.selectedOrder,
-                            orders = if (updatedOrder != null) st.orders.map { if (it.id == orderId) updatedOrder else it } else st.orders,
-                            pendingOrderIds = st.pendingOrderIds - orderId,
-                            updateSuccess = "Sent to Uber — a courier is on the way.",
-                        )
-                    }
-                } else {
-                    _state.update { it.copy(
-                        pendingOrderIds = it.pendingOrderIds - orderId,
-                        error = "Couldn't send to Uber — it may already be dispatched.",
                     ) }
                 }
             } catch (e: Exception) {

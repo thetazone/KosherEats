@@ -21,7 +21,6 @@ import android.net.Uri
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.LocalShipping
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restaurant
@@ -61,7 +60,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.OrderStatus
@@ -490,13 +488,6 @@ fun SellerOrderDetailScreen(
                     // mismatch there could leave a READY delivery order with no
                     // actionable button.
                     isSelfDelivery = order.isSelfDelivery,
-                    // Mirrors the backend escalate guard: no courier, not already on
-                    // a provider, and a delivery (not pickup) order.
-                    canEscalate = order.courier == null &&
-                        order.externalDeliveryId.isNullOrEmpty() &&
-                        !order.isPickup &&
-                        order.isSelfDelivery &&
-                        order.status == OrderStatus.READY,
                     // A courier is attached or the order was handed to an external
                     // provider — the order is no longer seller-drivable.
                     isExternallyDispatched = order.courier != null ||
@@ -521,12 +512,6 @@ fun SellerOrderDetailScreen(
                     },
                     onSelfDeliver = {
                         viewModel.sellerDeliverOrder(orderId)
-                    },
-                    onEscalate = {
-                        viewModel.escalateOrderToUber(orderId)
-                    },
-                    onSetDeliveryMode = { mode ->
-                        viewModel.setOrderDeliveryMode(orderId, mode)
                     },
                     onCancel = { showRejectConfirm = true },
                 )
@@ -581,12 +566,6 @@ private fun SavingsRow(label: String, amount: Int) {
 }
 
 /**
- * Secondary action on an open delivery order (accepted/preparing): hand it off
- * to an Uber Direct courier when the seller is swamped. One-way — the backend
- * rejects orders already on a courier/provider, surfaced as an error Toast.
- * Mirrors iOS escalateButton ("Dispatch to Uber").
- */
-/**
  * Informational card shown on a READY delivery order that's already been handed to
  * a courier or external delivery partner — replaces a misleading "Awaiting Pickup"
  * button with a passive status (parity with iOS's partner-handoff cards).
@@ -614,24 +593,6 @@ private fun DispatchStatusCard(text: String) {
     }
 }
 
-@Composable
-private fun EscalateToUberButton(
-    isUpdating: Boolean,
-    onEscalate: () -> Unit,
-) {
-    Button(
-        onClick = onEscalate,
-        enabled = !isUpdating,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Orange),
-    ) {
-        Icon(Icons.Filled.DirectionsCar, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text("Dispatch to Uber", fontWeight = FontWeight.SemiBold)
-    }
-}
-
 private fun readyButtonTitle(
     isPickup: Boolean,
     isSelfDelivery: Boolean,
@@ -641,81 +602,11 @@ private fun readyButtonTitle(
     else -> "Ready for Uber pickup"
 }
 
-private fun canChooseDeliveryMode(
-    status: OrderStatus,
-    isPickup: Boolean,
-    isExternallyDispatched: Boolean,
-): Boolean =
-    !isPickup &&
-        !isExternallyDispatched &&
-        (status == OrderStatus.ACCEPTED || status == OrderStatus.PREPARING || status == OrderStatus.READY)
-
-@Composable
-private fun DeliveryModeChoiceButton(
-    isSelfDelivery: Boolean,
-    isUpdating: Boolean,
-    onSetDeliveryMode: (String) -> Unit,
-) {
-    val switchToSelfDelivery = !isSelfDelivery
-    val title = if (switchToSelfDelivery) {
-        "Self-deliver this order"
-    } else {
-        "Use Uber Direct for this order"
-    }
-    val icon = if (switchToSelfDelivery) Icons.Filled.LocalShipping else Icons.Filled.DirectionsCar
-    val nextMode = if (switchToSelfDelivery) "restaurant" else "external"
-
-    OutlinedButton(
-        onClick = { onSetDeliveryMode(nextMode) },
-        enabled = !isUpdating,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Orange),
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(title, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-/** Locked stand-in for the "Self-deliver this order" button shown while an
- *  external (Uber) dispatch is in flight. Non-interactive — switching to
- *  self-delivery here would race the dispatcher's create-delivery call and the
- *  backend rejects it, so we explain the lock instead of erroring on tap.
- *  Parity with iOS dispatchPendingSelfDeliverLock(). */
-@Composable
-private fun DispatchPendingSelfDeliverLock() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        OutlinedButton(
-            onClick = {},
-            enabled = false,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Self-deliver this order", fontWeight = FontWeight.SemiBold)
-        }
-        Text(
-            "Dispatching to Uber — you can't switch once a courier is assigned.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
 @Composable
 private fun OrderActionButtons(
     status: OrderStatus,
     isPickup: Boolean,
     isSelfDelivery: Boolean,
-    // True when the order isn't on a courier or external provider yet — the
-    // escalate-to-Uber action is available (accepted/preparing/ready).
-    canEscalate: Boolean,
     // True once a courier has claimed the order or it's been dispatched to an
     // external provider (Uber/DoorDash) — the seller no longer drives it.
     isExternallyDispatched: Boolean,
@@ -730,8 +621,6 @@ private fun OrderActionButtons(
     onComplete: () -> Unit,
     onSelfPickup: () -> Unit,
     onSelfDeliver: () -> Unit,
-    onEscalate: () -> Unit,
-    onSetDeliveryMode: (String) -> Unit,
     onCancel: () -> Unit,
 ) {
     Column(
@@ -823,13 +712,9 @@ private fun OrderActionButtons(
                         Text("Start Preparing", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
-                    DeliveryModeChoiceButton(
-                        isSelfDelivery = isSelfDelivery,
-                        isUpdating = isUpdating,
-                        onSetDeliveryMode = onSetDeliveryMode,
-                    )
-                }
+                // The per-order self-deliver / Uber switch lives on the next
+                // screen (beside "Ready for Uber pickup"), the natural dispatch-
+                // decision point — no need to duplicate it here. Parity with iOS.
             }
             OrderStatus.PREPARING -> {
                 Button(
@@ -847,13 +732,8 @@ private fun OrderActionButtons(
                         Text(readyButtonTitle(isPickup, isSelfDelivery), fontWeight = FontWeight.SemiBold)
                     }
                 }
-                if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
-                    DeliveryModeChoiceButton(
-                        isSelfDelivery = isSelfDelivery,
-                        isUpdating = isUpdating,
-                        onSetDeliveryMode = onSetDeliveryMode,
-                    )
-                }
+                // The delivery method is fixed at checkout — no per-order switch
+                // here. The default lives on the Dashboard. Parity with iOS.
             }
             OrderStatus.READY -> {
                 if (isPickup) {
@@ -916,26 +796,9 @@ private fun OrderActionButtons(
                         Text("Awaiting Pickup…", fontWeight = FontWeight.SemiBold)
                     }
                 }
-                // The seller's own driver (or the wait for a platform courier) can
-                // still be punted to Uber while the order sits in Ready — same
-                // one-way escalate as accepted/preparing. Drops off once a courier
-                // claims it or it's dispatched (canEscalate).
-                if (canEscalate) {
-                    EscalateToUberButton(isUpdating = isUpdating, onEscalate = onEscalate)
-                } else if (!isPickup && !isSelfDelivery && !isExternallyDispatched) {
-                    // External (Uber) dispatch is in flight: we've marked this ready
-                    // for Uber and the dispatcher creates the delivery within seconds.
-                    // Switching to self-delivery now races that create and the backend
-                    // rejects it, so present the option locked with a reason rather
-                    // than erroring on tap. Flips to the handoff card once dispatched.
-                    DispatchPendingSelfDeliverLock()
-                } else if (canChooseDeliveryMode(status, isPickup, isExternallyDispatched)) {
-                    DeliveryModeChoiceButton(
-                        isSelfDelivery = isSelfDelivery,
-                        isUpdating = isUpdating,
-                        onSetDeliveryMode = onSetDeliveryMode,
-                    )
-                }
+                // Courier/provider owns the handoff now, and the delivery method is
+                // fixed at checkout — there's nothing for the seller to switch here.
+                // Parity with iOS.
             }
             OrderStatus.PICKED_UP -> {
                 if (isSelfDelivery) {

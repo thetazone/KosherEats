@@ -15,11 +15,6 @@ data class SocialLoginRequest(
     val role: String = "seller",
 )
 
-@JsonClass(generateAdapter = true)
-data class OrderDeliveryModeRequest(
-    @Json(name = "delivery_mode") val deliveryMode: String,
-)
-
 interface ApiService {
 
     // --- Auth ---
@@ -73,12 +68,6 @@ interface ApiService {
         @Path("orderId") orderId: String,
     ): Response<Order>
 
-    @PATCH("seller/orders/{orderId}/delivery-mode")
-    suspend fun setOrderDeliveryMode(
-        @Path("orderId") orderId: String,
-        @Body body: OrderDeliveryModeRequest,
-    ): Response<Order>
-
     @PATCH("seller/orders/{orderId}/complete")
     suspend fun completeOrder(
         @Path("orderId") orderId: String,
@@ -94,16 +83,6 @@ interface ApiService {
     // exposes /cancel under the consumer order group (CancelOrder), not under
     // /seller/orders. Sellers terminate an order via /reject (PENDING only). The
     // Cancel-in-progress affordance was removed from the UI because it 404'd.
-
-    /**
-     * Hand an open self-delivery order off to an Uber Direct courier when the
-     * seller is overwhelmed. One-way (own → Uber); the backend rejects orders
-     * already on a courier or external provider.
-     */
-    @PATCH("seller/orders/{orderId}/escalate")
-    suspend fun escalateOrderToUber(
-        @Path("orderId") orderId: String,
-    ): Response<EscalateResponse>
 
     @PATCH("seller/orders/{orderId}/pickup")
     suspend fun sellerPickupOrder(

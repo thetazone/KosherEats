@@ -597,38 +597,12 @@ fun RestaurantSettingsScreen(
 
             // Delivery / Pricing (editable)
             SettingsSectionCard(icon = Icons.Filled.AttachMoney, title = "Delivery") {
-                // Who delivers — own driver or Uber Direct.
-                // Mirrors iOS "Who delivers", including the dynamic caption per mode.
+                // The delivery method (Self-delivery vs Uber Direct) is the
+                // restaurant default, set on the Dashboard and locked at checkout —
+                // no per-restaurant picker here. The Delivery Fee below is now the
+                // self-delivery fee. Parity with iOS.
                 Text(
-                    text = "Who delivers",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SurfaceDarkElevated)
-                        .padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    DeliveryModeSegment(
-                        label = "Self-delivery",
-                        selected = deliveryMode == "restaurant",
-                        modifier = Modifier.weight(1f),
-                        onClick = { deliveryMode = "restaurant" },
-                    )
-                    DeliveryModeSegment(
-                        label = "Uber Direct",
-                        selected = deliveryMode == "external",
-                        modifier = Modifier.weight(1f),
-                        onClick = { deliveryMode = "external" },
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = deliveryModeHelpText(deliveryMode),
+                    text = "Your self-delivery fee — what you charge and keep when you deliver an order yourself. Choose your delivery method (Self-delivery or Uber Direct) on the Dashboard.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                 )
@@ -1104,36 +1078,6 @@ private fun validateSettings(
  * backend JSON names the seller `PUT /seller/restaurant` handler honors. The handler uses
  * COALESCE per column, so sending only changed fields is a safe partial update.
  */
-/**
- * One segment of the "Who delivers" toggle. Selected = filled Orange pill;
- * unselected = transparent over the row's elevated background. Avoids the
- * experimental SegmentedButton API for cross-version safety.
- */
-@Composable
-private fun DeliveryModeSegment(
-    label: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .then(if (selected) Modifier.background(Orange) else Modifier)
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) TextWhite else TextSecondary,
-            maxLines = 1,
-        )
-    }
-}
-
 private fun buildRestaurantChanges(
     restaurant: Restaurant,
     name: String,
@@ -1189,13 +1133,6 @@ private fun buildRestaurantChanges(
 private fun normalizedDeliveryMode(mode: String?): String = when (mode) {
     "restaurant", "external" -> mode
     else -> "external"
-}
-
-private fun deliveryModeHelpText(mode: String): String = when (mode) {
-    "restaurant" ->
-        "Your own driver handles pickup and delivery. You keep 50% of the delivery fee and can still send an order to Uber if you get slammed."
-    else ->
-        "Orders auto-dispatch to Uber Direct the moment you tap Ready."
 }
 
 /**
