@@ -92,6 +92,14 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("String", "BASE_URL", "\"https://koshereats-api.fly.dev/api/v1/\"")
+            // Bundle native debug symbols (from .so files in deps like Stripe)
+            // into the AAB so Play can symbolicate native crashes/ANRs. Clears
+            // the "you've not uploaded debug symbols" warning. FULL = function
+            // names + line numbers; symbols live in BUNDLE-METADATA and are
+            // stripped from the APKs delivered to users (no size cost to them).
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
         }
     }
 
