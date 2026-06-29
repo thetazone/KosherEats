@@ -185,6 +185,8 @@ func buildRouter(h *Handler) http.Handler {
 	r.Post("/api/v1/auth/phone/verify", h.VerifyPhoneLogin)
 	r.Post("/api/v1/auth/password/forgot", h.ForgotPassword)
 	r.Post("/api/v1/auth/password/reset", h.ResetPassword)
+	r.Post("/api/v1/auth/email/start", h.StartEmailSignup)
+	r.Post("/api/v1/auth/email/verify", h.VerifyEmailSignup)
 
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(h.OptionalAuthMiddleware)
@@ -195,9 +197,23 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Route("/api/v1/orders", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
-		r.Post("/", h.CreateOrder)
+		// Mirror production: order creation is behind the verification gate.
+		r.With(h.RequireVerifiedMiddleware).Post("/", h.CreateOrder)
 		r.Get("/by-payment-intent/{pi}", h.GetOrderByPaymentIntent)
 		r.Patch("/{id}/cancel", h.CancelOrder)
+	})
+
+	r.Route("/api/v1/payments", func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.With(h.RequireVerifiedMiddleware).Post("/intent", h.CreatePaymentIntent)
+	})
+
+	r.Route("/api/v1/user", func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Post("/email/start", h.StartEmailChange)
+		r.Post("/email/verify", h.VerifyEmailChange)
+		r.Post("/phone/change/start", h.StartPhoneChange)
+		r.Post("/phone/change/verify", h.VerifyPhoneChange)
 	})
 
 	r.Route("/api/v1/cart", func(r chi.Router) {
@@ -305,6 +321,24 @@ func uniqueEmail(prefix string) string {
 	return fmt.Sprintf("%s+%d@example.com", prefix, time.Now().UnixNano())
 }
 
+// verifySignupEmail stamps the signup OTP proof so a subsequent consumer
+// /auth/register passes the email-verification gate. The real flow is
+// /auth/email/start → /auth/email/verify, but the stub email client doesn't
+// surface the random code, so tests write the verified proof directly. The
+// register gate only checks verified_at (the code_hash is irrelevant once
+// verified), so an empty hash is fine here.
+func (e *testEnv) verifySignupEmail(t *testing.T, email string) {
+	t.Helper()
+	if _, err := e.h.db.Pool.Exec(context.Background(),
+		`INSERT INTO email_otp (email, purpose, code_hash, expires_at, verified_at)
+		 VALUES ($1, 'signup', '', NOW() + interval '15 minutes', NOW())
+		 ON CONFLICT (email, purpose) DO UPDATE
+		   SET verified_at = NOW(), expires_at = NOW() + interval '15 minutes'`,
+		email); err != nil {
+		t.Fatalf("verify signup email %q: %v", email, err)
+	}
+}
+
 // ---- HTTP helpers --------------------------------------------------------
 
 func (e *testEnv) do(method, path, token string, body any) *httptest.ResponseRecorder {
@@ -325,10 +359,14 @@ func (e *testEnv) do(method, path, token string, body any) *httptest.ResponseRec
 	return rec
 }
 
-// registerUser hits /auth/register and returns the access token + user id.
+// registerUser hits /auth/register and returns the access token + user id. The
+// consumer is left FULLY verified (email via the signup gate, phone stamped
+// here) so downstream order/payment tests pass the transaction gate — tests
+// that specifically exercise the unverified state set the flags themselves.
 func (e *testEnv) registerUser(t *testing.T, prefix string) (token, userID string) {
 	t.Helper()
 	email := uniqueEmail(prefix)
+	e.verifySignupEmail(t, email)
 	rec := e.do(http.MethodPost, "/api/v1/auth/register", "", map[string]any{
 		"email":      email,
 		"password":   "password123",
@@ -344,6 +382,10 @@ func (e *testEnv) registerUser(t *testing.T, prefix string) (token, userID strin
 	if resp.Token == "" {
 		t.Fatalf("register %s: empty token", prefix)
 	}
+	if _, err := e.h.db.Pool.Exec(context.Background(),
+		`UPDATE users SET phone_verified = true WHERE id = $1`, resp.User.ID); err != nil {
+		t.Fatalf("mark phone verified %s: %v", prefix, err)
+	}
 	return resp.Token, resp.User.ID
 }
 
@@ -354,6 +396,7 @@ func TestIntegration_RegisterThenLoginReturnsToken(t *testing.T) {
 	harness.resetVolatile(t)
 
 	email := uniqueEmail("login-flow")
+	harness.verifySignupEmail(t, email)
 	regRec := harness.do(http.MethodPost, "/api/v1/auth/register", "", map[string]any{
 		"email":      email,
 		"password":   "password123",
@@ -803,6 +846,7 @@ func TestIntegration_PasswordResetSkipsPhoneSquatter(t *testing.T) {
 	pool := harness.h.db.Pool
 
 	email := uniqueEmail("reset-victim")
+	harness.verifySignupEmail(t, email)
 	regRec := harness.do(http.MethodPost, "/api/v1/auth/register", "", map[string]any{
 		"email": email, "password": "password123", "first_name": "Victim",
 	})

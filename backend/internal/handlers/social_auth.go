@@ -132,20 +132,20 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 	err = nil
 	if providerID != "" {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.vertical, u.avatar_url, u.created_at, u.updated_at
+			`SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.role, u.vertical, u.avatar_url, u.email_verified, u.phone_verified, u.created_at, u.updated_at
 			 FROM users u
 			 JOIN user_auth_providers uap ON u.id = uap.user_id
 			 WHERE uap.provider = $1 AND uap.provider_id = $2 AND u.role = $3 AND u.vertical = $4`,
 			req.Provider, providerID, role, vertical,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-			&user.Role, &user.Vertical, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+			&user.Role, &user.Vertical, &user.AvatarURL, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 	}
 	if err != nil || providerID == "" {
 		err = h.db.Pool.QueryRow(r.Context(),
-			`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at
+			`SELECT id, email, first_name, last_name, phone, role, vertical, avatar_url, email_verified, phone_verified, created_at, updated_at
 			 FROM users WHERE email = $1 AND role = $2 AND vertical = $3`, email, role, vertical,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-			&user.Role, &user.Vertical, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+			&user.Role, &user.Vertical, &user.AvatarURL, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 	}
 
 	isNewUser := false
@@ -165,13 +165,23 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		dummyHash, _ := bcrypt.GenerateFromPassword(randPwd, bcrypt.DefaultCost)
 
+		// Verification state at creation. Google asserts a verified email and the
+		// backend already requires email_verified=="true" on the token, so we
+		// trust it. Apple is NOT trusted here: it commonly returns a
+		// @privaterelay forwarder, so the consumer app forces a real-email OTP
+		// regardless. Either way a new consumer must still verify a phone, so
+		// phone_verified starts false. Seller/courier social signups are exempt
+		// from this requirement (and from the consumer-transaction gate).
+		emailVerified := req.Provider == "google" || role != models.RoleConsumer
+		phoneVerified := role != models.RoleConsumer
+
 		err = h.db.Pool.QueryRow(r.Context(),
-			`INSERT INTO users (email, password_hash, first_name, last_name, role, vertical, avatar_url, auth_provider, auth_provider_id)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			 RETURNING id, email, first_name, last_name, phone, role, vertical, avatar_url, created_at, updated_at`,
-			email, string(dummyHash), firstName, lastName, role, vertical, avatarURL, req.Provider, providerID,
+			`INSERT INTO users (email, password_hash, first_name, last_name, role, vertical, avatar_url, auth_provider, auth_provider_id, email_verified, phone_verified)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			 RETURNING id, email, first_name, last_name, phone, role, vertical, avatar_url, email_verified, phone_verified, created_at, updated_at`,
+			email, string(dummyHash), firstName, lastName, role, vertical, avatarURL, req.Provider, providerID, emailVerified, phoneVerified,
 		).Scan(&user.ID, &user.Email, &user.FirstName, &user.LastName, &user.Phone,
-			&user.Role, &user.Vertical, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt)
+			&user.Role, &user.Vertical, &user.AvatarURL, &user.EmailVerified, &user.PhoneVerified, &user.CreatedAt, &user.UpdatedAt)
 
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create user")
