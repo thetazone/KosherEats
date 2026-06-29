@@ -238,6 +238,12 @@ class DashboardViewModel: ObservableObject {
             // here bypassed that guard and could revert an optimistic update
             // the seller is watching in SellerOrderDetailView.
             sharedOrdersVM.mergeFresh(orders)
+        } catch is CancellationError {
+            // Benign: a newer load() (pull-to-refresh or the 30s auto-refresh)
+            // superseded this in-flight request. Don't surface it — the next
+            // poll repopulates the card. Mirrors the toggle-path fix (51b6afda).
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Same, at the URLSession layer.
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
@@ -249,6 +255,12 @@ class DashboardViewModel: ObservableObject {
             let fetched = try await APIService.shared.getDashboardStats()
             guard generation == loadGeneration else { return }
             self.stats = fetched
+        } catch is CancellationError {
+            // Benign: a newer load() (pull-to-refresh or the 30s auto-refresh)
+            // superseded this in-flight request. Don't surface it — the next
+            // poll repopulates the card. Mirrors the toggle-path fix (51b6afda).
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Same, at the URLSession layer.
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
@@ -260,6 +272,12 @@ class DashboardViewModel: ObservableObject {
             let fetched = try await APIService.shared.getRestaurant()
             guard generation == loadGeneration else { return }
             self.restaurant = fetched
+        } catch is CancellationError {
+            // Benign: a newer load() (pull-to-refresh or the 30s auto-refresh)
+            // superseded this in-flight request. Don't surface it — the next
+            // poll repopulates the card. Mirrors the toggle-path fix (51b6afda).
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Same, at the URLSession layer.
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
