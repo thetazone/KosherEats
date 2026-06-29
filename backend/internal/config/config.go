@@ -91,11 +91,14 @@ type Config struct {
 	// Delivery pricing: the consumer always pays the cheapest external courier
 	// (Uber Direct / DoorDash) quote PLUS a flat markup we keep — no minimum, no
 	// free delivery, no floor/ceiling. The fee always tracks the real provider
-	// cost. DeliveryMarkupCents on normal orders; DeliveryMarkupLargeCents once
-	// the item subtotal (excl. delivery) exceeds DeliveryLargeOrderCents.
-	DeliveryMarkupCents      int
-	DeliveryMarkupLargeCents int
-	DeliveryLargeOrderCents  int
+	// cost, tiered by item subtotal (excl. delivery): DeliveryMarkupCents up to
+	// DeliveryLargeOrderCents, DeliveryMarkupLargeCents up to
+	// DeliveryHighestOrderCents, DeliveryMarkupHighestCents above that.
+	DeliveryMarkupCents        int
+	DeliveryMarkupLargeCents   int
+	DeliveryMarkupHighestCents int
+	DeliveryLargeOrderCents    int
+	DeliveryHighestOrderCents  int
 
 	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePercent
 	// to the (currently stubbed) Stripe Tax integration point. Default false:
@@ -191,9 +194,11 @@ func Load() *Config {
 
 		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
 
-		DeliveryMarkupCents:      getEnvInt("DELIVERY_MARKUP_CENTS", 100),
-		DeliveryMarkupLargeCents: getEnvInt("DELIVERY_MARKUP_LARGE_CENTS", 200),
-		DeliveryLargeOrderCents:  getEnvInt("DELIVERY_LARGE_ORDER_CENTS", 4000),
+		DeliveryMarkupCents:        getEnvInt("DELIVERY_MARKUP_CENTS", 100),
+		DeliveryMarkupLargeCents:   getEnvInt("DELIVERY_MARKUP_LARGE_CENTS", 200),
+		DeliveryMarkupHighestCents: getEnvInt("DELIVERY_MARKUP_HIGHEST_CENTS", 300),
+		DeliveryLargeOrderCents:    getEnvInt("DELIVERY_LARGE_ORDER_CENTS", 4000),
+		DeliveryHighestOrderCents:  getEnvInt("DELIVERY_HIGHEST_ORDER_CENTS", 8000),
 		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
 		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
 

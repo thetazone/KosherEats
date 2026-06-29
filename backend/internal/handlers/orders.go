@@ -177,11 +177,12 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	var restAddress string
 	restaurantDeliveryMode := "platform"
+	var restaurantDeliveryFee int
 	if err := tx.QueryRow(r.Context(),
 		`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
-		        COALESCE(delivery_mode, 'platform')
+		        COALESCE(delivery_mode, 'platform'), delivery_fee
 		   FROM restaurants WHERE id = $1`, cart.RestaurantID,
-	).Scan(&restAddress, &restaurantDeliveryMode); err != nil {
+	).Scan(&restAddress, &restaurantDeliveryMode, &restaurantDeliveryFee); err != nil {
 		writeError(w, http.StatusBadRequest, "restaurant not found")
 		return
 	}
@@ -189,7 +190,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	deliveryFee := 0
 	if fulfillmentType != "pickup" {
 		if restAddress != "" {
-			quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
+			quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restaurantDeliveryMode, restaurantDeliveryFee)
 			deliveryFee = quote.consumerFee
 		} else {
 			deliveryFee = deliveryFeeFallbackCents
@@ -1605,13 +1606,13 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context()) //nolint:errcheck
 
 	var deliveryMode string
-	var deliveryFee, courierTip int
+	var deliveryFee, courierTip, subtotal int
 	err = tx.QueryRow(r.Context(),
-		`SELECT COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'), o.delivery_fee, COALESCE(o.courier_tip, 0) FROM orders o
+		`SELECT COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'), o.delivery_fee, COALESCE(o.courier_tip, 0), o.subtotal FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'picked_up'
 		  FOR UPDATE OF o`,
-		id, user["user_id"]).Scan(&deliveryMode, &deliveryFee, &courierTip)
+		id, user["user_id"]).Scan(&deliveryMode, &deliveryFee, &courierTip, &subtotal)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "order not found or not picked up")
 		return
@@ -1621,16 +1622,21 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Self-delivered earnings = 50% of the customer-paid delivery_fee (KE keeps
-	// the remainder, including the odd-cent floor — never compute KE's half
-	// independently) PLUS 100% of the courier tip. The seller performed the
-	// delivery, so the tip is theirs exactly as it would be a platform courier's
-	// ("100% of the tip goes to your courier"); previously the tip was charged to
-	// the customer but dropped from the seller's ledger and kept by the platform.
-	// Folded into the status CAS below so a replayed deliver can't double-count.
-	// The CASE guard keys off who ACTUALLY delivered (courier_id / external_
-	// delivery_id), not delivery_mode, so an order escalated to Uber pays 0 here.
-	sellerShare := deliveryFee/2 + courierTip
+	// Self-delivery: the restaurant keeps 100% of its own delivery fee — the
+	// customer-paid delivery_fee minus the KosherEats marketplace fee (which KE
+	// keeps) — PLUS 100% of the courier tip. The marketplace fee is recomputed
+	// from the locked item subtotal with the same tier function used at quote
+	// time, so it matches exactly what the consumer was charged. The seller
+	// performed the delivery, so the tip is theirs ("100% of the tip goes to your
+	// courier"). Folded into the status CAS below so a replayed deliver can't
+	// double-count; the CASE guard keys off who ACTUALLY delivered (courier_id /
+	// external_delivery_id), not delivery_mode, so an order escalated to a
+	// courier/provider pays 0 here.
+	restaurantFee := deliveryFee - h.deliveryMarkupCents(subtotal)
+	if restaurantFee < 0 {
+		restaurantFee = 0
+	}
+	sellerShare := restaurantFee + courierTip
 
 	result, err := tx.Exec(r.Context(),
 		`UPDATE orders SET status = 'delivered', delivered_at = NOW(), updated_at = NOW(),

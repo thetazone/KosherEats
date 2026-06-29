@@ -142,13 +142,15 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		// here is stamped onto the PaymentIntent and reused verbatim by
 		// CreateOrder, so the two never disagree even though the quote drifts.
 		if req.DeliveryAddress != "" {
-			var restAddress string
+			var restAddress, restDeliveryMode string
+			var restDeliveryFee int
 			err := h.db.Pool.QueryRow(r.Context(),
-				`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, '')
+				`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+				        COALESCE(delivery_mode, 'platform'), delivery_fee
 				   FROM restaurants WHERE id = $1`, cartRestID,
-			).Scan(&restAddress)
+			).Scan(&restAddress, &restDeliveryMode, &restDeliveryFee)
 			if err == nil && restAddress != "" {
-				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
+				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restDeliveryMode, restDeliveryFee)
 				deliveryFee = quote.consumerFee
 			} else {
 				deliveryFee = deliveryFeeFallbackCents

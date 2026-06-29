@@ -49,13 +49,15 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var restAddress, restPhone string
+	var restAddress, restPhone, restDeliveryMode string
 	var restLat, restLng float64
+	var restDeliveryFee int
 	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
-		        COALESCE(phone, ''), lat, lng
+		        COALESCE(phone, ''), lat, lng,
+		        COALESCE(delivery_mode, 'external'), delivery_fee
 		   FROM restaurants WHERE id = $1`, req.RestaurantID,
-	).Scan(&restAddress, &restPhone, &restLat, &restLng)
+	).Scan(&restAddress, &restPhone, &restLat, &restLng, &restDeliveryMode, &restDeliveryFee)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
@@ -69,7 +71,7 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 		   FROM cart_items ci JOIN carts c ON ci.cart_id = c.id
 		  WHERE c.user_id = $1`, user["user_id"]).Scan(&subtotal)
 
-	quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal)
+	quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restDeliveryMode, restDeliveryFee)
 
 	writeJSON(w, http.StatusOK, DeliveryQuoteResponse{
 		DeliveryFeeCents: quote.consumerFee,
@@ -81,9 +83,28 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 
 type deliveryQuoteResult struct {
 	consumerFee int
-	providerFee int
+	providerFee int // non-KE delivery cost: provider quote (external) or the restaurant's own fee (self-delivery)
 	estMinutes  int
 	provider    string
+}
+
+// selfDeliveryEstMinutes is the rough ETA shown for restaurant self-delivery,
+// where we have no external courier ETA to quote.
+const selfDeliveryEstMinutes = 35
+
+// deliveryMarkupCents is the flat KosherEats marketplace fee added on top of the
+// delivery cost, tiered by item subtotal (excl. delivery) and charged to the
+// consumer on every delivery (kept by KE): the small fee up to the large
+// threshold, the large fee up to the highest threshold, the highest fee above.
+func (h *Handler) deliveryMarkupCents(subtotalCents int) int {
+	switch {
+	case subtotalCents > h.cfg.DeliveryHighestOrderCents:
+		return h.cfg.DeliveryMarkupHighestCents
+	case subtotalCents > h.cfg.DeliveryLargeOrderCents:
+		return h.cfg.DeliveryMarkupLargeCents
+	default:
+		return h.cfg.DeliveryMarkupCents
+	}
 }
 
 // quoteDeliveryFee gets quotes from available external providers, picks the
@@ -92,7 +113,20 @@ type deliveryQuoteResult struct {
 // large-order threshold). No floor/ceiling — the fee always tracks the actual
 // quote. Falls back to a flat fee only if no provider is configured or all
 // quotes fail. subtotalCents is the item subtotal (excl. delivery).
-func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAddress string, subtotalCents int) deliveryQuoteResult {
+func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAddress string, subtotalCents int, deliveryMode string, restaurantFeeCents int) deliveryQuoteResult {
+	// Self-delivery: the restaurant fulfills with its own driver. The consumer
+	// pays the restaurant's configured fee plus the KosherEats marketplace fee;
+	// the restaurant keeps its fee in full, KE keeps the marketplace fee. No
+	// external provider is contacted.
+	if deliveryMode == "restaurant" {
+		return deliveryQuoteResult{
+			consumerFee: restaurantFeeCents + h.deliveryMarkupCents(subtotalCents),
+			providerFee: restaurantFeeCents,
+			estMinutes:  selfDeliveryEstMinutes,
+			provider:    "self_delivery",
+		}
+	}
+
 	type providerQuote struct {
 		provider   string
 		feeCents   int
@@ -145,14 +179,9 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAd
 		}
 	}
 
-	// Provider cost + our flat markup. $2 once the order clears the large-order
-	// threshold (bigger basket → we keep a bit more), $1 otherwise. No clamping:
-	// the consumer pays exactly the courier cost plus the markup.
-	markup := h.cfg.DeliveryMarkupCents
-	if subtotalCents > h.cfg.DeliveryLargeOrderCents {
-		markup = h.cfg.DeliveryMarkupLargeCents
-	}
-	consumerFee := best.feeCents + markup
+	// Provider cost + our tiered marketplace markup. No clamping: the consumer
+	// pays exactly the courier cost plus the markup.
+	consumerFee := best.feeCents + h.deliveryMarkupCents(subtotalCents)
 
 	return deliveryQuoteResult{
 		consumerFee: consumerFee,
