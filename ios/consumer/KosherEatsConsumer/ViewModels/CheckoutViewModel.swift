@@ -81,6 +81,10 @@ final class CheckoutViewModel: NSObject, ObservableObject {
     @Published var errorMessage: String?
     @Published var paymentSucceeded: Bool = false
     @Published var orderCreationFailed: Bool = false
+    // Set when the backend blocks checkout because the consumer hasn't finished
+    // phone + email verification (403 verification_required). The view presents
+    // the verification flow instead of showing a raw error.
+    @Published var needsVerification: Bool = false
 
     var appliedDealId: String?
 
@@ -222,7 +226,12 @@ final class CheckoutViewModel: NSObject, ObservableObject {
             }
         } catch {
             guard gen == bundleGeneration, !Task.isCancelled else { return }
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            if (error as? APIError)?.isVerificationRequired == true {
+                needsVerification = true
+                errorMessage = "Please verify your email and phone number before checking out."
+            } else {
+                errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
         }
     }
 

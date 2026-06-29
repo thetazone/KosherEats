@@ -143,6 +143,11 @@ struct User: Codable, Identifiable {
     var phone: String
     var role: UserRole
     var avatarURL: String?
+    /// Onboarding gate flags. New consumer accounts must verify both (emailed
+    /// OTP + SMS OTP) before they can transact; the backend enforces this on
+    /// order/payment creation. Existing accounts were grandfathered to true.
+    var emailVerified: Bool
+    var phoneVerified: Bool
     var createdAt: Date
     var updatedAt: Date
 
@@ -153,8 +158,28 @@ struct User: Codable, Identifiable {
         case firstName = "first_name"
         case lastName = "last_name"
         case avatarURL = "avatar_url"
+        case emailVerified = "email_verified"
+        case phoneVerified = "phone_verified"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    // Custom decode so a payload missing the verification flags (older endpoint,
+    // cached blob) defaults to false rather than failing the whole decode and
+    // stranding the user with a "?" profile. Encoding stays synthesized.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        email = try c.decode(String.self, forKey: .email)
+        firstName = try c.decode(String.self, forKey: .firstName)
+        lastName = try c.decode(String.self, forKey: .lastName)
+        phone = try c.decode(String.self, forKey: .phone)
+        role = try c.decode(UserRole.self, forKey: .role)
+        avatarURL = try c.decodeIfPresent(String.self, forKey: .avatarURL)
+        emailVerified = try c.decodeIfPresent(Bool.self, forKey: .emailVerified) ?? false
+        phoneVerified = try c.decodeIfPresent(Bool.self, forKey: .phoneVerified) ?? false
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 }
 

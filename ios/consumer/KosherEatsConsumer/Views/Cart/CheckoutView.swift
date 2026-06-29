@@ -14,6 +14,7 @@ import StripePaymentSheet
 struct CheckoutView: View {
     @EnvironmentObject var cartVM: CartViewModel
     @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var authVM: AuthViewModel
     @StateObject private var vm = CheckoutViewModel()
     @Environment(\.dismiss) var dismiss
     @State private var showAddressPicker = false
@@ -113,6 +114,12 @@ struct CheckoutView: View {
         }
         .sheet(isPresented: $showAddressPicker) {
             AddressPickerSheet(selected: $vm.selectedAddress)
+        }
+        // Backstop: if the backend gates checkout on verification, drive the
+        // same mandatory flow here (normally the post-sign-in gate already ran).
+        .fullScreenCover(isPresented: $vm.needsVerification) {
+            AccountVerificationView()
+                .environmentObject(authVM)
         }
         .onChange(of: vm.tipSelection) { _, _ in
             bundleRefreshTask?.cancel()

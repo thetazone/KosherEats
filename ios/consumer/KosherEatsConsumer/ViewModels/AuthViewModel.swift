@@ -291,21 +291,86 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    /// True iff the currently-signed-in user still needs to fill in basic
-    /// profile info. Triggers ProfileCompletionSheet on:
-    /// - Empty first or last name
-    /// - Apple's @privaterelay.appleid.com email forwarder (real email hidden)
-    /// - The phone-OTP synthesized email (backend creates `<phone>@phone.koshereats.local`
-    ///   when phone signup didn't include name/email — every fresh phone user
-    ///   matches this until they fill in real details).
+    /// True iff the currently-signed-in user still needs to fill in their name.
+    /// Email/phone completion is no longer handled here — the verification flow
+    /// (`needsVerification`) collects and OTP-confirms a real email and phone,
+    /// which also resolves the relay/placeholder-email cases this used to catch.
     var needsProfileCompletion: Bool {
         guard let u = user else { return false }
-        let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if email.hasSuffix(Self.appleRelayDomain) { return true }
-        if email.hasSuffix(Self.phoneLocalDomain) { return true }
         return false
+    }
+
+    // MARK: - Account verification (mandatory phone + email OTP)
+    //
+    // Every new consumer must end onboarding with a verified phone AND a
+    // verified email. The backend hard-gates order/payment creation until both
+    // flags are true; this drives the UI so the user completes them up front.
+
+    /// True while the signed-in consumer still has an unverified phone or email.
+    /// Drives the mandatory verification flow and mirrors the backend gate.
+    var needsVerification: Bool {
+        guard let u = user else { return false }
+        return !u.emailVerified || !u.phoneVerified
+    }
+
+    /// The email currently on the account, unless it's a placeholder we should
+    /// not pre-fill (Apple relay forwarder or the phone-OTP synthesized address).
+    var prefillableEmail: String {
+        guard let u = user else { return "" }
+        let email = u.email.lowercased()
+        if email.hasSuffix(Self.appleRelayDomain) || email.hasSuffix(Self.phoneLocalDomain) { return "" }
+        return u.email
+    }
+
+    /// Sends a 6-digit code to `email` to attach + verify it on the account.
+    func sendEmailCode(email: String) async -> Bool {
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do { try await api.startEmailChange(email: email); return true }
+        catch { errorMessage = Self.friendly(error); return false }
+    }
+
+    /// Verifies the emailed code, then refreshes the profile so `emailVerified`
+    /// (and thus `needsVerification`) updates.
+    func confirmEmail(email: String, code: String) async -> Bool {
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await api.verifyEmailChange(email: email, code: code)
+            await loadProfile()
+            return true
+        } catch { errorMessage = Self.friendly(error); return false }
+    }
+
+    /// Sends an SMS code to `phone` (E.164) to attach + verify it on the account.
+    func sendPhoneCode(phone: String) async -> Bool {
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do { try await api.startPhoneChange(phone: phone); return true }
+        catch { errorMessage = Self.friendly(error); return false }
+    }
+
+    /// Verifies the SMS code, then refreshes the profile so `phoneVerified`
+    /// (and thus `needsVerification`) updates.
+    func confirmPhone(phone: String, code: String) async -> Bool {
+        isLoading = true; errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await api.verifyPhoneChange(phone: phone, code: code)
+            await loadProfile()
+            return true
+        } catch { errorMessage = Self.friendly(error); return false }
+    }
+
+    /// Maps API errors to a clean, user-facing string (strips the "Error 400:"
+    /// prefix that httpError's description carries).
+    static func friendly(_ error: Error) -> String {
+        if case let APIError.httpError(_, msg) = error, !msg.isEmpty, msg != "Unknown error" {
+            return msg
+        }
+        return (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     func deleteAccount() async {
