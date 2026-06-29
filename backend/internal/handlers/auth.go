@@ -138,10 +138,16 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "failed to verify email")
 			return
 		}
-		if !verified {
+		// When enforcement is ON the OTP proof is required. When OFF (rollout
+		// window, before the updated apps are widely adopted) we still accept
+		// registrations without it so old app builds keep working — the account
+		// is just recorded as email-unverified, and the updated app's mandatory
+		// verification flow (or a later enforcement flip) completes it.
+		if h.cfg.VerificationEnforced && !verified {
 			writeError(w, http.StatusBadRequest, "email not verified")
 			return
 		}
+		emailVerified = verified
 	}
 
 	var user models.User
@@ -162,7 +168,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Account created — consume the signup OTP so the proof can't be reused.
-	if role == models.RoleConsumer {
+	// (Only when a proof actually backed this signup; none exists in the
+	// enforcement-off path where the email wasn't pre-verified.)
+	if role == models.RoleConsumer && emailVerified {
 		h.clearEmailOTP(r.Context(), req.Email, emailOTPPurposeSignup)
 	}
 

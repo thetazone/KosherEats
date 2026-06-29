@@ -64,6 +64,15 @@ type Config struct {
 	// Empty → endpoint disabled entirely.
 	ReviewerSecret string
 
+	// VerificationEnforced turns ON the hard side of consumer phone+email
+	// verification: requiring an email-OTP proof at register and blocking
+	// order/payment for unverified consumers. Default OFF so the backend can be
+	// deployed (new endpoints available, apps can adopt the verification UI)
+	// without breaking the old app builds still in users' hands. Flip to true
+	// (a single `fly secrets set VERIFICATION_ENFORCED=true`) once the updated
+	// apps are widely adopted — no code redeploy needed.
+	VerificationEnforced bool
+
 	// Uber Direct (fallback courier dispatch). Empty → stub mode.
 	UberDirectClientID     string
 	UberDirectClientSecret string
@@ -180,6 +189,8 @@ func Load() *Config {
 
 		ReviewerSecret: getEnv("REVIEWER_SECRET", ""),
 
+		VerificationEnforced: getEnvBool("VERIFICATION_ENFORCED", false),
+
 		UberDirectClientID:     getEnv("UBER_DIRECT_CLIENT_ID", ""),
 		UberDirectClientSecret: getEnv("UBER_DIRECT_CLIENT_SECRET", ""),
 		UberDirectCustomerID:   getEnv("UBER_DIRECT_CUSTOMER_ID", ""),
@@ -235,6 +246,15 @@ func getEnvInt(key string, fallback int) int {
 	if val := os.Getenv(key); val != "" {
 		if n, err := strconv.Atoi(val); err == nil {
 			return n
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if val := os.Getenv(key); val != "" {
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
 		}
 	}
 	return fallback

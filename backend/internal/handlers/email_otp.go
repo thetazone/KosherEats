@@ -301,6 +301,13 @@ func isUnverifiableEmail(s string) bool {
 // never on a whole route group, so browsing/listing stays open.
 func (h *Handler) RequireVerifiedMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Enforcement is flag-gated so the backend can ship ahead of the updated
+		// apps without blocking consumers on old builds (which have no way to
+		// verify). Flip VERIFICATION_ENFORCED=true once the apps are adopted.
+		if !h.cfg.VerificationEnforced {
+			next.ServeHTTP(w, r)
+			return
+		}
 		userData, ok := r.Context().Value(userContextKey).(map[string]string)
 		if !ok || userData["user_id"] == "" {
 			writeError(w, http.StatusUnauthorized, "unauthorized")

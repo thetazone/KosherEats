@@ -95,6 +95,10 @@ func TestMain(m *testing.M) {
 		// A non-empty JWT secret so generated tokens verify in AuthMiddleware.
 		JWTSecret:      "integration-test-secret",
 		TaxRatePercent: 9,
+		// Exercise the enforced behavior (register email-OTP gate + transaction
+		// gate). The flag defaults off in prod for a phased rollout, but the
+		// verification tests assert the on-state.
+		VerificationEnforced: true,
 		// StripeSecretKey intentionally empty -> payments.Client runs in dev
 		// stub mode, so VerifyPaymentSucceeded always returns nil.
 	}
