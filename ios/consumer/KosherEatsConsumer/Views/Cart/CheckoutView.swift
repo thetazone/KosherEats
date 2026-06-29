@@ -594,6 +594,17 @@ private struct SavedCardCard: View {
 private struct TotalsCard: View {
     let bundle: APIService.PaymentSheetBundle
 
+    /// Consumer-facing label for who delivers, from the bundle's delivery_method.
+    /// nil for pickup / flat-rate fallback (no method line shown).
+    private func deliveryMethodLabel(_ method: String?) -> String? {
+        switch method {
+        case "uber_direct": return "Delivered by Uber"
+        case "doordash_drive": return "Delivered by DoorDash"
+        case "self_delivery": return "Delivered by the restaurant"
+        default: return nil
+        }
+    }
+
     var body: some View {
         VStack(spacing: Theme.spacingSM) {
             totalsRow("Subtotal", bundle.subtotal)
@@ -616,6 +627,14 @@ private struct TotalsCard: View {
             totalsRow("Service fee", bundle.serviceFee)
             if bundle.deliveryFee > 0 {
                 totalsRow("Delivery fee", bundle.deliveryFee)
+            }
+            if let method = deliveryMethodLabel(bundle.deliveryMethod) {
+                HStack(spacing: 4) {
+                    Image(systemName: "shippingbox.fill").font(.system(size: 10))
+                    Text(method).font(.caption)
+                    Spacer()
+                }
+                .foregroundColor(.keTextSecondary)
             }
             if bundle.tip > 0 {
                 totalsRow("Driver tip", bundle.tip)

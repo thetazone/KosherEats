@@ -594,6 +594,9 @@ class APIService: ObservableObject {
         let publishableKey: String
         let subtotal: Int
         let deliveryFee: Int
+        // How the order will be delivered: "uber_direct" | "doordash_drive" |
+        // "self_delivery" | "flat_rate". Optional for resilience during rollout.
+        let deliveryMethod: String?
         let serviceFee: Int
         let tax: Int
         let tip: Int
@@ -610,6 +613,7 @@ class APIService: ObservableObject {
             case publishableKey = "publishable_key"
             case subtotal, tax, tip, total, discount
             case deliveryFee = "delivery_fee"
+            case deliveryMethod = "delivery_method"
             case serviceFee = "service_fee"
             case appliedDealId = "applied_deal_id"
             case defaultCardBrand = "default_card_brand"

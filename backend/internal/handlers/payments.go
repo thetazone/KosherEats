@@ -134,6 +134,9 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	isPickup := req.FulfillmentType == "pickup"
 
 	deliveryFee := 0
+	// Surfaced to the consumer at checkout so they know who delivers (and thus
+	// what they're paying for) before they pay. Mirrors the quote's provider.
+	deliveryMethod := ""
 	if !isPickup {
 		// Quote against the cart's restaurant (authoritative — CreateOrder uses
 		// the same cart.RestaurantID), so the client only has to supply the
@@ -152,11 +155,14 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 			if err == nil && restAddress != "" {
 				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restDeliveryMode, restDeliveryFee)
 				deliveryFee = quote.consumerFee
+				deliveryMethod = quote.provider
 			} else {
 				deliveryFee = deliveryFeeFallbackCents
+				deliveryMethod = "flat_rate"
 			}
 		} else {
 			deliveryFee = deliveryFeeFallbackCents
+			deliveryMethod = "flat_rate"
 		}
 	}
 	serviceFee := 0
@@ -231,6 +237,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		"discount":              discount,
 		"applied_deal_id":       req.AppliedDealID,
 		"delivery_fee":          deliveryFee,
+		"delivery_method":       deliveryMethod,
 		"service_fee":           serviceFee,
 		"tax":                   tax,
 		"tip":                   tip,
