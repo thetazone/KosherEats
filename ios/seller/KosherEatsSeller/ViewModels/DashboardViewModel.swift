@@ -170,6 +170,11 @@ class DashboardViewModel: ObservableObject {
             let result = try await APIService.shared.toggleOpen(isOpen)
             guard gen == loadGeneration else { return }
             self.restaurant = result
+        } catch is CancellationError {
+            // Benign: a periodic refresh superseded this toggle's request. Don't
+            // surface it — the next poll reconciles the switch.
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Same, at the URLSession layer.
         } catch {
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
@@ -192,6 +197,13 @@ class DashboardViewModel: ObservableObject {
             let result = try await APIService.shared.updateRestaurant(updated)
             guard gen == loadGeneration else { return }
             self.restaurant = result
+        } catch is CancellationError {
+            // Superseded by the dashboard's periodic refresh firing mid-write —
+            // a benign cancellation, not a failure. The write typically lands and
+            // the next poll reconciles the toggle, so stay silent rather than
+            // showing the seller a confusing "Network error: cancelled".
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            // Same, at the URLSession layer.
         } catch {
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
