@@ -95,7 +95,7 @@ class DealsViewModel: ObservableObject {
             let all = try await APIService.shared.getNearbyDeals()
             deals = all.filter { !Self.isExpired($0) }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
         }
     }
 
