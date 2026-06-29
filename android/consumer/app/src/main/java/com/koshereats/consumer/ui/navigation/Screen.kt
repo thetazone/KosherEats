@@ -41,6 +41,7 @@ sealed class Screen(val route: String) {
     data object Register : Screen("register")
     data object PhoneAuth : Screen("phone-auth")
     data object PhonePrompt : Screen("phone-prompt")
+    data object AccountVerification : Screen("account-verification")
     data object Profile : Screen("profile")
     data object EditProfile : Screen("profile/edit")
     data object SavedAddresses : Screen("profile/addresses")

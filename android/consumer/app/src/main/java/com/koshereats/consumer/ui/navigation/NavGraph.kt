@@ -52,6 +52,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koshereats.consumer.ui.screens.auth.EmailLoginScreen
 import com.koshereats.consumer.ui.screens.auth.LoginScreen
+import com.koshereats.consumer.ui.screens.auth.AccountVerificationScreen
 import com.koshereats.consumer.ui.screens.auth.PhoneAuthScreen
 import com.koshereats.consumer.ui.screens.auth.PhonePromptScreen
 import com.koshereats.consumer.ui.screens.auth.RegisterScreen
@@ -159,6 +160,22 @@ fun KosherEatsNavHost(
     LaunchedEffect(authState.sessionState) {
         if (authState.sessionState == SessionState.Authenticated) {
             addressViewModel.loadAddresses()
+        }
+    }
+
+    // Mandatory verification gate. Whenever a signed-in consumer still needs to
+    // verify their phone or email, force the verification screen on top of
+    // whatever the auth-success callback navigated to; pop it once both are
+    // verified. Mirrors the backend, which hard-gates order/payment on the same
+    // flags. Existing accounts are grandfathered (verified) so they never see it.
+    LaunchedEffect(authState.needsVerification, authState.sessionState) {
+        val current = navController.currentDestination?.route
+        if (authState.needsVerification) {
+            if (current != Screen.AccountVerification.route) {
+                navController.navigate(Screen.AccountVerification.route)
+            }
+        } else if (current == Screen.AccountVerification.route) {
+            navController.popBackStack()
         }
     }
 
@@ -577,6 +594,10 @@ fun KosherEatsNavHost(
                     },
                     viewModel = authViewModel,
                 )
+            }
+
+            composable(Screen.AccountVerification.route) {
+                AccountVerificationScreen(viewModel = authViewModel)
             }
 
             composable(Screen.Profile.route) {

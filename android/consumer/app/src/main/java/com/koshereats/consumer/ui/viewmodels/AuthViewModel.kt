@@ -8,7 +8,10 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.api.PrefsKeys
 import com.koshereats.consumer.data.api.TokenProvider
+import com.koshereats.consumer.data.models.EmailStartRequest
+import com.koshereats.consumer.data.models.EmailVerifyRequest
 import com.koshereats.consumer.data.models.LoginRequest
+import com.koshereats.consumer.data.models.PhoneChangeVerifyRequest
 import com.koshereats.consumer.data.models.PhoneStartRequest
 import com.koshereats.consumer.data.models.PhoneVerifyRequest
 import com.koshereats.consumer.data.models.RegisterRequest
@@ -59,9 +62,31 @@ data class AuthUiState(
     val phoneIsSending: Boolean = false,
     val phoneIsVerifying: Boolean = false,
     val needsPhone: Boolean = false,
+    // ── Mandatory account verification (post sign-in) ──
+    // Separate fields from the login phone flow above so the two never clash.
+    val vEmail: String = "",
+    val vEmailCode: String = "",
+    val vEmailCodeSent: Boolean = false,
+    val vCountryCode: String = "+1",
+    val vPhoneNumber: String = "",
+    val vPhoneE164: String = "",
+    val vPhoneCode: String = "",
+    val vPhoneCodeSent: Boolean = false,
+    val vBusy: Boolean = false,
+    val vError: String? = null,
 ) {
     val isLoggedIn: Boolean get() = (sessionState == SessionState.Authenticated && user != null && !isSessionStale) || sessionState == SessionState.Guest
     val isGuest: Boolean get() = sessionState == SessionState.Guest
+
+    /**
+     * True while the signed-in consumer still has an unverified phone or email.
+     * Drives the mandatory verification gate and mirrors the backend, which
+     * hard-gates order/payment creation on the same two flags. Existing accounts
+     * were grandfathered to verified, so only fresh signups hit this.
+     */
+    val needsVerification: Boolean
+        get() = sessionState == SessionState.Authenticated && user != null &&
+            (!user.emailVerified || !user.phoneVerified)
 }
 
 @HiltViewModel
@@ -294,7 +319,10 @@ class AuthViewModel @Inject constructor(
                             sessionState = SessionState.Authenticated,
                             user = authData.user,
                             isLoading = false,
-                            needsPhone = authData.user.phone.isBlank(),
+                            // Phone collection is now handled by the mandatory
+                            // verification gate (needsVerification), not the old
+                            // best-effort PhonePrompt — leave needsPhone false.
+                            needsPhone = false,
                         )
                     }
                     PushBootstrap.registerCurrentToken(apiService)
@@ -498,6 +526,144 @@ class AuthViewModel @Inject constructor(
     fun skipPhone() {
         _uiState.update { it.copy(needsPhone = false) }
     }
+
+    // ── Mandatory verification flow (post sign-in) ─────────
+    //
+    // Drives AccountVerificationScreen. Uses the authenticated add-email
+    // (/user/email/*) and phone-change (/user/phone/change/*) endpoints; on
+    // success it reloads the profile so the flags flip and the gate releases.
+
+    fun updateVEmail(v: String) = _uiState.update { it.copy(vEmail = v.trim().take(254), vError = null) }
+    fun updateVEmailCode(v: String) = _uiState.update { it.copy(vEmailCode = v.filter { c -> c.isDigit() }.take(6), vError = null) }
+    fun updateVCountryCode(v: String) = _uiState.update { it.copy(vCountryCode = v) }
+    fun updateVPhoneNumber(v: String) = _uiState.update { it.copy(vPhoneNumber = v.filter { c -> c.isDigit() }, vError = null) }
+    fun updateVPhoneCode(v: String) = _uiState.update { it.copy(vPhoneCode = v.filter { c -> c.isDigit() }.take(4), vError = null) }
+    fun backToVEmailEntry() = _uiState.update { it.copy(vEmailCodeSent = false, vEmailCode = "", vError = null) }
+    fun backToVPhoneEntry() = _uiState.update { it.copy(vPhoneCodeSent = false, vPhoneCode = "", vError = null) }
+
+    fun sendVEmailCode() {
+        val email = _uiState.value.vEmail.trim()
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            _uiState.update { it.copy(vError = "Please enter a valid email address") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(vBusy = true, vError = null) }
+            try {
+                val r = apiService.emailChangeStart(EmailStartRequest(email))
+                if (r.isSuccessful) _uiState.update { it.copy(vBusy = false, vEmailCodeSent = true, vEmailCode = "") }
+                else _uiState.update { it.copy(vBusy = false, vError = serverError(r) ?: "Couldn't send code") }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(vBusy = false, vError = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    fun confirmVEmail() {
+        val s = _uiState.value
+        if (s.vEmailCode.length != 6) { _uiState.update { it.copy(vError = "Enter the 6-digit code") }; return }
+        viewModelScope.launch {
+            _uiState.update { it.copy(vBusy = true, vError = null) }
+            try {
+                val r = apiService.emailChangeVerify(EmailVerifyRequest(s.vEmail.trim(), s.vEmailCode))
+                if (r.isSuccessful) {
+                    val profile = runCatching { apiService.getProfile() }.getOrNull()
+                    _uiState.update {
+                        it.copy(vBusy = false, vEmail = "", vEmailCode = "", vEmailCodeSent = false,
+                            user = profile?.body() ?: it.user)
+                    }
+                } else _uiState.update { it.copy(vBusy = false, vError = serverError(r) ?: "Invalid or expired code") }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(vBusy = false, vError = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    fun sendVPhoneCode() {
+        val s = _uiState.value
+        if (s.vPhoneNumber.length < 7) { _uiState.update { it.copy(vError = "Enter a valid phone number") }; return }
+        val e164 = "${s.vCountryCode}${s.vPhoneNumber}"
+        viewModelScope.launch {
+            _uiState.update { it.copy(vBusy = true, vError = null) }
+            try {
+                val r = apiService.phoneChangeStart(PhoneStartRequest(e164))
+                if (r.isSuccessful) _uiState.update { it.copy(vBusy = false, vPhoneE164 = e164, vPhoneCodeSent = true, vPhoneCode = "") }
+                else _uiState.update { it.copy(vBusy = false, vError = when (r.code()) {
+                    400 -> "Invalid phone number format"; 502 -> "SMS service unavailable — try again"; else -> "Couldn't send code"
+                }) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(vBusy = false, vError = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    fun confirmVPhoneCode() {
+        val s = _uiState.value
+        if (s.vPhoneCode.length != 4) { _uiState.update { it.copy(vError = "Enter the 4-digit code") }; return }
+        viewModelScope.launch {
+            _uiState.update { it.copy(vBusy = true, vError = null) }
+            try {
+                val r = apiService.phoneChangeVerify(PhoneChangeVerifyRequest(s.vPhoneE164, s.vPhoneCode))
+                if (r.isSuccessful) {
+                    val profile = runCatching { apiService.getProfile() }.getOrNull()
+                    _uiState.update { it.copy(vBusy = false, vPhoneCode = "", vPhoneCodeSent = false, vPhoneNumber = "", vPhoneE164 = "", user = profile?.body() ?: it.user) }
+                } else _uiState.update { it.copy(vBusy = false, vError = when (r.code()) {
+                    401 -> "Invalid or expired code"
+                    409 -> serverError(r) ?: "That phone is already linked to another account"
+                    429 -> "Too many failed attempts — try again in 10 minutes"
+                    else -> "Verification failed"
+                }) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(vBusy = false, vError = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    // ── Email-signup OTP (pre-register) — used by RegisterScreen ──
+    // The email must be OTP-verified BEFORE register creates the account, so the
+    // user picks a password only after proving the email.
+
+    fun sendSignupEmailCode(email: String, onSent: () -> Unit) {
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
+            _uiState.update { it.copy(error = "Please enter a valid email address") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val r = apiService.emailSignupStart(EmailStartRequest(email.trim()))
+                if (r.isSuccessful) { _uiState.update { it.copy(isLoading = false) }; onSent() }
+                else _uiState.update { it.copy(isLoading = false, error = serverError(r) ?: "Couldn't send code") }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    fun verifySignupEmailCode(email: String, code: String, onVerified: () -> Unit) {
+        if (code.length != 6) { _uiState.update { it.copy(error = "Enter the 6-digit code") }; return }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val r = apiService.emailSignupVerify(EmailVerifyRequest(email.trim(), code))
+                if (r.isSuccessful) { _uiState.update { it.copy(isLoading = false) }; onVerified() }
+                else _uiState.update { it.copy(isLoading = false, error = serverError(r) ?: "Invalid or expired code") }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    private fun serverError(r: retrofit2.Response<*>): String? = try {
+        com.google.gson.JsonParser.parseString(r.errorBody()?.string().orEmpty())
+            .asJsonObject.get("error")?.asString
+    } catch (_: Exception) { null }
 
     fun logout() {
         viewModelScope.launch {

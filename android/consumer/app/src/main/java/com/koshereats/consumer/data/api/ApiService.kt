@@ -38,7 +38,29 @@ interface ApiService {
     @POST("auth/email/check")
     suspend fun checkEmail(@Body request: EmailCheckRequest): Response<EmailCheckResponse>
 
+    // Email-signup OTP (pre-account): verify the email before register.
+    @POST("auth/email/start")
+    suspend fun emailSignupStart(@Body request: EmailStartRequest): Response<StatusResponse>
+
+    @POST("auth/email/verify")
+    suspend fun emailSignupVerify(@Body request: EmailVerifyRequest): Response<StatusResponse>
+
     // ── User ──────────────────────────────────────────────
+
+    // Add/verify a real email onto the signed-in account (phone-first flow).
+    @POST("user/email/start")
+    suspend fun emailChangeStart(@Body request: EmailStartRequest): Response<StatusResponse>
+
+    @POST("user/email/verify")
+    suspend fun emailChangeVerify(@Body request: EmailVerifyRequest): Response<StatusResponse>
+
+    // Add/verify a phone onto the signed-in account (Google/email flow).
+    @POST("user/phone/change/start")
+    suspend fun phoneChangeStart(@Body request: PhoneStartRequest): Response<StatusResponse>
+
+    @POST("user/phone/change/verify")
+    suspend fun phoneChangeVerify(@Body request: PhoneChangeVerifyRequest): Response<StatusResponse>
+
 
     @GET("user/profile")
     suspend fun getProfile(): Response<User>

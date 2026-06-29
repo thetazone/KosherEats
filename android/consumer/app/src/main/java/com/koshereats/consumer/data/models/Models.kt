@@ -93,6 +93,12 @@ data class User(
     @SerializedName("default_address") val defaultAddress: Address? = null,
     val addresses: List<Address> = emptyList(),
     @SerializedName("created_at") val createdAt: String = "",
+    // Onboarding gate flags: a new consumer must verify both (emailed OTP + SMS
+    // OTP) before they can transact; the backend enforces this on order/payment.
+    // Existing accounts were grandfathered to true. Default false so a payload
+    // missing them never reads as verified.
+    @SerializedName("email_verified") val emailVerified: Boolean = false,
+    @SerializedName("phone_verified") val phoneVerified: Boolean = false,
 )
 
 data class Address(
@@ -169,6 +175,18 @@ data class PhoneVerifyRequest(
     @SerializedName("last_name") val lastName: String? = null,
     val email: String? = null,
 )
+
+// Email OTP verification. Pre-register (/auth/email/*) verifies an email before
+// the account exists for the email-signup flow; authenticated (/user/email/*)
+// attaches and verifies a real inbox onto an existing account (phone flow).
+data class EmailStartRequest(val email: String)
+data class EmailVerifyRequest(val email: String, val code: String)
+
+// Add/verify a phone after social/email sign-in (/user/phone/change/*).
+data class PhoneChangeVerifyRequest(val phone: String, val code: String)
+
+// Generic {"status":"..."} body returned by the OTP start/verify endpoints.
+data class StatusResponse(val status: String = "")
 
 // ── Restaurant ────────────────────────────────────────────
 
