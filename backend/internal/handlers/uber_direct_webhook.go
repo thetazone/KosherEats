@@ -6,8 +6,30 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
+
+// flexFloat accepts a JSON number OR a quoted numeric string. Uber Direct sends
+// some numeric fields (observed: courier.rating as "4.9") as strings, which
+// would otherwise fail the whole-payload unmarshal and silently drop the status
+// update bundled with it. Tolerating both keeps one stringly-typed field from
+// stranding the delivery.
+type flexFloat float64
+
+func (f *flexFloat) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		return nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return err
+	}
+	*f = flexFloat(v)
+	return nil
+}
 
 type uberWebhookPayload struct {
 	Kind       string              `json:"kind"`
@@ -29,15 +51,15 @@ type uberWebhookData struct {
 type uberCourier struct {
 	Name        string       `json:"name"`
 	Phone       string       `json:"phone_number"`
-	Rating      float64      `json:"rating"`
+	Rating      flexFloat    `json:"rating"`
 	VehicleType string       `json:"vehicle_type"`
 	Location    *uberLatLng  `json:"location,omitempty"`
 	ImgHref     string       `json:"img_href"`
 }
 
 type uberLatLng struct {
-	Lat float64 `json:"lat"`
-	Lng float64 `json:"lng"`
+	Lat flexFloat `json:"lat"`
+	Lng flexFloat `json:"lng"`
 }
 
 func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
