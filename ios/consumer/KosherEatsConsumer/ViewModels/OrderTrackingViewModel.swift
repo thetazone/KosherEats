@@ -90,7 +90,7 @@ final class OrderTrackingViewModel: ObservableObject {
                 DeliveryActivityManager.shared.endTracking(order: fetched)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
         }
     }
 
@@ -172,7 +172,7 @@ final class OrderTrackingViewModel: ObservableObject {
                         break
                     }
                 } catch {
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
                     streamFailed = true
                 }
 

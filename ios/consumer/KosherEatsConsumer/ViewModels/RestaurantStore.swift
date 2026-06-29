@@ -89,7 +89,7 @@ final class RestaurantStore: ObservableObject {
             )
             hasLoadedRestaurants = true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
         }
 
         // Load favorites alongside the restaurant list so the heart buttons

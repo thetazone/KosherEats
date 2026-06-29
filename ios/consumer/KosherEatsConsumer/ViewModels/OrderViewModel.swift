@@ -55,7 +55,7 @@ class OrderViewModel: ObservableObject {
             orders = page
             canLoadMore = page.count >= pageSize
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
         }
 
         isLoading = false
@@ -84,7 +84,7 @@ class OrderViewModel: ObservableObject {
             // Stop when the backend hands back a short page: no more history.
             canLoadMore = page.count >= pageSize
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
         }
     }
 
@@ -95,7 +95,7 @@ class OrderViewModel: ObservableObject {
         do {
             currentOrder = try await api.getOrder(id: id)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
         }
 
         isLoading = false
