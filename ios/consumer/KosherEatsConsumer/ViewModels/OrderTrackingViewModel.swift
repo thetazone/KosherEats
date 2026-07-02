@@ -172,11 +172,15 @@ final class OrderTrackingViewModel: ObservableObject {
                         break
                     }
                 } catch {
-                    if error.isBenignCancellation {
-                        break
+                    if !error.isBenignCancellation {
+                        self.errorMessage = error.localizedDescription
+                        streamFailed = true
                     }
-                    self.errorMessage = error.localizedDescription
-                    streamFailed = true
+                    // Benign cancellation: don't mark this a failure. If the outer
+                    // task was actually cancelled (stop()/deinit), the check below
+                    // exits the loop; otherwise (e.g. a transient URLSession-level
+                    // cancel unrelated to our own teardown) we fall through and
+                    // reconnect via the clean-close path instead of dying silently.
                 }
 
                 if Task.isCancelled { break }
