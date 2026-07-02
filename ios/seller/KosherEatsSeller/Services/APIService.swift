@@ -20,6 +20,18 @@ enum APIError: LocalizedError {
     }
 }
 
+extension Error {
+    /// True for benign request cancellations — a superseded pull-to-refresh or
+    /// poll, a view teardown cancelling its in-flight load, etc. These surface
+    /// as "Network error: cancelled" but are never worth alerting on (the
+    /// request was cancelled on purpose). VMs use this to skip the error.
+    var isBenignCancellation: Bool {
+        if self is CancellationError { return true }
+        if let urlError = self as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
+}
+
 actor APIService {
     static let shared = APIService()
 

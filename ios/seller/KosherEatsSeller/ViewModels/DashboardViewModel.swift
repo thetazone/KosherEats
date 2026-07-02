@@ -170,12 +170,10 @@ class DashboardViewModel: ObservableObject {
             let result = try await APIService.shared.toggleOpen(isOpen)
             guard gen == loadGeneration else { return }
             self.restaurant = result
-        } catch is CancellationError {
-            // Benign: a periodic refresh superseded this toggle's request. Don't
-            // surface it — the next poll reconciles the switch.
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            // Same, at the URLSession layer.
         } catch {
+            // Benign cancellation: a periodic refresh superseded this toggle's
+            // request. Don't surface it — the next poll reconciles the switch.
+            guard !error.isBenignCancellation else { return }
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
@@ -197,14 +195,12 @@ class DashboardViewModel: ObservableObject {
             let result = try await APIService.shared.updateRestaurant(updated)
             guard gen == loadGeneration else { return }
             self.restaurant = result
-        } catch is CancellationError {
-            // Superseded by the dashboard's periodic refresh firing mid-write —
-            // a benign cancellation, not a failure. The write typically lands and
-            // the next poll reconciles the toggle, so stay silent rather than
-            // showing the seller a confusing "Network error: cancelled".
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            // Same, at the URLSession layer.
         } catch {
+            // Benign cancellation: superseded by the dashboard's periodic
+            // refresh firing mid-write — not a failure. The write typically
+            // lands and the next poll reconciles the toggle, so stay silent
+            // rather than showing a confusing "Network error: cancelled".
+            guard !error.isBenignCancellation else { return }
             guard gen == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
@@ -238,13 +234,11 @@ class DashboardViewModel: ObservableObject {
             // here bypassed that guard and could revert an optimistic update
             // the seller is watching in SellerOrderDetailView.
             sharedOrdersVM.mergeFresh(orders)
-        } catch is CancellationError {
-            // Benign: a newer load() (pull-to-refresh or the 30s auto-refresh)
-            // superseded this in-flight request. Don't surface it — the next
-            // poll repopulates the card. Mirrors the toggle-path fix (51b6afda).
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            // Same, at the URLSession layer.
         } catch {
+            // Benign cancellation: a newer load() (pull-to-refresh or the 30s
+            // auto-refresh) superseded this in-flight request. Don't surface
+            // it — the next poll repopulates the card.
+            guard !error.isBenignCancellation else { return }
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
@@ -255,13 +249,11 @@ class DashboardViewModel: ObservableObject {
             let fetched = try await APIService.shared.getDashboardStats()
             guard generation == loadGeneration else { return }
             self.stats = fetched
-        } catch is CancellationError {
-            // Benign: a newer load() (pull-to-refresh or the 30s auto-refresh)
-            // superseded this in-flight request. Don't surface it — the next
-            // poll repopulates the card. Mirrors the toggle-path fix (51b6afda).
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            // Same, at the URLSession layer.
         } catch {
+            // Benign cancellation: a newer load() (pull-to-refresh or the 30s
+            // auto-refresh) superseded this in-flight request. Don't surface
+            // it — the next poll repopulates the card.
+            guard !error.isBenignCancellation else { return }
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
@@ -272,13 +264,11 @@ class DashboardViewModel: ObservableObject {
             let fetched = try await APIService.shared.getRestaurant()
             guard generation == loadGeneration else { return }
             self.restaurant = fetched
-        } catch is CancellationError {
-            // Benign: a newer load() (pull-to-refresh or the 30s auto-refresh)
-            // superseded this in-flight request. Don't surface it — the next
-            // poll repopulates the card. Mirrors the toggle-path fix (51b6afda).
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            // Same, at the URLSession layer.
         } catch {
+            // Benign cancellation: a newer load() (pull-to-refresh or the 30s
+            // auto-refresh) superseded this in-flight request. Don't surface
+            // it — the next poll repopulates the card.
+            guard !error.isBenignCancellation else { return }
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
