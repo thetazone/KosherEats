@@ -172,7 +172,10 @@ final class OrderTrackingViewModel: ObservableObject {
                         break
                     }
                 } catch {
-                    self.errorMessage = error.isBenignCancellation ? nil : error.localizedDescription
+                    if error.isBenignCancellation {
+                        break
+                    }
+                    self.errorMessage = error.localizedDescription
                     streamFailed = true
                 }
 
