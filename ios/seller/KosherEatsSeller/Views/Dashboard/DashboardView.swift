@@ -2,10 +2,15 @@ import SwiftUI
 
 struct DashboardView: View {
     @StateObject private var vm = DashboardViewModel()
+    @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showingPicker = false
     @State private var pickerSelectionID: String? = SelectedRestaurant.shared.id
     @State private var loadTask: Task<Void, Never>?
+    @State private var showProfileSheet = false
+    // @State (not @AppStorage) on purpose: dismissal lasts for the session
+    // and self-re-arms on logout because the view tree is destroyed.
+    @State private var profileBannerDismissed = false
 
     var body: some View {
         NavigationStack {
@@ -14,6 +19,13 @@ struct DashboardView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
+                        // Non-blocking nudge to finish the profile —
+                        // user-initiated and dismissible per App Review
+                        // Guideline 4 (never a forced sheet).
+                        if authVM.shouldOfferProfileCompletion && !profileBannerDismissed {
+                            profileCompletionBanner
+                        }
+
                         // Restaurant Status
                         if let restaurant = vm.restaurant {
                             restaurantStatusCard(restaurant)
@@ -101,7 +113,62 @@ struct DashboardView: View {
             .onDisappear {
                 vm.stopAutoRefresh()
             }
+            .sheet(isPresented: $showProfileSheet) {
+                ProfileCompletionSheet()
+                    .environmentObject(authVM)
+                    .presentationDetents([.medium, .large])
+            }
         }
+    }
+
+    // MARK: - Profile Completion Banner
+
+    // Non-blocking nudge: opens the optional ProfileCompletionSheet only when
+    // the seller taps it, and can be dismissed outright — App Review
+    // Guideline 4 forbids demanding name/email after Sign in with Apple.
+    private var profileCompletionBanner: some View {
+        HStack(spacing: 12) {
+            Button {
+                showProfileSheet = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .font(.title3)
+                        .foregroundColor(.kePrimary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Complete your profile")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.keTextPrimary)
+
+                        Text("Add your name and a contact email for payout and order updates.")
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens a form to add your name and email")
+
+            Button {
+                withAnimation { profileBannerDismissed = true }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.keTextMuted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss profile reminder")
+        }
+        .padding()
+        .background(Color.keCard)
+        .cornerRadius(16)
     }
 
     // MARK: - Restaurant Status

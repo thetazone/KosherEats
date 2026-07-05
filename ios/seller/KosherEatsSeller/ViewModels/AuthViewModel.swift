@@ -464,17 +464,32 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    /// True when the signed-in user is still missing identity info — e.g.
-    /// Apple sign-in where `fullName` was nil on a return authorization, or
-    /// a @privaterelay.appleid.com address we'd rather replace.
+    /// True when the signed-in user is genuinely missing a name — legacy
+    /// accounts created before the backend persisted Apple's first-auth
+    /// `fullName` and started returning it on every sign-in.
     var needsProfileCompletion: Bool {
         guard let u = user else { return false }
-        let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if email.hasSuffix("@privaterelay.appleid.com") { return true }
-        if email.hasSuffix("@phone.koshereats.local") { return true }
         return false
+    }
+
+    /// True when the account's email is a synthesized address (Apple's
+    /// privaterelay forwarder or the phone-OTP placeholder) we'd LIKE to
+    /// replace for payout/order notifications — but App Review Guideline 4
+    /// forbids demanding one after Sign in with Apple, so this only drives
+    /// the optional dashboard banner, never a forced sheet.
+    var hasPlaceholderEmail: Bool {
+        guard let u = user else { return false }
+        let email = u.email.lowercased()
+        return email.hasSuffix("@privaterelay.appleid.com")
+            || email.hasSuffix("@phone.koshereats.local")
+    }
+
+    /// Drives the dismissible dashboard nudge: worth offering the optional
+    /// profile-completion sheet, never worth blocking on.
+    var shouldOfferProfileCompletion: Bool {
+        needsProfileCompletion || hasPlaceholderEmail
     }
 }
 

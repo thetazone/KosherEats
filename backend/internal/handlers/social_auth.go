@@ -165,14 +165,15 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		dummyHash, _ := bcrypt.GenerateFromPassword(randPwd, bcrypt.DefaultCost)
 
-		// Verification state at creation. Google asserts a verified email and the
-		// backend already requires email_verified=="true" on the token, so we
-		// trust it. Apple is NOT trusted here: it commonly returns a
-		// @privaterelay forwarder, so the consumer app forces a real-email OTP
-		// regardless. Either way a new consumer must still verify a phone, so
+		// Verification state at creation. Both providers assert a verified email
+		// before we get here: verifyGoogleToken requires email_verified=="true"
+		// on the tokeninfo response, and verifyAppleToken rejects tokens with a
+		// missing or unverified email. Apple's @privaterelay forwarders count
+		// too — they're Apple-verified and deliverable (Apple relays to the real
+		// inbox). Either way a new consumer must still verify a phone, so
 		// phone_verified starts false. Seller/courier social signups are exempt
 		// from this requirement (and from the consumer-transaction gate).
-		emailVerified := req.Provider == "google" || role != models.RoleConsumer
+		emailVerified := req.Provider == "google" || req.Provider == "apple" || role != models.RoleConsumer
 		phoneVerified := role != models.RoleConsumer
 
 		err = h.db.Pool.QueryRow(r.Context(),
@@ -188,13 +189,27 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		// Update avatar and provider info if needed
-		if _, err := h.db.Pool.Exec(r.Context(),
+		// Re-auth self-heal: besides avatar/provider bookkeeping, backfill
+		// (a) names when the client sent real ones and the stored value is the
+		//     empty/placeholder junk older builds wrote ('', 'Apple', 'User', 'New'),
+		// (b) email_verified when the provider just asserted THIS exact email as
+		//     verified (guarded on users.email = token email so we never flip a
+		//     custom unverified address the user typed in later).
+		if err := h.db.Pool.QueryRow(r.Context(),
 			`UPDATE users SET avatar_url = COALESCE(NULLIF($1, ''), avatar_url),
-			 auth_provider = $2, auth_provider_id = $3, updated_at = NOW()
-			 WHERE id = $4`,
-			avatarURL, req.Provider, providerID, user.ID); err != nil {
-			slog.Warn("failed to update user avatar/auth_provider on social login",
+			   auth_provider = $2, auth_provider_id = $3,
+			   first_name = CASE WHEN $5 <> '' AND (first_name = '' OR lower(first_name) IN ('apple', 'user', 'new'))
+			                     THEN $5 ELSE first_name END,
+			   last_name  = CASE WHEN $6 <> '' AND (last_name = '' OR lower(last_name) IN ('apple', 'user', 'new'))
+			                     THEN $6 ELSE last_name END,
+			   email_verified = CASE WHEN email = $7 THEN true ELSE email_verified END,
+			   updated_at = NOW()
+			 WHERE id = $4
+			 RETURNING first_name, last_name, email_verified`,
+			avatarURL, req.Provider, providerID, user.ID,
+			strings.TrimSpace(firstName), strings.TrimSpace(lastName), email,
+		).Scan(&user.FirstName, &user.LastName, &user.EmailVerified); err != nil {
+			slog.Warn("failed to update user on social login re-auth",
 				slog.String("user_id", user.ID), slog.String("error", err.Error()))
 		}
 	}

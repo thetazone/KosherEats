@@ -741,6 +741,9 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context()) //nolint:errcheck
 
 	// FOR UPDATE locks the row; the status guard ensures only one caller wins.
+	// 'scheduled' is cancellable too: scheduled orders are captured at checkout,
+	// so cancel = full refund via the same commit-then-refund path below (and
+	// the client ships a Cancel button for scheduled orders).
 	// external_delivery_id IS NULL: an order escalated to Uber/DoorDash sits at
 	// 'accepted' while a PAID provider delivery is already in flight — cancelling
 	// + refunding it here would leave the platform paying for a delivery on a
@@ -749,17 +752,18 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	var paymentID string
 	err = tx.QueryRow(r.Context(),
 		`SELECT COALESCE(stripe_payment_id, '') FROM orders
-		 WHERE id = $1 AND user_id = $2 AND status IN ($3, $4)
+		 WHERE id = $1 AND user_id = $2 AND status IN ($3, $4, $5)
 		   AND external_delivery_id IS NULL
 		 FOR UPDATE`,
-		id, user["user_id"], models.OrderPending, models.OrderAccepted,
+		id, user["user_id"], models.OrderPending, models.OrderAccepted, models.OrderScheduled,
 	).Scan(&paymentID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "cannot cancel this order")
 		return
 	}
 
-	// Allow cancel while pending OR accepted (before kitchen starts preparing).
+	// Allow cancel while scheduled, pending, OR accepted (before kitchen starts
+	// preparing). A failed refund is retried by sweepPendingRefunds either way.
 	// Mark refunded_at now when there's nothing to refund, so a no-payment order
 	// never lingers as refund-pending for the reconcile reaper.
 	if _, err = tx.Exec(r.Context(),

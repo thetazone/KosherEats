@@ -71,8 +71,16 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	// number / set up a hijack. Phone changes go through the OTP-verified flow
 	// (StartPhoneChange + VerifyPhoneChange); req.Phone is ignored here.
 	if email != "" {
+		// Changing the address invalidates whatever proof the old one had
+		// (OTP or provider-asserted), so email_verified only survives when
+		// the email is unchanged — the comparison reads the OLD row value. A
+		// consumer who swaps emails here re-verifies via the OTP flow before
+		// they can transact again (sellers/couriers aren't gated). The ::text
+		// casts keep $3's deduced type consistent across both sites (42P08).
 		_, err := h.db.Pool.Exec(ctx,
-			`UPDATE users SET first_name = $1, last_name = $2, email = $3, updated_at = NOW()
+			`UPDATE users SET first_name = $1, last_name = $2, email = $3::text,
+			   email_verified = (email = $3::text AND email_verified),
+			   updated_at = NOW()
 			 WHERE id = $4`,
 			req.FirstName, req.LastName, email, user["user_id"])
 		if err != nil {
