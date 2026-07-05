@@ -198,6 +198,12 @@ actor APIService {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 continue
             } catch {
+                // Preserve a benign cancellation as its raw type instead of
+                // flattening it into networkError("cancelled") — otherwise the
+                // VMs' type/isBenignCancellation checks can't tell a superseded
+                // refresh from a real network failure and flash "Couldn't
+                // update — Network error: cancelled" at the seller.
+                if error.isBenignCancellation { throw error }
                 throw APIError.networkError(error.localizedDescription)
             }
 
@@ -325,6 +331,12 @@ actor APIService {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 continue
             } catch {
+                // Preserve a benign cancellation as its raw type instead of
+                // flattening it into networkError("cancelled") — otherwise the
+                // VMs' type/isBenignCancellation checks can't tell a superseded
+                // refresh from a real network failure and flash "Couldn't
+                // update — Network error: cancelled" at the seller.
+                if error.isBenignCancellation { throw error }
                 throw APIError.networkError(error.localizedDescription)
             }
 

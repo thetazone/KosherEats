@@ -37,6 +37,12 @@ extension Error {
     var isBenignCancellation: Bool {
         if self is CancellationError { return true }
         if let urlError = self as? URLError, urlError.code == .cancelled { return true }
+        // APIService wraps the underlying transport error as
+        // APIError.networkError(...), so a cancelled request reaches the VMs
+        // wrapped rather than raw — unwrap and re-check so it's still caught.
+        if case .networkError(let underlying)? = self as? APIError {
+            return underlying.isBenignCancellation
+        }
         return false
     }
 }
