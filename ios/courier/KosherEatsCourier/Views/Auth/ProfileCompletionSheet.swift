@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Captures name/email/phone after Apple sign-in when Apple left us with an
-/// empty name or a @privaterelay.appleid.com forwarding address. Blocks the
-/// rest of the app until submitted — RootView presents it full-screen for
-/// exactly that reason (onboarding starts immediately after).
+/// Optional profile form, opened only when the user taps the dashboard
+/// banner ("Complete your profile"). Never auto-presented — App Review
+/// Guideline 4 forbids demanding name/email after Sign in with Apple, so
+/// everything here is user-initiated and skippable.
 struct ProfileCompletionSheet: View {
     @EnvironmentObject var auth: AuthViewModel
     @Environment(\.dismiss) private var dismiss
@@ -11,19 +11,11 @@ struct ProfileCompletionSheet: View {
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var email = ""
-    @State private var phoneDigits = ""
-    @State private var selectedCountry: Country = .defaultCountry
-    @State private var showCountryPicker = false
     @State private var localError: String?
 
     private var canSubmit: Bool {
         !firstName.trimmingCharacters(in: .whitespaces).isEmpty
             && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-            && !email.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private var isRelayEmail: Bool {
-        (auth.user?.email ?? "").lowercased().hasSuffix("@privaterelay.appleid.com")
     }
 
     var body: some View {
@@ -31,10 +23,10 @@ struct ProfileCompletionSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.spacingLG) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Finish setting up your account")
+                        Text("Complete your profile")
                             .font(.system(size: 26, weight: .bold))
                             .foregroundColor(.keTextPrimary)
-                        Text("We need a few details to match you with deliveries and route payouts.")
+                        Text("Add your name and a contact email so payout and delivery updates reach you. You can always do this later.")
                             .font(.body)
                             .foregroundColor(.keTextSecondary)
                     }
@@ -52,49 +44,17 @@ struct ProfileCompletionSheet: View {
                                 .textInputAutocapitalization(.words)
                                 .keTextFieldStyle()
                         }
-                        labeledField("Email") {
+                        labeledField("Email (optional)") {
                             TextField("you@example.com", text: $email)
                                 .textContentType(.emailAddress)
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keTextFieldStyle()
-                            if isRelayEmail {
-                                Text("Apple gave us a forwarding address. Enter the email you'd like payout confirmations sent to.")
+                            if auth.hasPlaceholderEmail {
+                                Text("Your account doesn't have a reachable email yet. Add one to get payout and delivery updates.")
                                     .font(.caption)
                                     .foregroundColor(.keTextSecondary)
-                            }
-                        }
-                        labeledField("Mobile number (optional)") {
-                            HStack(spacing: 10) {
-                                Button {
-                                    showCountryPicker = true
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Text(selectedCountry.flag)
-                                        Text(selectedCountry.dialCode)
-                                            .foregroundColor(.keTextPrimary)
-                                        Image(systemName: "chevron.down")
-                                            .font(.system(size: 11, weight: .semibold))
-                                            .foregroundColor(.keTextSecondary)
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .frame(height: 52)
-                                    .background(Color.keCard)
-                                    .cornerRadius(12)
-                                }
-
-                                TextField("Mobile number", text: $phoneDigits)
-                                    .keyboardType(.numberPad)
-                                    .textContentType(.telephoneNumber)
-                                    .keTextFieldStyle()
-                                    .onChange(of: phoneDigits) { _, newValue in
-                                        let digits = newValue.filter(\.isNumber)
-                                        if digits != newValue { phoneDigits = digits }
-                                        if phoneDigits.count > 15 {
-                                            phoneDigits = String(phoneDigits.prefix(15))
-                                        }
-                                    }
                             }
                         }
                     }
@@ -112,7 +72,7 @@ struct ProfileCompletionSheet: View {
                             if auth.isLoading {
                                 ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .keTextPrimary))
                             } else {
-                                Text("Continue").font(.headline)
+                                Text("Save").font(.headline)
                             }
                         }
                         .foregroundColor(canSubmit ? .keTextPrimary : .keTextMuted)
@@ -127,10 +87,7 @@ struct ProfileCompletionSheet: View {
                     }
                     .disabled(!canSubmit || auth.isLoading)
 
-                    // TEMPORARY — App Review escape hatch. Couriers can't
-                    // actually accept deliveries without a name/email on file,
-                    // so this should be removed once the app is live and
-                    // reviewers aren't driving the Apple sign-in flow blind.
+                    // Optional form — closing without saving is always allowed.
                     Button("Not now") { dismiss() }
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.keTextSecondary)
@@ -140,13 +97,6 @@ struct ProfileCompletionSheet: View {
             }
             .background(Color.keBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showCountryPicker) {
-                CountryCodePickerSheet(
-                    selected: $selectedCountry,
-                    isPresented: $showCountryPicker
-                )
-                .presentationDetents([.medium, .large])
-            }
         }
         .onAppear(perform: prefill)
     }
@@ -177,15 +127,6 @@ struct ProfileCompletionSheet: View {
                 email = u.email
             }
         }
-        // Phone: if the user signed in via phone OTP, the backend already
-        // has their E.164 number — pre-populate the digits field.
-        if phoneDigits.isEmpty, !u.phone.isEmpty {
-            if u.phone.hasPrefix(selectedCountry.dialCode) {
-                phoneDigits = String(u.phone.dropFirst(selectedCountry.dialCode.count))
-            } else if u.phone.hasPrefix("+") {
-                phoneDigits = u.phone.filter(\.isNumber)
-            }
-        }
     }
 
     /// Older Apple sign-ins stored "Apple"/"User" as placeholders whenever
@@ -206,17 +147,20 @@ struct ProfileCompletionSheet: View {
         let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
         let trimmedFirst = firstName.trimmingCharacters(in: .whitespaces)
         let trimmedLast = lastName.trimmingCharacters(in: .whitespaces)
-        guard trimmedEmail.contains("@") else {
+        // Email is optional — only validate when the user typed one.
+        if !trimmedEmail.isEmpty, !trimmedEmail.contains("@") {
             localError = "Please enter a valid email address."
             return
         }
-        let phoneE164 = phoneDigits.isEmpty ? (auth.user?.phone ?? "") : (selectedCountry.dialCode + phoneDigits)
-        _ = await auth.updateUserProfile(
+        let ok = await auth.updateUserProfile(
             firstName: trimmedFirst,
             lastName: trimmedLast,
-            phone: phoneE164,
-            email: trimmedEmail
+            phone: auth.user?.phone ?? "",
+            email: trimmedEmail.isEmpty ? nil : trimmedEmail
         )
+        // Presented via a plain $showProfileSheet binding now — nothing
+        // auto-closes it, so dismiss ourselves on success.
+        if ok { dismiss() }
     }
 }
 

@@ -9,6 +9,10 @@ struct DashboardView: View {
     @StateObject private var vm = DashboardViewModel()
     @StateObject private var location = LocationManager()
     @State private var selectedTab: Tab = .deliveries
+    @State private var showProfileSheet = false
+    // @State (not @AppStorage) on purpose: dismissal lasts for the session
+    // and self-re-arms on logout because the view tree is destroyed.
+    @State private var profileBannerDismissed = false
 
     enum Tab { case deliveries, earnings, profile }
 
@@ -50,6 +54,13 @@ struct DashboardView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: Theme.spacingMD) {
+                            // Non-blocking nudge to finish the profile —
+                            // user-initiated and dismissible per App Review
+                            // Guideline 4 (never a forced sheet).
+                            if auth.shouldOfferProfileCompletion && !profileBannerDismissed {
+                                profileCompletionBanner
+                            }
+
                             if location.permissionDenied {
                                 locationPermissionDeniedBanner
                             }
@@ -109,7 +120,62 @@ struct DashboardView: View {
             .background(Color.keBackground.ignoresSafeArea())
             .navigationTitle("KosherEats Courier")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showProfileSheet) {
+                ProfileCompletionSheet()
+                    .environmentObject(auth)
+                    .presentationDetents([.medium, .large])
+            }
         }
+    }
+
+    // MARK: - Profile Completion Banner
+
+    // Non-blocking nudge: opens the optional ProfileCompletionSheet only when
+    // the courier taps it, and can be dismissed outright — App Review
+    // Guideline 4 forbids demanding name/email after Sign in with Apple.
+    private var profileCompletionBanner: some View {
+        HStack(spacing: Theme.spacingSM) {
+            Button {
+                showProfileSheet = true
+            } label: {
+                HStack(spacing: Theme.spacingSM) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .font(.title3)
+                        .foregroundColor(.kePrimary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Complete your profile")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.keTextPrimary)
+
+                        Text("Add your name and a contact email for payout and delivery updates.")
+                            .font(.caption)
+                            .foregroundColor(.keTextSecondary)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens a form to add your name and email")
+
+            Button {
+                withAnimation { profileBannerDismissed = true }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.keTextMuted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss profile reminder")
+        }
+        .padding()
+        .background(Color.keCard)
+        .cornerRadius(Theme.cornerRadiusMedium)
     }
 
     private var locationPermissionDeniedBanner: some View {

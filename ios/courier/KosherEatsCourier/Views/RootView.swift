@@ -6,10 +6,6 @@ import SwiftUI
 // - Authenticated, approved     -> Dashboard (the working courier experience)
 struct RootView: View {
     @EnvironmentObject var auth: AuthViewModel
-    // Latches when the reviewer/user taps "Not now" on
-    // ProfileCompletionSheet so we don't re-present it on every render.
-    // TEMPORARY — tied to the App Review skip button; remove both together.
-    @State private var profileSheetDismissed = false
 
     var body: some View {
         Group {
@@ -55,20 +51,5 @@ struct RootView: View {
             }
         }
         .background(Color.keBackground.ignoresSafeArea())
-        .sheet(isPresented: Binding(
-            // Post-Apple-sign-in completion form — only fires once the user
-            // record is loaded and confirms a missing name or a
-            // @privaterelay.appleid.com forwarding email. Also closes if the
-            // user taps "Not now" (reviewer escape hatch — see the TEMPORARY
-            // note in ProfileCompletionSheet).
-            get: { auth.isAuthenticated && auth.needsProfileCompletion && !profileSheetDismissed },
-            set: { newValue in
-                if !newValue { profileSheetDismissed = true }
-            }
-        )) {
-            ProfileCompletionSheet()
-                .environmentObject(auth)
-                .presentationDetents([.medium, .large])
-        }
     }
 }

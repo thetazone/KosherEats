@@ -468,7 +468,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KosherEatsCourier/KosherEatsCourier.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = KosherEatsCourier/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "KosherEats Courier needs camera access to capture your drivers license and vehicle documents.";
@@ -563,7 +563,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = KosherEatsCourier/KosherEatsCourier.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = KosherEatsCourier/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "KosherEats Courier needs camera access to capture your drivers license and vehicle documents.";
