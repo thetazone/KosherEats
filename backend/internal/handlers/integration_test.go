@@ -22,6 +22,10 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +45,7 @@ import (
 	"github.com/koshereats/backend/internal/config"
 	"github.com/koshereats/backend/internal/database"
 	"github.com/koshereats/backend/internal/models"
+	"github.com/koshereats/backend/internal/scheduler"
 )
 
 const defaultTestDatabaseURL = "postgres://postgres:postgres@localhost:5433/koshereats_test?sslmode=disable"
@@ -99,6 +104,9 @@ func TestMain(m *testing.M) {
 		// gate). The flag defaults off in prod for a phased rollout, but the
 		// verification tests assert the on-state.
 		VerificationEnforced: true,
+		// Apple sign-in tests mint their own RS256 tokens (the JWK cache is
+		// swapped per test) against this audience.
+		AppleClientID: "com.koshereats.ios",
 		// StripeSecretKey intentionally empty -> payments.Client runs in dev
 		// stub mode, so VerifyPaymentSucceeded always returns nil.
 	}
@@ -191,6 +199,7 @@ func buildRouter(h *Handler) http.Handler {
 	r.Post("/api/v1/auth/password/reset", h.ResetPassword)
 	r.Post("/api/v1/auth/email/start", h.StartEmailSignup)
 	r.Post("/api/v1/auth/email/verify", h.VerifyEmailSignup)
+	r.Post("/api/v1/auth/social", h.SocialLogin)
 
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(h.OptionalAuthMiddleware)
@@ -214,6 +223,7 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Route("/api/v1/user", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
+		r.Put("/profile", h.UpdateProfile)
 		r.Post("/email/start", h.StartEmailChange)
 		r.Post("/email/verify", h.VerifyEmailChange)
 		r.Post("/phone/change/start", h.StartPhoneChange)
@@ -922,5 +932,386 @@ func TestIntegration_PasswordResetSkipsPhoneSquatter(t *testing.T) {
 	}
 	if roleSquatterHasCode {
 		t.Fatalf("role-scoped reset code leaked to the same-role phone squatter — filter/ordering failed")
+	}
+}
+
+// ---- Apple social-login tests ---------------------------------------------
+
+// appleSigninFixture generates a per-test RSA key, swaps the process-wide JWK
+// cache to trust it, and returns a signer that mints valid Apple ID tokens for
+// arbitrary email/subject pairs (correct hashed nonce baked in) plus the raw
+// nonce to send alongside. Callers must invoke the returned restore func.
+func appleSigninFixture(t *testing.T) (sign func(email, sub string) (token, rawNonce string), restore func()) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	restore = swapAppleJWKCacheForTest(newStaticAppleJWKCache("test-kid", &privateKey.PublicKey))
+
+	const nonce = "integration-raw-nonce"
+	sum := sha256.Sum256([]byte(nonce))
+	hexNonce := hex.EncodeToString(sum[:])
+
+	sign = func(email, sub string) (string, string) {
+		return signedAppleTokenForUser(t, privateKey, "test-kid", "com.koshereats.ios",
+			mustMarshalRawMessage(t, true), hexNonce, email, sub), nonce
+	}
+	return sign, restore
+}
+
+// (8) The App Store Guideline 4 fix: verifyAppleToken already rejects tokens
+// with a missing/unverified email, so a fresh Apple consumer must land with
+// email_verified=true (no redundant email OTP), phone still unverified, and
+// names stored exactly as the client sent them — empty stays empty, never an
+// 'Apple User' placeholder.
+func TestIntegration_AppleSocialLoginTrustsEmailVerified(t *testing.T) {
+	harness.resetVolatile(t)
+
+	sign, restore := appleSigninFixture(t)
+	defer restore()
+
+	email := fmt.Sprintf("relay-%d@privaterelay.appleid.com", time.Now().UnixNano())
+	sub := fmt.Sprintf("apple-sub-%d", time.Now().UnixNano())
+	token, rawNonce := sign(email, sub)
+
+	rec := harness.do(http.MethodPost, "/api/v1/auth/social", "", map[string]any{
+		"provider": "apple",
+		"token":    token,
+		"nonce":    rawNonce,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("apple social login: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp AuthResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("apple social login decode: %v", err)
+	}
+	if resp.User.Email != email {
+		t.Fatalf("user email = %q, want token email %q", resp.User.Email, email)
+	}
+	if !resp.User.EmailVerified {
+		t.Fatalf("fresh apple consumer must be email_verified (Apple asserted it), got false")
+	}
+	if resp.User.PhoneVerified {
+		t.Fatalf("fresh apple consumer must still need phone verification")
+	}
+	if resp.User.FirstName != "" || resp.User.LastName != "" {
+		t.Fatalf("names must be stored verbatim (empty in → empty out), got %q %q",
+			resp.User.FirstName, resp.User.LastName)
+	}
+}
+
+// (9) Re-auth self-heal: rows older builds wrote with placeholder names and
+// email_verified=false must be repaired on the next Apple sign-in — and the
+// heal must never clobber real names or flip email_verified for a stored
+// email the provider didn't assert.
+func TestIntegration_AppleReauthSelfHeals(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+	pool := harness.h.db.Pool
+
+	sign, restore := appleSigninFixture(t)
+	defer restore()
+
+	signin := func(t *testing.T, email, sub, first, last string) AuthResponse {
+		t.Helper()
+		token, rawNonce := sign(email, sub)
+		rec := harness.do(http.MethodPost, "/api/v1/auth/social", "", map[string]any{
+			"provider":   "apple",
+			"token":      token,
+			"nonce":      rawNonce,
+			"first_name": first,
+			"last_name":  last,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("apple re-auth: status %d, body %s", rec.Code, rec.Body.String())
+		}
+		var resp AuthResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("apple re-auth decode: %v", err)
+		}
+		return resp
+	}
+
+	// seedAppleUser plants a pre-fix consumer row (placeholder names,
+	// email_verified=false) plus its junction row, the state older builds left.
+	seedAppleUser := func(t *testing.T, email, sub string) string {
+		t.Helper()
+		var id string
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical,
+			   auth_provider, auth_provider_id, email_verified, phone_verified)
+			 VALUES ($1, '', 'Apple', 'User', '', 'consumer', 'kosher', 'apple', $2, false, false)
+			 RETURNING id`, email, sub,
+		).Scan(&id); err != nil {
+			t.Fatalf("seed apple user: %v", err)
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO user_auth_providers (user_id, provider, provider_id)
+			 VALUES ($1, 'apple', $2)`, id, sub); err != nil {
+			t.Fatalf("seed user_auth_providers: %v", err)
+		}
+		return id
+	}
+
+	relayEmail := fmt.Sprintf("heal-%d@privaterelay.appleid.com", time.Now().UnixNano())
+	sub := fmt.Sprintf("apple-heal-%d", time.Now().UnixNano())
+	userID := seedAppleUser(t, relayEmail, sub)
+
+	// Re-auth with real names: placeholders + email_verified heal in BOTH the
+	// response and the DB.
+	resp := signin(t, relayEmail, sub, "Sarah", "Levy")
+	if resp.User.ID != userID {
+		t.Fatalf("re-auth resolved user %q, want seeded %q", resp.User.ID, userID)
+	}
+	if resp.User.FirstName != "Sarah" || resp.User.LastName != "Levy" {
+		t.Fatalf("placeholder names not healed in response: %q %q", resp.User.FirstName, resp.User.LastName)
+	}
+	if !resp.User.EmailVerified {
+		t.Fatalf("email_verified not healed in response")
+	}
+	var first, last string
+	var verified bool
+	if err := pool.QueryRow(ctx,
+		`SELECT first_name, last_name, email_verified FROM users WHERE id = $1`, userID,
+	).Scan(&first, &last, &verified); err != nil {
+		t.Fatalf("reload healed user: %v", err)
+	}
+	if first != "Sarah" || last != "Levy" || !verified {
+		t.Fatalf("DB row not healed: %q %q email_verified=%v", first, last, verified)
+	}
+
+	// (a) A later re-auth with different names must NOT clobber real stored names.
+	resp = signin(t, relayEmail, sub, "Other", "Person")
+	if resp.User.FirstName != "Sarah" || resp.User.LastName != "Levy" {
+		t.Fatalf("real names clobbered on re-auth: %q %q", resp.User.FirstName, resp.User.LastName)
+	}
+
+	// (b) A row whose stored email differs from the token email (the user swapped
+	// in a custom address they never OTP-verified) keeps email_verified=false —
+	// while the name heal still applies.
+	customEmail := uniqueEmail("custom-inbox")
+	sub2 := fmt.Sprintf("apple-custom-%d", time.Now().UnixNano())
+	userID2 := seedAppleUser(t, customEmail, sub2)
+	tokenEmail := fmt.Sprintf("other-%d@privaterelay.appleid.com", time.Now().UnixNano())
+	resp = signin(t, tokenEmail, sub2, "Rivka", "Katz")
+	if resp.User.ID != userID2 {
+		t.Fatalf("re-auth resolved user %q, want seeded %q", resp.User.ID, userID2)
+	}
+	if resp.User.EmailVerified {
+		t.Fatalf("email_verified flipped although stored email differs from the token email")
+	}
+	if resp.User.FirstName != "Rivka" || resp.User.LastName != "Katz" {
+		t.Fatalf("names must heal even when email_verified doesn't: %q %q", resp.User.FirstName, resp.User.LastName)
+	}
+}
+
+// (10) Scheduled orders are captured at checkout, so cancelling one must
+// behave exactly like cancelling a pending order: status → cancelled with
+// refunded_at stamped (stub refund succeeds). Then the sweepScheduled race
+// contract at the SQL level: the CAS promotion UPDATE must flip 0 rows for a
+// cancelled order (never resurrecting it), and when promotion wins first the
+// consumer can still cancel the now-pending order.
+func TestIntegration_CancelScheduledOrderStampsRefundedAt(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+	pool := harness.h.db.Pool
+
+	token, _ := harness.registerUser(t, "sched-canceller")
+
+	// placeScheduled creates an order 2h out and asserts it lands in
+	// 'scheduled' (CreateOrder flips status for >30min-out windows).
+	placeScheduled := func(t *testing.T) string {
+		t.Helper()
+		harness.addToCart(t, token, harness.approvedRestID, harness.menuItemID)
+		payload := harness.orderPayload(fmt.Sprintf("pi_sched_%d", time.Now().UnixNano()))
+		payload["scheduled_for"] = time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+		rec := harness.do(http.MethodPost, "/api/v1/orders/", token, payload)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create scheduled order: status %d, body %s", rec.Code, rec.Body.String())
+		}
+		var order struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &order); err != nil {
+			t.Fatalf("create scheduled order decode: %v", err)
+		}
+		var status string
+		if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, order.ID).Scan(&status); err != nil {
+			t.Fatalf("reload scheduled order: %v", err)
+		}
+		if status != string(models.OrderScheduled) {
+			t.Fatalf("status = %q, want scheduled", status)
+		}
+		return order.ID
+	}
+
+	// promote runs the dispatcher's real CAS promotion (the same function
+	// sweepScheduled calls) and reports whether it won — the race contract
+	// under test.
+	promote := func(t *testing.T, orderID string) bool {
+		t.Helper()
+		promoted, err := scheduler.PromoteScheduledOrder(ctx, pool, orderID)
+		if err != nil {
+			t.Fatalf("promotion update: %v", err)
+		}
+		return promoted
+	}
+
+	// Cancel while scheduled → cancelled + refunded_at stamped. First pin down
+	// that the order actually carries a captured PaymentIntent: without this,
+	// refunded_at could be stamped by CancelOrder's nothing-to-refund CASE
+	// branch and the test would pass without proving the refund path.
+	orderID := placeScheduled(t)
+	var paymentID string
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(stripe_payment_id, '') FROM orders WHERE id = $1`, orderID,
+	).Scan(&paymentID); err != nil {
+		t.Fatalf("reload scheduled order payment id: %v", err)
+	}
+	if paymentID == "" {
+		t.Fatalf("scheduled order has no stripe_payment_id — cancel would take the nothing-to-refund branch")
+	}
+	rec := harness.do(http.MethodPatch, "/api/v1/orders/"+orderID+"/cancel", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cancel scheduled: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var status string
+	var refundedAt *time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT status, refunded_at FROM orders WHERE id = $1`, orderID,
+	).Scan(&status, &refundedAt); err != nil {
+		t.Fatalf("reload cancelled order: %v", err)
+	}
+	if status != string(models.OrderCancelled) {
+		t.Fatalf("status = %q, want cancelled", status)
+	}
+	if refundedAt == nil {
+		t.Fatalf("refunded_at not stamped after cancelling a scheduled (captured) order")
+	}
+
+	// Consumer cancel won the race: the dispatcher's CAS must lose so a
+	// cancelled order is never resurrected to 'pending'.
+	if promote(t, orderID) {
+		t.Fatalf("promotion CAS won on a cancelled order, want lost")
+	}
+
+	// Promotion wins first: the consumer can still cancel the now-pending
+	// order through the normal path.
+	secondID := placeScheduled(t)
+	if !promote(t, secondID) {
+		t.Fatalf("promotion CAS lost on a scheduled order, want won")
+	}
+	rec = harness.do(http.MethodPatch, "/api/v1/orders/"+secondID+"/cancel", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cancel promoted order: status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+// (11) Migration 055's backfill predicate, exercised against real rows. The
+// chain test only proves 055 applies to an empty database; this runs the
+// file's actual SQL against seeded users and pins down both the flip case
+// and the must-not-flip cases (wrong provider / custom address).
+func TestIntegration_Migration055BackfillPredicate(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+	pool := harness.h.db.Pool
+
+	seed := func(t *testing.T, provider, email string, verified bool) string {
+		t.Helper()
+		var id string
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO users (email, password_hash, first_name, last_name, phone, role, vertical,
+			   auth_provider, email_verified, phone_verified)
+			 VALUES ($1, '', 'Seed', 'User', '', 'consumer', 'kosher', $2, $3, false)
+			 RETURNING id`, email, provider, verified,
+		).Scan(&id); err != nil {
+			t.Fatalf("seed %s user: %v", provider, err)
+		}
+		return id
+	}
+
+	nano := time.Now().UnixNano()
+	appleRelay := seed(t, "apple", fmt.Sprintf("m055-relay-%d@privaterelay.appleid.com", nano), false)
+	appleCustom := seed(t, "apple", fmt.Sprintf("m055-custom-%d@gmail.com", nano), false)
+	googleRelay := seed(t, "google", fmt.Sprintf("m055-google-%d@privaterelay.appleid.com", nano), false)
+
+	sqlBytes, err := os.ReadFile(filepath.Join(migrationsDir(), "055_apple_relay_email_verified.sql"))
+	if err != nil {
+		t.Fatalf("read migration 055: %v", err)
+	}
+	if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
+		t.Fatalf("exec migration 055 SQL: %v", err)
+	}
+
+	verified := func(t *testing.T, id string) bool {
+		t.Helper()
+		var v bool
+		if err := pool.QueryRow(ctx, `SELECT email_verified FROM users WHERE id = $1`, id).Scan(&v); err != nil {
+			t.Fatalf("reload %s: %v", id, err)
+		}
+		return v
+	}
+	if !verified(t, appleRelay) {
+		t.Fatalf("apple+relay row not backfilled to email_verified=true")
+	}
+	if verified(t, appleCustom) {
+		t.Fatalf("apple row with a custom (non-relay) address must NOT be flipped — it was never provider-asserted")
+	}
+	if verified(t, googleRelay) {
+		t.Fatalf("non-apple row must NOT be flipped regardless of address shape")
+	}
+}
+
+// (12) UpdateProfile: swapping the account email invalidates the verified
+// flag (the new address was never proved), while re-submitting the same
+// address preserves it. Without this, an Apple/OTP-verified consumer could
+// route an arbitrary address past the transaction gate via the profile sheet.
+func TestIntegration_UpdateProfileEmailChangeResetsVerification(t *testing.T) {
+	harness.resetVolatile(t)
+	ctx := context.Background()
+	pool := harness.h.db.Pool
+
+	token, userID := harness.registerUser(t, "email-swap") // fully verified
+
+	var currentEmail string
+	if err := pool.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&currentEmail); err != nil {
+		t.Fatalf("load registered email: %v", err)
+	}
+
+	put := func(t *testing.T, email string) models.User {
+		t.Helper()
+		rec := harness.do(http.MethodPut, "/api/v1/user/profile", token, map[string]any{
+			"first_name": "Swap",
+			"last_name":  "Tester",
+			"email":      email,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("update profile (%s): status %d, body %s", email, rec.Code, rec.Body.String())
+		}
+		var u models.User
+		if err := json.Unmarshal(rec.Body.Bytes(), &u); err != nil {
+			t.Fatalf("update profile decode: %v", err)
+		}
+		return u
+	}
+
+	// Same address → verification survives.
+	if u := put(t, currentEmail); !u.EmailVerified {
+		t.Fatalf("email_verified dropped although the address is unchanged")
+	}
+
+	// New address → verification resets; phone verification is untouched.
+	u := put(t, uniqueEmail("swapped-to"))
+	if u.EmailVerified {
+		t.Fatalf("email_verified survived an email change — unproved address passes the transaction gate")
+	}
+	if !u.PhoneVerified {
+		t.Fatalf("phone_verified must be unaffected by an email change")
+	}
+	if u.FirstName != "Swap" || u.LastName != "Tester" {
+		t.Fatalf("names not updated: %q %q", u.FirstName, u.LastName)
 	}
 }

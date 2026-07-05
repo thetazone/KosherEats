@@ -533,14 +533,17 @@ func (d *Dispatcher) sweepScheduled(ctx context.Context) {
 	}
 
 	for _, o := range due {
-		_, err := d.db.Exec(ctx,
-			`UPDATE orders SET status = 'pending', updated_at = NOW()
-			 WHERE id = $1 AND status = 'scheduled'`,
-			o.orderID)
+		promoted, err := PromoteScheduledOrder(ctx, d.db, o.orderID)
 		if err != nil {
 			slog.Error("scheduler: promote failed",
 				slog.String("order_id", o.orderID),
 				slog.String("error", err.Error()))
+			continue
+		}
+		if !promoted {
+			// Lost the CAS: the consumer cancelled between the candidate SELECT
+			// and this UPDATE, or another instance already promoted it. Either
+			// way the order is no longer ours to announce — skip the log/notify.
 			continue
 		}
 		slog.Info("scheduler: order promoted to pending",
@@ -549,6 +552,22 @@ func (d *Dispatcher) sweepScheduled(ctx context.Context) {
 			d.notify.OrderCreated(ctx, o.restaurantID, o.restaurantName, o.orderID, o.total)
 		}
 	}
+}
+
+// PromoteScheduledOrder flips one scheduled order to 'pending' iff it is
+// still 'scheduled' — the CAS that loses cleanly to a concurrent consumer
+// cancel (CancelOrder holds the row FOR UPDATE while it flips to cancelled).
+// Exported so the handler integration tests exercise the exact statement
+// sweepScheduled runs instead of an inline copy that could drift.
+func PromoteScheduledOrder(ctx context.Context, db *pgxpool.Pool, orderID string) (bool, error) {
+	tag, err := db.Exec(ctx,
+		`UPDATE orders SET status = 'pending', updated_at = NOW()
+		 WHERE id = $1 AND status = 'scheduled'`,
+		orderID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // staleOrder is the minimum projection of an unclaimed 'ready' order that

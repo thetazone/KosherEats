@@ -147,6 +147,38 @@ func TestVerifyAppleTokenAcceptsValidSignedToken(t *testing.T) {
 	}
 }
 
+// Apple sometimes serializes email_verified as the JSON string "true" instead
+// of a bool. emailVerified() must accept both forms — a regression here would
+// reject every string-form token as "unverified" and lock those users out of
+// Apple sign-in entirely.
+func TestVerifyAppleTokenAcceptsStringEmailVerified(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+
+	restore := swapAppleJWKCacheForTest(newStaticAppleJWKCache("test-kid", &privateKey.PublicKey))
+	defer restore()
+
+	handler := &Handler{
+		cfg: &config.Config{AppleClientID: "com.koshereats.ios"},
+	}
+
+	token := signedAppleTokenForUser(t, privateKey, "test-kid", handler.cfg.AppleClientID,
+		json.RawMessage(`"true"`), "", "user@example.com", "apple-user-123")
+
+	email, _, _, providerID, err := handler.verifyAppleToken(token, "", "", "")
+	if err != nil {
+		t.Fatalf("verify apple token with string email_verified: %v", err)
+	}
+	if email != "user@example.com" {
+		t.Fatalf("unexpected email: %s", email)
+	}
+	if providerID != "apple-user-123" {
+		t.Fatalf("unexpected provider id: %s", providerID)
+	}
+}
+
 func TestVerifyAppleTokenRejectsAlgNone(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -211,15 +243,25 @@ func signedAppleToken(t *testing.T, privateKey *rsa.PrivateKey, kid, audience st
 
 func signedAppleTokenWithNonce(t *testing.T, privateKey *rsa.PrivateKey, kid, audience string, emailVerified bool, hashedNonce string) string {
 	t.Helper()
+	return signedAppleTokenForUser(t, privateKey, kid, audience,
+		mustMarshalRawMessage(t, emailVerified), hashedNonce, "user@example.com", "apple-user-123")
+}
+
+// signedAppleTokenForUser is the fully-parameterized signer. The integration
+// tests need per-test-unique email/subject pairs (the fixed defaults above
+// would collide across DB-backed tests), and email_verified is a raw JSON
+// value because Apple serializes it as either a bool or the string "true".
+func signedAppleTokenForUser(t *testing.T, privateKey *rsa.PrivateKey, kid, audience string, emailVerified json.RawMessage, hashedNonce, email, subject string) string {
+	t.Helper()
 
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, appleTokenClaims{
-		Email:         "user@example.com",
-		EmailVerified: mustMarshalRawMessage(t, emailVerified),
+		Email:         email,
+		EmailVerified: emailVerified,
 		Nonce:         hashedNonce,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "https://appleid.apple.com",
-			Subject:   "apple-user-123",
+			Subject:   subject,
 			Audience:  jwt.ClaimStrings{audience},
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(now),
