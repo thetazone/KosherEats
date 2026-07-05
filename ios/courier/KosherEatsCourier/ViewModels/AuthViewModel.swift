@@ -175,18 +175,32 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// True iff the signed-in courier hasn't filled in basic identity details.
-    /// Apple sign-in leaves `first/last` empty on everything but the first
-    /// authorization, and the @privaterelay.appleid.com addresses are opaque
-    /// forwarders — both trigger the completion sheet.
+    /// True when the signed-in courier is genuinely missing a name — legacy
+    /// accounts created before the backend persisted Apple's first-auth
+    /// `fullName` and started returning it on every sign-in.
     var needsProfileCompletion: Bool {
         guard let u = user else { return false }
-        let email = u.email.lowercased()
         if u.firstName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         if u.lastName.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        if email.hasSuffix("@privaterelay.appleid.com") { return true }
-        if email.hasSuffix("@phone.koshereats.local") { return true }
         return false
+    }
+
+    /// True when the account's email is a synthesized address (Apple's
+    /// privaterelay forwarder or the phone-OTP placeholder) we'd LIKE to
+    /// replace for payout/delivery notifications — but App Review Guideline 4
+    /// forbids demanding one after Sign in with Apple, so this only drives
+    /// the optional dashboard banner, never a forced sheet.
+    var hasPlaceholderEmail: Bool {
+        guard let u = user else { return false }
+        let email = u.email.lowercased()
+        return email.hasSuffix("@privaterelay.appleid.com")
+            || email.hasSuffix("@phone.koshereats.local")
+    }
+
+    /// Drives the dismissible dashboard nudge: worth offering the optional
+    /// profile-completion sheet, never worth blocking on.
+    var shouldOfferProfileCompletion: Bool {
+        needsProfileCompletion || hasPlaceholderEmail
     }
 
     func logout() {
