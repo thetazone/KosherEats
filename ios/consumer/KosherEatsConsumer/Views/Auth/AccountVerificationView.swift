@@ -9,7 +9,8 @@ import SwiftUI
 /// The view walks whichever steps are still missing, in order email → phone:
 ///   • Phone signup   → email needed   → email step only
 ///   • Google         → phone needed   → phone step only
-///   • Apple / fresh  → both needed     → email then phone
+///   • Apple sign-in  → phone only     → phone step only (backend trusts
+///                                       Apple's verified-email claim)
 /// (Email *signup* verifies its email pre-account in EmailAuthView, so those
 /// users land here needing only the phone.)
 struct AccountVerificationView: View {
@@ -53,6 +54,14 @@ struct AccountVerificationView: View {
         }
         .interactiveDismissDisabled(true)
         .onAppear(perform: configureInitialStep)
+        // If the backend marks the email verified while this cover is up on an
+        // email step (Apple JWT self-heal via a profile refresh), jump to phone
+        // — don't ask for an email Apple already vouched for (Guideline 4).
+        .onChange(of: authVM.user?.emailVerified) { _, verified in
+            if verified == true, step == .emailEntry || step == .emailCode {
+                step = .phoneEntry
+            }
+        }
         .sheet(isPresented: $showCountryPicker) {
             CountryCodePickerSheet(selected: $country, isPresented: $showCountryPicker)
         }
