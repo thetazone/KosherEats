@@ -528,7 +528,11 @@ private struct BasicsStepView: View {
                 onboardingField("Restaurant Name", text: $vm.name)
                 onboardingField("Description (optional)", text: $vm.restaurantDescription, axis: .vertical)
                 onboardingField("Phone", text: $vm.phone, keyboard: .phonePad)
-                onboardingField("Email", text: $vm.email, keyboard: .emailAddress)
+                // "Restaurant contact email", not "Email": this is business
+                // info for the restaurant's public listing, so make that
+                // unmistakable — a bare "Email" right after Sign in with
+                // Apple reads like a personal-email demand under Guideline 4.
+                onboardingField("Restaurant contact email", text: $vm.email, keyboard: .emailAddress)
 
                 if let err = vm.errorMessage {
                     Text(err).font(.caption).foregroundColor(.keError)
@@ -544,7 +548,7 @@ private struct BasicsStepView: View {
                         return
                     }
                     if vm.email.trimmingCharacters(in: .whitespaces).isEmpty || !vm.email.contains("@") {
-                        vm.errorMessage = "Valid email is required"
+                        vm.errorMessage = "A valid restaurant contact email is required"
                         return
                     }
                     if !vm.isImporting && vm.pictureUrl.isEmpty {
@@ -1313,7 +1317,7 @@ private struct ReviewStepView: View {
                         reviewRow("Description", vm.restaurantDescription)
                     }
                     reviewRow("Phone", vm.phone)
-                    reviewRow("Email", vm.email)
+                    reviewRow("Contact email", vm.email)
                 }
 
                 reviewSection("Address") {

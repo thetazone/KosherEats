@@ -5,10 +5,6 @@ import GoogleSignIn
 struct KosherEatsSellerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authVM = AuthViewModel()
-    // Latches when the reviewer/user taps "Not now" on
-    // ProfileCompletionSheet so we don't re-present it on every render.
-    // TEMPORARY — tied to the App Review skip button; remove both together.
-    @State private var profileSheetDismissed = false
     @Environment(\.scenePhase) private var scenePhase
 
     // DEBUG-only screenshot harness: launching with `-keOnboardingPreview` boots
@@ -104,22 +100,6 @@ struct KosherEatsSellerApp: App {
                 #endif
             }
             .preferredColorScheme(.dark)
-            .sheet(isPresented: Binding(
-                // Post-Apple-sign-in capture of first/last/email/phone when
-                // Apple returned a nil `fullName` or a @privaterelay forwarder.
-                // Closes automatically when the PUT /user/profile response
-                // flips `needsProfileCompletion` to false, or when the user
-                // taps "Not now" (reviewer escape hatch — see the TEMPORARY
-                // note in ProfileCompletionSheet).
-                get: { authVM.isAuthenticated && authVM.needsProfileCompletion && !profileSheetDismissed },
-                set: { newValue in
-                    if !newValue { profileSheetDismissed = true }
-                }
-            )) {
-                ProfileCompletionSheet()
-                    .environmentObject(authVM)
-                    .presentationDetents([.medium, .large])
-            }
             .task(id: authVM.isAuthenticated) {
                 if authVM.isAuthenticated {
                     await PushNotifications.shared.requestAuthorization()
@@ -142,12 +122,6 @@ struct KosherEatsSellerApp: App {
                 if phase == .active {
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
-            }
-            .onChange(of: authVM.isAuthenticated) { _, isAuth in
-                // Re-arm the "Not now" escape hatch on logout so a fresh
-                // login (e.g. a different account) can re-present the
-                // ProfileCompletionSheet when it genuinely needs completion.
-                if !isAuth { profileSheetDismissed = false }
             }
         }
     }
