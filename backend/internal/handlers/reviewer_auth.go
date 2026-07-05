@@ -23,6 +23,11 @@ import (
 const (
 	reviewerSellerEmail    = "appreview-seller@koshereats.local"
 	reviewerRestaurantName = "App Review Demo Kitchen"
+	// A real E.164 number is required: Uber Direct's CreateDelivery rejects a
+	// dispatch with an empty pickup_phone_number ("This field is required"),
+	// which would otherwise strand every delivery order from this restaurant in
+	// 'ready' forever (the quote succeeds, the create 400s, the sweep loops).
+	reviewerRestaurantPhone = "+17185550123"
 )
 
 func (h *Handler) ReviewerSellerLogin(w http.ResponseWriter, r *http.Request) {
@@ -77,14 +82,15 @@ func (h *Handler) ReviewerSellerLogin(w http.ResponseWriter, r *http.Request) {
 	// GetSellerRestaurant would otherwise 404 on first launch.
 	if _, err := h.db.Pool.Exec(ctx,
 		`INSERT INTO restaurants (
-		     owner_id, name, description,
+		     owner_id, name, description, phone,
 		     street, city, state, zip_code, lat, lng,
 		     kosher_certification, is_open, is_active
 		 )
-		 SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, 'OU', true, true
+		 SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'OU', true, true
 		 WHERE NOT EXISTS (SELECT 1 FROM restaurants WHERE owner_id = $1)`,
 		user.ID, reviewerRestaurantName,
 		"Preloaded demo restaurant for the App Store review team.",
+		reviewerRestaurantPhone,
 		"123 Demo Ave", "Brooklyn", "NY", "11201",
 		40.6892, -74.0445,
 	); err != nil {
