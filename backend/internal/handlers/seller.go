@@ -383,6 +383,36 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Uber Direct can't dispatch without a pickup phone — CreateDelivery
+	// rejects pickup_phone_number:"" — so block the two edits that would
+	// produce an external-mode restaurant with no phone: switching to external
+	// without one on file, and blanking the phone while external. The
+	// dispatcher also fails fast on this, but catching it here gives the
+	// seller an actionable 400 instead of a rerouted order later.
+	if req.DeliveryMode != nil || req.Phone != nil {
+		var curPhone, curMode string
+		if err := h.db.Pool.QueryRow(r.Context(),
+			`SELECT COALESCE(phone, ''), COALESCE(delivery_mode, 'platform')
+			   FROM restaurants WHERE id = $1`, restID).Scan(&curPhone, &curMode); err != nil {
+			// Fail closed: skipping the check on a transient read error would
+			// let exactly the phoneless-external state this guard exists to
+			// prevent slip through.
+			writeError(w, http.StatusInternalServerError, "failed to validate delivery settings")
+			return
+		}
+		effMode, effPhone := curMode, curPhone
+		if req.DeliveryMode != nil {
+			effMode = *req.DeliveryMode
+		}
+		if req.Phone != nil {
+			effPhone = *req.Phone
+		}
+		if effMode == "external" && strings.TrimSpace(effPhone) == "" {
+			writeError(w, http.StatusBadRequest,
+				"a business phone number is required for Uber Direct delivery — add a phone number first")
+			return
+		}
+	}
 	// Canonicalize so iOS's strict Codable enum on KosherCertification keeps
 	// decoding [Restaurant] regardless of how the seller app capitalised it.
 	if req.KosherCertification != nil {

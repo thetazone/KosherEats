@@ -1181,7 +1181,13 @@ func (h *Handler) SetOrderDeliveryMode(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.db.Pool.Exec(r.Context(),
 		`UPDATE orders
-		    SET delivery_mode = $1, updated_at = NOW()
+		    SET delivery_mode = $1,
+		        -- A fresh, explicit routing decision resets the dispatch retry
+		        -- budget — otherwise an order retired from the external path
+		        -- (attempts at the cap) that a seller flips back to 'external'
+		        -- would be silently cap-blocked out of the sweep forever.
+		        external_dispatch_attempts = 0,
+		        updated_at = NOW()
 		   FROM restaurants rest
 		  WHERE orders.restaurant_id = rest.id
 		    AND orders.id = $2
@@ -1572,6 +1578,13 @@ func (h *Handler) EscalateToUber(w http.ResponseWriter, r *http.Request) {
 	in.AllowRestaurantMode = true
 	provider, deliveryID, _, derr := h.dispatcher.Dispatch(dispatchCtx, in)
 	if derr != nil {
+		// A permanent rejection (missing pickup phone, unserviceable address —
+		// provider 4xx) can never succeed on retry, so surface the actionable
+		// cause instead of a retryable-looking gateway error.
+		if dispatch.IsPermanent(derr) {
+			writeError(w, http.StatusUnprocessableEntity, derr.Error())
+			return
+		}
 		writeError(w, http.StatusBadGateway, "could not dispatch a courier — please try again")
 		return
 	}

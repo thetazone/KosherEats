@@ -32,6 +32,17 @@ type Config struct {
 	WebhookSec  string
 }
 
+// APIError is a non-2xx response from the DoorDash Drive API. Carrying the
+// status code as a field lets the dispatcher tell a permanent validation
+// rejection (4xx) from a transient outage (5xx). Reachable via errors.As
+// through the public methods' %w wraps.
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string { return fmt.Sprintf("doordash %d: %s", e.StatusCode, e.Body) }
+
 type Client struct {
 	cfg     Config
 	enabled bool
@@ -258,7 +269,7 @@ func (c *Client) doReq(ctx context.Context, method, token, url string, body []by
 
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("doordash %d: %s", resp.StatusCode, string(data))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(data)}
 	}
 	return data, nil
 }

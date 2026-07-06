@@ -726,7 +726,10 @@ struct RestaurantSettingsView: View {
 
     private func normalizedDeliveryMode(_ mode: String) -> String {
         switch mode {
-        case "restaurant", "external":
+        // "platform" passes through so a Settings save doesn't silently rewrite
+        // a KosherEats-courier restaurant to Uber Direct — the mode switch
+        // belongs to the Dashboard toggle, not to an unrelated profile edit.
+        case "restaurant", "external", "platform":
             return mode
         default:
             return "external"
