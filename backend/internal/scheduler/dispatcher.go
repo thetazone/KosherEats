@@ -197,7 +197,7 @@ func (d *Dispatcher) alert(subject, body string) {
 
 func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
 	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd,
-		external: dispatch.New(db, u, dd)}
+		external: dispatch.New(db, u, dd, n)}
 }
 
 // Start launches a goroutine that runs both sweeps every minute. Runs once
@@ -760,8 +760,9 @@ func (d *Dispatcher) tryExternalDispatch(ctx context.Context, o staleOrder) {
 
 	// Hand off to the shared dispatcher (claim-before-create guarded). The grace
 	// wait above is scheduler-only; the inline/escalate handler callers dispatch
-	// immediately.
-	d.external.Dispatch(ctx, dispatch.Input{
+	// immediately. Dispatch owns retry/fallback bookkeeping (attempt counting,
+	// platform fallback); the error here is for sweep-level visibility only.
+	if _, _, _, derr := d.external.Dispatch(ctx, dispatch.Input{
 		OrderID:         o.orderID,
 		RestaurantName:  o.restaurantName,
 		RestAddress:     o.restAddress,
@@ -771,7 +772,10 @@ func (d *Dispatcher) tryExternalDispatch(ctx context.Context, o staleOrder) {
 		CustomerPhone:   o.customerPhone,
 		Subtotal:        o.subtotal,
 		TipCents:        o.tipCents,
-	})
+	}); derr != nil {
+		slog.Error("auto-dispatch: external dispatch failed",
+			slog.String("order_id", o.orderID), slog.String("error", derr.Error()))
+	}
 }
 
 type externalDeliveryStatusOrder struct {

@@ -46,6 +46,18 @@ type Config struct {
 	Robo bool
 }
 
+// APIError is a non-2xx response from the Uber API. Carrying the status code
+// as a field (not just in the message) lets the dispatcher tell a permanent
+// validation rejection (4xx — bad phone, unserviceable address: retrying can
+// never succeed) from a transient outage (5xx: retry later). Reachable via
+// errors.As through the public methods' %w wraps.
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string { return fmt.Sprintf("uber %d: %s", e.StatusCode, e.Body) }
+
 type Client struct {
 	cfg     Config
 	enabled bool
@@ -359,7 +371,7 @@ func (c *Client) post(ctx context.Context, token, url string, body any) ([]byte,
 
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("uber %d: %s", resp.StatusCode, string(data))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(data)}
 	}
 	return data, nil
 }
@@ -380,7 +392,7 @@ func (c *Client) get(ctx context.Context, token, url string) ([]byte, error) {
 
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("uber %d: %s", resp.StatusCode, string(data))
+		return nil, &APIError{StatusCode: resp.StatusCode, Body: string(data)}
 	}
 	return data, nil
 }

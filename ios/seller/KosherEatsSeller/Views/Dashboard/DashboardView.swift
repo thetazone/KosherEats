@@ -289,7 +289,11 @@ struct DashboardView: View {
     // MARK: - Delivery Method
 
     private func deliveryModeTile(_ restaurant: Restaurant) -> some View {
-        let mode = restaurant.deliveryMode == "restaurant" ? "restaurant" : "external"
+        // Show the TRUE mode. Legacy "platform" (KosherEats couriers) used to be
+        // collapsed into the "Uber Direct" pill, which displayed the wrong
+        // delivery path — a platform restaurant looked Uber-backed while its
+        // orders actually went to the internal courier pool.
+        let mode = restaurant.deliveryMode
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "car.fill")
@@ -300,6 +304,12 @@ struct DashboardView: View {
             VStack(spacing: 6) {
                 deliveryModePill("Uber Direct", value: "external", selected: mode == "external")
                 deliveryModePill("Self-delivery", value: "restaurant", selected: mode == "restaurant")
+                if mode == "platform" {
+                    Text("Currently: KosherEats couriers — pick a method above to change.")
+                        .font(.caption2)
+                        .foregroundColor(.keTextSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .padding()

@@ -71,7 +71,7 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 		}),
 		posRegistry: pos.NewRegistry(db.Pool, clover.New()),
 	}
-	h.dispatcher = dispatch.New(h.db.Pool, h.uber, h.doordash)
+	h.dispatcher = dispatch.New(h.db.Pool, h.uber, h.doordash, h.notify)
 	return h
 }
 
