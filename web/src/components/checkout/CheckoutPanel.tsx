@@ -26,6 +26,7 @@ import {
   user as userApi,
 } from "@/lib/api";
 import { formatUSD, percentOfCents } from "@/lib/format";
+import { AddressGeocodeField } from "@/components/ui/AddressGeocodeField";
 import type { Address, Cart, Deal, DeliveryQuote } from "@/types";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
@@ -560,11 +561,12 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
       setAddressError("Please fill in street, city, state, and ZIP.");
       return;
     }
-    // The backend does NOT geocode (it stores lat/lng verbatim) and there's no
-    // geocoding API key web-side, so the user supplies coordinates manually —
-    // same pattern as the admin restaurant form. These feed delivery routing
-    // and the distance-based delivery-fee quote, so we reject placeholder/
-    // out-of-range values (especially null-island 0,0) rather than send junk.
+    // The backend does NOT geocode (it stores lat/lng verbatim). Coordinates
+    // come from the /api/geocode Census lookup (AddressGeocodeField fills the
+    // same lat/lng strings) or from manual entry. Either way they feed
+    // delivery routing and the distance-based delivery-fee quote, so we reject
+    // placeholder/out-of-range values (especially null-island 0,0) rather
+    // than send junk.
     const lat = parseFloat(addrForm.lat);
     const lng = parseFloat(addrForm.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -612,6 +614,15 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
   }
 
   const isDelivery = fulfillment === "delivery";
+
+  // One-line geocoder query composed from the add-address form's own fields
+  // (the form intentionally has no separate address search box). Street is
+  // required for a meaningful Census match, so a blank street disables lookup.
+  const geocodeQuery = addrForm.street.trim()
+    ? [addrForm.street.trim(), addrForm.city.trim(), addrForm.state.trim(), addrForm.zip_code.trim()]
+        .filter(Boolean)
+        .join(", ")
+    : "";
 
   const canPlaceOrder =
     cart.items.length > 0 &&
@@ -752,29 +763,23 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                     onChange={(e) => setAddrForm((f) => ({ ...f, zip_code: e.target.value }))}
                   />
                 </div>
-                {/* text + inputMode=decimal (not type=number): decimal keypad
-                    on mobile, no scroll-wheel value changes — same pattern as
-                    /account/addresses. saveAddress parseFloat-validates. */}
-                <div className="flex gap-2">
-                  <input
-                    className="input w-full"
-                    type="text"
-                    inputMode="decimal"
-                    aria-label="Latitude"
-                    placeholder="Latitude (e.g. 40.7128)"
-                    value={addrForm.lat}
-                    onChange={(e) => setAddrForm((f) => ({ ...f, lat: e.target.value }))}
-                  />
-                  <input
-                    className="input w-full"
-                    type="text"
-                    inputMode="decimal"
-                    aria-label="Longitude"
-                    placeholder="Longitude (e.g. -74.0060)"
-                    value={addrForm.lng}
-                    onChange={(e) => setAddrForm((f) => ({ ...f, lng: e.target.value }))}
-                  />
-                </div>
+                {/* Coordinates via the Census geocoder (/api/geocode), composed
+                    from the street/city/state/zip fields above — on success it
+                    fills the same addrForm.lat/lng strings saveAddress
+                    parseFloat-validates. Manual entry stays available in the
+                    component's collapsible fallback section. */}
+                <AddressGeocodeField
+                  query={geocodeQuery}
+                  showQueryInput={false}
+                  buttonLabel="Find coordinates from address"
+                  lat={addrForm.lat}
+                  lng={addrForm.lng}
+                  onLatChange={(v) => setAddrForm((f) => ({ ...f, lat: v }))}
+                  onLngChange={(v) => setAddrForm((f) => ({ ...f, lng: v }))}
+                  onResolved={(r) =>
+                    setAddrForm((f) => ({ ...f, lat: String(r.lat), lng: String(r.lng) }))
+                  }
+                />
                 <p className="text-xs text-dark-500">
                   Used for delivery routing and to estimate your delivery fee.
                 </p>
