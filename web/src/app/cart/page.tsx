@@ -231,6 +231,14 @@ export default function CartPage() {
 
   const items = cart?.items ?? [];
 
+  // While a captured charge has not yet converged to an order (finalize in
+  // flight, a pending order persisted, or a finalize error showing), the
+  // checkout panel must stay hidden: re-mounting it would quote a brand-new
+  // PaymentIntent and let the user pay a SECOND time for the same cart while
+  // the first charge still awaits recovery. Only the recovery banner (with
+  // its retry/dismiss actions) may render in that state.
+  const recovering = finalizing || finalizeError !== null || loadPendingOrder() !== null;
+
   return (
     <>
       <Header />
@@ -275,7 +283,7 @@ export default function CartPage() {
           </div>
         )}
 
-        {finalizing ? null : items.length === 0 ? (
+        {recovering ? null : items.length === 0 ? (
           <div className="card p-12 text-center">
             <ShoppingCart
               className="w-16 h-16 text-dark-600 mx-auto mb-4"
