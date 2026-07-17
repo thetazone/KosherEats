@@ -3,14 +3,14 @@
 import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { RestaurantCertChip } from "@/components/restaurant/RestaurantCertChip";
-import { cart as cartApi, orders as ordersApi } from "@/lib/api";
+import { cart as cartApi, orders as ordersApi, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import {
   CANCELLABLE_ORDER_STATUSES,
   ORDER_STATUS_META,
   TERMINAL_ORDER_STATUSES,
 } from "@/lib/orderStatus";
-import type { Order, OrderStatus } from "@/types";
+import type { Cart, Order, OrderStatus, Restaurant } from "@/types";
 import { ClipboardList, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -109,14 +109,79 @@ export default function OrdersPage() {
     setReorderingId(order.id);
     setActionError(null);
     try {
-      for (const item of order.items) {
-        await cartApi.addItem(token, {
-          menu_item_id: item.menu_item_id,
-          restaurant_id: order.restaurant_id,
-          quantity: item.quantity,
-          notes: item.notes,
-        });
+      // The backend silently wipes the existing cart when an add comes in for
+      // a different restaurant — never let that happen without an explicit
+      // confirmation (same guard + copy as the restaurant page). Best-effort:
+      // if the cart can't be read we proceed without the prompt.
+      let hadSameRestaurantItems = false;
+      try {
+        const c = (await cartApi.get(token)) as Cart;
+        if (c.restaurant_id && (c.items ?? []).length > 0) {
+          if (c.restaurant_id !== order.restaurant_id) {
+            // Fetch the other restaurant's name for the confirmation copy —
+            // best-effort, fall back to generic wording.
+            const name = await restaurantsApi
+              .get(c.restaurant_id)
+              .then((r) => (r as Restaurant).name)
+              .catch(() => null);
+            const clears = name
+              ? `This clears your items from ${name}.`
+              : "This clears the items already in your cart from another restaurant.";
+            const confirmed = window.confirm(
+              `Start a new cart from ${order.restaurant_name}? ${clears}`
+            );
+            if (!confirmed) {
+              setReorderingId(null);
+              return;
+            }
+          } else {
+            hadSameRestaurantItems = true;
+          }
+        }
+      } catch (err) {
+        if (isUnauthorized(err)) throw err;
+        // Cart unavailable — skip the pre-add check rather than block reorder.
       }
+
+      let added = 0;
+      try {
+        for (const item of order.items) {
+          await cartApi.addItem(token, {
+            menu_item_id: item.menu_item_id,
+            restaurant_id: order.restaurant_id,
+            quantity: item.quantity,
+            notes: item.notes,
+            // Re-add with the original customization — omitting these silently
+            // rebuilt the bare base item at the wrong price. Stale modifier ids
+            // 400 server-side and land in the partial-failure handling below.
+            modifier_ids: item.selected_modifiers?.map((m) => m.id),
+          });
+          added += 1;
+        }
+      } catch (err) {
+        if (isUnauthorized(err)) throw err;
+        const reason =
+          err instanceof Error ? err.message : "an item could not be added";
+        if (added === 0) {
+          setActionError(`Couldn't reorder — no items were added to your cart. (${reason})`);
+        } else if (hadSameRestaurantItems) {
+          // Can't roll back without touching the items the user already had
+          // in this restaurant's cart — surface exactly what happened.
+          setActionError(
+            `Only ${added} of ${order.items.length} items from this order could be added — review your cart before checking out. (${reason})`
+          );
+        } else {
+          // Nothing pre-existing to preserve: clear the half-built cart so
+          // reorder stays all-or-nothing.
+          await cartApi.clear(token).catch(() => {});
+          setActionError(
+            `Couldn't add all items from this order, so your cart was left empty. (${reason})`
+          );
+        }
+        setReorderingId(null);
+        return;
+      }
+
       router.push("/cart");
     } catch (err) {
       if (isUnauthorized(err)) {
