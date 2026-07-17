@@ -404,6 +404,20 @@ export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/**
+ * Parse a dollars string ("12", "12.5", "$12.34", "12,34") into integer
+ * cents. Returns null for anything that isn't a plain non-negative dollar
+ * amount with at most 2 decimal places — mirrors CurrencyFormat.parseCents
+ * in the iOS seller app.
+ */
+export function parseCents(input: string): number | null {
+  const normalized = input.trim().replace(/^\$/, "").replace(",", ".");
+  if (!normalized || !/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
+  const dollars = Number(normalized);
+  if (!Number.isFinite(dollars)) return null;
+  return Math.round(dollars * 100);
+}
+
 // ── Image upload helper ──────────────────────────────────────
 
 /** Upload kinds the backend allows for the seller role (uploads.go allowlist). */
