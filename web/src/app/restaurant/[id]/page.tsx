@@ -7,7 +7,7 @@ import { KosherCertificateModal } from "@/components/restaurant/KosherCertificat
 import { MenuItemModal, type MenuItemSelection } from "@/components/restaurant/MenuItemModal";
 import { cart as cartApi, deals as dealsApi, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
-import type { Deal, MenuCategory, MenuItem, Restaurant, SelectedModifier } from "@/types";
+import type { Cart, Deal, MenuCategory, MenuItem, Restaurant, SelectedModifier } from "@/types";
 import {
   Building2,
   Cake,
@@ -156,10 +156,54 @@ function RestaurantPageInner() {
   const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
   const [modalItem, setModalItem] = useState<MenuItem | null>(null);
 
+  // The restaurant a NON-EMPTY server cart belongs to (null = empty cart or
+  // not yet loaded). The backend silently wipes the whole cart when an add
+  // comes in for a different restaurant, so addToCart uses this to confirm
+  // with the user before that happens.
+  const [serverCartRestaurant, setServerCartRestaurant] = useState<{
+    id: string;
+    name: string | null;
+  } | null>(null);
+
   useEffect(() => {
     if (!id) return;
     void loadAll(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Load the server cart's restaurant on mount so the switch-restaurants
+  // confirmation has something to check against. Best-effort: on any failure
+  // we just don't prompt (matching the previous behaviour).
+  useEffect(() => {
+    if (!id) return;
+    const token =
+      typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const c = (await cartApi.get(token)) as Cart;
+        if (!c.restaurant_id || (c.items ?? []).length === 0) {
+          if (!cancelled) setServerCartRestaurant(null);
+          return;
+        }
+        // Fetch the other restaurant's name for the confirmation copy —
+        // best-effort, fall back to generic wording.
+        const name =
+          c.restaurant_id === id
+            ? null
+            : await restaurantsApi
+                .get(c.restaurant_id)
+                .then((r) => (r as Restaurant).name)
+                .catch(() => null);
+        if (!cancelled) setServerCartRestaurant({ id: c.restaurant_id, name });
+      } catch {
+        // Cart unavailable — skip the pre-add check rather than block adds.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   // Persist the Deals-page tap-through once the strip confirms the deal is
@@ -220,6 +264,18 @@ function RestaurantPageInner() {
       return;
     }
 
+    // Adding from a different restaurant makes the backend silently clear the
+    // existing cart — never let that happen without an explicit confirmation.
+    if (serverCartRestaurant && serverCartRestaurant.id !== id) {
+      const clears = serverCartRestaurant.name
+        ? `This clears your items from ${serverCartRestaurant.name}.`
+        : "This clears the items already in your cart from another restaurant.";
+      const confirmed = window.confirm(
+        `Start a new cart from ${restaurant?.name ?? "this restaurant"}? ${clears}`
+      );
+      if (!confirmed) return;
+    }
+
     try {
       await cartApi.addItem(token, {
         menu_item_id: item.id,
@@ -236,6 +292,9 @@ function RestaurantPageInner() {
       }
       throw err;
     }
+
+    // The server cart now belongs to this restaurant and is non-empty.
+    setServerCartRestaurant({ id, name: null });
 
     const key = cartLineKey(item.id, selection.modifier_ids);
     setCart((prev) => {
