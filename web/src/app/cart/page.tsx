@@ -183,12 +183,15 @@ export default function CartPage() {
           <div className="flex flex-col lg:flex-row gap-8 animate-pulse" aria-hidden="true">
             <div className="flex-1 space-y-4">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="card p-4 flex items-center justify-between">
-                  <div className="flex-1 space-y-2 pr-3">
+                <div
+                  key={i}
+                  className="card p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex-1 space-y-2 sm:pr-3">
                     <div className="h-5 w-1/2 bg-dark-800 rounded" />
                     <div className="h-4 w-16 bg-dark-800 rounded" />
                   </div>
-                  <div className="h-11 w-28 bg-dark-800 rounded-xl" />
+                  <div className="h-[52px] w-32 bg-dark-800 rounded-xl" />
                 </div>
               ))}
             </div>
@@ -287,8 +290,14 @@ export default function CartPage() {
               {items.map((item) => {
                 const isPending = mutatingItemId === item.id;
                 return (
-                  <div key={item.id} className="card p-4 flex items-center justify-between">
-                    <div className="flex-1 min-w-0 pr-3">
+                  // Below sm: the 44px stepper row stacks under the item info
+                  // so long names keep full width at 375px; from sm: it's the
+                  // usual single row.
+                  <div
+                    key={item.id}
+                    className="card p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex-1 min-w-0 sm:pr-3">
                       <h3 className="font-semibold">{item.name}</h3>
                       {/* Selected modifiers as a single dot-separated line —
                           same pattern as the iOS CartView row. item.price is
@@ -306,13 +315,14 @@ export default function CartPage() {
                         <p className="text-dark-400 text-xs mt-1 italic">{item.notes}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
+                    <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      {/* 44px stepper buttons (w-11 h-11) — minimum touch target. */}
+                      <div className="flex items-center gap-1 bg-dark-800 rounded-xl p-1">
                         <button
                           onClick={() => mutateQuantity(item.id, -1)}
                           disabled={isPending}
                           aria-label={item.quantity === 1 ? "Remove item" : "Decrease quantity"}
-                          className="w-7 h-7 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                          className="w-11 h-11 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                         >
                           {item.quantity === 1 ? (
                             <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -320,7 +330,7 @@ export default function CartPage() {
                             "-"
                           )}
                         </button>
-                        <span className="font-semibold w-6 text-center inline-flex items-center justify-center">
+                        <span className="font-semibold w-8 text-center inline-flex items-center justify-center">
                           {isPending ? (
                             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                           ) : (
@@ -331,7 +341,7 @@ export default function CartPage() {
                           onClick={() => mutateQuantity(item.id, 1)}
                           disabled={isPending}
                           aria-label="Increase quantity"
-                          className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                          className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                         >
                           +
                         </button>

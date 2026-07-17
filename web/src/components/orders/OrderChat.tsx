@@ -233,8 +233,15 @@ export function OrderChat({
         </p>
       )}
 
-      {/* Input bar */}
-      <form onSubmit={handleSend} className="mt-3 flex items-center gap-2">
+      {/* Input bar — fixed to the viewport bottom on mobile (with safe-area
+          padding) so it stays reachable while the thread scrolls; back in the
+          card's flow from md: up. The tracking page reserves matching bottom
+          padding under the content while the chat is mounted. The input keeps
+          the 16px .input base size so iOS Safari never auto-zooms on focus. */}
+      <form
+        onSubmit={handleSend}
+        className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-2 border-t border-dark-800 bg-dark-900/95 backdrop-blur px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:static md:inset-x-auto md:z-auto md:mt-3 md:border-t-0 md:bg-transparent md:p-0 md:backdrop-blur-none"
+      >
         <input
           type="text"
           value={input}
@@ -242,14 +249,14 @@ export function OrderChat({
           maxLength={MAX_MESSAGE_LENGTH}
           placeholder="Type a message…"
           aria-label="Message"
-          className="input flex-1 text-sm"
+          className="input flex-1 min-w-0"
           disabled={sending}
         />
         <button
           type="submit"
           disabled={!canSend}
           aria-label="Send message"
-          className="btn-primary p-2.5 rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary w-11 h-11 p-0 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {sending ? (
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />

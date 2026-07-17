@@ -315,7 +315,7 @@ export default function SellerOrderDetailPage() {
     <div className="mb-6">
       <Link
         href="/seller/orders"
-        className="inline-flex items-center gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-3"
+        className="inline-flex items-center gap-1.5 min-h-[44px] -my-1 text-sm text-dark-400 hover:text-white transition-colors mb-3"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden="true" />
         Orders
@@ -470,7 +470,7 @@ export default function SellerOrderDetailPage() {
           <button
             onClick={() => setToast(null)}
             aria-label="Dismiss error"
-            className="p-1 rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -500,8 +500,9 @@ function ActionsCard({
   onAction: (action: OrderAction) => void;
 }) {
   const acting = busy !== null;
+  // min-h-[44px] keeps every status action a full-size touch target at 375px.
   const btn =
-    "w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    "w-full flex items-center justify-center gap-2 py-3 px-4 min-h-[44px] rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
   let body: React.ReactNode;
   switch (order.status) {
@@ -527,7 +528,7 @@ function ActionsCard({
             onChange={(e) => setRejectReason(e.target.value)}
             placeholder="Reason (optional)"
             maxLength={200}
-            className="input w-full text-sm"
+            className="input w-full"
           />
           <button
             onClick={() => onAction("reject")}
@@ -798,7 +799,7 @@ function RoutingCard({
         onClick={() => onSetMode(value)}
         disabled={acting || selected}
         aria-pressed={selected}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
           selected
             ? "bg-green-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700 disabled:opacity-50"
@@ -838,7 +839,7 @@ function RoutingCard({
               <button
                 onClick={onEscalate}
                 disabled={acting}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy === "escalate" ? (
                   <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -850,7 +851,7 @@ function RoutingCard({
               <button
                 onClick={() => setConfirmingEscalate(false)}
                 disabled={acting}
-                className="w-full py-2.5 px-3 rounded-xl text-sm font-semibold bg-dark-800 text-dark-300 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-2.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold bg-dark-800 text-dark-300 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Keep self-delivery
               </button>
@@ -860,7 +861,7 @@ function RoutingCard({
               <button
                 onClick={() => setConfirmingEscalate(true)}
                 disabled={acting}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold bg-dark-800 text-dark-200 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold bg-dark-800 text-dark-200 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Truck className="w-4 h-4" aria-hidden="true" />
                 Hand off to Uber Direct
@@ -921,7 +922,7 @@ function CourierCard({
           <a
             href={href}
             aria-label={`Call ${courier.first_name}`}
-            className="p-2.5 rounded-full bg-dark-800 text-brand-400 hover:bg-dark-700 transition-colors shrink-0"
+            className="w-11 h-11 flex items-center justify-center rounded-full bg-dark-800 text-brand-400 hover:bg-dark-700 transition-colors shrink-0"
           >
             <Phone className="w-4 h-4" aria-hidden="true" />
           </a>
@@ -947,7 +948,7 @@ function PartnerCard({ order }: { order: SellerOrder }) {
           href={order.external_tracking_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-dark-800 text-brand-400 text-sm font-semibold hover:bg-dark-700 transition-colors"
+          className="flex items-center gap-2 py-2.5 px-3 min-h-[44px] rounded-xl bg-dark-800 text-brand-400 text-sm font-semibold hover:bg-dark-700 transition-colors"
         >
           <MapPin className="w-4 h-4" aria-hidden="true" />
           Track delivery
@@ -982,7 +983,7 @@ function CustomerCard({ name, phone }: { name: string; phone?: string }) {
           <a
             href={href}
             aria-label={`Call ${name}`}
-            className="p-2.5 rounded-full bg-dark-800 text-brand-400 hover:bg-dark-700 transition-colors shrink-0"
+            className="w-11 h-11 flex items-center justify-center rounded-full bg-dark-800 text-brand-400 hover:bg-dark-700 transition-colors shrink-0"
           >
             <Phone className="w-4 h-4" aria-hidden="true" />
           </a>

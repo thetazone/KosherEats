@@ -329,6 +329,18 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, cart.restaurant_id, fulfillment, selectedAddressId, addresses]);
 
+  // Lock body scroll while the Stripe payment sheet is up (same pattern as
+  // MenuItemModal / KosherFilterPanel). Closing stays explicit (the X button)
+  // — no backdrop/Escape dismissal that could interrupt a live payment.
+  useEffect(() => {
+    if (!checkoutOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [checkoutOpen]);
+
   // POST /payments/intent with the current tip/fulfillment/address/deal and
   // adopt the server's breakdown verbatim. Also pins the address and deal the
   // quote was made against (see quotedAddress / quotedDealId).
@@ -613,7 +625,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
             type="button"
             onClick={() => setFulfillment("delivery")}
             aria-pressed={isDelivery}
-            className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
               isDelivery ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
             }`}
           >
@@ -623,7 +635,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
             type="button"
             onClick={() => setFulfillment("pickup")}
             aria-pressed={!isDelivery}
-            className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
               !isDelivery ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
             }`}
           >
@@ -682,12 +694,14 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 <input
                   className="input w-full"
                   placeholder="Street address"
+                  autoComplete="address-line1"
                   value={addrForm.street}
                   onChange={(e) => setAddrForm((f) => ({ ...f, street: e.target.value }))}
                 />
                 <input
                   className="input w-full"
                   placeholder="City"
+                  autoComplete="address-level2"
                   value={addrForm.city}
                   onChange={(e) => setAddrForm((f) => ({ ...f, city: e.target.value }))}
                 />
@@ -695,29 +709,36 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                   <input
                     className="input w-full"
                     placeholder="State"
+                    autoComplete="address-level1"
                     value={addrForm.state}
                     onChange={(e) => setAddrForm((f) => ({ ...f, state: e.target.value }))}
                   />
                   <input
                     className="input w-full"
                     placeholder="ZIP"
+                    autoComplete="postal-code"
                     value={addrForm.zip_code}
                     onChange={(e) => setAddrForm((f) => ({ ...f, zip_code: e.target.value }))}
                   />
                 </div>
+                {/* text + inputMode=decimal (not type=number): decimal keypad
+                    on mobile, no scroll-wheel value changes — same pattern as
+                    /account/addresses. saveAddress parseFloat-validates. */}
                 <div className="flex gap-2">
                   <input
                     className="input w-full"
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Latitude"
                     placeholder="Latitude (e.g. 40.7128)"
                     value={addrForm.lat}
                     onChange={(e) => setAddrForm((f) => ({ ...f, lat: e.target.value }))}
                   />
                   <input
                     className="input w-full"
-                    type="number"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Longitude"
                     placeholder="Longitude (e.g. -74.0060)"
                     value={addrForm.lng}
                     onChange={(e) => setAddrForm((f) => ({ ...f, lng: e.target.value }))}
@@ -754,7 +775,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
               <button
                 type="button"
                 onClick={() => setShowAddressForm(true)}
-                className="mt-2 text-sm text-brand-400 underline"
+                className="mt-1 inline-flex items-center min-h-[44px] text-sm text-brand-400 underline"
               >
                 + Add delivery address
               </button>
@@ -777,7 +798,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
               type="button"
               onClick={() => setTiming("asap")}
               aria-pressed={timing === "asap"}
-              className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
+              className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
                 timing === "asap" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
               }`}
             >
@@ -787,7 +808,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
               type="button"
               onClick={() => setTiming("scheduled")}
               aria-pressed={timing === "scheduled"}
-              className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
+              className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
                 timing === "scheduled" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
               }`}
             >
@@ -843,7 +864,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                       onClick={() => selectDeal(applied ? null : d.id)}
                       disabled={blocked}
                       aria-pressed={applied}
-                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`shrink-0 rounded-lg px-3 py-1.5 min-h-[44px] text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         applied
                           ? "bg-dark-700 text-dark-200 hover:bg-dark-600"
                           : "bg-brand-500 text-white hover:bg-brand-600"
@@ -874,7 +895,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                     type="button"
                     onClick={() => selectTip(p.key)}
                     aria-pressed={selected}
-                    className={`rounded-lg py-1.5 px-0.5 text-xs font-semibold transition-colors ${
+                    className={`rounded-lg py-1.5 px-0.5 min-h-[44px] text-xs font-semibold transition-colors ${
                       selected
                         ? "bg-brand-500 text-white"
                         : "bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -991,22 +1012,31 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
 
       {checkoutOpen && intent && stripePromise && stripeOptions && (
         <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/70 flex items-stretch md:items-center justify-center md:p-4"
           role="dialog"
           aria-modal="true"
+          aria-label="Checkout"
         >
-          <div className="card w-full max-w-md p-6 relative">
-            <button
-              onClick={() => setCheckoutOpen(false)}
-              className="absolute top-3 right-3 p-1 rounded-lg text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
-              aria-label="Close checkout"
-            >
-              <X className="w-5 h-5" aria-hidden="true" />
-            </button>
-            <h2 className="text-xl font-bold mb-1">Checkout</h2>
-            <p className="text-dark-400 text-sm mb-5">
-              Pay {formatUSD(intent.total)} to complete your order.
-            </p>
+          {/* Below md: a full-height bottom sheet (h-full against the inset-0
+              overlay); at md+ a centered dialog capped at 85vh — same shell as
+              MenuItemModal. Header and action bar stay pinned; the Payment
+              Element scrolls between them. */}
+          <div className="card w-full md:max-w-md h-full md:h-auto md:max-h-[85vh] flex flex-col rounded-none md:rounded-2xl">
+            <div className="flex items-start justify-between gap-3 px-5 py-4 md:px-6 border-b border-dark-800">
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold">Checkout</h2>
+                <p className="text-dark-400 text-sm mt-0.5">
+                  Pay {formatUSD(intent.total)} to complete your order.
+                </p>
+              </div>
+              <button
+                onClick={() => setCheckoutOpen(false)}
+                className="w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center"
+                aria-label="Close checkout"
+              >
+                <X className="w-5 h-5" aria-hidden="true" />
+              </button>
+            </div>
             <Elements stripe={stripePromise} options={stripeOptions}>
               <CheckoutForm
                 total={intent.total}
@@ -1079,18 +1109,25 @@ function CheckoutForm({
     }
   }
 
+  // The form fills the sheet: the Payment Element scrolls in the middle while
+  // the Pay bar stays pinned below it, padded past the home indicator on
+  // notched phones (pb-[env(safe-area-inset-bottom)]).
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement />
-      {localError && <div className="text-sm text-red-400">{localError}</div>}
-      <button
-        type="submit"
-        disabled={!stripe || !elements || submitting}
-        className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
-        {submitting ? "Processing…" : `Pay ${formatUSD(total)}`}
-      </button>
+    <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 md:px-6 space-y-4">
+        <PaymentElement />
+        {localError && <div className="text-sm text-red-400">{localError}</div>}
+      </div>
+      <div className="border-t border-dark-800 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:px-6 md:pb-4">
+        <button
+          type="submit"
+          disabled={!stripe || !elements || submitting}
+          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+          {submitting ? "Processing…" : `Pay ${formatUSD(total)}`}
+        </button>
+      </div>
     </form>
   );
 }

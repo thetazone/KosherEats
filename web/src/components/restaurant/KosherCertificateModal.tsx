@@ -68,7 +68,7 @@ export function KosherCertificateModal({
             onClick={() => setZoomIndex((i) => Math.max(i - 1, 0))}
             disabled={!canZoomOut}
             aria-label="Zoom out"
-            className="p-2 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 transition-colors"
+            className="w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 flex items-center justify-center transition-colors"
           >
             <ZoomOut className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -76,14 +76,14 @@ export function KosherCertificateModal({
             onClick={() => setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1))}
             disabled={!canZoomIn}
             aria-label="Zoom in"
-            className="p-2 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 transition-colors"
+            className="w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 flex items-center justify-center transition-colors"
           >
             <ZoomIn className="w-5 h-5" aria-hidden="true" />
           </button>
           <button
             onClick={onClose}
             aria-label="Close certificate view"
-            className="p-2 rounded-xl bg-dark-800 hover:bg-dark-700 transition-colors"
+            className="w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 flex items-center justify-center transition-colors"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -108,7 +108,7 @@ export function KosherCertificateModal({
             body={`The certificate image for ${restaurantName} could not be loaded. Please try again later.`}
           />
         ) : (
-          <div className="relative p-4 min-h-full flex items-start justify-center">
+          <div className="relative p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] min-h-full flex items-start justify-center">
             {!loaded && (
               <div className="absolute inset-0 flex items-center justify-center text-dark-400">
                 Loading certificate…

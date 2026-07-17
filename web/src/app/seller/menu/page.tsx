@@ -236,7 +236,7 @@ export default function SellerMenuPage() {
             setAddingCategory(true);
             setActionError(null);
           }}
-          className="flex items-center gap-1.5 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+          className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           New category
@@ -249,7 +249,7 @@ export default function SellerMenuPage() {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="p-1 rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -383,7 +383,7 @@ function CategorySection({
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={onAddItem}
-            className="flex items-center gap-1.5 text-sm font-semibold text-brand-500 hover:text-brand-400 px-2 py-1.5 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 px-2 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             Add item
@@ -391,7 +391,7 @@ function CategorySection({
           <button
             onClick={onDeleteCategory}
             aria-label={`Delete category ${category.name}`}
-            className="p-2 rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
           >
             <Trash2 className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -487,37 +487,41 @@ function MenuItemRow({
         )}
       </div>
 
-      {/* Availability switch */}
+      {/* Availability switch — 44px hit area around the visual track. */}
       <button
         role="switch"
         aria-checked={item.is_available}
         aria-label={item.is_available ? `Pause ${item.name}` : `Make ${item.name} available`}
         disabled={toggling}
         onClick={onToggle}
-        className={`relative w-10 h-6 rounded-full transition-colors shrink-0 disabled:opacity-50 disabled:cursor-wait ${
-          item.is_available ? "bg-green-500" : "bg-dark-700"
-        }`}
+        className="shrink-0 -m-1 min-w-[44px] min-h-[44px] flex items-center justify-center disabled:opacity-50 disabled:cursor-wait"
       >
         <span
-          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-            item.is_available ? "translate-x-4" : ""
+          className={`relative block w-10 h-6 rounded-full transition-colors ${
+            item.is_available ? "bg-green-500" : "bg-dark-700"
           }`}
-        />
+        >
+          <span
+            className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+              item.is_available ? "translate-x-4" : ""
+            }`}
+          />
+        </span>
       </button>
 
       {/* Edit / delete */}
-      <div className="flex items-center gap-0.5 shrink-0">
+      <div className="flex items-center shrink-0">
         <button
           onClick={onEdit}
           aria-label={`Edit ${item.name}`}
-          className="p-2 rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
         >
           <Pencil className="w-4 h-4" aria-hidden="true" />
         </button>
         <button
           onClick={onDelete}
           aria-label={`Delete ${item.name}`}
-          className="p-2 rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
         >
           <Trash2 className="w-4 h-4" aria-hidden="true" />
         </button>

@@ -233,7 +233,7 @@ export default function SellerOrdersPage() {
         <h1 className="text-2xl font-bold mb-6">Orders</h1>
         <div className="flex gap-2 mb-6">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-9 w-24 rounded-xl bg-dark-800 animate-pulse" aria-hidden="true" />
+            <div key={i} className="h-11 w-24 rounded-xl bg-dark-800 animate-pulse" aria-hidden="true" />
           ))}
         </div>
         <div className="space-y-3">
@@ -291,7 +291,7 @@ export default function SellerOrdersPage() {
           <span>Reconnecting… showing last loaded orders.</span>
           <button
             onClick={load}
-            className="text-xs px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
+            className="text-xs px-3 min-h-[44px] -my-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -307,7 +307,7 @@ export default function SellerOrdersPage() {
               key={tab.key}
               onClick={() => setFilter(tab.key)}
               aria-pressed={selected}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              className={`px-4 py-2 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
                 selected
                   ? "bg-brand-500 text-white"
                   : "bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white"

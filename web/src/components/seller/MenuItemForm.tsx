@@ -88,13 +88,20 @@ export function MenuItemForm({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Escape closes the modal (unless a save is mid-flight).
+  // Escape closes the modal (unless a save is mid-flight); lock body scroll
+  // while it's up so the page doesn't scroll behind the mobile bottom sheet
+  // (same pattern as the consumer MenuItemModal).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && !saving) onClose();
     }
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [saving, onClose]);
 
   const cents = parseDollarsToCents(priceText);
@@ -157,12 +164,14 @@ export function MenuItemForm({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/70 flex items-stretch md:items-center justify-center md:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={item ? "Edit menu item" : "New menu item"}
     >
-      <div className="card w-full max-w-lg max-h-[90vh] flex flex-col">
+      {/* Below md: a full-height bottom sheet (h-full against the inset-0
+          overlay); at md+ a centered dialog capped at 90vh. */}
+      <div className="card w-full max-w-lg h-full md:h-auto md:max-h-[90vh] flex flex-col rounded-none md:rounded-2xl">
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-dark-800 shrink-0">
           <h2 className="text-lg font-bold">{item ? "Edit item" : "New item"}</h2>
           <button
@@ -170,13 +179,14 @@ export function MenuItemForm({
             onClick={onClose}
             disabled={saving}
             aria-label="Close"
-            className="p-1.5 rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors disabled:opacity-50"
+            className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <form onSubmit={onSubmit} className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Photo */}
           <div>
             <span className="block text-sm text-dark-300 mb-1.5">Photo</span>
@@ -224,7 +234,7 @@ export function MenuItemForm({
                   setImageUrl("");
                   setUploadError(null);
                 }}
-                className="flex items-center gap-1.5 text-xs font-medium text-red-400 hover:text-red-300 transition-colors mt-2"
+                className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-red-400 hover:text-red-300 transition-colors mt-1"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
                 Remove photo
@@ -326,7 +336,7 @@ export function MenuItemForm({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => setKosher(opt.value)}
-                    className={`py-2.5 px-3 rounded-xl border text-sm font-semibold transition-colors ${
+                    className={`py-2.5 px-3 min-h-[44px] rounded-xl border text-sm font-semibold transition-colors ${
                       selected
                         ? opt.selectedClass
                         : "border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -362,8 +372,12 @@ export function MenuItemForm({
               {saveError}
             </div>
           )}
+          </div>
 
-          <div className="flex gap-3 pt-1">
+          {/* Action bar — pinned below the scroll area so Save is always
+              reachable on the mobile sheet; safe-area padding clears the
+              home indicator on notched phones. */}
+          <div className="flex gap-3 px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-4 border-t border-dark-800 shrink-0">
             <button
               type="button"
               onClick={onClose}

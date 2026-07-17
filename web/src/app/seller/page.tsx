@@ -247,7 +247,7 @@ export default function SellerDashboardPage() {
           <span>Reconnecting… showing last loaded data.</span>
           <button
             onClick={load}
-            className="text-xs px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
+            className="text-xs px-3 min-h-[44px] -my-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -261,7 +261,7 @@ export default function SellerDashboardPage() {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="p-1 rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -282,21 +282,26 @@ export default function SellerDashboardPage() {
                 {!isApproved ? "Pending approval" : isOpen ? "Open for orders" : "Closed"}
               </div>
             </div>
+            {/* 44px hit area around the visual track (account-page pattern). */}
             <button
               role="switch"
               aria-checked={isOpen}
               aria-label={isOpen ? "Close restaurant for orders" : "Open restaurant for orders"}
               disabled={!isApproved || toggling}
               onClick={toggleOpen}
-              className={`relative w-12 h-7 rounded-full transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isOpen ? "bg-green-500" : "bg-dark-700"
-              }`}
+              className="shrink-0 -m-2 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span
-                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                  isOpen ? "translate-x-5" : ""
+                className={`relative block w-12 h-7 rounded-full transition-colors ${
+                  isOpen ? "bg-green-500" : "bg-dark-700"
                 }`}
-              />
+              >
+                <span
+                  className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                    isOpen ? "translate-x-5" : ""
+                  }`}
+                />
+              </span>
             </button>
           </div>
           {!isApproved && (
@@ -462,7 +467,7 @@ function DeliveryModeTile({
         }}
         disabled={saving}
         aria-pressed={selected}
-        className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
           selected
             ? "bg-green-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700"

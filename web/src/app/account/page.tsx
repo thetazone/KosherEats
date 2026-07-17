@@ -190,12 +190,16 @@ function EmailChangeFlow({
             <button
               type="submit"
               disabled={busy || !isEmailShaped}
-              className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {busy ? "Sending…" : "Send code"}
             </button>
-            <button type="button" onClick={onCancel} className="btn-secondary text-sm py-2 px-4">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center"
+            >
               Cancel
             </button>
           </div>
@@ -227,7 +231,7 @@ function EmailChangeFlow({
               type="button"
               onClick={() => void sendCode(true)}
               disabled={busy || cooldown > 0}
-              className="text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
             </button>
@@ -238,7 +242,7 @@ function EmailChangeFlow({
                 setInfo("");
                 setStep("entry");
               }}
-              className="text-dark-400 hover:text-white transition-colors"
+              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors"
             >
               Use a different email
             </button>
@@ -365,7 +369,7 @@ function PhoneChangeFlow({
               <input
                 id="account-new-phone"
                 type="tel"
-                inputMode="numeric"
+                inputMode="tel"
                 value={digits}
                 onChange={(e) => setDigits(e.target.value.replace(/\D/g, ""))}
                 className="input w-full"
@@ -383,12 +387,16 @@ function PhoneChangeFlow({
             <button
               type="submit"
               disabled={busy || digits.length < 7}
-              className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {busy ? "Sending…" : "Send code"}
             </button>
-            <button type="button" onClick={onCancel} className="btn-secondary text-sm py-2 px-4">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center"
+            >
               Cancel
             </button>
           </div>
@@ -432,7 +440,7 @@ function PhoneChangeFlow({
               type="button"
               onClick={() => void sendCode(true)}
               disabled={busy || cooldown > 0}
-              className="text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
             </button>
@@ -443,7 +451,7 @@ function PhoneChangeFlow({
                 setInfo("");
                 setStep("entry");
               }}
-              className="text-dark-400 hover:text-white transition-colors"
+              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors"
             >
               Use a different number
             </button>
@@ -478,6 +486,8 @@ function PrefToggle({
         <div className="text-sm font-medium text-white">{label}</div>
         <div className="text-xs text-dark-400 mt-0.5">{description}</div>
       </div>
+      {/* The visual track is 44x24; the button pads it out to a >=44px hit
+          area on both axes (negative margin keeps the row layout compact). */}
       <button
         type="button"
         role="switch"
@@ -485,16 +495,20 @@ function PrefToggle({
         aria-label={label}
         disabled={disabled}
         onClick={onToggle}
-        className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
-          checked ? "bg-brand-500" : "bg-dark-700"
-        }`}
+        className="shrink-0 -m-2 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <span
-          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-            checked ? "translate-x-5" : ""
+          className={`relative block w-11 h-6 rounded-full transition-colors ${
+            checked ? "bg-brand-500" : "bg-dark-700"
           }`}
-          aria-hidden="true"
-        />
+        >
+          <span
+            className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+              checked ? "translate-x-5" : ""
+            }`}
+            aria-hidden="true"
+          />
+        </span>
       </button>
     </div>
   );
@@ -718,9 +732,10 @@ export default function AccountPage() {
   );
 
   const unverifiedBadge = (
+    // min-h + negative vertical margin: 44px hit area without growing the row
     <Link
       href="/account/verify"
-      className="inline-flex items-center gap-1 text-xs text-yellow-500 hover:text-yellow-400 transition-colors"
+      className="inline-flex items-center min-h-[44px] -my-3 gap-1 text-xs text-yellow-500 hover:text-yellow-400 transition-colors"
     >
       <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
       Verify now
@@ -815,7 +830,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={savingName || !firstName.trim() || !lastName.trim()}
-                      className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {savingName && (
                         <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -825,7 +840,7 @@ export default function AccountPage() {
                     <button
                       type="button"
                       onClick={() => setEditingName(false)}
-                      className="btn-secondary text-sm py-2 px-4"
+                      className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center"
                     >
                       Cancel
                     </button>
@@ -842,7 +857,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={startEditName}
-                    className="text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors"
+                    className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors"
                   >
                     Edit
                   </button>
@@ -867,7 +882,7 @@ export default function AccountPage() {
                     onClick={() =>
                       setContactFlow(contactFlow === "email" ? "none" : "email")
                     }
-                    className="text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
                   >
                     {contactFlow === "email" ? "Close" : displayEmail ? "Change" : "Add"}
                   </button>
@@ -902,7 +917,7 @@ export default function AccountPage() {
                     onClick={() =>
                       setContactFlow(contactFlow === "phone" ? "none" : "phone")
                     }
-                    className="text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
                   >
                     {contactFlow === "phone" ? "Close" : profile.phone ? "Change" : "Add"}
                   </button>
@@ -963,7 +978,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={() => token && loadPrefs(token)}
-                    className="text-red-300 hover:text-white font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-[44px] text-red-300 hover:text-white font-medium transition-colors shrink-0"
                   >
                     Retry
                   </button>
@@ -1011,7 +1026,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={() => token && loadProviders(token)}
-                    className="text-red-300 hover:text-white font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-[44px] text-red-300 hover:text-white font-medium transition-colors shrink-0"
                   >
                     Retry
                   </button>
@@ -1054,7 +1069,7 @@ export default function AccountPage() {
                                 type="button"
                                 onClick={() => void unlinkProvider(p.provider)}
                                 disabled={unlinking}
-                                className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors disabled:opacity-50"
+                                className="inline-flex items-center min-h-[44px] text-red-400 hover:text-red-300 text-sm font-medium transition-colors disabled:opacity-50"
                               >
                                 {unlinking ? "Removing…" : "Confirm"}
                               </button>
@@ -1065,7 +1080,7 @@ export default function AccountPage() {
                                   setUnlinkError("");
                                 }}
                                 disabled={unlinking}
-                                className="text-dark-400 hover:text-white text-sm transition-colors disabled:opacity-50"
+                                className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white text-sm transition-colors disabled:opacity-50"
                               >
                                 Cancel
                               </button>
@@ -1077,7 +1092,7 @@ export default function AccountPage() {
                                 setPendingUnlink(p.provider);
                                 setUnlinkError("");
                               }}
-                              className="text-dark-400 hover:text-red-400 text-sm font-medium transition-colors shrink-0"
+                              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-red-400 text-sm font-medium transition-colors shrink-0"
                             >
                               Unlink
                             </button>
@@ -1152,7 +1167,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={deleting || deleteText !== DELETE_CONFIRM_WORD}
-                      className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl transition-colors text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 min-h-[44px] rounded-xl transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {deleting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                       {deleting ? "Deleting…" : "Permanently delete my account"}
@@ -1165,7 +1180,7 @@ export default function AccountPage() {
                         setDeleteError("");
                       }}
                       disabled={deleting}
-                      className="btn-secondary text-sm py-2 px-4 disabled:opacity-50"
+                      className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -1175,7 +1190,7 @@ export default function AccountPage() {
                 <button
                   type="button"
                   onClick={() => setDeleteOpen(true)}
-                  className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
+                  className="inline-flex items-center min-h-[44px] text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
                 >
                   Delete my account…
                 </button>

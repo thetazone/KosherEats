@@ -294,6 +294,8 @@ export default function SellerOnboardingPage() {
             value={phone}
             onChange={setPhone}
             type="tel"
+            inputMode="tel"
+            autoComplete="tel"
             placeholder="(718) 555-0123"
             required
           />
@@ -363,6 +365,7 @@ export default function SellerOnboardingPage() {
               value={latitude}
               onChange={setLatitude}
               type="number"
+              inputMode="decimal"
               placeholder="40.7128"
               required
             />
@@ -372,6 +375,7 @@ export default function SellerOnboardingPage() {
               value={longitude}
               onChange={setLongitude}
               type="number"
+              inputMode="decimal"
               placeholder="-74.0060"
               required
             />
@@ -396,7 +400,7 @@ export default function SellerOnboardingPage() {
                   role="radio"
                   aria-checked={certification === cert}
                   onClick={() => setCertification(cert)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`px-4 py-2 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
                     certification === cert
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -584,6 +588,8 @@ function Field({
   value,
   onChange,
   type = "text",
+  inputMode,
+  autoComplete,
   placeholder,
   required = false,
   hint,
@@ -593,6 +599,8 @@ function Field({
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  inputMode?: "decimal" | "numeric" | "tel";
+  autoComplete?: string;
   placeholder?: string;
   required?: boolean;
   hint?: string;
@@ -606,6 +614,8 @@ function Field({
       <input
         id={id}
         type={type}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -737,7 +747,7 @@ function PhotoUpload({
             onChange("");
             setUploadError(null);
           }}
-          className="flex items-center gap-1.5 text-xs font-medium text-red-400 hover:text-red-300 transition-colors mt-2"
+          className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-red-400 hover:text-red-300 transition-colors mt-1"
         >
           <X className="w-3.5 h-3.5" />
           Remove photo
@@ -766,7 +776,7 @@ function ReviewCard({
         <button
           type="button"
           onClick={onEdit}
-          className="flex items-center gap-1.5 text-xs font-medium text-brand-500 hover:text-brand-400 transition-colors"
+          className="flex items-center gap-1.5 min-h-[44px] -my-2.5 text-xs font-medium text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Pencil className="w-3.5 h-3.5" />
           Edit
