@@ -1,5 +1,6 @@
 "use client";
 
+import { hasRealCertificatePhoto } from "@/lib/kosher";
 import { AlertTriangle, FileQuestion, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -26,7 +27,11 @@ export function KosherCertificateModal({
   const [loaded, setLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  const hasPhoto = Boolean(url && url.trim() !== "");
+  // Only a real uploaded photo renders as the certificate image; a
+  // placeholder/stock-image host degrades to the "on file" state instead of
+  // presenting a fake certificate (defense-in-depth — the opener is already
+  // gated on the same check). See @/lib/kosher.
+  const hasPhoto = hasRealCertificatePhoto(url);
   const zoom = ZOOM_LEVELS[zoomIndex];
 
   // Escape closes; lock body scroll while the modal is up.
