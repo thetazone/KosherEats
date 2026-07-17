@@ -15,12 +15,27 @@ import { useEffect, useState } from "react";
 type CertInfo = Pick<Restaurant, "kosher_certification" | "is_glatt_kosher">;
 
 // Module-scope cache: an order-history list repeats the same restaurants, so
-// fetch each id once per session and render repeat rows instantly.
-const certCache = new Map<string, CertInfo>();
+// fetch each id once and render repeat rows instantly. Entries carry a short
+// TTL so a certification change on the backend can't show stale for a whole
+// long-lived session — after 5 minutes the next mount refetches.
+const CERT_CACHE_TTL_MS = 5 * 60 * 1000;
+const certCache = new Map<string, { info: CertInfo; fetchedAt: number }>();
 const inflight = new Map<string, Promise<CertInfo | null>>();
 
+// Returns the cached cert only while fresh; evicts and returns null once the
+// TTL has lapsed so callers fall through to a refetch.
+function getFreshCert(restaurantId: string): CertInfo | null {
+  const entry = certCache.get(restaurantId);
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > CERT_CACHE_TTL_MS) {
+    certCache.delete(restaurantId);
+    return null;
+  }
+  return entry.info;
+}
+
 function loadCert(restaurantId: string): Promise<CertInfo | null> {
-  const cached = certCache.get(restaurantId);
+  const cached = getFreshCert(restaurantId);
   if (cached) return Promise.resolve(cached);
 
   const pending = inflight.get(restaurantId);
@@ -32,7 +47,7 @@ function loadCert(restaurantId: string): Promise<CertInfo | null> {
         kosher_certification: r.kosher_certification,
         is_glatt_kosher: r.is_glatt_kosher,
       };
-      certCache.set(restaurantId, info);
+      certCache.set(restaurantId, { info, fetchedAt: Date.now() });
       return info;
     })
     .catch(() => null) // non-fatal — the surface renders without the chip
@@ -50,9 +65,7 @@ export function RestaurantCertChip({
   restaurantId: string;
   size?: "compact" | "regular";
 }) {
-  const [cert, setCert] = useState<CertInfo | null>(
-    () => certCache.get(restaurantId) ?? null
-  );
+  const [cert, setCert] = useState<CertInfo | null>(() => getFreshCert(restaurantId));
 
   useEffect(() => {
     let alive = true;

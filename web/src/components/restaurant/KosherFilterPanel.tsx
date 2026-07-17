@@ -342,14 +342,15 @@ export function KosherFilterPanel({
                 sheet's sticky action bar on mobile; safe-area padding keeps
                 it clear of the iOS home indicator. */}
             <div className="flex items-center gap-3 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-dark-800 md:pb-5">
+              {/* Apply is never disabled — a zero-match draft is still
+                  committable ("Show 0 results"), and the /search empty state
+                  plus the still-visible filter trigger let the user recover.
+                  Disabling here trapped users with no way to apply-and-clear. */}
               <button
                 onClick={apply}
-                disabled={previewCount === 0}
-                className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary flex-1 flex items-center justify-center gap-2"
               >
-                {previewCount === 0
-                  ? "No matches"
-                  : `Show ${previewCount} result${previewCount === 1 ? "" : "s"}`}
+                {`Show ${previewCount} result${previewCount === 1 ? "" : "s"}`}
                 {draftCount > 0 && (
                   <span className="bg-white/25 text-xs font-bold px-2 py-0.5 rounded-md">
                     {draftCount} filter{draftCount === 1 ? "" : "s"}

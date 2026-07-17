@@ -39,6 +39,26 @@ function senderLabel(role: string): string {
   }
 }
 
+// A poll response can be stale relative to a send that resolved while the
+// poll was in flight (GET issued before the POST landed, resolved after) —
+// replacing the thread wholesale with that older list makes the just-sent
+// message vanish until the next poll. Merge by id instead: take the server
+// list, keep any local messages it doesn't know about yet, and re-sort by
+// created_at (Array.prototype.sort is stable, so equal timestamps keep
+// server order).
+function reconcileMessages(
+  prev: ChatMessage[] | null,
+  incoming: ChatMessage[]
+): ChatMessage[] {
+  if (!prev || prev.length === 0) return incoming;
+  const incomingIds = new Set(incoming.map((m) => m.id));
+  const retained = prev.filter((m) => !incomingIds.has(m.id));
+  if (retained.length === 0) return incoming;
+  return [...incoming, ...retained].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+}
+
 // The backend HTML-escapes message text on write (SendChatMessage runs
 // html.EscapeString), so "&" is stored as "&amp;". React escapes on render,
 // so decoding back to plain text here is safe and avoids showing literal
@@ -82,7 +102,7 @@ export function OrderChat({
     try {
       const list = await ordersApi.chat.list(token, orderId);
       hasLoadedRef.current = true;
-      setMessages(list);
+      setMessages((prev) => reconcileMessages(prev, list));
       setLoadError(null);
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -153,7 +173,15 @@ export function OrderChat({
     try {
       const sent = await ordersApi.chat.send(token, orderId, trimmed);
       hasLoadedRef.current = true;
-      setMessages((prev) => (prev ? [...prev, sent] : [sent]));
+      // Skip the append if a poll already delivered this message id — the
+      // merge in reconcileMessages makes that ordering possible.
+      setMessages((prev) =>
+        prev
+          ? prev.some((m) => m.id === sent.id)
+            ? prev
+            : [...prev, sent]
+          : [sent]
+      );
       setInput("");
     } catch (err) {
       if (isUnauthorized(err)) {

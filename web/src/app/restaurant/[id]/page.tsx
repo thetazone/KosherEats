@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 // One optimistic sidebar line. The same menu item added with different
 // modifier selections becomes distinct lines, so lines are keyed by
@@ -159,11 +159,16 @@ function RestaurantPageInner() {
   // The restaurant a NON-EMPTY server cart belongs to (null = empty cart or
   // not yet loaded). The backend silently wipes the whole cart when an add
   // comes in for a different restaurant, so addToCart uses this to confirm
-  // with the user before that happens.
-  const [serverCartRestaurant, setServerCartRestaurant] = useState<{
-    id: string;
-    name: string | null;
-  } | null>(null);
+  // with the user before that happens. A ref, not state: it's only ever read
+  // inside the add handler right after awaiting cartReadyRef, where state
+  // from the render closure would be stale; nothing renders from it.
+  const serverCartRestaurantRef = useRef<{ id: string; name: string | null } | null>(
+    null
+  );
+  // Resolves when the initial server-cart fetch settles (success OR failure).
+  // addToCart awaits this so the different-restaurant guard can never race
+  // ahead of the fetch and skip the confirmation.
+  const cartReadyRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     if (!id) return;
@@ -171,34 +176,75 @@ function RestaurantPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // Load the server cart's restaurant on mount so the switch-restaurants
-  // confirmation has something to check against. Best-effort: on any failure
-  // we just don't prompt (matching the previous behaviour).
+  // Hydrate the sidebar / badges / mobile bar from the SERVER cart on load
+  // (previously the optimistic state always started empty, so a returning
+  // user's cart was invisible here), and record which restaurant a non-empty
+  // cart belongs to so the switch-restaurants confirmation has something to
+  // check against. Best-effort on failure: no hydration, no pre-add prompt —
+  // matching the previous behaviour of never blocking adds.
   useEffect(() => {
     if (!id) return;
     const token =
       typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-    if (!token) return;
     let cancelled = false;
-    void (async () => {
+    const publish = (value: { id: string; name: string | null } | null) => {
+      serverCartRestaurantRef.current = value;
+    };
+    publish(null);
+    setCart([]);
+    if (!token) {
+      // Logged out — nothing to fetch; adds are unblocked (they redirect to
+      // /auth anyway).
+      cartReadyRef.current = Promise.resolve();
+      return;
+    }
+    cartReadyRef.current = (async () => {
       try {
         const c = (await cartApi.get(token)) as Cart;
-        if (!c.restaurant_id || (c.items ?? []).length === 0) {
-          if (!cancelled) setServerCartRestaurant(null);
+        const items = c.items ?? [];
+        if (!c.restaurant_id || items.length === 0) {
+          if (!cancelled) publish(null);
+          return;
+        }
+        if (c.restaurant_id === id) {
+          // The server cart is THIS restaurant's — reconcile the optimistic
+          // state with the server lines. Lines that share an identity key
+          // (same item + modifiers, e.g. differing only by notes) merge into
+          // one display line.
+          const byKey = new Map<string, LocalCartItem>();
+          for (const it of items) {
+            const mods = it.selected_modifiers ?? [];
+            const key = cartLineKey(it.menu_item_id, mods.map((m) => m.id));
+            const existing = byKey.get(key);
+            if (existing) {
+              existing.quantity += it.quantity;
+            } else {
+              byKey.set(key, {
+                key,
+                menuItemId: it.menu_item_id,
+                name: it.name,
+                unitPrice: it.price,
+                quantity: it.quantity,
+                modifiers: mods,
+              });
+            }
+          }
+          if (!cancelled) {
+            setCart([...byKey.values()]);
+            publish({ id, name: null });
+          }
           return;
         }
         // Fetch the other restaurant's name for the confirmation copy —
         // best-effort, fall back to generic wording.
-        const name =
-          c.restaurant_id === id
-            ? null
-            : await restaurantsApi
-                .get(c.restaurant_id)
-                .then((r) => (r as Restaurant).name)
-                .catch(() => null);
-        if (!cancelled) setServerCartRestaurant({ id: c.restaurant_id, name });
+        const name = await restaurantsApi
+          .get(c.restaurant_id)
+          .then((r) => (r as Restaurant).name)
+          .catch(() => null);
+        if (!cancelled) publish({ id: c.restaurant_id, name });
       } catch {
-        // Cart unavailable — skip the pre-add check rather than block adds.
+        // Cart unavailable — skip hydration and the pre-add check rather
+        // than block adds.
       }
     })();
     return () => {
@@ -240,6 +286,17 @@ function RestaurantPageInner() {
     }
   }
 
+  // Logged-out (or expired) users go to /auth with a next= pointing back at
+  // this page (path + query, so a ?deal= tap-through survives too) — the auth
+  // page returns them here instead of dumping them on home mid-order.
+  function redirectToAuth() {
+    const next =
+      typeof window !== "undefined"
+        ? window.location.pathname + window.location.search
+        : `/restaurant/${id}`;
+    router.push(`/auth?next=${encodeURIComponent(next)}`);
+  }
+
   // Every add goes through the customize modal (mirrors the iOS flow where
   // the menu row opens AddToCartSheet) — even items without modifier groups,
   // so quantity + notes are always available.
@@ -247,7 +304,7 @@ function RestaurantPageInner() {
     if (!item.is_available) return;
     const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
-      router.push("/auth");
+      redirectToAuth();
       return;
     }
     setModalItem(item);
@@ -260,20 +317,32 @@ function RestaurantPageInner() {
     if (!id) return;
     const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
-      router.push("/auth");
+      redirectToAuth();
       return;
     }
 
+    // Never race the initial server-cart fetch: until it settles we don't
+    // know whether this add would silently wipe another restaurant's cart.
+    // The fetch is bounded by the API timeout, and the modal shows its
+    // "Adding…" spinner while we wait. Read the settled value from the ref —
+    // the state in this closure may predate the fetch resolving.
+    await cartReadyRef.current;
+    const existingCart = serverCartRestaurantRef.current;
+
     // Adding from a different restaurant makes the backend silently clear the
     // existing cart — never let that happen without an explicit confirmation.
-    if (serverCartRestaurant && serverCartRestaurant.id !== id) {
-      const clears = serverCartRestaurant.name
-        ? `This clears your items from ${serverCartRestaurant.name}.`
+    if (existingCart && existingCart.id !== id) {
+      const clears = existingCart.name
+        ? `This clears your items from ${existingCart.name}.`
         : "This clears the items already in your cart from another restaurant.";
       const confirmed = window.confirm(
         `Start a new cart from ${restaurant?.name ?? "this restaurant"}? ${clears}`
       );
       if (!confirmed) return;
+      // The confirmed add replaces the other restaurant's cart server-side;
+      // local lines only ever belong to THIS restaurant, so this is purely
+      // defensive against a stale sidebar.
+      setCart([]);
     }
 
     try {
@@ -287,14 +356,14 @@ function RestaurantPageInner() {
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
-        router.push("/auth");
+        redirectToAuth();
         return;
       }
       throw err;
     }
 
     // The server cart now belongs to this restaurant and is non-empty.
-    setServerCartRestaurant({ id, name: null });
+    serverCartRestaurantRef.current = { id, name: null };
 
     const key = cartLineKey(item.id, selection.modifier_ids);
     setCart((prev) => {
@@ -643,21 +712,17 @@ function RestaurantPageInner() {
                         </div>
                       ))}
                     </div>
+                    {/* Only the subtotal is knowable here — the real
+                        delivery fee is a per-address quote, and tax/service
+                        fee are computed at checkout. No fake "Total". */}
                     <div className="border-t border-dark-700 pt-3 mb-4">
-                      <div className="flex justify-between text-sm text-dark-400 mb-1">
+                      <div className="flex justify-between font-semibold">
                         <span>Subtotal</span>
-                        <span>{formatUSD(cartTotal)}</span>
+                        <span className="text-brand-400">{formatUSD(cartTotal)}</span>
                       </div>
-                      <div className="flex justify-between text-sm text-dark-400 mb-1">
-                        <span>Delivery fee</span>
-                        <span>{formatUSD(rest.delivery_fee)}</span>
-                      </div>
-                      <div className="flex justify-between font-semibold mt-2">
-                        <span>Total</span>
-                        <span className="text-brand-400">
-                          {formatUSD(cartTotal + rest.delivery_fee)}
-                        </span>
-                      </div>
+                      <p className="text-xs text-dark-400 mt-1.5">
+                        Delivery, fees &amp; tax estimated at checkout
+                      </p>
                     </div>
                     <a href="/cart" className="btn-primary w-full block text-center">
                       Go to Checkout
@@ -681,8 +746,12 @@ function RestaurantPageInner() {
                 {cartCount}
               </span>
               <span className="font-semibold">Go to Checkout</span>
-              <span className="font-semibold">
-                {formatUSD(cartTotal + rest.delivery_fee)}
+              {/* Subtotal only — delivery/fees/tax are quoted at checkout. */}
+              <span className="text-right leading-tight">
+                <span className="block text-[10px] font-medium opacity-80">
+                  Subtotal
+                </span>
+                <span className="font-semibold">{formatUSD(cartTotal)}</span>
               </span>
             </a>
           </div>
