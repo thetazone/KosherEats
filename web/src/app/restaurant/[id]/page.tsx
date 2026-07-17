@@ -1,16 +1,39 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
-import type { MenuCategory, MenuItem, Restaurant } from "@/types";
+import { KosherBadge } from "@/components/restaurant/KosherBadge";
+import { KosherCertificateModal } from "@/components/restaurant/KosherCertificateModal";
+import { MenuItemModal, type MenuItemSelection } from "@/components/restaurant/MenuItemModal";
+import { cart as cartApi, deals as dealsApi, restaurants as restaurantsApi } from "@/lib/api";
+import type { Deal, MenuCategory, MenuItem, Restaurant, SelectedModifier } from "@/types";
+import {
+  Building2,
+  Cake,
+  CheckCircle2,
+  Droplets,
+  FileText,
+  ShieldCheck,
+  Tag,
+  type LucideIcon,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+// One optimistic sidebar line. The same menu item added with different
+// modifier selections becomes distinct lines, so lines are keyed by
+// menu_item_id + sorted modifier ids — the same identity the backend's
+// cart_items upsert uses (cart_id, menu_item_id, selected_modifiers).
 interface LocalCartItem {
-  id: string;
+  key: string;
+  menuItemId: string;
   name: string;
-  price: number;
+  unitPrice: number; // cents, base price + selected modifier deltas
   quantity: number;
+  modifiers: SelectedModifier[];
+}
+
+function cartLineKey(menuItemId: string, modifierIds: string[]): string {
+  return `${menuItemId}|${[...modifierIds].sort().join(",")}`;
 }
 
 function isUnauthorized(err: unknown): boolean {
@@ -26,6 +49,79 @@ function DietaryBadge({ label, color }: { label: string; color: string }) {
   );
 }
 
+// KashrusChip mirrors the iOS KashrusInfoChip: icon + bold title over a muted
+// subtitle, one chip per kashrus standard the restaurant meets.
+function KashrusChip({
+  icon: Icon,
+  iconColor,
+  title,
+  subtitle,
+}: {
+  icon: LucideIcon;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 bg-dark-800 rounded-xl px-3 py-2">
+      <Icon className={`w-5 h-5 flex-shrink-0 ${iconColor}`} aria-hidden="true" />
+      <div>
+        <p className="text-sm font-bold leading-tight">{title}</p>
+        <p className="text-[11px] text-dark-400 leading-tight">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+// Discount badge copy — mirrors the iOS Deal.discountBadge computed property.
+function dealBadge(deal: Deal): string {
+  switch (deal.discount_type) {
+    case "percentage":
+      return `${deal.discount_value}% Off`;
+    case "fixed":
+      return `$${(deal.discount_value / 100).toFixed(2)} Off`;
+    case "bogo":
+      return "Buy 1 Get 1 Free";
+    default:
+      return "";
+  }
+}
+
+// DealCard is one card in the horizontal per-restaurant deals strip.
+function DealCard({ deal }: { deal: Deal }) {
+  const badge = dealBadge(deal);
+  return (
+    <div className="w-72 flex-shrink-0 card p-4">
+      <div className="flex items-center gap-2 mb-2">
+        {badge && (
+          <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
+            {badge}
+          </span>
+        )}
+        {deal.min_order_amount != null && deal.min_order_amount > 0 && (
+          <span className="text-dark-400 text-xs">
+            Min. order ${(deal.min_order_amount / 100).toFixed(2)}
+          </span>
+        )}
+      </div>
+      <h3 className="font-semibold mb-1">{deal.title}</h3>
+      {deal.description && (
+        <p className="text-dark-400 text-sm line-clamp-2 mb-2">{deal.description}</p>
+      )}
+      <div className="text-xs text-dark-500">
+        {deal.menu_item_name && <span>On {deal.menu_item_name} · </span>}
+        <span>
+          Ends{" "}
+          {new Date(deal.expires_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function RestaurantPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -33,13 +129,14 @@ export default function RestaurantPage() {
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menu, setMenu] = useState<MenuCategory[]>([]);
+  const [restaurantDeals, setRestaurantDeals] = useState<Deal[]>([]);
+  const [certificateOpen, setCertificateOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [cart, setCart] = useState<LocalCartItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
-  const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
-  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [modalItem, setModalItem] = useState<MenuItem | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -51,14 +148,20 @@ export default function RestaurantPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [r, m] = await Promise.all([
+      const token =
+        typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+      const [r, m, d] = await Promise.all([
         restaurantsApi.get(restaurantId) as Promise<Restaurant>,
         restaurantsApi.getMenu(restaurantId) as Promise<MenuCategory[]>,
+        // Deals are decorative — a failure here must never take down the
+        // whole page, so swallow errors into an empty strip.
+        dealsApi.forRestaurant(restaurantId, token ?? undefined).catch(() => [] as Deal[]),
       ]);
       setRestaurant(r);
       const categories = [...m].sort((a, b) => a.sort_order - b.sort_order);
       setMenu(categories);
       setActiveCategory(categories[0]?.id);
+      setRestaurantDeals(d);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load restaurant");
     } finally {
@@ -66,7 +169,23 @@ export default function RestaurantPage() {
     }
   }
 
-  async function addToCart(item: MenuItem) {
+  // Every add goes through the customize modal (mirrors the iOS flow where
+  // the menu row opens AddToCartSheet) — even items without modifier groups,
+  // so quantity + notes are always available.
+  function openItem(item: MenuItem) {
+    if (!item.is_available) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) {
+      router.push("/auth");
+      return;
+    }
+    setModalItem(item);
+  }
+
+  // Called by MenuItemModal on Add. Throws on failure so the modal can show
+  // the error inline and stay open; on success we update the optimistic
+  // sidebar and close the modal ourselves.
+  async function addToCart(item: MenuItem, selection: MenuItemSelection) {
     if (!id) return;
     const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
@@ -74,22 +193,13 @@ export default function RestaurantPage() {
       return;
     }
 
-    setMutatingItemId(item.id);
-    setMutationError(null);
     try {
       await cartApi.addItem(token, {
         menu_item_id: item.id,
         restaurant_id: id,
-        quantity: 1,
-      });
-      setCart((prev) => {
-        const existing = prev.find((c) => c.id === item.id);
-        if (existing) {
-          return prev.map((c) =>
-            c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c
-          );
-        }
-        return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
+        quantity: selection.quantity,
+        notes: selection.notes,
+        modifier_ids: selection.modifier_ids,
       });
     } catch (err) {
       if (isUnauthorized(err)) {
@@ -97,13 +207,33 @@ export default function RestaurantPage() {
         router.push("/auth");
         return;
       }
-      setMutationError(err instanceof Error ? err.message : "Failed to add item to cart");
-    } finally {
-      setMutatingItemId(null);
+      throw err;
     }
+
+    const key = cartLineKey(item.id, selection.modifier_ids);
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === key);
+      if (existing) {
+        return prev.map((c) =>
+          c.key === key ? { ...c, quantity: c.quantity + selection.quantity } : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          key,
+          menuItemId: item.id,
+          name: item.name,
+          unitPrice: selection.unit_price,
+          quantity: selection.quantity,
+          modifiers: selection.selected_modifiers,
+        },
+      ];
+    });
+    setModalItem(null);
   }
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   if (loading) {
@@ -147,20 +277,8 @@ export default function RestaurantPage() {
         <div className="relative h-64 bg-gradient-to-br from-brand-900/60 to-dark-900">
           <div className="absolute inset-0 bg-gradient-to-t from-dark-950 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 max-w-7xl mx-auto">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="bg-brand-500 text-white text-sm font-bold px-3 py-1 rounded-lg">
-                {rest.kosher_certification}
-              </span>
-              {rest.is_glatt_kosher && (
-                <span className="bg-dark-800 text-brand-400 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
-                  Glatt Kosher
-                </span>
-              )}
-              {rest.is_pas_yisroel && (
-                <span className="bg-dark-800 text-brand-400 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
-                  Pas Yisroel
-                </span>
-              )}
+            <div className="mb-2">
+              <KosherBadge restaurant={rest} size="regular" />
             </div>
             <h1 className="text-4xl font-extrabold">{rest.name}</h1>
           </div>
@@ -198,28 +316,76 @@ export default function RestaurantPage() {
 
           <p className="text-dark-300 mb-8 max-w-3xl">{rest.description}</p>
 
-          {/* Kosher Info Card */}
-          <div className="card p-4 mb-8">
-            <h3 className="font-semibold text-brand-400 mb-2">Kosher Information</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div>
-                <span className="text-dark-400">Certification</span>
-                <p className="font-medium">{rest.kosher_certification} — {rest.certifying_agency}</p>
-              </div>
-              <div>
-                <span className="text-dark-400">Glatt Kosher</span>
-                <p className="font-medium">{rest.is_glatt_kosher ? "Yes" : "No"}</p>
-              </div>
-              <div>
-                <span className="text-dark-400">Cholov Yisroel</span>
-                <p className="font-medium">{rest.is_cholov_yisroel ? "Yes" : "N/A"}</p>
-              </div>
-              <div>
-                <span className="text-dark-400">Pas Yisroel</span>
-                <p className="font-medium">{rest.is_pas_yisroel ? "Yes" : "No"}</p>
-              </div>
+          {/* Kashrus Information — certification-first: this section leads
+              the page, above deals and the menu (mirrors the iOS
+              kashrusSection). */}
+          <section className="card p-5 mb-8" aria-label="Kashrus information">
+            <h2 className="text-lg font-bold mb-4">Kashrus Information</h2>
+
+            <div className="flex flex-wrap gap-3 mb-4">
+              <KashrusChip
+                icon={ShieldCheck}
+                iconColor="text-brand-400"
+                title={rest.kosher_certification}
+                subtitle="Certification"
+              />
+              {rest.is_glatt_kosher && (
+                <KashrusChip
+                  icon={CheckCircle2}
+                  iconColor="text-green-400"
+                  title="Glatt"
+                  subtitle="Kosher"
+                />
+              )}
+              {rest.is_cholov_yisroel && (
+                <KashrusChip
+                  icon={Droplets}
+                  iconColor="text-blue-400"
+                  title="Cholov"
+                  subtitle="Yisroel"
+                />
+              )}
+              {rest.is_pas_yisroel && (
+                <KashrusChip
+                  icon={Cake}
+                  iconColor="text-amber-400"
+                  title="Pas"
+                  subtitle="Yisroel"
+                />
+              )}
             </div>
-          </div>
+
+            {rest.certifying_agency && (
+              <div className="flex items-center gap-2 text-sm text-dark-300 mb-4">
+                <Building2 className="w-4 h-4 text-dark-400 flex-shrink-0" aria-hidden="true" />
+                <span>Certifying Agency: {rest.certifying_agency}</span>
+              </div>
+            )}
+
+            <button
+              onClick={() => setCertificateOpen(true)}
+              className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 rounded-xl transition-colors"
+              aria-label={`View kosher certificate for ${rest.name}`}
+            >
+              <FileText className="w-4 h-4" aria-hidden="true" />
+              View Kosher Certificate
+            </button>
+          </section>
+
+          {/* Per-restaurant deals strip */}
+          {restaurantDeals.length > 0 && (
+            <section className="mb-8" aria-label="Deals">
+              <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Tag className="w-5 h-5 text-brand-400" aria-hidden="true" />
+                Deals
+              </h2>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {restaurantDeals.map((deal) => (
+                  <DealCard key={deal.id} deal={deal} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="flex gap-8">
             {/* Menu */}
@@ -243,12 +409,6 @@ export default function RestaurantPage() {
                 </div>
               </div>
 
-              {mutationError && (
-                <div className="card p-3 mb-4 border border-red-800 bg-red-900/20 text-red-300 text-sm">
-                  {mutationError}
-                </div>
-              )}
-
               {menu.length === 0 ? (
                 <div className="card p-12 text-center text-dark-400">
                   This restaurant hasn&apos;t published a menu yet.
@@ -259,8 +419,11 @@ export default function RestaurantPage() {
                     <h2 className="text-xl font-bold mb-4">{category.name}</h2>
                     <div className="space-y-3">
                       {(category.items ?? []).map((item) => {
-                        const cartItem = cart.find((c) => c.id === item.id);
-                        const isPending = mutatingItemId === item.id;
+                        // Total quantity of this menu item across all cart
+                        // lines (each modifier combination is its own line).
+                        const inCartQty = cart
+                          .filter((c) => c.menuItemId === item.id)
+                          .reduce((sum, c) => sum + c.quantity, 0);
                         return (
                           <div
                             key={item.id}
@@ -288,14 +451,15 @@ export default function RestaurantPage() {
                             </div>
 
                             <div className="flex items-center gap-2">
-                              {cartItem ? (
+                              {inCartQty > 0 ? (
                                 <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
                                   <span className="font-semibold w-6 text-center">
-                                    {cartItem.quantity}
+                                    {inCartQty}
                                   </span>
                                   <button
-                                    onClick={() => addToCart(item)}
-                                    disabled={isPending || !item.is_available}
+                                    onClick={() => openItem(item)}
+                                    disabled={!item.is_available}
+                                    aria-label={`Add another ${item.name}`}
                                     className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                                   >
                                     +
@@ -303,11 +467,11 @@ export default function RestaurantPage() {
                                 </div>
                               ) : (
                                 <button
-                                  onClick={() => addToCart(item)}
-                                  disabled={isPending || !item.is_available}
+                                  onClick={() => openItem(item)}
+                                  disabled={!item.is_available}
                                   className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
                                 >
-                                  {!item.is_available ? "Unavailable" : isPending ? "Adding…" : "Add"}
+                                  {!item.is_available ? "Unavailable" : "Add"}
                                 </button>
                               )}
                             </div>
@@ -332,14 +496,19 @@ export default function RestaurantPage() {
                   <>
                     <div className="space-y-3 mb-4">
                       {cart.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center">
-                          <div>
+                        <div key={item.key} className="flex justify-between items-start">
+                          <div className="min-w-0 pr-2">
                             <span className="text-sm font-medium">
                               {item.quantity}x {item.name}
                             </span>
+                            {item.modifiers.length > 0 && (
+                              <p className="text-xs text-dark-400 mt-0.5">
+                                {item.modifiers.map((m) => m.name).join(" • ")}
+                              </p>
+                            )}
                           </div>
-                          <span className="text-sm text-dark-300">
-                            ${((item.price * item.quantity) / 100).toFixed(2)}
+                          <span className="text-sm text-dark-300 flex-shrink-0">
+                            ${((item.unitPrice * item.quantity) / 100).toFixed(2)}
                           </span>
                         </div>
                       ))}
@@ -386,6 +555,24 @@ export default function RestaurantPage() {
               </span>
             </a>
           </div>
+        )}
+
+        {/* Customize & add-to-cart modal */}
+        {modalItem && (
+          <MenuItemModal
+            item={modalItem}
+            onClose={() => setModalItem(null)}
+            onSubmit={(selection) => addToCart(modalItem, selection)}
+          />
+        )}
+
+        {/* Full-screen certificate viewer */}
+        {certificateOpen && (
+          <KosherCertificateModal
+            url={rest.kosher_certificate_url}
+            restaurantName={rest.name}
+            onClose={() => setCertificateOpen(false)}
+          />
         )}
       </main>
     </>

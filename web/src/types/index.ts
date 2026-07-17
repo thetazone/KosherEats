@@ -49,6 +49,9 @@ export interface Restaurant {
   is_cholov_yisroel: boolean;
   is_pas_yisroel: boolean;
   is_glatt_kosher: boolean;
+  // Photo of the kosher certificate (backend always sends the field; empty
+  // string when the seller hasn't uploaded one yet).
+  kosher_certificate_url?: string;
   cuisine_type: string[];
   rating: number;
   review_count: number;

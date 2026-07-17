@@ -223,16 +223,24 @@ export const auth = {
 
 // Restaurants
 export const restaurants = {
-  list: (params?: { lat?: number; lng?: number }) => {
-    const query = params ? `?lat=${params.lat}&lng=${params.lng}` : "";
-    return fetchAPI(`/restaurants${query}`);
+  // Pass lat/lng to get the list distance-ordered (nearest first, LIMIT 50);
+  // without coords the backend falls back to rating order. Both coords must
+  // be finite or we send neither — "?lat=undefined" would fail the backend's
+  // ParseFloat and silently lose the distance sort.
+  list: (params?: { lat: number; lng: number }) => {
+    const query =
+      params && Number.isFinite(params.lat) && Number.isFinite(params.lng)
+        ? `?lat=${params.lat}&lng=${params.lng}`
+        : "";
+    return fetchAPI<Restaurant[]>(`/restaurants${query}`);
   },
 
   get: (id: string) => fetchAPI(`/restaurants/${id}`),
 
   getMenu: (id: string) => fetchAPI(`/restaurants/${id}/menu`),
 
-  search: (q: string) => fetchAPI(`/restaurants/search?q=${encodeURIComponent(q)}`),
+  search: (q: string) =>
+    fetchAPI<Restaurant[]>(`/restaurants/search?q=${encodeURIComponent(q)}`),
 
   // Personalised alternating familiar/unfamiliar list; falls back to
   // top-rated for guests. Pass the token to get personalisation (the route
@@ -277,8 +285,19 @@ export const deliveryQuote = (
 export const cart = {
   get: (token: string) => fetchAPI("/cart", { token }),
 
-  addItem: (token: string, data: { menu_item_id: string; restaurant_id: string; quantity: number; notes?: string }) =>
-    fetchAPI("/cart/items", { method: "POST", token, body: JSON.stringify(data) }),
+  // modifier_ids are the selected modifier option ids; the backend validates
+  // each id belongs to the menu item, snapshots name/price_delta into
+  // selected_modifiers, and bakes the deltas into the stored unit price.
+  addItem: (
+    token: string,
+    data: {
+      menu_item_id: string;
+      restaurant_id: string;
+      quantity: number;
+      notes?: string;
+      modifier_ids?: string[];
+    }
+  ) => fetchAPI("/cart/items", { method: "POST", token, body: JSON.stringify(data) }),
 
   updateItem: (token: string, itemId: string, data: { quantity: number; notes?: string }) =>
     fetchAPI(`/cart/items/${itemId}`, { method: "PATCH", token, body: JSON.stringify(data) }),

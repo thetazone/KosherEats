@@ -558,8 +558,17 @@ export default function CartPage() {
                 const isPending = mutatingItemId === item.id;
                 return (
                   <div key={item.id} className="card p-4 flex items-center justify-between">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0 pr-3">
                       <h3 className="font-semibold">{item.name}</h3>
+                      {/* Selected modifiers as a single dot-separated line —
+                          same pattern as the iOS CartView row. item.price is
+                          the unit-price snapshot that already includes the
+                          modifier deltas, so the line totals stay correct. */}
+                      {item.selected_modifiers && item.selected_modifiers.length > 0 && (
+                        <p className="text-dark-400 text-xs mt-0.5">
+                          {item.selected_modifiers.map((m) => m.name).join(" • ")}
+                        </p>
+                      )}
                       <p className="text-brand-400 text-sm font-medium mt-0.5">
                         {formatUSD(item.price)}
                       </p>

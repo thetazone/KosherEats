@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { MenuItemForm } from "@/components/seller/MenuItemForm";
 import { formatCents, sellerApi } from "@/lib/sellerApi";
-import type { SellerMenuCategory, SellerMenuItem } from "@/types/seller";
+import type { SellerMenuCategory, SellerMenuItem, SellerModifierGroup } from "@/types/seller";
 
 /** The item form modal: editing an existing item, or creating into a category. */
 type FormTarget = { item: SellerMenuItem | null; categoryId?: string };
@@ -139,19 +139,32 @@ export default function SellerMenuPage() {
     );
   }
 
+  /** Modifier-group edits persist immediately inside the form (independent of
+   *  its Save/Cancel), so mirror each server-acked change into our copy of the
+   *  item right away — otherwise cancelling the form would leave stale groups. */
+  function onModifierGroupsChanged(itemId: string, groups: SellerModifierGroup[]) {
+    setCategories((prev) =>
+      prev.map((cat) => ({
+        ...cat,
+        items: cat.items?.map((i) => (i.id === itemId ? { ...i, modifier_groups: groups } : i)),
+      })),
+    );
+  }
+
   /** Reconcile a saved item from the form: insert on create, replace on
    *  update — handling recategorization by moving the item between groups.
    *  The saved record is taken wholesale (image_url has omitempty, so a
    *  removed photo means an ABSENT key — a spread-merge onto the old item
-   *  would resurrect the stale URL), except modifier_groups, which item
-   *  write responses never include and the form doesn't edit. */
+   *  would resurrect the stale URL). Item write responses never include
+   *  modifier_groups; the form reattaches its editor's authoritative set on
+   *  update, so fall back to the previous item's groups only when absent. */
   function onItemSaved(saved: SellerMenuItem, wasCreate: boolean) {
     setCategories((prev) => {
       const prevItem = wasCreate
         ? undefined
         : prev.flatMap((c) => c.items ?? []).find((i) => i.id === saved.id);
       const merged: SellerMenuItem = prevItem
-        ? { ...saved, modifier_groups: prevItem.modifier_groups }
+        ? { ...saved, modifier_groups: saved.modifier_groups ?? prevItem.modifier_groups }
         : saved;
       return prev.map((cat) => {
         const items = cat.items ?? [];
@@ -319,6 +332,7 @@ export default function SellerMenuPage() {
           defaultCategoryId={formTarget.categoryId}
           onSaved={onItemSaved}
           onClose={() => setFormTarget(null)}
+          onModifierGroupsChange={onModifierGroupsChanged}
         />
       )}
 

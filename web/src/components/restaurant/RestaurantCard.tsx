@@ -1,22 +1,21 @@
-import Link from "next/link";
+import type { Restaurant } from "@/types";
+import { KosherBadge } from "@/components/restaurant/KosherBadge";
+import { Heart } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
-interface Restaurant {
-  id: string;
-  name: string;
-  image_url: string;
-  kosher_certification: string;
-  cuisine_type: string[];
-  rating: number;
-  review_count: number;
-  delivery_fee: number;
-  est_delivery_min: number;
-  est_delivery_max: number;
-  is_glatt_kosher: boolean;
-  is_open: boolean;
-}
-
-export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
+// isFavorite/onToggleFavorite are optional (mirrors the iOS
+// RestaurantCardView): pass onToggleFavorite only for signed-in users —
+// when omitted, no heart is rendered.
+export function RestaurantCard({
+  restaurant,
+  isFavorite = false,
+  onToggleFavorite,
+}: {
+  restaurant: Restaurant;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
+}) {
   return (
     <Link href={`/restaurant/${restaurant.id}`}>
       <div
@@ -46,16 +45,34 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
             </div>
           )}
 
+          {/* Favorite heart — stops the Link navigation so a heart tap never
+              opens the restaurant page. */}
+          {onToggleFavorite && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleFavorite();
+              }}
+              aria-label={
+                isFavorite
+                  ? `Remove ${restaurant.name} from favorites`
+                  : `Add ${restaurant.name} to favorites`
+              }
+              className="absolute top-3 right-3 z-30 bg-dark-900/70 hover:bg-dark-900/90 rounded-full p-2 transition-colors"
+            >
+              <Heart
+                className={`w-5 h-5 transition-colors ${
+                  isFavorite ? "text-red-500 fill-red-500" : "text-white"
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+          )}
+
           {/* Certification badge */}
           <div className="absolute top-3 left-3 z-20">
-            <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
-              {restaurant.kosher_certification}
-            </span>
-            {restaurant.is_glatt_kosher && (
-              <span className="bg-dark-900/80 text-brand-400 text-xs font-bold px-2 py-1 rounded-lg ml-1">
-                Glatt
-              </span>
-            )}
+            <KosherBadge restaurant={restaurant} size="compact" />
           </div>
         </div>
 
