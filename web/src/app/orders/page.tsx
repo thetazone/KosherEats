@@ -3,26 +3,17 @@
 import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { cart as cartApi, orders as ordersApi } from "@/lib/api";
+import { formatUSD } from "@/lib/format";
+import {
+  CANCELLABLE_ORDER_STATUSES,
+  ORDER_STATUS_META,
+  TERMINAL_ORDER_STATUSES,
+} from "@/lib/orderStatus";
 import type { Order, OrderStatus } from "@/types";
-import { RefreshCw } from "lucide-react";
+import { ClipboardList, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
-  scheduled: { label: "Scheduled", color: "text-warning-300", bg: "bg-warning-900/30" },
-  pending: { label: "Pending", color: "text-warning-400", bg: "bg-warning-900/30" },
-  accepted: { label: "Accepted", color: "text-info-400", bg: "bg-info-900/30" },
-  preparing: { label: "Preparing", color: "text-brand-400", bg: "bg-brand-900/30" },
-  ready: { label: "Ready", color: "text-success-400", bg: "bg-success-900/30" },
-  picked_up: { label: "On the way", color: "text-transit-300", bg: "bg-transit-900/30" },
-  delivered: { label: "Delivered", color: "text-success-400", bg: "bg-success-900/30" },
-  cancelled: { label: "Cancelled", color: "text-danger-400", bg: "bg-danger-900/30" },
-  rejected: { label: "Rejected", color: "text-danger-400", bg: "bg-danger-900/30" },
-};
-
-const TERMINAL_STATUSES: OrderStatus[] = ["delivered", "cancelled", "rejected"];
-const CANCELLABLE_STATUSES: OrderStatus[] = ["pending", "accepted"];
 
 /** How often an open tab re-checks the kitchen while an order is still moving. */
 const ACTIVE_POLL_MS = 20_000;
@@ -30,10 +21,6 @@ const ACTIVE_POLL_MS = 20_000;
 function isUnauthorized(err: unknown): boolean {
   const msg = String(err instanceof Error ? err.message : err).toLowerCase();
   return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
-
-function formatUSD(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function activeProgressPercent(status: OrderStatus): number {
@@ -105,8 +92,8 @@ export default function OrdersPage() {
     [router],
   );
 
-  const activeOrders = orders.filter((o) => !TERMINAL_STATUSES.includes(o.status));
-  const pastOrders = orders.filter((o) => TERMINAL_STATUSES.includes(o.status));
+  const activeOrders = orders.filter((o) => !TERMINAL_ORDER_STATUSES.includes(o.status));
+  const pastOrders = orders.filter((o) => TERMINAL_ORDER_STATUSES.includes(o.status));
   const visibleOrders = filter === "active" ? activeOrders : pastOrders;
 
   // Order currently being rated in the modal, if any. The list payload has
@@ -188,7 +175,22 @@ export default function OrdersPage() {
       <>
         <Header />
         <main className="flex-1 max-w-4xl mx-auto px-4 py-8">
-          <div className="card p-12 text-center text-dark-400">Loading your orders…</div>
+          <h1 className="text-3xl font-extrabold mb-6">Your Orders</h1>
+          <div className="space-y-4" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="card p-5 animate-pulse space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2">
+                    <div className="h-5 w-40 bg-dark-800 rounded" />
+                    <div className="h-4 w-24 bg-dark-800 rounded" />
+                  </div>
+                  <div className="h-6 w-20 bg-dark-800 rounded-full" />
+                </div>
+                <div className="h-4 w-2/3 bg-dark-800 rounded" />
+                <div className="h-8 w-48 bg-dark-800 rounded-xl" />
+              </div>
+            ))}
+          </div>
         </main>
       </>
     );
@@ -259,9 +261,11 @@ export default function OrdersPage() {
 
         {visibleOrders.length === 0 ? (
           <div className="card p-12 text-center">
-            <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
+            <ClipboardList
+              className="w-16 h-16 text-dark-600 mx-auto mb-4"
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
             <h2 className="text-xl font-bold mb-2">
               No {filter} orders
             </h2>
@@ -277,10 +281,13 @@ export default function OrdersPage() {
         ) : (
           <div className="space-y-4">
             {visibleOrders.map((order) => {
-              const statusConfig = STATUS_CONFIG[order.status];
-              const isActive = !TERMINAL_STATUSES.includes(order.status);
+              const statusMeta = ORDER_STATUS_META[order.status];
+              const isActive = !TERMINAL_ORDER_STATUSES.includes(order.status);
               const progressPercent = activeProgressPercent(order.status);
-              const canCancel = CANCELLABLE_STATUSES.includes(order.status);
+              // Mirrors backend CancelOrder: scheduled/pending/accepted, and
+              // never once an external provider owns the delivery.
+              const canCancel =
+                CANCELLABLE_ORDER_STATUSES.includes(order.status) && !order.external_delivery_id;
               const isCancelling = cancellingId === order.id;
               const isReordering = reorderingId === order.id;
               const isExpanded = expandedId === order.id;
@@ -301,8 +308,8 @@ export default function OrdersPage() {
                         })}
                       </p>
                     </div>
-                    <span className={`${statusConfig.bg} ${statusConfig.color} text-sm font-medium px-3 py-1 rounded-full`}>
-                      {statusConfig.label}
+                    <span className={`${statusMeta.pill} text-sm font-medium px-3 py-1 rounded-full`}>
+                      {statusMeta.label}
                     </span>
                   </div>
 
@@ -323,8 +330,8 @@ export default function OrdersPage() {
                         aria-valuenow={progressPercent}
                         aria-valuemin={0}
                         aria-valuemax={100}
-                        aria-valuetext={statusConfig.label}
-                        aria-label={`Order status: ${statusConfig.label}`}
+                        aria-valuetext={statusMeta.label}
+                        aria-label={`Order status: ${statusMeta.label}`}
                       >
                         <div
                           className="h-full bg-brand-500 rounded-full transition-all"
@@ -396,8 +403,11 @@ export default function OrdersPage() {
                         <button
                           onClick={() => cancelOrder(order.id)}
                           disabled={isCancelling}
-                          className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm inline-flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
+                          {isCancelling && (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                          )}
                           {isCancelling ? "Cancelling…" : "Cancel Order"}
                         </button>
                         <button
@@ -421,8 +431,11 @@ export default function OrdersPage() {
                       <button
                         onClick={() => reorder(order)}
                         disabled={isReordering}
-                        className="btn-primary py-2 px-4 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="btn-primary py-2 px-4 text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
+                        {isReordering && (
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                        )}
                         {isReordering ? "Adding to cart…" : "Reorder"}
                       </button>
                     )}

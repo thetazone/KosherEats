@@ -20,7 +20,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, Clock, Inbox, Store } from "lucide-react";
+import { ChevronRight, Clock, Inbox, Loader2, Store } from "lucide-react";
+import { ORDER_STATUS_META } from "@/lib/orderStatus";
 import { formatCents, sellerApi } from "@/lib/sellerApi";
 import type { OrderStatus, SellerOrder } from "@/types/seller";
 
@@ -56,32 +57,6 @@ const FILTER_TABS: { key: OrderFilter; label: string }[] = [
   { key: "completed", label: "Completed" },
   { key: "all", label: "All" },
 ];
-
-const STATUS_PILL: Record<OrderStatus, string> = {
-  scheduled: "bg-sky-500/15 text-sky-300",
-  pending: "bg-amber-500/15 text-amber-300",
-  accepted: "bg-blue-500/15 text-blue-300",
-  preparing: "bg-yellow-500/15 text-yellow-300",
-  ready: "bg-orange-500/15 text-orange-300",
-  picked_up: "bg-purple-500/15 text-purple-300",
-  delivered: "bg-green-500/15 text-green-300",
-  completed: "bg-green-500/15 text-green-300",
-  cancelled: "bg-red-500/15 text-red-300",
-  rejected: "bg-red-500/15 text-red-300",
-};
-
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  scheduled: "Scheduled",
-  pending: "New order",
-  accepted: "Accepted",
-  preparing: "Preparing",
-  ready: "Ready",
-  picked_up: "Out for delivery",
-  delivered: "Delivered",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  rejected: "Rejected",
-};
 
 /**
  * Merge a freshly-polled newest slice over the loaded list: fresh rows win
@@ -365,7 +340,12 @@ export default function SellerOrdersPage() {
       {hasMore && (
         <div className="mt-6 text-center">
           {loadMoreError && <p className="text-sm text-red-400 mb-3">{loadMoreError}</p>}
-          <button onClick={loadMore} disabled={loadingMore} className="btn-secondary disabled:opacity-50">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="btn-secondary inline-flex items-center gap-2 disabled:opacity-50"
+          >
+            {loadingMore && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loadingMore ? "Loading…" : "Load older orders"}
           </button>
         </div>
@@ -379,6 +359,7 @@ export default function SellerOrdersPage() {
 function OrderRow({ order, isNew }: { order: SellerOrder; isNew: boolean }) {
   const items = order.items ?? [];
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const statusMeta = ORDER_STATUS_META[order.status];
 
   return (
     <Link
@@ -429,10 +410,10 @@ function OrderRow({ order, isNew }: { order: SellerOrder; isNew: boolean }) {
         <span className="font-bold">{formatCents(order.total)}</span>
         <span
           className={`text-xs px-2 py-0.5 rounded-md font-semibold ${
-            STATUS_PILL[order.status] ?? "bg-dark-700 text-dark-300"
+            statusMeta?.pill ?? "bg-dark-700 text-dark-300"
           }`}
         >
-          {STATUS_LABEL[order.status] ?? order.status}
+          {statusMeta?.sellerLabel ?? order.status}
         </span>
       </div>
 

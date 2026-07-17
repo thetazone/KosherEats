@@ -1,7 +1,7 @@
 "use client";
 
 import { orders as ordersApi } from "@/lib/api";
-import { Star, X } from "lucide-react";
+import { Loader2, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // Post-delivery courier rating prompt — web port of the iOS
@@ -163,8 +163,9 @@ export function CourierRatingModal({
             <button
               type="submit"
               disabled={submitting}
-              className="btn-primary flex-1 py-2.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {submitting ? "Submitting…" : "Submit rating"}
             </button>
             <button

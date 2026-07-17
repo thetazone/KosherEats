@@ -4,7 +4,7 @@ import { OtpInput } from "@/components/auth/OtpInput";
 import { Header } from "@/components/layout/Header";
 import { auth } from "@/lib/api";
 import type { AuthResponse } from "@/types";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -272,8 +272,9 @@ function AuthFlow() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {loading ? "Please wait..." : "Continue"}
             </button>
           </form>
@@ -286,7 +287,10 @@ function AuthFlow() {
           </div>
 
           {/* Social login — no provider SDK is wired up yet, so these stay
-              visibly disabled rather than failing on tap. */}
+              visibly disabled rather than failing on tap. The Google/Apple
+              marks are inlined SVGs on purpose: they are brand logos with
+              mandated colors/shapes that lucide-react does not (and should
+              not) provide. */}
           <div className="space-y-3">
             <button
               type="button"
@@ -370,8 +374,9 @@ function AuthFlow() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Please wait..." : "Sign In"}
           </button>
           <p className="text-center">
@@ -402,8 +407,9 @@ function AuthFlow() {
             type="button"
             onClick={() => handleVerifyCode(code)}
             disabled={loading || code.length !== 6}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Verifying..." : "Verify"}
           </button>
           <p className="text-center text-sm text-dark-400">
@@ -502,8 +508,9 @@ function AuthFlow() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Please wait..." : "Create Account"}
           </button>
         </form>

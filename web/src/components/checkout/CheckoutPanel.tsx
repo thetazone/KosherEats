@@ -9,7 +9,6 @@
 import {
   clearPreselectedDeal,
   formatAddress,
-  formatUSD,
   isDealError,
   isUnauthorized,
   isVerificationRequired,
@@ -26,9 +25,11 @@ import {
   payments as paymentsApi,
   user as userApi,
 } from "@/lib/api";
+import { formatUSD, percentOfCents } from "@/lib/format";
 import type { Address, Cart, Deal, DeliveryQuote } from "@/types";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
+import { Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -274,7 +275,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
       return Math.min(Math.max(0, cents), tipCap);
     }
     const percent = TIP_PRESETS.find((p) => p.key === tipChoice)?.percent ?? 0;
-    return Math.min(Math.round((subtotal * percent) / 100), tipCap);
+    return Math.min(percentOfCents(subtotal, percent), tipCap);
   }, [fulfillment, tipChoice, customTip, subtotal, tipCap]);
 
   // Debounced server re-quote: any change to the cart, fulfillment, address,
@@ -730,8 +731,11 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                   <button
                     type="submit"
                     disabled={savingAddress}
-                    className="btn-primary flex-1 text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
+                    {savingAddress && (
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    )}
                     {savingAddress ? "Saving…" : "Save address"}
                   </button>
                   <button
@@ -863,9 +867,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
               {TIP_PRESETS.map((p) => {
                 const selected = tipChoice === p.key;
                 const presetCents =
-                  p.percent > 0
-                    ? Math.min(Math.round((subtotal * p.percent) / 100), tipCap)
-                    : null;
+                  p.percent > 0 ? Math.min(percentOfCents(subtotal, p.percent), tipCap) : null;
                 return (
                   <button
                     key={p.key}
@@ -996,10 +998,10 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
           <div className="card w-full max-w-md p-6 relative">
             <button
               onClick={() => setCheckoutOpen(false)}
-              className="absolute top-3 right-3 text-dark-400 hover:text-white"
+              className="absolute top-3 right-3 p-1 rounded-lg text-dark-400 hover:text-white hover:bg-dark-800 transition-colors"
               aria-label="Close checkout"
             >
-              ✕
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
             <h2 className="text-xl font-bold mb-1">Checkout</h2>
             <p className="text-dark-400 text-sm mb-5">
@@ -1084,8 +1086,9 @@ function CheckoutForm({
       <button
         type="submit"
         disabled={!stripe || !elements || submitting}
-        className="btn-primary w-full text-center disabled:opacity-50 disabled:cursor-not-allowed"
+        className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
       >
+        {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
         {submitting ? "Processing…" : `Pay ${formatUSD(total)}`}
       </button>
     </form>

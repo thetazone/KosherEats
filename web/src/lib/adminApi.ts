@@ -219,6 +219,7 @@ export const adminApi = {
   orders: () => adminFetch<AdminOrder[]>("/admin/orders"),
 };
 
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+// Money display goes through the ONE shared formatter in lib/format.ts —
+// re-exported under the historical admin-side name so admin pages keep their
+// existing import while no duplicate `/ 100` math lives here.
+export { formatUSD as formatCents } from "./format";

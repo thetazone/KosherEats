@@ -139,10 +139,6 @@ export function isDealConflictRefunded(err: unknown): boolean {
   return msg.includes("payment was refunded");
 }
 
-export function formatUSD(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 export function formatAddress(a: Address): string {
   return `${a.street}${a.apt ? ` ${a.apt}` : ""}, ${a.city}, ${a.state} ${a.zip_code}`;
 }

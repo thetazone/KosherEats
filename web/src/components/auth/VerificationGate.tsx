@@ -2,7 +2,7 @@
 
 import { OtpInput } from "@/components/auth/OtpInput";
 import { user as userApi } from "@/lib/api";
-import { CheckCircle2, Mail, Smartphone } from "lucide-react";
+import { CheckCircle2, Loader2, Mail, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 // Mandatory consumer verification: the backend hard-gates payments.intent and
@@ -317,8 +317,9 @@ export function VerificationGate({
           <button
             type="submit"
             disabled={loading || !isEmailShaped}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Sending…" : "Send code"}
           </button>
         </form>
@@ -338,8 +339,9 @@ export function VerificationGate({
             type="button"
             onClick={() => void verifyEmailCode(emailCode)}
             disabled={loading || emailCode.length !== EMAIL_CODE_LENGTH}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Verifying…" : "Verify"}
           </button>
           <div className="flex items-center justify-between text-sm">
@@ -407,8 +409,9 @@ export function VerificationGate({
           <button
             type="submit"
             disabled={loading || phoneDigits.length < 7}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Sending…" : "Send code"}
           </button>
         </form>
@@ -448,8 +451,9 @@ export function VerificationGate({
           <button
             type="submit"
             disabled={loading || phoneCode.trim().length < 4}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Verifying…" : "Verify"}
           </button>
           <div className="flex items-center justify-between text-sm">

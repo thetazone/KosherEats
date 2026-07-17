@@ -2,7 +2,7 @@
 
 import { orders as ordersApi } from "@/lib/api";
 import type { ChatMessage } from "@/types";
-import { MessageCircle, Send } from "lucide-react";
+import { Loader2, MessageCircle, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 // Order-scoped chat thread shared by the consumer, seller, and assigned
@@ -251,7 +251,11 @@ export function OrderChat({
           aria-label="Send message"
           className="btn-primary p-2.5 rounded-full flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Send className="w-4 h-4" aria-hidden="true" />
+          {sending ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Send className="w-4 h-4" aria-hidden="true" />
+          )}
         </button>
       </form>
     </div>

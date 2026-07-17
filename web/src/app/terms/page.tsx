@@ -1,3 +1,4 @@
+import { Header } from "@/components/layout/Header";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -7,7 +8,9 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-16 text-dark-200">
+    <>
+      <Header />
+      <main className="max-w-3xl mx-auto px-6 py-16 text-dark-200">
       <h1 className="text-4xl font-bold text-white mb-2">Terms of Service</h1>
       <p className="text-dark-400 mb-10">Last updated: April 5, 2026</p>
 
@@ -115,6 +118,7 @@ export default function TermsPage() {
           </p>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

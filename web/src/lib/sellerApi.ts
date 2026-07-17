@@ -399,10 +399,11 @@ export const sellerApi = {
   },
 };
 
-/** Render integer cents as dollars, e.g. 1234 -> "$12.34". */
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+// Money DISPLAY helpers live in lib/format.ts — the ONE place cents become
+// display dollars. The seller lane re-exports them (formatCents is the
+// historical seller-side name) so every price renders through one shared
+// formatter and no page carries its own `/ 100` math.
+export { formatUSD as formatCents, centsToDollars } from "./format";
 
 /**
  * Parse a dollars string ("12", "12.5", "$12.34", "12,34") into integer
