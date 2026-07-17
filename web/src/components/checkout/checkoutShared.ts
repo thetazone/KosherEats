@@ -2,7 +2,7 @@
 // and components/checkout/CheckoutPanel.tsx (the live checkout flow). All
 // money values are integer cents.
 
-import { auth as authApi, orders as ordersApi } from "@/lib/api";
+import { orders as ordersApi, refreshAccessToken } from "@/lib/api";
 import type { Address } from "@/types";
 
 export const VERIFY_ROUTE = "/account/verify?next=/cart";
@@ -168,24 +168,47 @@ export function providerLabel(provider: string): string {
   }
 }
 
-// Refresh the 15-min access token in place (the order POST can outlive it).
-// Returns the new token, or null if refresh is unavailable/failed.
+// Refresh the 15-min access token in place (the order POST can outlive it) via
+// the api.ts single-flight refresh — the SAME in-flight promise fetchAPI's
+// 401-replay uses, so recovery and any concurrent request can never race two
+// POST /auth/refresh calls (the loser of that race burns the rotated refresh
+// token and kills the session). api.ts owns the localStorage writes; on a dead
+// refresh token it clears the stored session and this returns null.
 async function refreshToken(onTokenRefreshed?: (t: string) => void): Promise<string | null> {
-  const rt = typeof window !== "undefined" ? window.localStorage.getItem("refresh_token") : null;
-  if (!rt) return null;
+  const fresh = await refreshAccessToken();
+  if (fresh) onTokenRefreshed?.(fresh);
+  return fresh;
+}
+
+// Set when pending-order recovery is interrupted by a dead session (access
+// token expired AND the refresh token is missing/dead). Consumed by the cart
+// page on its next mount — i.e. after the user signs back in and returns via
+// /auth?next=/cart — so the resumed recovery is announced explicitly instead
+// of running silently under a banner the user has no context for.
+const RECOVERY_AUTH_FLAG_KEY = "pending_order_auth_interrupted";
+
+export function markRecoveryAuthInterrupted(): void {
+  if (typeof window === "undefined") return;
   try {
-    const data = (await authApi.refresh(rt)) as { token: string; refresh_token?: string };
-    if (!data?.token) return null;
-    window.localStorage.setItem("token", data.token);
-    if (data.refresh_token) window.localStorage.setItem("refresh_token", data.refresh_token);
-    onTokenRefreshed?.(data.token);
-    return data.token;
+    window.localStorage.setItem(RECOVERY_AUTH_FLAG_KEY, "1");
   } catch {
-    return null;
+    // Storage unavailable — the PendingOrder snapshot itself still drives
+    // recovery; only the explanatory copy is lost.
   }
 }
 
-export type SubmitOutcome = "ok" | "failed" | "verify" | "refunded";
+export function consumeRecoveryAuthInterrupted(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const set = window.localStorage.getItem(RECOVERY_AUTH_FLAG_KEY) !== null;
+    window.localStorage.removeItem(RECOVERY_AUTH_FLAG_KEY);
+    return set;
+  } catch {
+    return false;
+  }
+}
+
+export type SubmitOutcome = "ok" | "failed" | "verify" | "refunded" | "unauthorized";
 
 // Re-POST a persisted order with backoff. On 401, refresh the token once and
 // retry with the fresh one. Clears the persisted intent on success; leaves it
@@ -194,6 +217,10 @@ export type SubmitOutcome = "ok" | "failed" | "verify" | "refunded";
 // so it is re-attempted when the user returns from /account/verify.
 // "refunded" means the once-per-user deal guard fired server-side and the
 // charge was refunded — the pending order is cleared, nothing to retry.
+// "unauthorized" means the session is dead AND the refresh token couldn't
+// revive it — the pending order stays persisted (a captured charge must never
+// lose its recovery record) and the caller routes through sign-in; recovery
+// resumes on the next /cart mount.
 //
 // probeExisting: recovery paths (page remount / manual retry) first ask
 // GET /orders/by-payment-intent/{pi} whether the original POST actually
@@ -256,6 +283,11 @@ export async function submitPendingOrder(
           activeToken = fresh;
           continue; // retry immediately with the refreshed token
         }
+        // Refresh token missing or dead — every further retry would 401 the
+        // same way, so backing off is pointless. Bail with the snapshot still
+        // persisted so the caller can flag the interruption and route through
+        // sign-in; the post-re-login mount resumes recovery.
+        return "unauthorized";
       }
       if (attempt < ORDER_RETRY_DELAYS_MS.length) {
         await sleep(ORDER_RETRY_DELAYS_MS[attempt]);

@@ -1,7 +1,7 @@
 "use client";
 
-import { cart as cartApi } from "@/lib/api";
-import type { Cart, User } from "@/types";
+import { cart as cartApi, user as userApi } from "@/lib/api";
+import type { Address, Cart, User } from "@/types";
 import { MapPin, Menu, ShoppingCart, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,9 +24,11 @@ export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const [defaultAddressLabel, setDefaultAddressLabel] = useState<string | null>(null);
 
-  // Hydrate auth + cart on mount and whenever the route changes so the badge
-  // and nav stay in sync after login, sign-out, or cart mutations.
+  // Hydrate auth + cart + default address on mount and whenever the route
+  // changes so the badge and nav stay in sync after login, sign-out, cart
+  // mutations, or address edits.
   const refresh = useCallback(async () => {
     const u = readUser();
     setUser(u);
@@ -34,17 +36,34 @@ export function Header() {
     const token =
       typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
+      // Signed out is the only state (besides a confirmed-empty cart) that
+      // zeroes the badge.
       setCartCount(0);
+      setDefaultAddressLabel(null);
       return;
     }
-    try {
-      const c = (await cartApi.get(token)) as Cart;
-      setCartCount(c.items.reduce((sum, item) => sum + item.quantity, 0));
-    } catch {
-      // Non-fatal — leave the badge at its last known value rather than
-      // breaking the header if the cart fetch fails (e.g. expired token).
-      setCartCount(0);
+
+    const [cartResult, addressesResult] = await Promise.allSettled([
+      cartApi.get(token) as Promise<Cart>,
+      userApi.listAddresses(token),
+    ]);
+
+    if (cartResult.status === "fulfilled") {
+      // A successful fetch is authoritative — an empty cart legitimately
+      // renders as 0 here.
+      setCartCount(
+        cartResult.value.items.reduce((sum, item) => sum + item.quantity, 0)
+      );
     }
+    // On failure, keep the last-known count: a transient fetch error must not
+    // flash the badge to 0.
+
+    if (addressesResult.status === "fulfilled") {
+      const addresses: Address[] = addressesResult.value;
+      const preferred = addresses.find((a) => a.is_default) ?? addresses[0];
+      setDefaultAddressLabel(preferred ? preferred.label : null);
+    }
+    // On failure, keep the last-known label for the same reason as the badge.
   }, []);
 
   useEffect(() => {
@@ -65,11 +84,14 @@ export function Header() {
     }
     setUser(null);
     setCartCount(0);
+    setDefaultAddressLabel(null);
     setIsMenuOpen(false);
     router.replace("/");
   }
 
-  const addressHref = user ? "/cart" : "/auth";
+  // Signed-in users manage saved addresses; signed-out users are sent to auth
+  // first (addresses are account-scoped).
+  const addressHref = user ? "/account/addresses" : "/auth";
 
   return (
     <header className="bg-dark-900/80 backdrop-blur-md border-b border-dark-800 sticky top-0 z-50">
@@ -85,10 +107,19 @@ export function Header() {
         {/* Delivery Address */}
         <Link
           href={addressHref}
-          className="hidden md:flex items-center gap-2 bg-dark-800 rounded-full px-4 py-2 text-sm hover:bg-dark-700 transition-colors"
+          aria-label={
+            defaultAddressLabel
+              ? `Delivery address: ${defaultAddressLabel}. Manage saved addresses`
+              : "Enter delivery address"
+          }
+          className="hidden md:flex items-center gap-2 bg-dark-800 rounded-full px-4 py-2 text-sm hover:bg-dark-700 transition-colors max-w-[16rem]"
         >
-          <MapPin className="w-4 h-4 text-brand-500" aria-hidden="true" />
-          <span className="text-dark-300">Enter delivery address</span>
+          <MapPin className="w-4 h-4 shrink-0 text-brand-500" aria-hidden="true" />
+          <span
+            className={`truncate ${defaultAddressLabel ? "text-white font-medium" : "text-dark-300"}`}
+          >
+            {defaultAddressLabel ?? "Enter delivery address"}
+          </span>
         </Link>
 
         {/* Nav */}

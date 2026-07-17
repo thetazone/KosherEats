@@ -14,11 +14,40 @@ import type { Cart, Order, OrderStatus, Restaurant } from "@/types";
 import { ClipboardList, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function isUnauthorized(err: unknown): boolean {
   const msg = String(err instanceof Error ? err.message : err).toLowerCase();
   return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
+}
+
+// Orders whose courier the user has already rated, persisted across sessions.
+// The backend 200s on re-rates (silently overwriting the earlier rating), so
+// showing "Rate Courier" again after a reload would let a second submit
+// clobber the first without any error. localStorage is a cache — the server's
+// courier_rating (seen when we hydrate order details) is the source of truth
+// and re-seeds this set for ratings made on other devices.
+const RATED_ORDERS_KEY = "rated_order_ids";
+
+function loadRatedIds(): Set<string> {
+  try {
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(RATED_ORDERS_KEY) ?? "[]"
+    );
+    return new Set(
+      Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : []
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistRatedIds(ids: Set<string>): void {
+  try {
+    window.localStorage.setItem(RATED_ORDERS_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Storage unavailable (private mode / quota) — in-session state still applies.
+  }
 }
 
 function activeProgressWidth(status: OrderStatus): string {
@@ -49,11 +78,18 @@ export default function OrdersPage() {
   const [reorderingId, setReorderingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Order currently being rated in the modal, if any. The list payload has
-  // no courier/rating info (that only comes on single-order GETs), so we
-  // track ids rated this session to hide the button after submission.
+  // Order currently being rated in the modal, if any.
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
+  // Ids already rated — seeded from localStorage on mount, extended when a
+  // rating is submitted here or discovered server-side during hydration.
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
+  // The /orders list payload has no courier / rating / delivery-mode info
+  // (only single-order GETs carry it), so delivered delivery orders are
+  // hydrated with a per-order GET before "Rate Courier" is offered.
+  const [orderDetails, setOrderDetails] = useState<Record<string, Order>>({});
+  // Ids with a hydration GET already issued this mount (success or failure) —
+  // keeps the effect from refetching in a loop.
+  const hydratingRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
@@ -62,9 +98,52 @@ export default function OrdersPage() {
       return;
     }
     setToken(t);
+    setRatedIds(loadRatedIds());
     void loadOrders(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const markRated = useCallback((id: string) => {
+    setRatedIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      persistRatedIds(next);
+      return next;
+    });
+  }, []);
+
+  // Hydrate courier info for delivered delivery orders on the Past tab (the
+  // only place the rate button can appear). Already-rated ids are skipped —
+  // no button either way — so the extra GETs shrink as orders get rated.
+  useEffect(() => {
+    if (!token || filter !== "past") return;
+    for (const order of orders) {
+      if (
+        order.status !== "delivered" ||
+        order.fulfillment_type === "pickup" ||
+        ratedIds.has(order.id) ||
+        hydratingRef.current.has(order.id)
+      ) {
+        continue;
+      }
+      hydratingRef.current.add(order.id);
+      void ordersApi
+        .get(token, order.id)
+        .then((detail) => {
+          setOrderDetails((prev) => ({ ...prev, [order.id]: detail }));
+          if (detail.courier_rating != null) {
+            // Rated in a prior session / on another device — remember it so
+            // the button stays hidden and this GET is skipped next visit.
+            markRated(order.id);
+          }
+        })
+        .catch(() => {
+          // Hydration failed: the button stays hidden, which is the safe
+          // default (never offer a rating we can't verify applies).
+        });
+    }
+  }, [token, filter, orders, ratedIds, markRated]);
 
   async function loadOrders(t: string) {
     setLoading(true);
@@ -308,6 +387,23 @@ export default function OrdersPage() {
               const isCancelling = cancellingId === order.id;
               const isReordering = reorderingId === order.id;
               const isExpanded = expandedId === order.id;
+              const pickup = order.fulfillment_type === "pickup";
+              // "On the way" is delivery copy — a picked_up pickup order was
+              // collected by the customer (mirrors the tracking headline).
+              const statusLabel =
+                pickup && order.status === "picked_up" ? "Picked up" : statusMeta.label;
+              // Rate Courier requires a hydrated single-order payload proving
+              // there's an actual platform courier to rate — self-delivery
+              // (delivery_mode "restaurant") and external-provider orders
+              // never get one — and no rating already on file server-side.
+              const detail = orderDetails[order.id];
+              const canRate =
+                order.status === "delivered" &&
+                !pickup &&
+                !ratedIds.has(order.id) &&
+                detail != null &&
+                detail.courier != null &&
+                detail.courier_rating == null;
               return (
                 <div key={order.id} className="card p-5 hover:border-dark-600 transition-colors">
                   <div className="flex items-start justify-between mb-3">
@@ -330,7 +426,7 @@ export default function OrdersPage() {
                       </p>
                     </div>
                     <span className={`${statusMeta.pill} text-sm font-medium px-3 py-1 rounded-full`}>
-                      {statusMeta.label}
+                      {statusLabel}
                     </span>
                   </div>
 
@@ -341,7 +437,9 @@ export default function OrdersPage() {
                         <span>Order placed</span>
                         <span>Preparing</span>
                         <span>Ready</span>
-                        <span>Delivered</span>
+                        {/* Pickup orders end with the customer collecting the
+                            food, not a delivery. */}
+                        <span>{pickup ? "Picked up" : "Delivered"}</span>
                       </div>
                       <div className="h-1.5 bg-dark-800 rounded-full overflow-hidden">
                         <div
@@ -376,10 +474,25 @@ export default function OrdersPage() {
                         <span>Subtotal</span>
                         <span>{formatUSD(order.subtotal)}</span>
                       </div>
-                      <div className="flex justify-between text-dark-400">
-                        <span>Delivery fee</span>
-                        <span>{formatUSD(order.delivery_fee)}</span>
-                      </div>
+                      {/* Every non-zero money component renders so the rows
+                          always sum to Total (subtotal - discount + fees +
+                          tax + tip == total) — mirrors the /orders/[id]
+                          receipt. */}
+                      {(order.discount ?? 0) > 0 && (
+                        <div className="flex justify-between text-green-400">
+                          <span>Discount</span>
+                          <span>-{formatUSD(order.discount ?? 0)}</span>
+                        </div>
+                      )}
+                      {/* Pickup orders have no delivery fee — hide the row
+                          unless a non-zero fee is present (keeps the sum
+                          honest even on anomalous data). */}
+                      {(!pickup || order.delivery_fee > 0) && (
+                        <div className="flex justify-between text-dark-400">
+                          <span>Delivery fee</span>
+                          <span>{formatUSD(order.delivery_fee)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-dark-400">
                         <span>Service fee</span>
                         <span>{formatUSD(order.service_fee)}</span>
@@ -388,12 +501,20 @@ export default function OrdersPage() {
                         <span>Tax</span>
                         <span>{formatUSD(order.tax)}</span>
                       </div>
+                      {(order.courier_tip ?? 0) > 0 && (
+                        <div className="flex justify-between text-dark-400">
+                          <span>Courier tip</span>
+                          <span>{formatUSD(order.courier_tip ?? 0)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-bold text-base border-t border-dark-700 pt-2">
                         <span>Total</span>
                         <span className="text-brand-400">{formatUSD(order.total)}</span>
                       </div>
                       <p className="text-dark-500 text-xs pt-1">
-                        Delivered to {order.delivery_address}
+                        {pickup
+                          ? `Pickup from ${order.restaurant_name}`
+                          : `Delivered to ${order.delivery_address}`}
                       </p>
                     </div>
                   )}
@@ -433,16 +554,14 @@ export default function OrdersPage() {
                         {isReordering ? "Adding to cart…" : "Reorder"}
                       </button>
                     )}
-                    {order.status === "delivered" &&
-                      order.fulfillment_type !== "pickup" &&
-                      !ratedIds.has(order.id) && (
-                        <button
-                          onClick={() => setRatingOrderId(order.id)}
-                          className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
-                        >
-                          Rate Courier
-                        </button>
-                      )}
+                    {canRate && (
+                      <button
+                        onClick={() => setRatingOrderId(order.id)}
+                        className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
+                      >
+                        Rate Courier
+                      </button>
+                    )}
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : order.id)}
                       className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
@@ -457,18 +576,15 @@ export default function OrdersPage() {
         )}
       </main>
 
-      {/* Courier rating modal. No courier name here — the list payload
-          doesn't carry courier info (only single-order GETs do). */}
+      {/* Courier rating modal — courier name comes from the hydrated
+          single-order payload (the button only renders once it's loaded). */}
       {ratingOrderId && token && (
         <CourierRatingModal
           token={token}
           orderId={ratingOrderId}
+          courierFirstName={orderDetails[ratingOrderId]?.courier?.first_name}
           onSubmitted={() => {
-            setRatedIds((prev) => {
-              const next = new Set(prev);
-              next.add(ratingOrderId);
-              return next;
-            });
+            markRated(ratingOrderId);
             setRatingOrderId(null);
           }}
           onClose={() => setRatingOrderId(null)}

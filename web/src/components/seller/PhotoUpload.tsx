@@ -60,10 +60,12 @@ export function PhotoUpload({
     <div>
       <span className="block text-sm text-dark-300 mb-1.5">{label}</span>
       {hint && <p className="text-xs text-dark-500 mb-2">{hint}</p>}
+      {/* Extension entries in `accept` keep HEIC/HEIF selectable in pickers
+          whose OS has no MIME registration for them (else greyed out). */}
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/heic"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
         onChange={onFileSelected}
         className="sr-only"
         aria-label={`Upload ${label.toLowerCase()}`}

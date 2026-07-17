@@ -67,7 +67,11 @@ async function runRefresh(): Promise<string | null> {
 }
 
 // Resolve the shared refresh once, then clear it so a later expiry can retry.
-function refreshAccessToken(): Promise<string | null> {
+// Exported for the checkout pending-order recovery path (checkoutShared.ts):
+// recovery MUST share THIS single-flight — a second, independent POST
+// /auth/refresh racing it would burn the rotated refresh token and kill the
+// session mid-recovery.
+export function refreshAccessToken(): Promise<string | null> {
   if (!refreshInFlight) {
     refreshInFlight = runRefresh().finally(() => {
       refreshInFlight = null;

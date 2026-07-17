@@ -1,9 +1,10 @@
 "use client";
 
 import {
-  clearPendingOrder,
+  consumeRecoveryAuthInterrupted,
   isUnauthorized,
   loadPendingOrder,
+  markRecoveryAuthInterrupted,
   submitPendingOrder,
   VERIFY_ROUTE,
   type PendingOrder,
@@ -40,6 +41,10 @@ export default function CartPage() {
   // clear state instead of silently navigating away if orders.create fails.
   const [finalizing, setFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  // Set when this mount's recovery resumes after a dead session forced a
+  // re-login mid-recovery — the banner must say WHY an order is being
+  // finalized the user didn't just place.
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
@@ -71,6 +76,15 @@ export default function CartPage() {
       router.push("/orders");
     } else if (outcome === "verify") {
       router.push(VERIFY_ROUTE);
+    } else if (outcome === "unauthorized") {
+      // Session died mid-recovery and the refresh token couldn't revive it.
+      // The PendingOrder snapshot STAYS persisted (the captured charge must
+      // never lose its recovery record); flag the interruption so the
+      // post-re-login mount explains the resumed recovery, then route through
+      // sign-in and straight back here via ?next=/cart.
+      markRecoveryAuthInterrupted();
+      window.localStorage.removeItem("token");
+      router.replace("/auth?next=/cart");
     } else if (outcome === "refunded") {
       // The once-per-user deal guard fired inside CreateOrder — the backend
       // refunded the charge and no order exists. Nothing to retry; the cart
@@ -90,6 +104,15 @@ export default function CartPage() {
   async function recoverPendingOrder(t: string) {
     const pending = loadPendingOrder();
     if (!pending) return;
+    // A dead session interrupted the previous recovery attempt and the user
+    // has just signed back in (auth routed back via ?next=/cart). Say so
+    // explicitly — a silent "Finishing your order…" for an order they don't
+    // remember placing reads like a double-charge.
+    if (consumeRecoveryAuthInterrupted()) {
+      setRecoveryNotice(
+        "You were signed out before your last order could be confirmed. Your payment was already captured — we're finishing that order now. Please don't pay again."
+      );
+    }
     setFinalizing(true);
     setFinalizeError(null);
     const outcome = await submitPendingOrder(pending, t, {
@@ -263,6 +286,9 @@ export default function CartPage() {
             role="status"
             aria-live="polite"
           >
+            {recoveryNotice && (
+              <p className="text-dark-100 font-medium mb-3">{recoveryNotice}</p>
+            )}
             {finalizing ? (
               <p className="text-dark-200">Finishing your order… please don&apos;t close this tab.</p>
             ) : loadPendingOrder() ? (

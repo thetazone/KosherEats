@@ -439,6 +439,40 @@ const UPLOADABLE_CONTENT_TYPES = new Set([
 ]);
 
 /**
+ * Filename-extension fallback for browsers that report an empty or generic
+ * MIME type for the selected file — typical for iPhone HEIC photos picked in
+ * browsers/OSes that don't know the HEIC type. Values must be presign-legal
+ * content types; note the backend does NOT allowlist "image/heif", so .heif
+ * maps to "image/heic" (same codec family, and what S3/iOS use in practice).
+ */
+const EXTENSION_CONTENT_TYPES: Record<string, string> = {
+  heic: "image/heic",
+  heif: "image/heic",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
+
+/**
+ * Work out the content type to presign/PUT with. Trust the browser-declared
+ * MIME type when it's one the backend accepts; otherwise fall back to
+ * sniffing the filename extension so empty/unknown-typed files (iPhone HEIC)
+ * still upload. Returns null only for clearly-non-image files — neither the
+ * declared type nor the extension is a supported image format.
+ */
+function resolveUploadContentType(file: File): string | null {
+  const declared = file.type.toLowerCase();
+  if (UPLOADABLE_CONTENT_TYPES.has(declared)) return declared;
+  // Browsers that do know HEIF report "image/heif"; the backend allowlist
+  // only has "image/heic", so normalize rather than reject.
+  if (declared === "image/heif") return "image/heic";
+
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  return EXTENSION_CONTENT_TYPES[ext] ?? null;
+}
+
+/**
  * Full photo-upload flow: presign -> PUT the bytes straight to S3 (the file
  * never passes through our API server) -> return the durable public URL to
  * persist on the record. Mirrors the iOS UploadService, including the dev
@@ -446,8 +480,8 @@ const UPLOADABLE_CONTENT_TYPES = new Set([
  * skip the PUT and use the returned public URL as-is).
  */
 export async function uploadImage(file: File, kind: SellerUploadKind): Promise<string> {
-  const contentType = file.type.toLowerCase();
-  if (!UPLOADABLE_CONTENT_TYPES.has(contentType)) {
+  const contentType = resolveUploadContentType(file);
+  if (!contentType) {
     throw new Error("Unsupported image type — use a JPEG, PNG, WebP, or HEIC photo.");
   }
 

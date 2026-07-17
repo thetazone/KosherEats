@@ -129,9 +129,12 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
 
   // ASAP vs scheduled. scheduledAt is the raw datetime-local value (local tz);
   // it is converted to RFC3339 only when the order is built. Scheduling does
-  // NOT affect pricing, so it never triggers a re-quote.
+  // NOT affect pricing, so it never triggers a re-quote. scheduleError is the
+  // on-selection validation result (the input's min/max are advisory in most
+  // browsers, so the 45-min/7-day bounds must be enforced in code).
   const [timing, setTiming] = useState<Timing>("asap");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   // Deals for the cart's restaurant (active + unexpired, server-filtered).
   // Applying one re-quotes the intent with applied_deal_id so the discount
@@ -164,6 +167,12 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // True from the moment confirmPayment is submitted until the attempt
+  // settles (reported up by CheckoutForm). While true the modal must be
+  // un-dismissable — closing mid-confirmation could hide a charge that is
+  // about to capture. Backdrop clicks and Escape never dismiss this modal by
+  // design; this flag locks the remaining path, the X button.
+  const [paymentBusy, setPaymentBusy] = useState(false);
 
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addrForm, setAddrForm] = useState({
@@ -427,22 +436,31 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     setAppliedDealId(id);
   }
 
-  // Validates the chosen scheduled time. Called BEFORE opening the Stripe
-  // modal AND again immediately before confirmPayment — a just-passed
-  // scheduled time must stop the flow before any card is charged (same
+  // Validates a raw datetime-local value against the advertised bounds —
+  // INCLUDING the 45-minute minimum lead the picker copy promises. Runs on
+  // selection (inline scheduleError), BEFORE opening the Stripe modal, AND
+  // again immediately before confirmPayment — a time that slipped inside the
+  // lead window must stop the flow before any card is charged (same
   // pre-charge guard as iOS CheckoutViewModel.scheduledTimeIsValid).
-  function scheduleProblem(): string | null {
-    if (timing !== "scheduled") return null;
-    if (!scheduledAt) return "Pick a time for your scheduled order.";
-    const d = new Date(scheduledAt);
+  function scheduleProblemFor(value: string): string | null {
+    if (!value) return "Pick a time for your scheduled order.";
+    const d = new Date(value);
     if (isNaN(d.getTime())) return "Pick a valid time for your scheduled order.";
     if (d.getTime() <= Date.now()) {
       return "Your scheduled time has passed. Please select a new time.";
+    }
+    if (d.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS) {
+      return "Scheduled orders need at least 45 minutes of lead time — pick a later time.";
     }
     if (d.getTime() > Date.now() + MAX_SCHEDULE_AHEAD_MS) {
       return "Scheduled orders can be at most 7 days ahead.";
     }
     return null;
+  }
+
+  function scheduleProblem(): string | null {
+    if (timing !== "scheduled") return null;
+    return scheduleProblemFor(scheduledAt);
   }
 
   // Open the Stripe modal against the CURRENT intent — the totals the user is
@@ -472,18 +490,25 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
       setCheckoutError(problem);
       return;
     }
+    setPaymentBusy(false);
     setCheckoutOpen(true);
   }
 
   // Called only AFTER Stripe confirmPayment has captured the charge. We
-  // persist the order intent to localStorage FIRST so that if orders.create
-  // fails for any reason the order can be re-attempted on the next mount —
-  // the customer is never charged with no order. Submission itself belongs to
-  // the page (onPaymentCaptured), which owns the finalizing/retry UI.
+  // persist the order intent to localStorage FIRST — before ANY step that can
+  // throw — so a captured charge can never miss its recovery record: if
+  // orders.create fails for any reason the order is re-attempted on the next
+  // mount and the customer is never charged with no order. Submission itself
+  // belongs to the page (onPaymentCaptured), which owns the finalizing/retry
+  // UI. In particular there is NO pre-save guard that throws: quotedAddress is
+  // guaranteed for delivery by beginCheckout (and re-quotes are suppressed
+  // while the modal is open), but even if it were somehow missing, throwing
+  // here would strand the charge with no snapshot — instead the snapshot is
+  // saved with what we have and the page's retry loop + "don't pay again"
+  // banner own the convergence.
   async function handlePaymentSucceeded(paymentIntentId: string) {
     const isPickup = fulfillment === "pickup";
     const addr = quotedAddress;
-    if (!isPickup && !addr) throw new Error("No delivery address selected");
 
     // RFC3339 timestamp for the backend; null = ASAP (field omitted).
     const scheduledForISO =
@@ -557,7 +582,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     setSavingAddress(true);
     setAddressError(null);
     try {
-      await userApi.addAddress(token, {
+      const created = await userApi.addAddress(token, {
         label: addrForm.label.trim() || "Home",
         street,
         city,
@@ -567,9 +592,12 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
         lng,
       });
       const fresh = (await userApi.listAddresses(token)) as Address[];
-      setAddresses(fresh);
-      const added = fresh.find((x) => x.is_default) ?? fresh[fresh.length - 1];
-      if (added) setSelectedAddressId(added.id);
+      // Select the address the user JUST entered — POST /user/addresses
+      // returns the created row, so pin its id. (Preferring is_default here
+      // used to snap the picker back to the OLD default address whenever the
+      // user already had one.)
+      setAddresses(fresh.some((x) => x.id === created.id) ? fresh : [...fresh, created]);
+      setSelectedAddressId(created.id);
       setShowAddressForm(false);
       setAddrForm({ label: "Home", street: "", city: "", state: "", zip_code: "", lat: "", lng: "" });
     } catch (err) {
@@ -588,7 +616,10 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
   const canPlaceOrder =
     cart.items.length > 0 &&
     (fulfillment === "pickup" || !!selectedAddressId) &&
-    (timing === "asap" || !!scheduledAt) &&
+    // A scheduled order needs a chosen time that passed on-selection
+    // validation. (beginCheckout/validateBeforePay still re-validate against
+    // the clock — scheduleError only reflects the moment of selection.)
+    (timing === "asap" || (!!scheduledAt && !scheduleError)) &&
     (needsVerification || (!!intent && !previewPending && !previewError));
 
   const stripeOptions = useMemo(
@@ -796,7 +827,10 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
           >
             <button
               type="button"
-              onClick={() => setTiming("asap")}
+              onClick={() => {
+                setTiming("asap");
+                setScheduleError(null);
+              }}
               aria-pressed={timing === "asap"}
               className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
                 timing === "asap" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
@@ -806,7 +840,12 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
             </button>
             <button
               type="button"
-              onClick={() => setTiming("scheduled")}
+              onClick={() => {
+                setTiming("scheduled");
+                // Re-validate a previously chosen time — it may have slipped
+                // inside the 45-min window while ASAP was selected.
+                setScheduleError(scheduledAt ? scheduleProblemFor(scheduledAt) : null);
+              }}
               aria-pressed={timing === "scheduled"}
               className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
                 timing === "scheduled" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
@@ -824,11 +863,24 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 min={scheduleMin}
                 max={scheduleMax}
                 value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setScheduledAt(v);
+                  // Validate on selection — min/max above are advisory in
+                  // most browsers, so a time inside the 45-minute lead window
+                  // must surface its error immediately, not at Place Order.
+                  setScheduleError(v ? scheduleProblemFor(v) : null);
+                }}
               />
-              <p className="text-xs text-dark-500 mt-1">
-                At least 45 minutes from now, up to 7 days ahead.
-              </p>
+              {scheduleError ? (
+                <p className="text-xs text-red-400 mt-1" role="alert">
+                  {scheduleError}
+                </p>
+              ) : (
+                <p className="text-xs text-dark-500 mt-1">
+                  At least 45 minutes from now, up to 7 days ahead.
+                </p>
+              )}
             </>
           )}
         </div>
@@ -1029,10 +1081,16 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                   Pay {formatUSD(intent.total)} to complete your order.
                 </p>
               </div>
+              {/* Close is disabled the whole time a confirmPayment attempt is
+                  in flight — dismissing mid-confirmation could hide a charge
+                  that is about to capture. (Backdrop/Escape never dismiss.) */}
               <button
-                onClick={() => setCheckoutOpen(false)}
-                className="w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center"
-                aria-label="Close checkout"
+                onClick={() => {
+                  if (!paymentBusy) setCheckoutOpen(false);
+                }}
+                disabled={paymentBusy}
+                className="w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dark-400"
+                aria-label={paymentBusy ? "Processing payment — checkout can't be closed" : "Close checkout"}
               >
                 <X className="w-5 h-5" aria-hidden="true" />
               </button>
@@ -1043,6 +1101,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 validateBeforePay={scheduleProblem}
                 onSuccess={handlePaymentSucceeded}
                 onError={setCheckoutError}
+                onBusyChange={setPaymentBusy}
               />
             </Elements>
           </div>
@@ -1057,12 +1116,18 @@ function CheckoutForm({
   validateBeforePay,
   onSuccess,
   onError,
+  onBusyChange,
 }: {
   total: number;
   /** Last pre-charge gate — returns an error message to abort, null to pay. */
   validateBeforePay: () => string | null;
   onSuccess: (paymentIntentId: string) => Promise<void>;
   onError: (msg: string) => void;
+  /**
+   * Mirrors the submitting flag up to the panel so it can lock the modal's
+   * close affordance while confirmation/finalize handoff is in flight.
+   */
+  onBusyChange: (busy: boolean) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -1081,6 +1146,7 @@ function CheckoutForm({
       return;
     }
     setSubmitting(true);
+    onBusyChange(true);
     setLocalError(null);
     try {
       const { error, paymentIntent } = await stripe.confirmPayment({
@@ -1114,6 +1180,7 @@ function CheckoutForm({
       onError(msg);
     } finally {
       setSubmitting(false);
+      onBusyChange(false);
     }
   }
 

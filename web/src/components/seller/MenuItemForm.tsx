@@ -190,10 +190,12 @@ export function MenuItemForm({
           {/* Photo */}
           <div>
             <span className="block text-sm text-dark-300 mb-1.5">Photo</span>
+            {/* Extension entries in `accept` keep HEIC/HEIF selectable in
+                pickers whose OS has no MIME registration for them. */}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
               onChange={onFileSelected}
               className="sr-only"
               aria-label="Upload item photo"
