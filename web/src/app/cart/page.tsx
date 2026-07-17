@@ -11,9 +11,10 @@ import {
 } from "@/components/checkout/checkoutShared";
 import { CheckoutPanel } from "@/components/checkout/CheckoutPanel";
 import { Header } from "@/components/layout/Header";
+import { KosherBadge } from "@/components/restaurant/KosherBadge";
 import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
-import type { Cart } from "@/types";
+import type { Cart, Restaurant } from "@/types";
 import { Loader2, ShoppingCart, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -27,7 +28,9 @@ export default function CartPage() {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart | null>(null);
-  const [restaurantName, setRestaurantName] = useState<string>("");
+  // Full restaurant row (not just the name): the cart header repeats the
+  // certification chip so kosher trust continues from browse → detail → cart.
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
@@ -130,8 +133,8 @@ export default function CartPage() {
       setCart(c);
       if (c.restaurant_id) {
         try {
-          const r = (await restaurantsApi.get(c.restaurant_id)) as { name: string };
-          setRestaurantName(r.name);
+          const r = (await restaurantsApi.get(c.restaurant_id)) as Restaurant;
+          setRestaurant(r);
         } catch {
           // Non-fatal — cart is still usable without the restaurant label.
         }
@@ -233,10 +236,15 @@ export default function CartPage() {
       <Header />
       <main className="flex-1 max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-extrabold mb-2">Your Cart</h1>
-        {restaurantName && (
-          <p className="text-dark-400 mb-8">
-            From <span className="text-brand-400 font-medium">{restaurantName}</span>
-          </p>
+        {restaurant && (
+          <div className="flex flex-wrap items-center gap-2 mb-8">
+            <p className="text-dark-400">
+              From <span className="text-brand-400 font-medium">{restaurant.name}</span>
+            </p>
+            {/* Certification chip repeats here so kashrus trust carries from
+                the restaurant page into checkout. */}
+            <KosherBadge restaurant={restaurant} size="compact" />
+          </div>
         )}
 
         {(finalizing || finalizeError) && (

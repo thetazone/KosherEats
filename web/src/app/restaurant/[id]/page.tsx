@@ -412,14 +412,23 @@ function RestaurantPageInner() {
               </div>
             )}
 
-            <button
-              onClick={() => setCertificateOpen(true)}
-              className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-[44px] rounded-xl transition-colors"
-              aria-label={`View kosher certificate for ${rest.name}`}
-            >
-              <FileText className="w-4 h-4" aria-hidden="true" />
-              View Kosher Certificate
-            </button>
+            {rest.kosher_certificate_url && rest.kosher_certificate_url.trim() !== "" ? (
+              <button
+                onClick={() => setCertificateOpen(true)}
+                className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-[44px] rounded-xl transition-colors"
+                aria-label={`View kosher certificate for ${rest.name}`}
+              >
+                <FileText className="w-4 h-4" aria-hidden="true" />
+                View Kosher Certificate
+              </button>
+            ) : (
+              // No certificate photo uploaded yet — reassuring fallback in
+              // place of the viewer button, never a broken image.
+              <div className="flex items-center gap-2 text-sm text-dark-300 bg-dark-800 rounded-xl px-3 py-2.5 min-h-[44px] w-full sm:w-auto sm:inline-flex">
+                <FileText className="w-4 h-4 text-dark-400 flex-shrink-0" aria-hidden="true" />
+                <span>Certificate on file with KosherEats</span>
+              </div>
+            )}
           </section>
 
           {/* Per-restaurant deals strip */}

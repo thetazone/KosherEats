@@ -3,6 +3,7 @@
 import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { OrderChat } from "@/components/orders/OrderChat";
+import { RestaurantCertChip } from "@/components/restaurant/RestaurantCertChip";
 import { orders as ordersApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import {
@@ -571,9 +572,14 @@ export default function OrderTrackingPage() {
             <div>
               <h1 className="text-2xl font-extrabold">{statusHeadline(order)}</h1>
               <p className="text-dark-400 mt-1">{statusSubtext(order)}</p>
-              <p className="text-dark-500 text-sm mt-2">
-                {order.restaurant_name} · {formatDateTime(order.created_at)}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <p className="text-dark-500 text-sm">
+                  {order.restaurant_name} · {formatDateTime(order.created_at)}
+                </p>
+                {/* Certification chip repeats on the confirmation/tracking
+                    header — kosher trust continuity through the whole order. */}
+                <RestaurantCertChip restaurantId={order.restaurant_id} />
+              </div>
             </div>
             <span
               className={`${badge.pill} text-sm font-medium px-3 py-1 rounded-full whitespace-nowrap`}
