@@ -197,6 +197,22 @@ export interface Deal {
   menu_item_image_url?: string | null;
 }
 
+// Address is a saved consumer delivery address (backend handlers/user.go).
+// lat/lng are stored verbatim (the backend does not geocode) and feed
+// delivery routing plus the distance-based delivery-fee quote.
+export interface Address {
+  id: string;
+  label: string;
+  street: string;
+  apt?: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  lat: number;
+  lng: number;
+  is_default: boolean;
+}
+
 // ChatMessage is one message in an order-scoped chat thread shared by the
 // consumer, seller, and assigned courier. sender_role comes from the JWT
 // server-side and cannot be spoofed by clients.
