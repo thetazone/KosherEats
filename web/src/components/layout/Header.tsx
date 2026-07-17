@@ -111,6 +111,12 @@ export function Header() {
             Search
           </Link>
           <Link
+            href="/deals"
+            className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+          >
+            Deals
+          </Link>
+          <Link
             href="/orders"
             className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
           >
@@ -191,6 +197,9 @@ export function Header() {
         <div className="md:hidden bg-dark-900 border-t border-dark-800 px-4 py-4 space-y-4">
           <Link href="/search" className="block text-dark-300 text-sm font-medium">
             Search
+          </Link>
+          <Link href="/deals" className="block text-dark-300 text-sm font-medium">
+            Deals
           </Link>
           <Link href="/orders" className="block text-dark-300 text-sm font-medium">
             Orders

@@ -50,6 +50,48 @@ export function clearPendingOrder(): void {
   window.localStorage.removeItem(PENDING_ORDER_KEY);
 }
 
+// Deal preselection handoff (Deals page → restaurant page → checkout). The
+// restaurant page persists the ?deal= it validated against its live deals
+// strip; CheckoutPanel consumes it once when the cart's deals load and
+// auto-applies it if it's eligible. sessionStorage keeps it per-tab and lets
+// it die with the browsing session.
+export interface PreselectedDeal {
+  restaurant_id: string;
+  deal_id: string;
+}
+
+const PRESELECTED_DEAL_KEY = "preselected_deal";
+
+export function loadPreselectedDeal(): PreselectedDeal | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PRESELECTED_DEAL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PreselectedDeal;
+    return parsed?.restaurant_id && parsed?.deal_id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function savePreselectedDeal(p: PreselectedDeal): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(PRESELECTED_DEAL_KEY, JSON.stringify(p));
+  } catch {
+    // Storage unavailable (private mode quota) — preselection is best-effort.
+  }
+}
+
+export function clearPreselectedDeal(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(PRESELECTED_DEAL_KEY);
+  } catch {
+    // Ignore — same best-effort contract as save.
+  }
+}
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export function isUnauthorized(err: unknown): boolean {

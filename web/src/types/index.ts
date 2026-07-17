@@ -304,6 +304,17 @@ export interface LinkedProvider {
   created_at: string;
 }
 
+// PaymentCustomerBundle is the Stripe Customer context for the saved-payment-
+// methods screen (GET /payments/customer, backend CustomerSheetBundle). A
+// customer_id prefixed "cus_stub_" means the server runs without Stripe keys
+// (dev-stub mode) — there is nothing real to manage. The ephemeral key is
+// consumed by the mobile CustomerSheet; web only needs the publishable key.
+export interface PaymentCustomerBundle {
+  customer_id: string;
+  ephemeral_key_secret: string;
+  publishable_key: string;
+}
+
 // DeliveryQuote is the dynamic delivery-fee quote for a restaurant → address
 // route, fetched by checkout before payment. Fees are integer cents.
 export interface DeliveryQuote {

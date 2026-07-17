@@ -8,6 +8,7 @@ import type {
   LinkedProvider,
   NotificationPreferences,
   Order,
+  PaymentCustomerBundle,
   Restaurant,
   User,
 } from "@/types";
@@ -485,7 +486,7 @@ export const payments = {
     }),
 
   // Stripe Customer bundle for the saved-payment-methods screen.
-  customer: (token: string) => fetchAPI("/payments/customer", { token }),
+  customer: (token: string) => fetchAPI<PaymentCustomerBundle>("/payments/customer", { token }),
 
   // Fresh SetupIntent client_secret for each "add a new card" flow.
   setupIntent: (token: string) =>
