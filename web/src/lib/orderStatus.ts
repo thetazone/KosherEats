@@ -2,13 +2,13 @@
 // color) across the consumer orders list, the tracking page, and the seller
 // portal — one shared map so status colors can never drift per page.
 //
-// Status set mirrors backend/internal/models/models.go: the nine consumer
-// statuses plus the legacy "completed" the seller portal still receives.
+// Status set mirrors backend/internal/models/models.go: the ten order
+// statuses, including "completed" — the terminal status for pickup orders.
 
 import type { OrderStatus } from "@/types";
 
-/** Consumer statuses + the seller-side legacy "completed". */
-export type OrderStatusKey = OrderStatus | "completed";
+/** All order statuses ("completed" is now part of the OrderStatus union). */
+export type OrderStatusKey = OrderStatus;
 
 export interface OrderStatusMeta {
   /** Consumer-facing label ("Pending", "On the way", …). */
@@ -75,6 +75,7 @@ export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
 /** Statuses an order can end in — everything else counts as active. */
 export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
   "delivered",
+  "completed",
   "cancelled",
   "rejected",
 ];

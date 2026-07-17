@@ -1,6 +1,8 @@
 export type UserRole = "consumer" | "seller" | "admin";
 export type KosherCertification = "OU" | "OK" | "Kof-K" | "Star-K" | "cRc" | "Badatz" | "Chof-K" | "other";
-export type OrderStatus = "scheduled" | "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "delivered" | "cancelled" | "rejected";
+// "completed" is the terminal status for pickup orders (backend CompleteOrder
+// when the seller taps "Customer picked up"); "delivered" closes deliveries.
+export type OrderStatus = "scheduled" | "pending" | "accepted" | "preparing" | "ready" | "picked_up" | "delivered" | "completed" | "cancelled" | "rejected";
 export type DiscountType = "percentage" | "fixed" | "bogo";
 
 export interface User {
