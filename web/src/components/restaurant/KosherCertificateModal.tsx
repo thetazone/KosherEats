@@ -98,7 +98,7 @@ export function KosherCertificateModal({
         {!hasPhoto ? (
           <StateMessage
             icon={<FileQuestion className="w-10 h-10 text-dark-500" aria-hidden="true" />}
-            title="No certificate photo on file"
+            title="Certificate on file with KosherEats"
             body={`${restaurantName} hasn't uploaded a photo of their kosher certificate yet. You can ask the restaurant or the certifying agency directly to verify.`}
           />
         ) : loadFailed ? (

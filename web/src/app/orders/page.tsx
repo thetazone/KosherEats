@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
+import { RestaurantCertChip } from "@/components/restaurant/RestaurantCertChip";
 import { cart as cartApi, orders as ordersApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import {
@@ -246,9 +247,14 @@ export default function OrdersPage() {
                 <div key={order.id} className="card p-5 hover:border-dark-600 transition-colors">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <Link href={`/orders/${order.id}`} className="hover:text-brand-400 transition-colors">
-                        <h3 className="font-bold text-lg">{order.restaurant_name}</h3>
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/orders/${order.id}`} className="hover:text-brand-400 transition-colors">
+                          <h3 className="font-bold text-lg">{order.restaurant_name}</h3>
+                        </Link>
+                        {/* Certification chip repeats on history rows — the
+                            kosher trust story continues after the sale. */}
+                        <RestaurantCertChip restaurantId={order.restaurant_id} />
+                      </div>
                       <p className="text-dark-500 text-sm">
                         {new Date(order.created_at).toLocaleDateString("en-US", {
                           month: "short",

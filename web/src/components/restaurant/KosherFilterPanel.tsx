@@ -48,10 +48,68 @@ export function matchesKosherFilters(r: Restaurant, f: KosherFilters): boolean {
   return true;
 }
 
-// The 7 certifying agencies (matches the iOS KosherCertification enum and the
-// marketing page's CERTIFICATIONS list). "other" is intentionally excluded —
-// it isn't a standard the user filters FOR.
-const AGENCIES: KosherCertification[] = ["OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
+// sessionStorage persistence so applied filters survive navigation (tap into
+// a restaurant, come back — the list is still narrowed to YOUR standards).
+// sessionStorage (not localStorage) intentionally: kashrus filters are a
+// per-visit refinement, matching the iOS in-memory KosherFilters lifetime
+// (reset on app relaunch) rather than a permanent account setting.
+const FILTERS_STORAGE_KEY = "ke_kosher_filters";
+
+// Every enum value (types/index.ts KosherCertification) — used to validate
+// persisted certifications so a stale/corrupt payload can never smuggle an
+// unknown string into filter state.
+const ALL_CERTIFICATIONS: readonly KosherCertification[] = [
+  "OU",
+  "OK",
+  "Kof-K",
+  "Star-K",
+  "cRc",
+  "Badatz",
+  "Chof-K",
+  "other",
+];
+
+export function loadKosherFilters(): KosherFilters {
+  if (typeof window === "undefined") return EMPTY_KOSHER_FILTERS;
+  try {
+    const raw = window.sessionStorage.getItem(FILTERS_STORAGE_KEY);
+    if (!raw) return EMPTY_KOSHER_FILTERS;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return EMPTY_KOSHER_FILTERS;
+    const p = parsed as Partial<Record<keyof KosherFilters, unknown>>;
+    return {
+      certifications: Array.isArray(p.certifications)
+        ? p.certifications.filter((c): c is KosherCertification =>
+            (ALL_CERTIFICATIONS as readonly string[]).includes(c as string)
+          )
+        : [],
+      glattOnly: p.glattOnly === true,
+      cholovYisroelOnly: p.cholovYisroelOnly === true,
+      pasYisroelOnly: p.pasYisroelOnly === true,
+    };
+  } catch {
+    // Corrupt JSON or storage access denied — fall back to no filters.
+    return EMPTY_KOSHER_FILTERS;
+  }
+}
+
+export function saveKosherFilters(f: KosherFilters): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (isKosherFilterActive(f)) {
+      window.sessionStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(f));
+    } else {
+      window.sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+    }
+  } catch {
+    // Storage full/blocked (private mode) — filters just won't persist.
+  }
+}
+
+// The 7 certifying agencies, in iOS KosherCertification enum order
+// (OU, OK, Kof-K, Star-K, cRc, Badatz, Chof-K). "other" is intentionally
+// excluded from the chips — it isn't a standard the user filters FOR.
+const AGENCIES: KosherCertification[] = ["OU", "OK", "Kof-K", "Star-K", "cRc", "Badatz", "Chof-K"];
 
 // Dietary toggle copy mirrors the iOS KosherFilterSheet rows verbatim.
 const DIETARY_TOGGLES: {

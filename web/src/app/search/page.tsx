@@ -4,7 +4,9 @@ import { Header } from "@/components/layout/Header";
 import {
   EMPTY_KOSHER_FILTERS,
   KosherFilterPanel,
+  loadKosherFilters,
   matchesKosherFilters,
+  saveKosherFilters,
   type KosherFilters,
 } from "@/components/restaurant/KosherFilterPanel";
 import { RestaurantCard } from "@/components/restaurant/RestaurantCard";
@@ -49,6 +51,9 @@ function SearchPageInner() {
 
   const [token, setToken] = useState<string | null>(null);
   const [favIds, setFavIds] = useState<Set<string>>(new Set());
+  // Full restaurant objects for the signed-in user's favorites — feeds the
+  // "Favorites" row (web port of the iOS HomeView favoritesSection).
+  const [favList, setFavList] = useState<Restaurant[]>([]);
   // Per-restaurant in-flight guard so double-taps can't race the optimistic
   // toggle (mirrors iOS RestaurantStore.togglingIDs).
   const togglingIds = useRef<Set<string>>(new Set());
@@ -66,17 +71,26 @@ function SearchPageInner() {
     setQuery(urlQ);
   }, [urlQ]);
 
-  // Mount: hydrate auth, then kick off the non-critical extras — favorites
-  // hearts, the suggested row, and geolocation. Each fails independently and
-  // silently; none of them may break the core search experience.
+  // Mount: hydrate auth, restore any kosher filters persisted by a previous
+  // page in this session (they must survive navigation), then kick off the
+  // non-critical extras — favorites hearts + row, the suggested row, and
+  // geolocation. Each fails independently and silently; none of them may
+  // break the core search experience.
   useEffect(() => {
+    setFilters(loadKosherFilters());
+
     const t = window.localStorage.getItem("token");
     setToken(t);
 
     if (t) {
+      // Full favorites (not just ids) so the "Favorites" row can render real
+      // cards; hearts derive from the same response.
       favoritesApi
-        .ids(t)
-        .then((ids) => setFavIds(new Set(ids)))
+        .list(t)
+        .then((rs) => {
+          setFavList(rs);
+          setFavIds(new Set(rs.map((r) => r.id)));
+        })
         .catch(() => {
           // Logged-out/expired session — leave hearts empty.
         });
@@ -168,8 +182,31 @@ function SearchPageInner() {
     [token, favIds]
   );
 
+  // Commit new kosher filters and persist them so they survive navigating
+  // into a restaurant and back (or over to any other page this session).
+  const applyFilters = useCallback((f: KosherFilters) => {
+    setFilters(f);
+    saveKosherFilters(f);
+  }, []);
+
   // Client-side refinement over the REAL results from the API.
   let filtered = results.filter((r) => matchesKosherFilters(r, filters));
+
+  // The kosher filters gate the suggested row too — a user filtering for a
+  // specific hashgacha must never be *suggested* a restaurant outside it.
+  const suggestedFiltered = suggested.filter((r) => matchesKosherFilters(r, filters));
+
+  // Favorites row content — derived from favIds over every restaurant we've
+  // seen (mirrors iOS RestaurantStore.favoriteRestaurants deriving from
+  // favoriteIDs), so hearting/un-hearting anywhere updates the row instantly.
+  // Not kosher-filter-gated, matching iOS: your saved places always show.
+  const knownById = new Map<string, Restaurant>();
+  for (const r of [...favList, ...results, ...suggested]) {
+    if (!knownById.has(r.id)) knownById.set(r.id, r);
+  }
+  const favoriteRestaurants = Array.from(favIds, (id) => knownById.get(id)).filter(
+    (r): r is Restaurant => r !== undefined
+  );
 
   filtered = [...filtered].sort((a, b) => {
     if (sortBy === "distance") {
@@ -220,7 +257,7 @@ function SearchPageInner() {
           <KosherFilterPanel
             allRestaurants={results}
             filters={filters}
-            onApply={setFilters}
+            onApply={applyFilters}
           />
 
           {/* Sort */}
@@ -241,16 +278,37 @@ function SearchPageInner() {
         </div>
 
         {/* Suggested row — browse mode only; hidden while an active text
-            search is narrowing results. */}
-        {isBrowsing && suggested.length > 0 && (
+            search is narrowing results. Gated by the kosher filters (see
+            suggestedFiltered above). */}
+        {isBrowsing && suggestedFiltered.length > 0 && (
           <section className="mb-10">
             <h2 className="text-xl font-bold mb-4">Suggested for you</h2>
             <div className="flex gap-4 overflow-x-auto pb-2">
-              {suggested.map((restaurant) => (
+              {suggestedFiltered.map((restaurant) => (
                 <div key={restaurant.id} className="w-72 flex-shrink-0">
                   <RestaurantCard
                     restaurant={restaurant}
                     isFavorite={favIds.has(restaurant.id)}
+                    onToggleFavorite={token ? () => toggleFavorite(restaurant.id) : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Favorites row — web port of the iOS HomeView favoritesSection
+            (suggested/featured first, then favorites, then the full list).
+            Browse mode only, signed-in only, hidden when empty. */}
+        {isBrowsing && favoriteRestaurants.length > 0 && (
+          <section className="mb-10">
+            <h2 className="text-xl font-bold mb-4">Favorites</h2>
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {favoriteRestaurants.map((restaurant) => (
+                <div key={restaurant.id} className="w-72 flex-shrink-0">
+                  <RestaurantCard
+                    restaurant={restaurant}
+                    isFavorite
                     onToggleFavorite={token ? () => toggleFavorite(restaurant.id) : undefined}
                   />
                 </div>
