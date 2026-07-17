@@ -460,6 +460,19 @@ function AuthFlow() {
         By continuing, you agree to KosherEats&apos; Terms of Service and Privacy
         Policy.
       </p>
+
+      {/* Role switch — this is the customer sign-in; sellers have a separate
+          dashboard login. Mirrors the "Looking to order food?" link on
+          /seller/login so neither role gets stranded on the wrong page. */}
+      <p className="text-center text-dark-500 text-sm mt-4 border-t border-dark-800 pt-6">
+        Own a restaurant?{" "}
+        <Link
+          href="/seller/login"
+          className="text-brand-400 hover:text-brand-500 transition-colors"
+        >
+          Sign in to your seller dashboard
+        </Link>
+      </p>
     </div>
   );
 }
