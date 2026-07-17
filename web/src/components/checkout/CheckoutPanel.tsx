@@ -1093,7 +1093,15 @@ function CheckoutForm({
         onError(msg);
         return;
       }
-      if (!paymentIntent || paymentIntent.status !== "succeeded") {
+      // 'succeeded' is the normal outcome, but 'processing' (async settlement
+      // — Stripe accepted the confirmation and the charge is in flight) and
+      // 'requires_capture' (authorized, pending capture) also mean money is
+      // committed. Those MUST route into the PendingOrder finalize/recovery
+      // path too, or a later webhook settlement would leave the customer
+      // charged with no order — the exact failure PendingOrder exists to
+      // prevent. Anything else is a genuine failure.
+      const capturedStatuses = ["succeeded", "processing", "requires_capture"];
+      if (!paymentIntent || !capturedStatuses.includes(paymentIntent.status)) {
         const msg = `Payment not completed (status: ${paymentIntent?.status ?? "unknown"})`;
         setLocalError(msg);
         onError(msg);
