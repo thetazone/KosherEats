@@ -1,8 +1,9 @@
 "use client";
 
 import { OtpInput } from "@/components/auth/OtpInput";
+import { VerificationGate } from "@/components/auth/VerificationGate";
 import { Header } from "@/components/layout/Header";
-import { auth } from "@/lib/api";
+import { auth, user } from "@/lib/api";
 import type { AuthResponse } from "@/types";
 import { ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -13,7 +14,7 @@ import { useSearchParams } from "next/navigation";
 // the user to "enter your password" (existing account) or into the verified
 // signup flow (email OTP via /auth/email/start + /auth/email/verify, then
 // /auth/register carries the chosen password as the final step).
-type Step = "email" | "password" | "otp" | "details";
+type Step = "email" | "password" | "otp" | "details" | "verify-phone";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
@@ -51,7 +52,9 @@ function AuthFlow() {
   const [code, setCode] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
+  // Session token from register, handed to the phone-verification step (its
+  // /user/phone/change calls are authenticated).
+  const [sessionToken, setSessionToken] = useState("");
 
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -158,12 +161,23 @@ function AuthFlow() {
         password,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        phone: phone.trim(),
+        // Phone is collected + verified in the next step, not here.
+        phone: "",
       });
+      // Persist the session first — the phone-verification step calls the
+      // authenticated /user/phone/change endpoints with this token.
       storeSession(data);
-      // Same ?next= handling as sign-in — a brand-new account resumes the
-      // interrupted flow too.
-      window.location.href = nextPath;
+      setSessionToken(data.token);
+      // Consumers are created phone_verified=false and the backend hard-gates
+      // ordering on a verified phone, so finish phone verification here instead
+      // of stranding a half-verified account that 403s at checkout. (If the
+      // account somehow arrives already phone-verified, skip straight through.)
+      if (data.user.phone_verified) {
+        window.location.href = nextPath;
+      } else {
+        goToStep("verify-phone");
+        setLoading(false);
+      }
     } catch (err) {
       const message = errorMessage(err);
       // The verify proof only lasts ~30 minutes — if it lapsed, restart the
@@ -193,6 +207,8 @@ function AuthFlow() {
       ? "Welcome back"
       : step === "otp"
       ? "Verify your email"
+      : step === "verify-phone"
+      ? "One last step"
       : "Create your account";
 
   const subheading =
@@ -202,6 +218,8 @@ function AuthFlow() {
       ? "Enter your password to sign in"
       : step === "otp"
       ? `We sent a 6-digit code to ${email}`
+      : step === "verify-phone"
+      ? "Verify your phone to finish setting up your account"
       : "Just a few more details";
 
   return (
@@ -216,8 +234,9 @@ function AuthFlow() {
         <p className="text-dark-400 mt-1 text-sm">{subheading}</p>
       </div>
 
-      {/* Back / change email */}
-      {step !== "email" && (
+      {/* Back / change email — only before the account exists. Once we reach
+          verify-phone the account is created, so there's no going back. */}
+      {(step === "password" || step === "otp" || step === "details") && (
         <button
           type="button"
           onClick={() => {
@@ -404,21 +423,6 @@ function AuthFlow() {
             </div>
           </div>
           <div>
-            <label htmlFor="phone" className="block text-sm text-dark-300 mb-1.5">
-              Phone <span className="text-dark-500">(optional)</span>
-            </label>
-            <input
-              id="phone"
-              type="tel"
-              inputMode="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="input w-full"
-              placeholder="(555) 000-0000"
-              autoComplete="tel"
-            />
-          </div>
-          <div>
             <label htmlFor="new-password" className="block text-sm text-dark-300 mb-1.5">
               Password
             </label>
@@ -456,6 +460,30 @@ function AuthFlow() {
         </form>
       )}
 
+      {/* Step 4 — verify phone. The account now exists and email is verified,
+          so VerificationGate runs only its phone leg; finishing lands the user
+          on ?next= (resuming an interrupted order/checkout). */}
+      {step === "verify-phone" && (
+        <VerificationGate
+          token={sessionToken}
+          emailVerified
+          phoneVerified={false}
+          initialEmail={email}
+          onComplete={async () => {
+            // Refresh the cached user before navigating so the header reflects
+            // verified status immediately (mirrors /account/verify). Non-fatal:
+            // verification already succeeded server-side, so navigate regardless.
+            try {
+              const profile = await user.getProfile(sessionToken);
+              localStorage.setItem("user", JSON.stringify(profile));
+            } catch {
+              // ignore — proceed to the next destination anyway
+            }
+            window.location.href = nextPath;
+          }}
+        />
+      )}
+
       <p className="text-center text-dark-500 text-sm mt-8">
         By continuing, you agree to KosherEats&apos; Terms of Service and Privacy
         Policy.
@@ -464,15 +492,17 @@ function AuthFlow() {
       {/* Role switch — this is the customer sign-in; sellers have a separate
           dashboard login. Mirrors the "Looking to order food?" link on
           /seller/login so neither role gets stranded on the wrong page. */}
-      <p className="text-center text-dark-500 text-sm mt-4 border-t border-dark-800 pt-6">
-        Own a restaurant?{" "}
-        <Link
-          href="/seller/login"
-          className="text-brand-400 hover:text-brand-500 transition-colors"
-        >
-          Sign in to your seller dashboard
-        </Link>
-      </p>
+      {step === "email" && (
+        <p className="text-center text-dark-500 text-sm mt-4 border-t border-dark-800 pt-6">
+          Own a restaurant?{" "}
+          <Link
+            href="/seller/login"
+            className="text-brand-400 hover:text-brand-500 transition-colors"
+          >
+            Sign in to your seller dashboard
+          </Link>
+        </p>
+      )}
     </div>
   );
 }
