@@ -1,13 +1,40 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { RequestButton, useRestaurantRequest } from "@/components/restaurant/RequestButton";
-import { certIsPending, certLabel } from "@/lib/kosher";
-import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
-import { isPreviewListing } from "@/types";
-import type { Cart, CartItem, MenuCategory, MenuItem, Restaurant } from "@/types";
+import { KosherBadge } from "@/components/restaurant/KosherBadge";
+import { KosherCertificateModal } from "@/components/restaurant/KosherCertificateModal";
+import { MenuItemModal, type MenuItemSelection } from "@/components/restaurant/MenuItemModal";
+import { cart as cartApi, deals as dealsApi, restaurants as restaurantsApi } from "@/lib/api";
+import type { Deal, MenuCategory, MenuItem, Restaurant, SelectedModifier } from "@/types";
+import {
+  Building2,
+  Cake,
+  CheckCircle2,
+  Droplets,
+  FileText,
+  ShieldCheck,
+  Tag,
+  type LucideIcon,
+} from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+
+// One optimistic sidebar line. The same menu item added with different
+// modifier selections becomes distinct lines, so lines are keyed by
+// menu_item_id + sorted modifier ids — the same identity the backend's
+// cart_items upsert uses (cart_id, menu_item_id, selected_modifiers).
+interface LocalCartItem {
+  key: string;
+  menuItemId: string;
+  name: string;
+  unitPrice: number; // cents, base price + selected modifier deltas
+  quantity: number;
+  modifiers: SelectedModifier[];
+}
+
+function cartLineKey(menuItemId: string, modifierIds: string[]): string {
+  return `${menuItemId}|${[...modifierIds].sort().join(",")}`;
+}
 
 function isUnauthorized(err: unknown): boolean {
   const msg = String(err instanceof Error ? err.message : err).toLowerCase();
@@ -22,6 +49,79 @@ function DietaryBadge({ label, color }: { label: string; color: string }) {
   );
 }
 
+// KashrusChip mirrors the iOS KashrusInfoChip: icon + bold title over a muted
+// subtitle, one chip per kashrus standard the restaurant meets.
+function KashrusChip({
+  icon: Icon,
+  iconColor,
+  title,
+  subtitle,
+}: {
+  icon: LucideIcon;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 bg-dark-800 rounded-xl px-3 py-2">
+      <Icon className={`w-5 h-5 flex-shrink-0 ${iconColor}`} aria-hidden="true" />
+      <div>
+        <p className="text-sm font-bold leading-tight">{title}</p>
+        <p className="text-[11px] text-dark-400 leading-tight">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+// Discount badge copy — mirrors the iOS Deal.discountBadge computed property.
+function dealBadge(deal: Deal): string {
+  switch (deal.discount_type) {
+    case "percentage":
+      return `${deal.discount_value}% Off`;
+    case "fixed":
+      return `$${(deal.discount_value / 100).toFixed(2)} Off`;
+    case "bogo":
+      return "Buy 1 Get 1 Free";
+    default:
+      return "";
+  }
+}
+
+// DealCard is one card in the horizontal per-restaurant deals strip.
+function DealCard({ deal }: { deal: Deal }) {
+  const badge = dealBadge(deal);
+  return (
+    <div className="w-72 flex-shrink-0 card p-4">
+      <div className="flex items-center gap-2 mb-2">
+        {badge && (
+          <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
+            {badge}
+          </span>
+        )}
+        {deal.min_order_amount != null && deal.min_order_amount > 0 && (
+          <span className="text-dark-400 text-xs">
+            Min. order ${(deal.min_order_amount / 100).toFixed(2)}
+          </span>
+        )}
+      </div>
+      <h3 className="font-semibold mb-1">{deal.title}</h3>
+      {deal.description && (
+        <p className="text-dark-400 text-sm line-clamp-2 mb-2">{deal.description}</p>
+      )}
+      <div className="text-xs text-dark-500">
+        {deal.menu_item_name && <span>On {deal.menu_item_name} · </span>}
+        <span>
+          Ends{" "}
+          {new Date(deal.expires_at).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function RestaurantPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -29,23 +129,14 @@ export default function RestaurantPage() {
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menu, setMenu] = useState<MenuCategory[]>([]);
+  const [restaurantDeals, setRestaurantDeals] = useState<Deal[]>([]);
+  const [certificateOpen, setCertificateOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [cart, setCart] = useState<Cart | null>(null);
+  const [cart, setCart] = useState<LocalCartItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
-  const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
-  const [mutationError, setMutationError] = useState<string | null>(null);
-  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // "Request restaurant" state for preview listings. The hook re-syncs when
-  // the restaurant record finishes loading (before the early returns below —
-  // hooks must run on every render).
-  const request = useRestaurantRequest(
-    restaurant?.id ?? "",
-    restaurant?.requested_by_me ?? false,
-    restaurant?.request_count ?? 0
-  );
+  const [modalItem, setModalItem] = useState<MenuItem | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -57,21 +148,20 @@ export default function RestaurantPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-      const [r, m, c] = await Promise.all([
+      const token =
+        typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+      const [r, m, d] = await Promise.all([
         restaurantsApi.get(restaurantId) as Promise<Restaurant>,
         restaurantsApi.getMenu(restaurantId) as Promise<MenuCategory[]>,
-        // Cart is supplementary — an expired/missing token shouldn't fail the
-        // whole page load, so swallow errors here.
-        token ? (cartApi.get(token) as Promise<Cart>).catch(() => null) : Promise.resolve(null),
+        // Deals are decorative — a failure here must never take down the
+        // whole page, so swallow errors into an empty strip.
+        dealsApi.forRestaurant(restaurantId, token ?? undefined).catch(() => [] as Deal[]),
       ]);
       setRestaurant(r);
       const categories = [...m].sort((a, b) => a.sort_order - b.sort_order);
       setMenu(categories);
       setActiveCategory(categories[0]?.id);
-      // Only seed the sidebar with a server cart that belongs to this
-      // restaurant — one for a different restaurant isn't "your order" here.
-      setCart(c && c.restaurant_id === restaurantId ? c : null);
+      setRestaurantDeals(d);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load restaurant");
     } finally {
@@ -79,12 +169,23 @@ export default function RestaurantPage() {
     }
   }
 
-  function selectCategory(catId: string) {
-    setActiveCategory(catId);
-    categoryRefs.current[catId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Every add goes through the customize modal (mirrors the iOS flow where
+  // the menu row opens AddToCartSheet) — even items without modifier groups,
+  // so quantity + notes are always available.
+  function openItem(item: MenuItem) {
+    if (!item.is_available) return;
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) {
+      router.push("/auth");
+      return;
+    }
+    setModalItem(item);
   }
 
-  async function addToCart(item: MenuItem) {
+  // Called by MenuItemModal on Add. Throws on failure so the modal can show
+  // the error inline and stay open; on success we update the optimistic
+  // sidebar and close the modal ourselves.
+  async function addToCart(item: MenuItem, selection: MenuItemSelection) {
     if (!id) return;
     const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!token) {
@@ -92,60 +193,48 @@ export default function RestaurantPage() {
       return;
     }
 
-    setMutatingItemId(item.id);
-    setMutationError(null);
     try {
-      const updated = await cartApi.addItem(token, {
+      await cartApi.addItem(token, {
         menu_item_id: item.id,
         restaurant_id: id,
-        quantity: 1,
-      }) as Cart;
-      setCart(updated);
+        quantity: selection.quantity,
+        notes: selection.notes,
+        modifier_ids: selection.modifier_ids,
+      });
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
         router.push("/auth");
         return;
       }
-      setMutationError(err instanceof Error ? err.message : "Failed to add item to cart");
-    } finally {
-      setMutatingItemId(null);
+      throw err;
     }
+
+    const key = cartLineKey(item.id, selection.modifier_ids);
+    setCart((prev) => {
+      const existing = prev.find((c) => c.key === key);
+      if (existing) {
+        return prev.map((c) =>
+          c.key === key ? { ...c, quantity: c.quantity + selection.quantity } : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          key,
+          menuItemId: item.id,
+          name: item.name,
+          unitPrice: selection.unit_price,
+          quantity: selection.quantity,
+          modifiers: selection.selected_modifiers,
+        },
+      ];
+    });
+    setModalItem(null);
   }
 
-  async function decrementCartItem(item: MenuItem, cartItem: CartItem) {
-    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
-    if (!token) {
-      router.push("/auth");
-      return;
-    }
-
-    setMutatingItemId(item.id);
-    setMutationError(null);
-    try {
-      const next = cartItem.quantity - 1;
-      if (next <= 0) {
-        await cartApi.removeItem(token, cartItem.id);
-      } else {
-        await cartApi.updateItem(token, cartItem.id, { quantity: next, notes: cartItem.notes ?? "" });
-      }
-      const fresh = await cartApi.get(token) as Cart;
-      setCart(fresh);
-    } catch (err) {
-      if (isUnauthorized(err)) {
-        window.localStorage.removeItem("token");
-        router.push("/auth");
-        return;
-      }
-      setMutationError(err instanceof Error ? err.message : "Failed to update cart");
-    } finally {
-      setMutatingItemId(null);
-    }
-  }
-
-  const cartItems = cart?.items ?? [];
-  const cartTotal = cart?.subtotal ?? 0;
-  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   if (loading) {
     return (
@@ -179,204 +268,162 @@ export default function RestaurantPage() {
   }
 
   const rest = restaurant;
-  // Preview listing: browsable, never orderable. Grayed like a closed
-  // restaurant, no cart UI anywhere — a Request control takes its place.
-  const isPreview = isPreviewListing(rest);
 
   return (
     <>
       <Header />
       <main className="flex-1">
         {/* Hero */}
-        <div className={`relative h-64 bg-gradient-to-br from-brand-900/60 to-dark-900 ${isPreview ? "opacity-60" : ""}`}>
+        <div className="relative h-64 bg-gradient-to-br from-brand-900/60 to-dark-900">
           <div className="absolute inset-0 bg-gradient-to-t from-dark-950 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 max-w-7xl mx-auto">
-            <div className="flex items-center gap-3 mb-2">
-              {isPreview && (
-                <span className="bg-dark-800/90 text-dark-300 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
-                  Coming soon
-                </span>
-              )}
-              {certLabel(rest.kosher_certification) ? (
-                <span className="bg-brand-500 text-white text-sm font-bold px-3 py-1 rounded-lg">
-                  {certLabel(rest.kosher_certification)}
-                </span>
-              ) : (
-                certIsPending(rest.kosher_certification) && (
-                  <span className="bg-dark-800/90 text-dark-300 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
-                    Cert pending
-                  </span>
-                )
-              )}
-              {rest.is_glatt_kosher && (
-                <span className="bg-dark-800 text-brand-400 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
-                  Glatt Kosher
-                </span>
-              )}
-              {rest.is_pas_yisroel && (
-                <span className="bg-dark-800 text-brand-400 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
-                  Pas Yisroel
-                </span>
-              )}
+            <div className="mb-2">
+              <KosherBadge restaurant={rest} size="regular" />
             </div>
             <h1 className="text-4xl font-extrabold">{rest.name}</h1>
           </div>
         </div>
 
-        {/* pb clears the fixed mobile request/cart bar on previews and once items are in the cart */}
-        <div className={`max-w-7xl mx-auto px-4 py-6 ${isPreview || cartCount > 0 ? "pb-24 lg:pb-6" : ""}`}>
-          {/* Restaurant Info — previews have no ratings or delivery terms,
-              so only the cuisine line renders for them. */}
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          {/* Restaurant Info */}
           <div className="flex flex-wrap items-center gap-4 mb-6">
-            {!isPreview && (
-              <>
-                <div className="flex items-center gap-1">
-                  <svg className="w-5 h-5 text-brand-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <span className="font-semibold">{rest.rating}</span>
-                  <span className="text-dark-400">({rest.review_count} reviews)</span>
-                </div>
-                <span className="text-dark-600">·</span>
-              </>
-            )}
+            <div className="flex items-center gap-1">
+              <svg className="w-5 h-5 text-brand-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              <span className="font-semibold">{rest.rating}</span>
+              <span className="text-dark-400">({rest.review_count} reviews)</span>
+            </div>
+            <span className="text-dark-600">·</span>
             <span className="text-dark-400">{rest.cuisine_type.join(", ")}</span>
-            {!isPreview && (
+            <span className="text-dark-600">·</span>
+            <span className="text-dark-400">
+              {rest.est_delivery_min}-{rest.est_delivery_max} min
+            </span>
+            <span className="text-dark-600">·</span>
+            <span className="text-dark-400">
+              ${(rest.delivery_fee / 100).toFixed(2)} delivery
+            </span>
+            {rest.min_order > 0 && (
               <>
                 <span className="text-dark-600">·</span>
                 <span className="text-dark-400">
-                  {rest.est_delivery_min}-{rest.est_delivery_max} min
+                  ${(rest.min_order / 100).toFixed(2)} min order
                 </span>
-                <span className="text-dark-600">·</span>
-                <span className="text-dark-400">
-                  ${(rest.delivery_fee / 100).toFixed(2)} delivery
-                </span>
-                {rest.min_order > 0 && (
-                  <>
-                    <span className="text-dark-600">·</span>
-                    <span className="text-dark-400">
-                      ${(rest.min_order / 100).toFixed(2)} min order
-                    </span>
-                  </>
-                )}
               </>
             )}
           </div>
 
           <p className="text-dark-300 mb-8 max-w-3xl">{rest.description}</p>
 
-          {/* Kosher Info Card */}
-          <div className="card p-4 mb-8">
-            <h3 className="font-semibold text-brand-400 mb-2">Kosher Information</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              {/* Empty cert (preview seeds without a hashgacha on file) = no
-                  certification row at all; the TBD placeholder = "Pending". */}
-              {(certLabel(rest.kosher_certification) ||
-                certIsPending(rest.kosher_certification) ||
-                rest.certifying_agency) && (
-                <div>
-                  <span className="text-dark-400">Certification</span>
-                  <p className="font-medium">
-                    {[
-                      certLabel(rest.kosher_certification) ??
-                        (certIsPending(rest.kosher_certification) ? "Pending" : null),
-                      rest.certifying_agency,
-                    ]
-                      .filter(Boolean)
-                      .join(" — ")}
-                  </p>
-                </div>
+          {/* Kashrus Information — certification-first: this section leads
+              the page, above deals and the menu (mirrors the iOS
+              kashrusSection). */}
+          <section className="card p-5 mb-8" aria-label="Kashrus information">
+            <h2 className="text-lg font-bold mb-4">Kashrus Information</h2>
+
+            <div className="flex flex-wrap gap-3 mb-4">
+              <KashrusChip
+                icon={ShieldCheck}
+                iconColor="text-brand-400"
+                title={rest.kosher_certification}
+                subtitle="Certification"
+              />
+              {rest.is_glatt_kosher && (
+                <KashrusChip
+                  icon={CheckCircle2}
+                  iconColor="text-green-400"
+                  title="Glatt"
+                  subtitle="Kosher"
+                />
               )}
-              <div>
-                <span className="text-dark-400">Glatt Kosher</span>
-                <p className="font-medium">{rest.is_glatt_kosher ? "Yes" : "No"}</p>
-              </div>
-              <div>
-                <span className="text-dark-400">Cholov Yisroel</span>
-                <p className="font-medium">{rest.is_cholov_yisroel ? "Yes" : "N/A"}</p>
-              </div>
-              <div>
-                <span className="text-dark-400">Pas Yisroel</span>
-                <p className="font-medium">{rest.is_pas_yisroel ? "Yes" : "No"}</p>
-              </div>
+              {rest.is_cholov_yisroel && (
+                <KashrusChip
+                  icon={Droplets}
+                  iconColor="text-blue-400"
+                  title="Cholov"
+                  subtitle="Yisroel"
+                />
+              )}
+              {rest.is_pas_yisroel && (
+                <KashrusChip
+                  icon={Cake}
+                  iconColor="text-amber-400"
+                  title="Pas"
+                  subtitle="Yisroel"
+                />
+              )}
             </div>
-          </div>
+
+            {rest.certifying_agency && (
+              <div className="flex items-center gap-2 text-sm text-dark-300 mb-4">
+                <Building2 className="w-4 h-4 text-dark-400 flex-shrink-0" aria-hidden="true" />
+                <span>Certifying Agency: {rest.certifying_agency}</span>
+              </div>
+            )}
+
+            <button
+              onClick={() => setCertificateOpen(true)}
+              className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 rounded-xl transition-colors"
+              aria-label={`View kosher certificate for ${rest.name}`}
+            >
+              <FileText className="w-4 h-4" aria-hidden="true" />
+              View Kosher Certificate
+            </button>
+          </section>
+
+          {/* Per-restaurant deals strip */}
+          {restaurantDeals.length > 0 && (
+            <section className="mb-8" aria-label="Deals">
+              <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Tag className="w-5 h-5 text-brand-400" aria-hidden="true" />
+                Deals
+              </h2>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {restaurantDeals.map((deal) => (
+                  <DealCard key={deal.id} deal={deal} />
+                ))}
+              </div>
+            </section>
+          )}
 
           <div className="flex gap-8">
             {/* Menu */}
             <div className="flex-1">
               {/* Category Tabs */}
-              {menu.length > 0 && (
-                <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
-                  <div className="flex gap-3 overflow-x-auto" role="tablist" aria-label="Menu categories">
-                    {menu.map((cat) => (
-                      <button
-                        key={cat.id}
-                        role="tab"
-                        aria-selected={activeCategory === cat.id}
-                        aria-controls={`category-${cat.id}`}
-                        onClick={() => selectCategory(cat.id)}
-                        className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                          activeCategory === cat.id
-                            ? "bg-brand-500 text-white"
-                            : "bg-dark-800 text-dark-300 hover:bg-dark-700"
-                        }`}
-                      >
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
+              <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
+                <div className="flex gap-3 overflow-x-auto">
+                  {menu.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setActiveCategory(cat.id)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                        activeCategory === cat.id
+                          ? "bg-brand-500 text-white"
+                          : "bg-dark-800 text-dark-300 hover:bg-dark-700"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
                 </div>
-              )}
-
-              {mutationError && (
-                <div className="card p-3 mb-4 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
-                  {mutationError}
-                </div>
-              )}
+              </div>
 
               {menu.length === 0 ? (
-                isPreview ? (
-                  <div className="card p-12 text-center">
-                    <svg
-                      className="w-16 h-16 text-dark-600 mx-auto mb-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <h2 className="text-xl font-bold mb-2">Menu coming soon</h2>
-                    <p className="text-dark-400 max-w-md mx-auto">
-                      We&apos;re still gathering this restaurant&apos;s menu. Request the
-                      restaurant below and we&apos;ll let them know you want to order.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="card p-12 text-center text-dark-400">
-                    This restaurant hasn&apos;t published a menu yet.
-                  </div>
-                )
+                <div className="card p-12 text-center text-dark-400">
+                  This restaurant hasn&apos;t published a menu yet.
+                </div>
               ) : (
                 menu.map((category) => (
-                  <div
-                    key={category.id}
-                    id={`category-${category.id}`}
-                    ref={(el) => {
-                      categoryRefs.current[category.id] = el;
-                    }}
-                    className="mb-8 scroll-mt-32"
-                  >
+                  <div key={category.id} className="mb-8">
                     <h2 className="text-xl font-bold mb-4">{category.name}</h2>
                     <div className="space-y-3">
                       {(category.items ?? []).map((item) => {
-                        const cartItem = cartItems.find((c) => c.menu_item_id === item.id);
-                        const isPending = mutatingItemId === item.id;
+                        // Total quantity of this menu item across all cart
+                        // lines (each modifier combination is its own line).
+                        const inCartQty = cart
+                          .filter((c) => c.menuItemId === item.id)
+                          .reduce((sum, c) => sum + c.quantity, 0);
                         return (
                           <div
                             key={item.id}
@@ -386,13 +433,13 @@ export default function RestaurantPage() {
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold">{item.name}</h3>
                                 {item.is_meat && (
-                                  <DietaryBadge label="Meat" color="bg-meat-900/40 text-meat-400" />
+                                  <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
                                 )}
                                 {item.is_dairy && (
-                                  <DietaryBadge label="Dairy" color="bg-dairy-900/40 text-dairy-400" />
+                                  <DietaryBadge label="Dairy" color="bg-blue-900/40 text-blue-400" />
                                 )}
                                 {item.is_pareve && (
-                                  <DietaryBadge label="Pareve" color="bg-pareve-900/40 text-pareve-400" />
+                                  <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
                                 )}
                               </div>
                               <p className="text-dark-400 text-sm mb-2">
@@ -403,53 +450,31 @@ export default function RestaurantPage() {
                               </span>
                             </div>
 
-                            {/* Previews are never orderable — no add-to-cart
-                                control at all (server re-checks anyway). */}
-                            {!isPreview && (
                             <div className="flex items-center gap-2">
-                              {cartItem ? (
-                                <div className="flex items-center bg-dark-800 rounded-xl px-1">
-                                  <button
-                                    onClick={() => decrementCartItem(item, cartItem)}
-                                    disabled={isPending}
-                                    aria-label={cartItem.quantity === 1 ? "Remove item" : "Decrease quantity"}
-                                    className="group w-11 h-11 disabled:opacity-50 flex items-center justify-center"
-                                  >
-                                    <span className="w-8 h-8 rounded-full bg-dark-700 group-hover:bg-dark-600 flex items-center justify-center text-white transition-colors">
-                                      {cartItem.quantity === 1 ? (
-                                        <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                      ) : (
-                                        "-"
-                                      )}
-                                    </span>
-                                  </button>
+                              {inCartQty > 0 ? (
+                                <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
                                   <span className="font-semibold w-6 text-center">
-                                    {cartItem.quantity}
+                                    {inCartQty}
                                   </span>
                                   <button
-                                    onClick={() => addToCart(item)}
-                                    disabled={isPending || !item.is_available}
-                                    aria-label="Increase quantity"
-                                    className="group w-11 h-11 disabled:opacity-50 flex items-center justify-center"
+                                    onClick={() => openItem(item)}
+                                    disabled={!item.is_available}
+                                    aria-label={`Add another ${item.name}`}
+                                    className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                                   >
-                                    <span className="w-8 h-8 rounded-full bg-brand-500 group-hover:bg-brand-600 flex items-center justify-center text-white transition-colors">
-                                      +
-                                    </span>
+                                    +
                                   </button>
                                 </div>
                               ) : (
                                 <button
-                                  onClick={() => addToCart(item)}
-                                  disabled={isPending || !item.is_available}
+                                  onClick={() => openItem(item)}
+                                  disabled={!item.is_available}
                                   className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
                                 >
-                                  {!item.is_available ? "Unavailable" : isPending ? "Adding…" : "Add"}
+                                  {!item.is_available ? "Unavailable" : "Add"}
                                 </button>
                               )}
                             </div>
-                            )}
                           </div>
                         );
                       })}
@@ -459,43 +484,31 @@ export default function RestaurantPage() {
               )}
             </div>
 
-            {/* Sidebar (desktop) — cart for orderable restaurants, the
-                Request control where the cart CTA would be for previews. */}
+            {/* Cart Sidebar (desktop) */}
             <div className="hidden lg:block w-80">
-              {isPreview ? (
-                <div className="sticky top-24 card p-6 text-center">
-                  <h3 className="font-bold text-lg mb-2">Not on KosherEats yet</h3>
-                  <p className="text-dark-400 text-sm mb-5">
-                    Request this restaurant and we&apos;ll work on bringing them on
-                    board. Requests show restaurants how many of you are waiting.
-                  </p>
-                  <RequestButton
-                    requested={request.requested}
-                    count={request.count}
-                    busy={request.busy}
-                    onToggle={request.toggle}
-                    label={request.requested ? "Requested" : "Request restaurant"}
-                  />
-                </div>
-              ) : (
               <div className="sticky top-24 card p-5">
                 <h3 className="font-bold text-lg mb-4">Your Order</h3>
-                {cartItems.length === 0 ? (
+                {cart.length === 0 ? (
                   <p className="text-dark-400 text-sm text-center py-8">
                     Your cart is empty. Add items from the menu to get started.
                   </p>
                 ) : (
                   <>
                     <div className="space-y-3 mb-4">
-                      {cartItems.map((item) => (
-                        <div key={item.id} className="flex justify-between items-center">
-                          <div>
+                      {cart.map((item) => (
+                        <div key={item.key} className="flex justify-between items-start">
+                          <div className="min-w-0 pr-2">
                             <span className="text-sm font-medium">
                               {item.quantity}x {item.name}
                             </span>
+                            {item.modifiers.length > 0 && (
+                              <p className="text-xs text-dark-400 mt-0.5">
+                                {item.modifiers.map((m) => m.name).join(" • ")}
+                              </p>
+                            )}
                           </div>
-                          <span className="text-sm text-dark-300">
-                            ${((item.price * item.quantity) / 100).toFixed(2)}
+                          <span className="text-sm text-dark-300 flex-shrink-0">
+                            ${((item.unitPrice * item.quantity) / 100).toFixed(2)}
                           </span>
                         </div>
                       ))}
@@ -507,11 +520,14 @@ export default function RestaurantPage() {
                       </div>
                       <div className="flex justify-between text-sm text-dark-400 mb-1">
                         <span>Delivery fee</span>
-                        <span>from ${(rest.delivery_fee / 100).toFixed(2)}</span>
+                        <span>${(rest.delivery_fee / 100).toFixed(2)}</span>
                       </div>
-                      <p className="text-dark-500 text-xs mt-2">
-                        Delivery fee, service fee, and tax are calculated from your address when you start checkout.
-                      </p>
+                      <div className="flex justify-between font-semibold mt-2">
+                        <span>Total</span>
+                        <span className="text-brand-400">
+                          ${((cartTotal + rest.delivery_fee) / 100).toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                     <a href="/cart" className="btn-primary w-full block text-center">
                       Go to Checkout
@@ -519,28 +535,12 @@ export default function RestaurantPage() {
                   </>
                 )}
               </div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Mobile Request Bar — previews only; sits where the cart bar would. */}
-        {isPreview && (
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 z-50 flex items-center justify-between gap-3">
-            <span className="text-dark-300 text-sm">
-              Not on KosherEats yet — request this restaurant
-            </span>
-            <RequestButton
-              requested={request.requested}
-              count={request.count}
-              busy={request.busy}
-              onToggle={request.toggle}
-            />
-          </div>
-        )}
-
         {/* Mobile Cart Bar */}
-        {cartCount > 0 && !isPreview && (
+        {cartCount > 0 && (
           <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 z-50">
             <a
               href="/cart"
@@ -551,10 +551,28 @@ export default function RestaurantPage() {
               </span>
               <span className="font-semibold">Go to Checkout</span>
               <span className="font-semibold">
-                ${(cartTotal / 100).toFixed(2)}
+                ${((cartTotal + rest.delivery_fee) / 100).toFixed(2)}
               </span>
             </a>
           </div>
+        )}
+
+        {/* Customize & add-to-cart modal */}
+        {modalItem && (
+          <MenuItemModal
+            item={modalItem}
+            onClose={() => setModalItem(null)}
+            onSubmit={(selection) => addToCart(modalItem, selection)}
+          />
+        )}
+
+        {/* Full-screen certificate viewer */}
+        {certificateOpen && (
+          <KosherCertificateModal
+            url={rest.kosher_certificate_url}
+            restaurantName={rest.name}
+            onClose={() => setCertificateOpen(false)}
+          />
         )}
       </main>
     </>

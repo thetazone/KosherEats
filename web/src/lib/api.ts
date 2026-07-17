@@ -244,14 +244,31 @@ function optionalToken(): string | undefined {
 }
 
 export const restaurants = {
-  list: (params?: { lat?: number; lng?: number; cuisine?: string }) =>
-    fetchAPI(`/restaurants${restaurantQuery(params)}`, { token: optionalToken() }),
+  // Pass lat/lng to get the list distance-ordered (nearest first, LIMIT 50);
+  // without coords the backend falls back to rating order. Both coords must
+  // be finite or we send NEITHER — "?lat=undefined"/"?lat=NaN" would fail the
+  // backend's ParseFloat and silently lose the distance sort.
+  list: (params?: { lat?: number; lng?: number; cuisine?: string }) => {
+    const hasCoords =
+      !!params && Number.isFinite(params.lat) && Number.isFinite(params.lng);
+    return fetchAPI<Restaurant[]>(
+      `/restaurants${restaurantQuery({
+        lat: hasCoords ? params!.lat : undefined,
+        lng: hasCoords ? params!.lng : undefined,
+        cuisine: params?.cuisine,
+      })}`,
+      { token: optionalToken() }
+    );
+  },
 
   get: (id: string) => fetchAPI(`/restaurants/${id}${restaurantQuery()}`, { token: optionalToken() }),
 
   getMenu: (id: string) => fetchAPI(`/restaurants/${id}/menu${restaurantQuery()}`, { token: optionalToken() }),
 
-  search: (q: string) => fetchAPI(`/restaurants/search${restaurantQuery({ q })}`, { token: optionalToken() }),
+  search: (q: string) =>
+    fetchAPI<Restaurant[]>(`/restaurants/search${restaurantQuery({ q })}`, {
+      token: optionalToken(),
+    }),
 
   // "Request restaurant" toggle on a preview listing (tap on = request, tap
   // again = retract). Auth required; live restaurants 400.
@@ -301,8 +318,19 @@ export const deliveryQuote = (
 export const cart = {
   get: (token: string) => fetchAPI("/cart", { token }),
 
-  addItem: (token: string, data: { menu_item_id: string; restaurant_id: string; quantity: number; notes?: string }) =>
-    fetchAPI("/cart/items", { method: "POST", token, body: JSON.stringify(data) }),
+  // modifier_ids are the selected modifier option ids; the backend validates
+  // each id belongs to the menu item, snapshots name/price_delta into
+  // selected_modifiers, and bakes the deltas into the stored unit price.
+  addItem: (
+    token: string,
+    data: {
+      menu_item_id: string;
+      restaurant_id: string;
+      quantity: number;
+      notes?: string;
+      modifier_ids?: string[];
+    }
+  ) => fetchAPI("/cart/items", { method: "POST", token, body: JSON.stringify(data) }),
 
   updateItem: (token: string, itemId: string, data: { quantity: number; notes?: string }) =>
     fetchAPI(`/cart/items/${itemId}`, { method: "PATCH", token, body: JSON.stringify(data) }),

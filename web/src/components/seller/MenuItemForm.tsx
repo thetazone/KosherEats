@@ -6,12 +6,22 @@
 // type (exactly one required, pareve default), and an optional photo
 // uploaded via the presign flow (kind "menu_item"). The form owns the
 // create-vs-update API call; the parent gets the saved item back via
-// onSaved and reconciles its local menu state.
+// onSaved and reconciles its local menu state. When editing an existing
+// item it also hosts the ModifierGroupsEditor (S18) — group mutations save
+// to the server immediately and stream up via onModifierGroupsChange so the
+// parent's copy of the item never goes stale, even if this form is
+// cancelled afterwards.
 
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
+import { ModifierGroupsEditor } from "@/components/seller/ModifierGroupsEditor";
 import { sellerApi, uploadImage } from "@/lib/sellerApi";
-import type { MenuItemRequest, SellerMenuCategory, SellerMenuItem } from "@/types/seller";
+import type {
+  MenuItemRequest,
+  SellerMenuCategory,
+  SellerMenuItem,
+  SellerModifierGroup,
+} from "@/types/seller";
 
 type KosherType = "meat" | "dairy" | "pareve";
 
@@ -45,6 +55,7 @@ export function MenuItemForm({
   defaultCategoryId,
   onSaved,
   onClose,
+  onModifierGroupsChange,
 }: {
   categories: SellerMenuCategory[];
   /** null = creating a new item; non-null = editing that item. */
@@ -53,6 +64,12 @@ export function MenuItemForm({
   defaultCategoryId?: string;
   onSaved: (saved: SellerMenuItem, wasCreate: boolean) => void;
   onClose: () => void;
+  /**
+   * Fired after every server-acked modifier-group mutation (they persist
+   * immediately, independent of the item Save/Cancel), so the parent can keep
+   * its copy of the item's modifier_groups current even on Cancel.
+   */
+  onModifierGroupsChange?: (itemId: string, groups: SellerModifierGroup[]) => void;
 }) {
   const [name, setName] = useState(item?.name ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
@@ -64,6 +81,9 @@ export function MenuItemForm({
     item ? (item.is_meat ? "meat" : item.is_dairy ? "dairy" : "pareve") : "pareve",
   );
   const [imageUrl, setImageUrl] = useState(item?.image_url ?? "");
+  const [modifierGroups, setModifierGroups] = useState<SellerModifierGroup[]>(
+    item?.modifier_groups ?? [],
+  );
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -124,12 +144,19 @@ export function MenuItemForm({
       const saved = item
         ? await sellerApi.menu.updateItem(item.id, body)
         : await sellerApi.menu.createItem(body);
-      onSaved(saved, !item);
+      // Item write responses never include modifier_groups — reattach the
+      // authoritative set the embedded editor has been maintaining.
+      onSaved(item ? { ...saved, modifier_groups: modifierGroups } : saved, !item);
     } catch (err) {
       setSaveError((err as Error).message || "Couldn't save the item — please try again.");
       setSaving(false);
     }
     // On success the parent unmounts us — no state updates after onSaved.
+  }
+
+  function handleModifierGroupsChange(groups: SellerModifierGroup[]) {
+    setModifierGroups(groups);
+    if (item) onModifierGroupsChange?.(item.id, groups);
   }
 
   return (
@@ -314,6 +341,24 @@ export function MenuItemForm({
                 );
               })}
             </div>
+          </div>
+
+          {/* Option groups (S18) — needs a saved item id to attach groups to */}
+          <div>
+            <span className="block text-sm text-dark-300 mb-1.5">
+              Option groups <span className="text-dark-500">(optional)</span>
+            </span>
+            {item ? (
+              <ModifierGroupsEditor
+                itemId={item.id}
+                groups={modifierGroups}
+                onChange={handleModifierGroupsChange}
+              />
+            ) : (
+              <p className="text-xs text-dark-500">
+                Save the item first, then edit it to add options like Size, Sauce, or Extras.
+              </p>
+            )}
           </div>
 
           {saveError && (
