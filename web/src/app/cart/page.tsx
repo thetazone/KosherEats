@@ -72,6 +72,18 @@ function isUnauthorized(err: unknown): boolean {
   return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
 }
 
+// The backend hard-gates consumer transactions (payments.intent AND
+// orders.create) with 403 {"error":"verification_required",...} until both
+// email_verified and phone_verified are true — fetchAPI surfaces that body's
+// error string as the Error message. We intercept it and route into
+// /account/verify?next=/cart instead of showing a raw error.
+function isVerificationRequired(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return msg.includes("verification_required");
+}
+
+const VERIFY_ROUTE = "/account/verify?next=/cart";
+
 // orders.create is idempotent on payment_intent_id: if the FIRST POST committed
 // server-side but its response was lost (network blip / timeout / 5xx-after-
 // commit), every replay of the same payment_intent_id returns HTTP 409
@@ -160,8 +172,13 @@ export default function CartPage() {
 
   // Re-POST a persisted order with backoff. On 401, refresh the token once and
   // retry with the fresh one. Clears the persisted intent on success; leaves it
-  // in place on exhaustion so the next mount can try again.
-  async function submitPendingOrder(pending: PendingOrder, initialToken: string): Promise<boolean> {
+  // in place on exhaustion so the next mount can try again. "verify" means the
+  // account tripped the verification gate — the pending order stays persisted
+  // so it is re-attempted when the user returns from /account/verify.
+  async function submitPendingOrder(
+    pending: PendingOrder,
+    initialToken: string
+  ): Promise<"ok" | "failed" | "verify"> {
     let activeToken = initialToken;
     for (let attempt = 0; attempt <= ORDER_RETRY_DELAYS_MS.length; attempt++) {
       try {
@@ -173,13 +190,18 @@ export default function CartPage() {
           payment_intent_id: pending.payment_intent_id,
         });
         clearPendingOrder();
-        return true;
+        return "ok";
       } catch (err) {
         // The order already exists for this payment (lost-response replay).
         // Idempotency conflict == success: clear the intent and stop retrying.
         if (isAlreadyCreated(err)) {
           clearPendingOrder();
-          return true;
+          return "ok";
+        }
+        // 403 verification gate — retrying can't clear it; the user must
+        // verify first. Keep the pending order for the post-verify retry.
+        if (isVerificationRequired(err)) {
+          return "verify";
         }
         if (isUnauthorized(err)) {
           const fresh = await refreshToken();
@@ -192,10 +214,10 @@ export default function CartPage() {
           await sleep(ORDER_RETRY_DELAYS_MS[attempt]);
           continue;
         }
-        return false;
+        return "failed";
       }
     }
-    return false;
+    return "failed";
   }
 
   async function recoverPendingOrder(t: string) {
@@ -203,10 +225,12 @@ export default function CartPage() {
     if (!pending) return;
     setFinalizing(true);
     setFinalizeError(null);
-    const ok = await submitPendingOrder(pending, t);
+    const outcome = await submitPendingOrder(pending, t);
     setFinalizing(false);
-    if (ok) {
+    if (outcome === "ok") {
       router.push("/orders");
+    } else if (outcome === "verify") {
+      router.push(VERIFY_ROUTE);
     } else {
       setFinalizeError(
         "Your payment went through but we couldn't confirm your order. We'll keep retrying — please don't pay again."
@@ -298,6 +322,12 @@ export default function CartPage() {
         router.replace("/auth");
         return;
       }
+      // Verification gate (403 verification_required): route into the verify
+      // flow instead of surfacing a raw error — it sends the user back here.
+      if (isVerificationRequired(err)) {
+        router.push(VERIFY_ROUTE);
+        return;
+      }
       setCheckoutError(err instanceof Error ? err.message : "Failed to start checkout");
     } finally {
       setCheckoutStarting(false);
@@ -329,10 +359,12 @@ export default function CartPage() {
     setFinalizing(true);
     setFinalizeError(null);
 
-    const ok = await submitPendingOrder(pending, token);
+    const outcome = await submitPendingOrder(pending, token);
     setFinalizing(false);
-    if (ok) {
+    if (outcome === "ok") {
       router.push("/orders");
+    } else if (outcome === "verify") {
+      router.push(VERIFY_ROUTE);
     } else {
       setFinalizeError(
         "Your payment went through but we couldn't confirm your order. We'll keep retrying — please don't pay again."
@@ -346,10 +378,12 @@ export default function CartPage() {
     if (!pending) return;
     setFinalizing(true);
     setFinalizeError(null);
-    const ok = await submitPendingOrder(pending, token);
+    const outcome = await submitPendingOrder(pending, token);
     setFinalizing(false);
-    if (ok) {
+    if (outcome === "ok") {
       router.push("/orders");
+    } else if (outcome === "verify") {
+      router.push(VERIFY_ROUTE);
     } else {
       setFinalizeError(
         "Still couldn't confirm your order. We'll keep retrying — please don't pay again."
