@@ -7,6 +7,11 @@ import { KosherCertificateModal } from "@/components/restaurant/KosherCertificat
 import { MenuItemModal, type MenuItemSelection } from "@/components/restaurant/MenuItemModal";
 import { cart as cartApi, deals as dealsApi, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
+import {
+  certificationLabel,
+  hasRealCertificatePhoto,
+  isPlaceholderCertification,
+} from "@/lib/kosher";
 import type { Cart, Deal, MenuCategory, MenuItem, Restaurant, SelectedModifier } from "@/types";
 import {
   Building2,
@@ -14,6 +19,7 @@ import {
   CheckCircle2,
   Droplets,
   FileText,
+  Shield,
   ShieldCheck,
   Star,
   Tag,
@@ -501,10 +507,21 @@ function RestaurantPageInner() {
             <h2 className="text-lg font-bold mb-4">Kashrus Information</h2>
 
             <div className="flex flex-wrap gap-3 mb-4">
+              {/* A placeholder certification ("TBD…", empty) must not wear the
+                  brand-colored ShieldCheck — render a neutral Shield +
+                  "Certification pending" so it never reads as verified. */}
               <KashrusChip
-                icon={ShieldCheck}
-                iconColor="text-brand-400"
-                title={rest.kosher_certification}
+                icon={
+                  isPlaceholderCertification(rest.kosher_certification)
+                    ? Shield
+                    : ShieldCheck
+                }
+                iconColor={
+                  isPlaceholderCertification(rest.kosher_certification)
+                    ? "text-dark-400"
+                    : "text-brand-400"
+                }
+                title={certificationLabel(rest.kosher_certification)}
                 subtitle="Certification"
               />
               {rest.is_glatt_kosher && (
@@ -533,14 +550,21 @@ function RestaurantPageInner() {
               )}
             </div>
 
-            {rest.certifying_agency && (
-              <div className="flex items-center gap-2 text-sm text-dark-300 mb-4">
-                <Building2 className="w-4 h-4 text-dark-400 flex-shrink-0" aria-hidden="true" />
-                <span>Certifying Agency: {rest.certifying_agency}</span>
-              </div>
-            )}
+            {/* Hide the agency line when it's empty OR a placeholder value —
+                a "TBD" agency is no more trustworthy than a placeholder cert. */}
+            {rest.certifying_agency &&
+              !isPlaceholderCertification(rest.certifying_agency) && (
+                <div className="flex items-center gap-2 text-sm text-dark-300 mb-4">
+                  <Building2 className="w-4 h-4 text-dark-400 flex-shrink-0" aria-hidden="true" />
+                  <span>Certifying Agency: {rest.certifying_agency}</span>
+                </div>
+              )}
 
-            {rest.kosher_certificate_url && rest.kosher_certificate_url.trim() !== "" ? (
+            {/* Only real uploaded certificate photos get the View button.
+                A placeholder/stock-image host (placehold.co, etc.) must never
+                open as if it were a genuine certificate — fall through to the
+                reassuring "on file" copy instead. See @/lib/kosher. */}
+            {hasRealCertificatePhoto(rest.kosher_certificate_url) ? (
               <button
                 onClick={() => setCertificateOpen(true)}
                 className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-[44px] rounded-xl transition-colors"
