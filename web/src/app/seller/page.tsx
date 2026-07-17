@@ -22,7 +22,13 @@ import {
 } from "lucide-react";
 import { ActiveOrderCard, type OrderQuickAction } from "@/components/seller/ActiveOrderCard";
 import { formatCents, sellerApi } from "@/lib/sellerApi";
-import type { DashboardStats, OrderStatus, SellerOrder, SellerRestaurant } from "@/types/seller";
+import type {
+  DashboardStats,
+  OrderStatus,
+  OrderStatusAck,
+  SellerOrder,
+  SellerRestaurant,
+} from "@/types/seller";
 
 /** Statuses that keep an order on the dashboard (Order.isActive on iOS —
  *  picked_up stays visible so deliveries en route aren't lost). */
@@ -35,7 +41,13 @@ const ACTIVE_STATUSES: ReadonlySet<OrderStatus> = new Set([
   "picked_up",
 ]);
 
-const QUICK_ACTION_CALLS: Record<OrderQuickAction, (id: string) => Promise<SellerOrder>> = {
+/** pickup/deliver return a bare {status} ack rather than the updated order
+ *  (SellerPickupOrder/SellerDeliverOrder in handlers/orders.go) — the
+ *  follow-up load() below reconciles those. */
+const QUICK_ACTION_CALLS: Record<
+  OrderQuickAction,
+  (id: string) => Promise<SellerOrder | OrderStatusAck>
+> = {
   accept: sellerApi.orders.accept,
   reject: sellerApi.orders.reject,
   preparing: sellerApi.orders.markPreparing,
@@ -152,9 +164,12 @@ export default function SellerDashboardPage() {
     setActionError(null);
     try {
       const updated = await QUICK_ACTION_CALLS[action](order.id);
-      // Reconcile the acted-on order in place immediately, then do a full
+      // Reconcile the acted-on order in place immediately (when the endpoint
+      // returned the full order — pickup/deliver only ack), then do a full
       // silent refresh so the stats row catches up too.
-      setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+      if ("id" in updated) {
+        setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+      }
       void load();
     } catch (err) {
       setActionError((err as Error).message || "Couldn't update the order");
