@@ -60,7 +60,7 @@ export function RestaurantCard({
                   ? `Remove ${restaurant.name} from favorites`
                   : `Add ${restaurant.name} to favorites`
               }
-              className="absolute top-3 right-3 z-30 bg-dark-900/70 hover:bg-dark-900/90 rounded-full p-2 transition-colors"
+              className="absolute top-3 right-3 z-30 bg-dark-900/70 hover:bg-dark-900/90 rounded-full w-11 h-11 flex items-center justify-center transition-colors"
             >
               <Heart
                 className={`w-5 h-5 transition-colors ${

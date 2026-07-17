@@ -313,7 +313,16 @@ export default function SellerSettingsPage() {
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field id="st-phone" label="Phone" value={phone} onChange={setPhone} type="tel" required />
+            <Field
+              id="st-phone"
+              label="Phone"
+              value={phone}
+              onChange={setPhone}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              required
+            />
             <Field id="st-email" label="Email" value={email} onChange={setEmail} type="email" required />
           </div>
           <Field
@@ -355,7 +364,7 @@ export default function SellerSettingsPage() {
                   role="radio"
                   aria-checked={deliveryMode === opt.value}
                   onClick={() => setDeliveryMode(opt.value)}
-                  className={`py-2.5 px-3 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`py-2.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
                     deliveryMode === opt.value
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -426,7 +435,7 @@ export default function SellerSettingsPage() {
                   role="radio"
                   aria-checked={certification === cert}
                   onClick={() => setCertification(cert)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`px-4 py-2 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
                     certification === cert
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -514,6 +523,7 @@ function Field({
   onChange,
   type = "text",
   inputMode,
+  autoComplete,
   placeholder,
   required = false,
   hint,
@@ -523,7 +533,8 @@ function Field({
   value: string;
   onChange: (v: string) => void;
   type?: string;
-  inputMode?: "decimal" | "numeric";
+  inputMode?: "decimal" | "numeric" | "tel";
+  autoComplete?: string;
   placeholder?: string;
   required?: boolean;
   hint?: string;
@@ -538,6 +549,7 @@ function Field({
         id={id}
         type={type}
         inputMode={inputMode}
+        autoComplete={autoComplete}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

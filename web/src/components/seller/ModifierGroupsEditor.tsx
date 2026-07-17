@@ -151,14 +151,14 @@ export function ModifierGroupsEditor({
                     {selectionSummary(group)}
                   </p>
                 </div>
-                <div className="flex items-center gap-0.5 shrink-0">
+                <div className="flex items-center shrink-0 -my-2 -mr-1">
                   {confirmDeleteId === group.id ? (
                     <>
                       <button
                         type="button"
                         onClick={() => deleteGroup(group.id)}
                         disabled={deletingId === group.id}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-300 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait"
+                        className="inline-flex items-center gap-1.5 min-h-[44px] text-xs font-semibold text-red-400 hover:text-red-300 px-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait"
                       >
                         {deletingId === group.id && (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
@@ -173,7 +173,7 @@ export function ModifierGroupsEditor({
                         }}
                         disabled={deletingId === group.id}
                         aria-label="Cancel delete"
-                        className="p-1.5 rounded-lg text-dark-400 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-50"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-50"
                       >
                         <X className="w-4 h-4" aria-hidden="true" />
                       </button>
@@ -184,7 +184,7 @@ export function ModifierGroupsEditor({
                         type="button"
                         onClick={() => setEditing({ group })}
                         aria-label={`Edit option group ${group.name}`}
-                        className="p-1.5 rounded-lg text-dark-400 hover:bg-dark-700 hover:text-white transition-colors"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-700 hover:text-white transition-colors"
                       >
                         <Pencil className="w-4 h-4" aria-hidden="true" />
                       </button>
@@ -192,7 +192,7 @@ export function ModifierGroupsEditor({
                         type="button"
                         onClick={() => setConfirmDeleteId(group.id)}
                         aria-label={`Delete option group ${group.name}`}
-                        className="p-1.5 rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                        className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" aria-hidden="true" />
                       </button>
@@ -214,7 +214,7 @@ export function ModifierGroupsEditor({
           setDeleteError(null);
           setEditing({ group: null });
         }}
-        className="flex items-center gap-1.5 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+        className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
       >
         <Plus className="w-4 h-4" aria-hidden="true" />
         Add option group
@@ -362,7 +362,7 @@ function GroupForm({
           onClick={onCancel}
           disabled={saving}
           aria-label="Back to option groups"
-          className="p-1.5 rounded-lg text-dark-400 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-50"
+          className="min-w-[44px] min-h-[44px] -m-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-50"
         >
           <X className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -389,21 +389,26 @@ function GroupForm({
       <div className="space-y-2.5">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-dark-300">Required</span>
+          {/* 44px hit area around the visual track. */}
           <button
             type="button"
             role="switch"
             aria-checked={isRequired}
             aria-label="Customers must pick from this group"
             onClick={toggleRequired}
-            className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${
-              isRequired ? "bg-brand-500" : "bg-dark-700"
-            }`}
+            className="shrink-0 -m-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <span
-              className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                isRequired ? "translate-x-4" : ""
+              className={`relative block w-10 h-6 rounded-full transition-colors ${
+                isRequired ? "bg-brand-500" : "bg-dark-700"
               }`}
-            />
+            >
+              <span
+                className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                  isRequired ? "translate-x-4" : ""
+                }`}
+              />
+            </span>
           </button>
         </div>
         <StepperRow
@@ -432,8 +437,10 @@ function GroupForm({
             return (
               <div
                 key={opt.key}
-                className="flex items-center gap-2 rounded-xl border border-dark-700 bg-dark-800 px-2.5 py-2"
+                className="flex items-center gap-1.5 rounded-xl border border-dark-700 bg-dark-800 px-2.5 py-2"
               >
+                {/* Inputs keep .input's text-base (16px) so iOS Safari never
+                    auto-zooms; min-h keeps them 44px touch targets. */}
                 <input
                   type="text"
                   value={opt.name}
@@ -441,11 +448,11 @@ function GroupForm({
                   placeholder="Option name"
                   maxLength={80}
                   aria-label="Option name"
-                  className="input flex-1 min-w-0 px-3 py-2 text-sm"
+                  className="input flex-1 min-w-0 px-3 py-2 min-h-[44px]"
                 />
-                <div className="relative w-24 shrink-0">
+                <div className="relative w-20 shrink-0">
                   <span
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-dark-400"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-dark-400"
                     aria-hidden="true"
                   >
                     +$
@@ -458,7 +465,7 @@ function GroupForm({
                     placeholder="0.00"
                     aria-label="Price adjustment in dollars"
                     aria-invalid={priceInvalid}
-                    className={`input w-full pl-7 pr-2 py-2 text-sm text-right ${
+                    className={`input w-full pl-6 pr-2 py-2 min-h-[44px] text-right ${
                       priceInvalid ? "border-red-500" : ""
                     }`}
                   />
@@ -472,7 +479,7 @@ function GroupForm({
                       : "Set as default option"
                   }
                   aria-pressed={opt.is_default}
-                  className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                  className={`min-w-[44px] min-h-[44px] -mx-1 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
                     opt.is_default
                       ? "text-amber-400 hover:text-amber-300"
                       : "text-dark-500 hover:text-dark-300"
@@ -488,7 +495,7 @@ function GroupForm({
                   type="button"
                   onClick={() => removeOption(opt.key)}
                   aria-label={`Remove ${opt.name.trim() || "option"}`}
-                  className="p-1.5 rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors shrink-0"
+                  className="min-w-[44px] min-h-[44px] -mr-1 flex items-center justify-center rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors shrink-0"
                 >
                   <Minus className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -499,7 +506,7 @@ function GroupForm({
         <button
           type="button"
           onClick={() => setOptions((prev) => [...prev, newOptionDraft()])}
-          className="flex items-center gap-1.5 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors mt-2"
+          className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors mt-1"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           Add option
@@ -559,7 +566,7 @@ function StepperRow({
           onClick={() => onStep(-1)}
           disabled={decDisabled}
           aria-label={`Decrease ${label.toLowerCase()}`}
-          className="p-1.5 rounded-lg border border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-11 h-11 flex items-center justify-center rounded-lg border border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Minus className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
@@ -571,7 +578,7 @@ function StepperRow({
           onClick={() => onStep(1)}
           disabled={incDisabled}
           aria-label={`Increase ${label.toLowerCase()}`}
-          className="p-1.5 rounded-lg border border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-11 h-11 flex items-center justify-center rounded-lg border border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus className="w-3.5 h-3.5" aria-hidden="true" />
         </button>

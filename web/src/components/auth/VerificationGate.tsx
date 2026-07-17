@@ -349,14 +349,14 @@ export function VerificationGate({
               type="button"
               onClick={() => void sendEmailCode(true)}
               disabled={loading || resendCooldown > 0}
-              className="text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
             </button>
             <button
               type="button"
               onClick={() => goToStep("email-entry")}
-              className="text-dark-400 hover:text-white transition-colors"
+              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors"
             >
               Use a different email
             </button>
@@ -392,7 +392,7 @@ export function VerificationGate({
               <input
                 id="verify-phone"
                 type="tel"
-                inputMode="numeric"
+                inputMode="tel"
                 value={phoneDigits}
                 onChange={(e) => setPhoneDigits(e.target.value.replace(/\D/g, ""))}
                 className="input w-full"
@@ -461,14 +461,14 @@ export function VerificationGate({
               type="button"
               onClick={() => void sendPhoneCode(true)}
               disabled={loading || resendCooldown > 0}
-              className="text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
             </button>
             <button
               type="button"
               onClick={() => goToStep("phone-entry")}
-              className="text-dark-400 hover:text-white transition-colors"
+              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors"
             >
               Use a different number
             </button>

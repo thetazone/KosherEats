@@ -147,7 +147,7 @@ export function Header() {
 
         {/* Mobile menu button */}
         <button
-          className="md:hidden text-dark-300"
+          className="md:hidden text-dark-300 w-11 h-11 -mr-2 flex items-center justify-center"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           aria-label={isMenuOpen ? "Close menu" : "Open menu"}
           aria-expanded={isMenuOpen}

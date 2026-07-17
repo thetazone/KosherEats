@@ -435,6 +435,7 @@ function AuthFlow() {
             <input
               id="phone"
               type="tel"
+              inputMode="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="input w-full"

@@ -86,7 +86,10 @@ export function CourierRatingModal({
       className="fixed inset-0 z-[60] bg-dark-950/80 flex items-center justify-center p-4"
       onClick={onClose}
     >
-      <div className="card p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="card p-6 w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-3 mb-1">
           <h2 className="text-xl font-bold">
             {courierFirstName ? `How was ${courierFirstName}?` : "How was your courier?"}
@@ -95,7 +98,7 @@ export function CourierRatingModal({
             onClick={onClose}
             disabled={submitting}
             aria-label="Close rating dialog"
-            className="p-2 -m-2 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors disabled:opacity-50"
+            className="min-w-[44px] min-h-[44px] -m-2 flex items-center justify-center rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -134,6 +137,7 @@ export function CourierRatingModal({
             ))}
           </div>
 
+          {/* text-base (16px) so iOS Safari doesn't auto-zoom on focus */}
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value.slice(0, MAX_COMMENT_LENGTH))}
@@ -141,7 +145,7 @@ export function CourierRatingModal({
             aria-label="Comment (optional)"
             rows={3}
             disabled={submitting}
-            className="input w-full text-sm resize-none"
+            className="input w-full text-base resize-none"
           />
           {comment.length > 400 && (
             <p
@@ -163,7 +167,7 @@ export function CourierRatingModal({
             <button
               type="submit"
               disabled={submitting}
-              className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary flex-1 py-2.5 text-sm min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {submitting ? "Submitting…" : "Submit rating"}
@@ -172,7 +176,7 @@ export function CourierRatingModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="btn-secondary py-2.5 px-5 text-sm disabled:opacity-50"
+              className="btn-secondary py-2.5 px-5 text-sm min-h-[44px] inline-flex items-center justify-center disabled:opacity-50"
             >
               Skip
             </button>

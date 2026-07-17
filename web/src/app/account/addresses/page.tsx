@@ -191,7 +191,7 @@ export default function AddressesPage() {
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-8">
         <Link
           href="/account"
-          className="inline-flex items-center gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-4"
+          className="inline-flex items-center min-h-[44px] gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-2"
         >
           <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           Account
@@ -205,7 +205,7 @@ export default function AddressesPage() {
                 setShowForm(true);
                 setFormError(null);
               }}
-              className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-1.5"
+              className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-1.5"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               Add address
@@ -380,7 +380,7 @@ export default function AddressesPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {saving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {saving ? "Saving…" : "Save address"}
@@ -392,7 +392,7 @@ export default function AddressesPage() {
                       setFormError(null);
                     }}
                     disabled={saving}
-                    className="btn-secondary text-sm py-2 px-4 disabled:opacity-50"
+                    className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -439,7 +439,7 @@ export default function AddressesPage() {
                           type="button"
                           onClick={() => void setDefault(a.id)}
                           disabled={busyId !== null}
-                          className="text-brand-400 hover:text-brand-300 font-medium transition-colors disabled:opacity-50"
+                          className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 font-medium transition-colors disabled:opacity-50"
                         >
                           {busyId === a.id ? "Saving…" : "Set default"}
                         </button>
@@ -450,7 +450,7 @@ export default function AddressesPage() {
                             type="button"
                             onClick={() => void deleteAddress(a.id)}
                             disabled={busyId !== null}
-                            className="text-red-400 hover:text-red-300 font-medium transition-colors disabled:opacity-50"
+                            className="inline-flex items-center min-h-[44px] text-red-400 hover:text-red-300 font-medium transition-colors disabled:opacity-50"
                           >
                             {busyId === a.id ? "Deleting…" : "Confirm"}
                           </button>
@@ -458,7 +458,7 @@ export default function AddressesPage() {
                             type="button"
                             onClick={() => setPendingDelete(null)}
                             disabled={busyId !== null}
-                            className="text-dark-400 hover:text-white transition-colors disabled:opacity-50"
+                            className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors disabled:opacity-50"
                           >
                             Cancel
                           </button>
@@ -471,7 +471,7 @@ export default function AddressesPage() {
                             setActionError(null);
                           }}
                           disabled={busyId !== null}
-                          className="text-dark-400 hover:text-red-400 font-medium transition-colors disabled:opacity-50"
+                          className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-red-400 font-medium transition-colors disabled:opacity-50"
                         >
                           Delete
                         </button>

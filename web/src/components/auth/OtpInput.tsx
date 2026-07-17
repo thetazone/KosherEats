@@ -87,7 +87,11 @@ export function OtpInput({
   };
 
   return (
-    <div className="flex justify-center gap-2" onPaste={handlePaste}>
+    // Boxes are fluid (flex-1, capped at 3rem) so six of them + gaps always
+    // fit a 375px viewport even inside a p-6 card — fixed w-12 boxes overflow
+    // there. At the narrowest layout in the app each box still measures
+    // >=44px wide (and h-14 tall), keeping the minimum touch target.
+    <div className="flex justify-center gap-1.5 sm:gap-2" onPaste={handlePaste}>
       {Array.from({ length }).map((_, i) => (
         <input
           key={i}
@@ -104,7 +108,7 @@ export function OtpInput({
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onFocus={(e) => e.target.select()}
-          className={`w-12 h-14 text-center text-xl font-semibold bg-dark-800 border rounded-xl text-white focus:outline-none focus:ring-1 transition-colors disabled:opacity-50 ${
+          className={`flex-1 min-w-0 max-w-12 h-14 text-center text-xl font-semibold bg-dark-800 border rounded-xl text-white focus:outline-none focus:ring-1 transition-colors disabled:opacity-50 ${
             error
               ? "border-red-800 focus:border-red-500 focus:ring-red-500"
               : "border-dark-700 focus:border-brand-500 focus:ring-brand-500"

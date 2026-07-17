@@ -170,11 +170,13 @@ export function MenuItemModal({
       role="dialog"
       aria-modal="true"
       aria-label={`Customize ${item.name}`}
-      className="fixed inset-0 z-[60] bg-black/70 flex items-end sm:items-center justify-center sm:p-4"
+      className="fixed inset-0 z-[60] bg-black/70 flex items-stretch md:items-center justify-center md:p-4"
       onClick={onClose}
     >
+      {/* Below md: a full-height bottom sheet (h-full against the inset-0
+          overlay); at md+ a centered dialog capped at 85vh. */}
       <div
-        className="card w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] flex flex-col rounded-b-none sm:rounded-b-2xl"
+        className="card w-full max-w-lg h-full md:h-auto md:max-h-[85vh] flex flex-col rounded-none md:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -199,7 +201,7 @@ export function MenuItemModal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="p-2 -mr-2 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0"
+            className="w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -258,7 +260,7 @@ export function MenuItemModal({
                         aria-checked={isSelected}
                         onClick={() => toggleModifier(group, mod)}
                         disabled={!mod.is_available}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-dark-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 min-h-[44px] text-left hover:bg-dark-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
                       >
                         {singleSelect ? (
                           <span
@@ -311,7 +313,7 @@ export function MenuItemModal({
             </label>
             <input
               id="menu-item-notes"
-              className="input w-full"
+              className="input w-full text-base"
               placeholder="e.g., no onions, extra sauce"
               maxLength={MAX_NOTES_LENGTH}
               value={notes}
@@ -320,8 +322,10 @@ export function MenuItemModal({
           </div>
         </div>
 
-        {/* Footer: quantity stepper + add */}
-        <div className="border-t border-dark-800 px-5 py-4 space-y-3">
+        {/* Footer: quantity stepper + add — pinned below the scroll area so
+            it acts as the sheet's sticky action bar on mobile; safe-area
+            padding keeps it clear of the iOS home indicator. */}
+        <div className="border-t border-dark-800 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-4 space-y-3">
           {error && (
             <div
               className="flex items-start gap-2 text-sm text-red-300 bg-red-900/20 border border-red-800 rounded-xl px-3 py-2"
@@ -332,12 +336,13 @@ export function MenuItemModal({
             </div>
           )}
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2 flex-shrink-0">
+            {/* 44px stepper buttons (w-11 h-11) — minimum touch target. */}
+            <div className="flex items-center gap-2 bg-dark-800 rounded-xl px-1.5 py-1.5 flex-shrink-0">
               <button
                 onClick={() => setQuantity((q) => Math.max(q - 1, 1))}
                 disabled={quantity <= 1}
                 aria-label="Decrease quantity"
-                className="w-7 h-7 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                className="w-11 h-11 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -351,7 +356,7 @@ export function MenuItemModal({
                 onClick={() => setQuantity((q) => Math.min(q + 1, MAX_QUANTITY))}
                 disabled={quantity >= MAX_QUANTITY}
                 aria-label="Increase quantity"
-                className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>

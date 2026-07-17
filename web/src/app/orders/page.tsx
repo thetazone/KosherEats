@@ -185,7 +185,7 @@ export default function OrdersPage() {
         <div className="flex bg-dark-800 rounded-xl p-1 mb-8 max-w-xs">
           <button
             onClick={() => setFilter("active")}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
               filter === "active"
                 ? "bg-brand-500 text-white"
                 : "text-dark-400 hover:text-white"
@@ -195,7 +195,7 @@ export default function OrdersPage() {
           </button>
           <button
             onClick={() => setFilter("past")}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 py-2 min-h-[44px] rounded-lg text-sm font-medium transition-colors ${
               filter === "past"
                 ? "bg-brand-500 text-white"
                 : "text-dark-400 hover:text-white"
@@ -281,11 +281,11 @@ export default function OrdersPage() {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-dark-400">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-dark-400 min-w-0">
                       {order.items.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
                     </div>
-                    <span className="font-semibold text-brand-400">
+                    <span className="font-semibold text-brand-400 flex-shrink-0">
                       {formatUSD(order.total)}
                     </span>
                   </div>
@@ -327,12 +327,13 @@ export default function OrdersPage() {
                     </div>
                   )}
 
-                  {/* Actions */}
-                  <div className="mt-3 flex gap-3">
+                  {/* Actions — wrap so three buttons never force horizontal
+                      scroll at 375px; every target keeps a >=44px hit area. */}
+                  <div className="mt-3 flex flex-wrap gap-3">
                     {isActive && (
                       <Link
                         href={`/orders/${order.id}`}
-                        className="btn-primary py-2 px-4 text-sm inline-block"
+                        className="btn-primary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
                       >
                         Track Order
                       </Link>
@@ -341,7 +342,7 @@ export default function OrdersPage() {
                       <button
                         onClick={() => cancelOrder(order.id)}
                         disabled={isCancelling}
-                        className="btn-secondary py-2 px-4 text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isCancelling && (
                           <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -353,7 +354,7 @@ export default function OrdersPage() {
                       <button
                         onClick={() => reorder(order)}
                         disabled={isReordering}
-                        className="btn-primary py-2 px-4 text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="btn-primary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isReordering && (
                           <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -366,14 +367,14 @@ export default function OrdersPage() {
                       !ratedIds.has(order.id) && (
                         <button
                           onClick={() => setRatingOrderId(order.id)}
-                          className="btn-secondary py-2 px-4 text-sm"
+                          className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
                         >
                           Rate Courier
                         </button>
                       )}
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : order.id)}
-                      className="btn-secondary py-2 px-4 text-sm"
+                      className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
                     >
                       {isExpanded ? "Hide Receipt" : "View Receipt"}
                     </button>

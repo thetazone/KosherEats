@@ -2,7 +2,7 @@
 
 import type { KosherCertification, Restaurant } from "@/types";
 import { Check, SlidersHorizontal, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // Filter state for the kosher filter panel — web port of the iOS
 // KosherFilters model (RestaurantStore.swift). Each field narrows the result
@@ -96,6 +96,30 @@ export function KosherFilterPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<KosherFilters>(filters);
 
+  // Below md: the panel is a full-height bottom sheet, so lock body scroll
+  // while it's up (and only there — on md+ it's an inline card and the page
+  // must keep scrolling). Escape closes at any width.
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+
+    const mq = window.matchMedia("(max-width: 767px)");
+    const previousOverflow = document.body.style.overflow;
+    const applyLock = () => {
+      document.body.style.overflow = mq.matches ? "hidden" : previousOverflow;
+    };
+    applyLock();
+    mq.addEventListener("change", applyLock);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      mq.removeEventListener("change", applyLock);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   const appliedCount = kosherFilterCount(filters);
   const draftCount = kosherFilterCount(draft);
 
@@ -136,7 +160,7 @@ export function KosherFilterPanel({
       <button
         onClick={toggleOpen}
         aria-expanded={open}
-        className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors border ${
+        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-full text-sm font-medium transition-colors border ${
           appliedCount > 0
             ? "bg-brand-500/20 text-brand-400 border-brand-500"
             : "bg-dark-800 text-dark-300 border-dark-700 hover:bg-dark-700"
@@ -151,109 +175,139 @@ export function KosherFilterPanel({
         )}
       </button>
 
-      {/* Panel — w-full so it wraps below the trigger row in a flex-wrap parent. */}
+      {/* Panel. Below md: a full-height bottom sheet over a backdrop (body
+          scroll is locked while open — see the effect above). At md+ the
+          wrapper collapses to a static w-full node so the panel stays an
+          inline card that wraps below the trigger row in the flex-wrap
+          parent, exactly as before. */}
       {open && (
-        <div className="w-full card p-5">
-          {/* Certification section */}
-          <div className="mb-6">
-            <h3 className="font-bold text-lg">Certification</h3>
-            <p className="text-dark-400 text-sm mb-3">Select any that work for you</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {AGENCIES.map((cert) => {
-                const selected = draft.certifications.includes(cert);
-                return (
-                  <button
-                    key={cert}
-                    onClick={() => toggleCertification(cert)}
-                    aria-pressed={selected}
-                    aria-label={`${cert} certification`}
-                    className={`flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold border-2 transition-colors ${
-                      selected
-                        ? "bg-dark-800 border-brand-500 text-white"
-                        : "bg-dark-800 border-transparent text-dark-300 hover:bg-dark-700"
-                    }`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        selected ? "bg-brand-500" : "border border-dark-500"
-                      }`}
-                    >
-                      {selected && <Check className="w-3.5 h-3.5 text-white" />}
-                    </span>
-                    {cert}
-                  </button>
-                );
-              })}
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 flex flex-col justify-end md:static md:inset-auto md:z-auto md:bg-transparent md:block md:w-full"
+          onClick={() => setOpen(false)}
+        >
+          <div
+            className="card flex flex-col h-full min-h-0 rounded-none border-x-0 border-b-0 md:h-auto md:rounded-2xl md:border md:border-dark-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Sheet header — mobile only; md+ keeps the old headerless card. */}
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-dark-800 md:hidden">
+              <h2 className="font-bold text-lg">Kosher Filters</h2>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close filters"
+                className="w-11 h-11 -mr-2 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 flex items-center justify-center transition-colors"
+              >
+                <X className="w-5 h-5" aria-hidden="true" />
+              </button>
             </div>
-          </div>
 
-          {/* Dietary standards section */}
-          <div className="mb-6">
-            <h3 className="font-bold text-lg">Dietary Standards</h3>
-            <p className="text-dark-400 text-sm mb-3">
-              Stricter kashrus? Toggle what matters to you
-            </p>
-            <div className="space-y-2">
-              {DIETARY_TOGGLES.map(({ key, title, subtitle }) => {
-                const on = draft[key];
-                return (
-                  <button
-                    key={key}
-                    onClick={() => toggleDietary(key)}
-                    role="switch"
-                    aria-checked={on}
-                    aria-label={title}
-                    className="w-full flex items-center justify-between gap-4 bg-dark-800 hover:bg-dark-700 rounded-xl px-4 py-3 text-left transition-colors"
-                  >
-                    <span>
-                      <span className="block font-semibold">{title}</span>
-                      <span className="block text-dark-400 text-sm">{subtitle}</span>
-                    </span>
-                    {/* Switch track + knob */}
-                    <span
-                      aria-hidden="true"
-                      className={`relative w-11 h-6 rounded-full flex-shrink-0 transition-colors ${
-                        on ? "bg-brand-500" : "bg-dark-600"
+            {/* Scrollable body (only actually scrolls in the mobile sheet). */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-5 md:flex-none md:overflow-visible">
+            {/* Certification section */}
+            <div className="mb-6">
+              <h3 className="font-bold text-lg">Certification</h3>
+              <p className="text-dark-400 text-sm mb-3">Select any that work for you</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {AGENCIES.map((cert) => {
+                  const selected = draft.certifications.includes(cert);
+                  return (
+                    <button
+                      key={cert}
+                      onClick={() => toggleCertification(cert)}
+                      aria-pressed={selected}
+                      aria-label={`${cert} certification`}
+                      className={`flex items-center gap-2 px-3 py-3 min-h-[44px] rounded-xl text-sm font-semibold border-2 transition-colors ${
+                        selected
+                          ? "bg-dark-800 border-brand-500 text-white"
+                          : "bg-dark-800 border-transparent text-dark-300 hover:bg-dark-700"
                       }`}
                     >
                       <span
-                        className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${
-                          on ? "left-[22px]" : "left-0.5"
+                        aria-hidden="true"
+                        className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          selected ? "bg-brand-500" : "border border-dark-500"
                         }`}
-                      />
-                    </span>
-                  </button>
-                );
-              })}
+                      >
+                        {selected && <Check className="w-3.5 h-3.5 text-white" />}
+                      </span>
+                      {cert}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          {/* Apply bar */}
-          <div className="flex items-center gap-3 pt-4 border-t border-dark-800">
-            <button
-              onClick={apply}
-              disabled={previewCount === 0}
-              className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {previewCount === 0
-                ? "No matches"
-                : `Show ${previewCount} result${previewCount === 1 ? "" : "s"}`}
-              {draftCount > 0 && (
-                <span className="bg-white/25 text-xs font-bold px-2 py-0.5 rounded-md">
-                  {draftCount} filter{draftCount === 1 ? "" : "s"}
-                </span>
-              )}
-            </button>
-            {isKosherFilterActive(draft) && (
+            {/* Dietary standards section */}
+            <div className="mb-6">
+              <h3 className="font-bold text-lg">Dietary Standards</h3>
+              <p className="text-dark-400 text-sm mb-3">
+                Stricter kashrus? Toggle what matters to you
+              </p>
+              <div className="space-y-2">
+                {DIETARY_TOGGLES.map(({ key, title, subtitle }) => {
+                  const on = draft[key];
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleDietary(key)}
+                      role="switch"
+                      aria-checked={on}
+                      aria-label={title}
+                      className="w-full flex items-center justify-between gap-4 bg-dark-800 hover:bg-dark-700 rounded-xl px-4 py-3 text-left transition-colors"
+                    >
+                      <span>
+                        <span className="block font-semibold">{title}</span>
+                        <span className="block text-dark-400 text-sm">{subtitle}</span>
+                      </span>
+                      {/* Switch track + knob */}
+                      <span
+                        aria-hidden="true"
+                        className={`relative w-11 h-6 rounded-full flex-shrink-0 transition-colors ${
+                          on ? "bg-brand-500" : "bg-dark-600"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${
+                            on ? "left-[22px]" : "left-0.5"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            </div>
+
+            {/* Apply bar — pinned below the scroll area so it acts as the
+                sheet's sticky action bar on mobile; safe-area padding keeps
+                it clear of the iOS home indicator. */}
+            <div className="flex items-center gap-3 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-dark-800 md:pb-5">
               <button
-                onClick={clear}
-                className="btn-secondary flex items-center gap-1.5 text-sm py-3"
+                onClick={apply}
+                disabled={previewCount === 0}
+                className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <X className="w-4 h-4" aria-hidden="true" />
-                Clear
+                {previewCount === 0
+                  ? "No matches"
+                  : `Show ${previewCount} result${previewCount === 1 ? "" : "s"}`}
+                {draftCount > 0 && (
+                  <span className="bg-white/25 text-xs font-bold px-2 py-0.5 rounded-md">
+                    {draftCount} filter{draftCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </button>
-            )}
+              {isKosherFilterActive(draft) && (
+                <button
+                  onClick={clear}
+                  className="btn-secondary flex items-center gap-1.5 text-sm py-3 min-h-[44px]"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" />
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

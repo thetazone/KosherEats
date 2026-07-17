@@ -216,7 +216,7 @@ export default function PaymentMethodsPage() {
       <main className="flex-1 w-full max-w-2xl mx-auto px-4 py-8">
         <Link
           href="/account"
-          className="inline-flex items-center gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-4"
+          className="inline-flex items-center min-h-[44px] gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-2"
         >
           <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           Account

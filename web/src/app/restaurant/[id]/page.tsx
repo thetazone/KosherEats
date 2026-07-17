@@ -326,11 +326,17 @@ function RestaurantPageInner() {
             <div className="mb-2">
               <KosherBadge restaurant={rest} size="regular" />
             </div>
-            <h1 className="text-4xl font-extrabold">{rest.name}</h1>
+            <h1 className="text-3xl sm:text-4xl font-extrabold break-words">{rest.name}</h1>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* pb-36 while the fixed mobile cart bar is showing so it can never
+            cover the last menu item; lg+ has the sidebar instead of the bar. */}
+        <div
+          className={`max-w-7xl mx-auto px-4 py-6 ${
+            cartCount > 0 ? "pb-36 lg:pb-6" : ""
+          }`}
+        >
           {/* Restaurant Info */}
           <div className="flex flex-wrap items-center gap-4 mb-6">
             <div className="flex items-center gap-1">
@@ -408,7 +414,7 @@ function RestaurantPageInner() {
 
             <button
               onClick={() => setCertificateOpen(true)}
-              className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 rounded-xl transition-colors"
+              className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-[44px] rounded-xl transition-colors"
               aria-label={`View kosher certificate for ${rest.name}`}
             >
               <FileText className="w-4 h-4" aria-hidden="true" />
@@ -451,7 +457,7 @@ function RestaurantPageInner() {
                     <button
                       key={cat.id}
                       onClick={() => setActiveCategory(cat.id)}
-                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                      className={`px-4 py-2 min-h-[44px] rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                         activeCategory === cat.id
                           ? "bg-brand-500 text-white"
                           : "bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -484,7 +490,7 @@ function RestaurantPageInner() {
                             className="card p-4 flex justify-between items-start gap-4 hover:border-dark-600 transition-colors"
                           >
                             <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
                                 <h3 className="font-semibold">{item.name}</h3>
                                 {item.is_meat && (
                                   <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
@@ -506,7 +512,9 @@ function RestaurantPageInner() {
 
                             <div className="flex items-center gap-2">
                               {inCartQty > 0 ? (
-                                <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
+                                // 44px stepper button (w-11 h-11) — minimum
+                                // touch target.
+                                <div className="flex items-center gap-2 bg-dark-800 rounded-xl px-1.5 py-1.5">
                                   <span className="font-semibold w-6 text-center">
                                     {inCartQty}
                                   </span>
@@ -514,7 +522,7 @@ function RestaurantPageInner() {
                                     onClick={() => openItem(item)}
                                     disabled={!item.is_available}
                                     aria-label={`Add another ${item.name}`}
-                                    className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                                    className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                                   >
                                     +
                                   </button>
@@ -523,7 +531,7 @@ function RestaurantPageInner() {
                                 <button
                                   onClick={() => openItem(item)}
                                   disabled={!item.is_available}
-                                  className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+                                  className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-colors"
                                 >
                                   {!item.is_available ? "Unavailable" : "Add"}
                                 </button>
@@ -593,9 +601,10 @@ function RestaurantPageInner() {
           </div>
         </div>
 
-        {/* Mobile Cart Bar */}
+        {/* Mobile Cart Bar — safe-area padding keeps the checkout button
+            clear of the iOS home indicator. */}
         {cartCount > 0 && (
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 z-50">
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-50">
             <a
               href="/cart"
               className="btn-primary w-full flex items-center justify-between"

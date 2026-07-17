@@ -24,7 +24,10 @@
   }
 
   .input {
-    @apply bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 text-white placeholder-dark-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors;
+    /* text-base (16px) is load-bearing: inputs sized under 16px make iOS
+       Safari auto-zoom the page on focus. Keep it explicit — form elements
+       otherwise inherit the surrounding font size. */
+    @apply bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 text-base text-white placeholder-dark-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors;
   }
 }
 

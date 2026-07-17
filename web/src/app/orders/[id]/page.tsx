@@ -537,13 +537,21 @@ export default function OrderTrackingPage() {
       ? order.external_tracking_url
       : null;
 
+  // The chat input is fixed to the viewport bottom below md: (see OrderChat),
+  // so reserve space under the page content for it on mobile.
+  const showChat = !failed && Boolean(token);
+
   return (
     <>
       <Header />
-      <main className="flex-1 max-w-3xl mx-auto px-4 py-8 w-full">
+      <main
+        className={`flex-1 max-w-3xl mx-auto px-4 pt-8 w-full ${
+          showChat ? "pb-32 md:pb-8" : "pb-8"
+        }`}
+      >
         <Link
           href="/orders"
-          className="inline-flex items-center gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-4"
+          className="inline-flex items-center min-h-[44px] gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-2"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Orders
@@ -621,7 +629,7 @@ export default function OrderTrackingPage() {
                     href={trackingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn-primary inline-flex items-center gap-2 py-2 px-4 text-sm mt-3"
+                    className="btn-primary inline-flex items-center justify-center gap-2 py-2 px-4 text-sm min-h-[44px] mt-3"
                   >
                     Track delivery
                     <ExternalLink className="w-4 h-4" />
@@ -690,7 +698,7 @@ export default function OrderTrackingPage() {
               {courier.phone && (
                 <a
                   href={`tel:${courier.phone.replace(/[^0-9+]/g, "")}`}
-                  className="w-10 h-10 rounded-full bg-dark-800 hover:bg-dark-700 flex items-center justify-center transition-colors flex-shrink-0"
+                  className="w-11 h-11 rounded-full bg-dark-800 hover:bg-dark-700 flex items-center justify-center transition-colors flex-shrink-0"
                   aria-label={`Call ${courier.first_name}`}
                 >
                   <Phone className="w-4 h-4 text-brand-400" />
@@ -743,7 +751,7 @@ export default function OrderTrackingPage() {
                 </div>
                 <button
                   onClick={() => setShowRating(true)}
-                  className="btn-primary py-2 px-4 text-sm whitespace-nowrap flex-shrink-0"
+                  className="btn-primary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center whitespace-nowrap flex-shrink-0"
                 >
                   Rate courier
                 </button>
@@ -862,7 +870,10 @@ export default function OrderTrackingPage() {
         {canCancel && (
           <div className="card p-5">
             {!confirmingCancel ? (
-              <button onClick={() => setConfirmingCancel(true)} className="btn-secondary py-2 px-4 text-sm">
+              <button
+                onClick={() => setConfirmingCancel(true)}
+                className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
+              >
                 Cancel Order
               </button>
             ) : (
@@ -870,11 +881,11 @@ export default function OrderTrackingPage() {
                 <p className="text-sm text-dark-300 mb-3">
                   Cancel this order? You&apos;ll receive a full refund of {formatUSD(order.total)}.
                 </p>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   <button
                     onClick={() => void cancelOrder()}
                     disabled={cancelling}
-                    className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl text-sm transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-[44px] transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {cancelling && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {cancelling ? "Cancelling…" : "Yes, cancel order"}
@@ -882,7 +893,7 @@ export default function OrderTrackingPage() {
                   <button
                     onClick={() => setConfirmingCancel(false)}
                     disabled={cancelling}
-                    className="btn-secondary py-2 px-4 text-sm disabled:opacity-50"
+                    className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center disabled:opacity-50"
                   >
                     Keep order
                   </button>

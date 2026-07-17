@@ -209,7 +209,7 @@ function SearchPageInner() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search restaurants, cuisines, or dishes..."
-            className="w-full input pl-12 py-4 text-lg"
+            className="w-full input pl-12 py-4 text-base sm:text-lg"
             autoFocus
           />
         </div>
@@ -230,7 +230,7 @@ function SearchPageInner() {
               sortTouched.current = true;
               setSortBy(e.target.value as SortBy);
             }}
-            className="input py-2 text-sm"
+            className="input py-2 text-base min-h-[44px]"
             aria-label="Sort results"
           >
             {coords && <option value="distance">Nearest First</option>}

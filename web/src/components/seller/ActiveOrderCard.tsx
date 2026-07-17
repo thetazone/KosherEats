@@ -193,8 +193,9 @@ function QuickActions({
   setConfirmingReject: (v: boolean) => void;
   onAction: (order: SellerOrder, action: OrderQuickAction) => void;
 }) {
+  // min-h-[44px] keeps every status action a full-size touch target at 375px.
   const btn =
-    "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
   /** The pressed button's icon swaps to a spinner while its PATCH runs. */
   const icon = (action: OrderQuickAction, idle: React.ReactNode) =>

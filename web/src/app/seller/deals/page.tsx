@@ -171,7 +171,7 @@ export default function SellerDealsPage() {
             setShowCreate(true);
             setActionError(null);
           }}
-          className="flex items-center gap-1.5 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+          className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           New deal
@@ -184,7 +184,7 @@ export default function SellerDealsPage() {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="p-1 rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -276,7 +276,7 @@ function DealCard({ deal, onDeactivate }: { deal: SellerDeal; onDeactivate: () =
       {status === "active" || status === "scheduled" ? (
         <button
           onClick={onDeactivate}
-          className="text-xs font-semibold text-red-400 hover:text-red-300 px-2 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors shrink-0"
+          className="text-xs font-semibold text-red-400 hover:text-red-300 px-2 min-h-[44px] -my-1.5 rounded-lg hover:bg-red-500/10 transition-colors shrink-0"
         >
           Deactivate
         </button>
@@ -324,6 +324,16 @@ function CreateDealModal({
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Lock body scroll while the modal is up so the page doesn't scroll behind
+  // the mobile bottom sheet (same pattern as the consumer MenuItemModal).
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -422,25 +432,30 @@ function CreateDealModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-black/70 flex items-stretch md:items-center justify-center md:p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Create deal"
     >
-      <form onSubmit={submit} className="card w-full max-w-lg my-4">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-dark-800">
+      {/* Below md: a full-height bottom sheet (h-full against the inset-0
+          overlay); at md+ a centered dialog capped at 90vh. */}
+      <form
+        onSubmit={submit}
+        className="card w-full max-w-lg h-full md:h-auto md:max-h-[90vh] flex flex-col rounded-none md:rounded-2xl"
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dark-800 shrink-0">
           <h2 className="text-lg font-bold">Create deal</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="p-2 rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+            className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5">
           <div>
             <label htmlFor="deal-title" className="block text-sm text-dark-300 mb-1.5">
               Title <span className="text-brand-500">*</span>
@@ -490,7 +505,7 @@ function CreateDealModal({
                     setDiscountType(t.value);
                     setDiscountValue("");
                   }}
-                  className={`py-2 px-3 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`py-2 px-3 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
                     discountType === t.value
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -603,7 +618,10 @@ function CreateDealModal({
           )}
         </div>
 
-        <div className="flex gap-3 px-6 py-4 border-t border-dark-800">
+        {/* Action bar — pinned below the scroll area so Create is always
+            reachable on the mobile sheet; safe-area padding clears the home
+            indicator on notched phones. */}
+        <div className="flex gap-3 px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-4 border-t border-dark-800 shrink-0">
           <button
             type="button"
             onClick={onClose}
