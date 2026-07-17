@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   ChevronRight,
+  CreditCard,
   KeyRound,
   LogOut,
   Mail,
@@ -922,6 +923,23 @@ export default function AccountPage() {
                   <div className="font-bold">Delivery addresses</div>
                   <div className="text-sm text-dark-400">
                     Add, remove, or set your default address
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="w-5 h-5 text-dark-400 shrink-0" aria-hidden="true" />
+            </Link>
+
+            {/* ---- Payment methods ---- */}
+            <Link
+              href="/account/payments"
+              className="card p-6 flex items-center justify-between gap-4 hover:border-dark-700 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <CreditCard className="w-5 h-5 text-brand-400" aria-hidden="true" />
+                <div>
+                  <div className="font-bold">Payment methods</div>
+                  <div className="text-sm text-dark-400">
+                    Save a card to check out faster
                   </div>
                 </div>
               </div>

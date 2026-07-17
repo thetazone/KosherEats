@@ -7,11 +7,13 @@
 // pending-order recovery machinery).
 
 import {
+  clearPreselectedDeal,
   formatAddress,
   formatUSD,
   isDealError,
   isUnauthorized,
   isVerificationRequired,
+  loadPreselectedDeal,
   parseCents,
   providerLabel,
   savePendingOrder,
@@ -220,7 +222,27 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     dealsApi
       .forRestaurant(cart.restaurant_id, token)
       .then((ds) => {
-        if (!cancelled) setDealsList(ds);
+        if (cancelled) return;
+        setDealsList(ds);
+        // One-shot handoff from the Deals-page tap-through (persisted by the
+        // restaurant page): auto-apply the preselected deal when it's still
+        // live for this cart's restaurant AND currently eligible. An
+        // ineligible deal (below min order / BOGO with <2 units) stays
+        // unapplied — the rail still shows it with the blocking hint instead
+        // of surfacing a raw server rejection. A preselection for a different
+        // restaurant is left in storage for its own checkout.
+        const pre = loadPreselectedDeal();
+        if (!pre || pre.restaurant_id !== cart.restaurant_id) return;
+        clearPreselectedDeal();
+        const match = ds.find((d) => d.id === pre.deal_id);
+        if (!match) return;
+        const units = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+        const eligible =
+          (match.min_order_amount ?? 0) <= cart.subtotal &&
+          !(match.discount_type === "bogo" && units < 2);
+        if (eligible) {
+          setAppliedDealId((prev) => prev ?? match.id);
+        }
       })
       .catch(() => {
         if (!cancelled) setDealsList([]);
@@ -228,6 +250,9 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     return () => {
       cancelled = true;
     };
+    // cart.items/subtotal are only read for the one-shot eligibility check at
+    // deals-load time — they must not re-trigger the fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, cart.restaurant_id]);
 
   const subtotal = cart.subtotal;

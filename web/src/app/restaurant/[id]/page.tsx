@@ -1,5 +1,6 @@
 "use client";
 
+import { savePreselectedDeal } from "@/components/checkout/checkoutShared";
 import { Header } from "@/components/layout/Header";
 import { KosherBadge } from "@/components/restaurant/KosherBadge";
 import { KosherCertificateModal } from "@/components/restaurant/KosherCertificateModal";
@@ -16,8 +17,8 @@ import {
   Tag,
   type LucideIcon,
 } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 // One optimistic sidebar line. The same menu item added with different
 // modifier selections becomes distinct lines, so lines are keyed by
@@ -88,10 +89,16 @@ function dealBadge(deal: Deal): string {
 }
 
 // DealCard is one card in the horizontal per-restaurant deals strip.
-function DealCard({ deal }: { deal: Deal }) {
+// selected marks the deal the user tapped through from the Deals page — it is
+// persisted for checkout, where CheckoutPanel auto-applies it.
+function DealCard({ deal, selected = false }: { deal: Deal; selected?: boolean }) {
   const badge = dealBadge(deal);
   return (
-    <div className="w-72 flex-shrink-0 card p-4">
+    <div
+      className={`w-72 flex-shrink-0 card p-4 ${
+        selected ? "border-brand-500 bg-brand-900/10" : ""
+      }`}
+    >
       <div className="flex items-center gap-2 mb-2">
         {badge && (
           <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
@@ -118,14 +125,23 @@ function DealCard({ deal }: { deal: Deal }) {
           })}
         </span>
       </div>
+      {selected && (
+        <p className="text-brand-400 text-xs font-semibold mt-2">
+          Selected — applies at checkout
+        </p>
+      )}
     </div>
   );
 }
 
-export default function RestaurantPage() {
+function RestaurantPageInner() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
   const router = useRouter();
+  // ?deal= carries a tap-through from the Deals page: highlight that deal in
+  // the strip and persist it so checkout can auto-apply it.
+  const searchParams = useSearchParams();
+  const preselectedDealId = searchParams?.get("deal") ?? null;
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menu, setMenu] = useState<MenuCategory[]>([]);
@@ -143,6 +159,15 @@ export default function RestaurantPage() {
     void loadAll(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Persist the Deals-page tap-through once the strip confirms the deal is
+  // still live for this restaurant (the strip is server-filtered to active +
+  // unexpired). CheckoutPanel consumes this and auto-applies the deal.
+  useEffect(() => {
+    if (!id || !preselectedDealId) return;
+    if (!restaurantDeals.some((d) => d.id === preselectedDealId)) return;
+    savePreselectedDeal({ restaurant_id: id, deal_id: preselectedDealId });
+  }, [id, preselectedDealId, restaurantDeals]);
 
   async function loadAll(restaurantId: string) {
     setLoading(true);
@@ -380,9 +405,19 @@ export default function RestaurantPage() {
                 Deals
               </h2>
               <div className="flex gap-4 overflow-x-auto pb-2">
-                {restaurantDeals.map((deal) => (
-                  <DealCard key={deal.id} deal={deal} />
-                ))}
+                {/* Preselected deal (Deals-page tap-through) leads the strip
+                    so it's visible without scrolling. */}
+                {[...restaurantDeals]
+                  .sort((a, b) =>
+                    a.id === preselectedDealId ? -1 : b.id === preselectedDealId ? 1 : 0
+                  )
+                  .map((deal) => (
+                    <DealCard
+                      key={deal.id}
+                      deal={deal}
+                      selected={deal.id === preselectedDealId}
+                    />
+                  ))}
               </div>
             </section>
           )}
@@ -576,5 +611,22 @@ export default function RestaurantPage() {
         )}
       </main>
     </>
+  );
+}
+
+export default function RestaurantPage() {
+  return (
+    // useSearchParams (?deal= from the Deals page) requires a Suspense
+    // boundary — same pattern as /search.
+    <Suspense
+      fallback={
+        <>
+          <Header />
+          <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full" />
+        </>
+      }
+    >
+      <RestaurantPageInner />
+    </Suspense>
   );
 }
