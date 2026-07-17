@@ -141,9 +141,12 @@ export function Header() {
           </Link>
           {user ? (
             <div className="flex items-center gap-4">
-              <span className="text-white text-sm font-medium">
+              <Link
+                href="/account"
+                className="text-white hover:text-brand-400 transition-colors text-sm font-medium"
+              >
                 {user.first_name}
-              </span>
+              </Link>
               <button
                 onClick={handleSignOut}
                 className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
@@ -195,6 +198,11 @@ export function Header() {
           <Link href="/cart" className="block text-dark-300 text-sm font-medium">
             Cart{cartCount > 0 ? ` (${cartCount})` : ""}
           </Link>
+          {user && (
+            <Link href="/account" className="block text-dark-300 text-sm font-medium">
+              Account
+            </Link>
+          )}
           {user ? (
             <button
               onClick={handleSignOut}

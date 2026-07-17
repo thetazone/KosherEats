@@ -1,4 +1,5 @@
 import type {
+  Address,
   AuthResponse,
   ChatMessage,
   CourierLocationEvent,
@@ -504,16 +505,24 @@ export const user = {
   updateProfile: (token: string, data: { first_name: string; last_name: string; phone: string }) =>
     fetchAPI("/user/profile", { method: "PUT", token, body: JSON.stringify(data) }),
 
-  listAddresses: (token: string) => fetchAPI("/user/addresses", { token }),
+  listAddresses: (token: string) => fetchAPI<Address[]>("/user/addresses", { token }),
 
-  addAddress: (token: string, data: { label: string; street: string; city: string; state: string; zip_code: string; lat: number; lng: number }) =>
-    fetchAPI("/user/addresses", { method: "POST", token, body: JSON.stringify(data) }),
+  // lat/lng are stored verbatim (no server-side geocoding) and feed delivery
+  // routing + the distance-based fee quote. apt is optional (backend defaults "").
+  addAddress: (token: string, data: { label: string; street: string; apt?: string; city: string; state: string; zip_code: string; lat: number; lng: number }) =>
+    fetchAPI<Address>("/user/addresses", { method: "POST", token, body: JSON.stringify(data) }),
 
   deleteAddress: (token: string, id: string) =>
-    fetchAPI(`/user/addresses/${id}`, { method: "DELETE", token }),
+    fetchAPI<{ status: string }>(`/user/addresses/${id}`, { method: "DELETE", token }),
 
   setDefaultAddress: (token: string, id: string) =>
-    fetchAPI(`/user/addresses/${id}/default`, { method: "PATCH", token }),
+    fetchAPI<{ status: string }>(`/user/addresses/${id}/default`, { method: "PATCH", token }),
+
+  // Permanently deletes the account (backend anonymizes orders for accounting
+  // and cascades everything else). Irreversible — the UI requires a typed
+  // confirmation before calling this.
+  deleteAccount: (token: string) =>
+    fetchAPI<{ status: string }>("/user/account", { method: "DELETE", token }),
 
   // Verified add/change-email flow — the only way to change the account
   // email. start sends a 6-digit code to the new inbox; verify writes it
