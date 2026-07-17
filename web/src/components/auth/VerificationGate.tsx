@@ -34,7 +34,7 @@ function isPlaceholderEmail(email: string): boolean {
   );
 }
 
-interface Country {
+export interface Country {
   iso: string; // ISO-3166-1 alpha-2 — unique key (several countries share +1)
   name: string;
   flag: string;
@@ -43,7 +43,8 @@ interface Country {
 
 // Curated subset of the iOS picker list (ios/consumer/.../Models/Country.swift):
 // major markets plus the Jewish-diaspora hubs the backend is likely to see.
-const COUNTRIES: Country[] = [
+// Exported for reuse by the /account phone-change flow.
+export const COUNTRIES: Country[] = [
   { iso: "US", name: "United States", flag: "🇺🇸", dialCode: "+1" },
   { iso: "CA", name: "Canada", flag: "🇨🇦", dialCode: "+1" },
   { iso: "IL", name: "Israel", flag: "🇮🇱", dialCode: "+972" },
