@@ -11,9 +11,11 @@ import type {
   CreateRestaurantRequest,
   DashboardStats,
   DeliveryMode,
+  EscalateResult,
   MenuImport,
   MenuItemRequest,
   ModifierGroupRequest,
+  OrderStatusAck,
   POSIntegration,
   PresignResult,
   SellerAuthResponse,
@@ -325,8 +327,13 @@ export const sellerApi = {
 
     accept: (id: string) =>
       sellerFetch<SellerOrder>(`/seller/orders/${id}/accept`, { method: "PATCH" }),
-    reject: (id: string) =>
-      sellerFetch<SellerOrder>(`/seller/orders/${id}/reject`, { method: "PATCH" }),
+    /** Rejects + refunds. The reason is optional and only feeds the consumer
+     *  notification (RejectOrder reads the body with `_ = readJSON`). */
+    reject: (id: string, reason?: string) =>
+      sellerFetch<SellerOrder>(`/seller/orders/${id}/reject`, {
+        method: "PATCH",
+        ...(reason?.trim() ? { body: JSON.stringify({ reason: reason.trim() }) } : {}),
+      }),
     markPreparing: (id: string) =>
       sellerFetch<SellerOrder>(`/seller/orders/${id}/preparing`, { method: "PATCH" }),
     markReady: (id: string) =>
@@ -340,14 +347,17 @@ export const sellerApi = {
         method: "PATCH",
         body: JSON.stringify({ delivery_mode: mode }),
       }),
-    /** Self-delivery flow: the restaurant's own driver picks up / delivers. */
+    /** Self-delivery flow: the restaurant's own driver picks up / delivers.
+     *  Unlike the other transitions these return a bare {status} ack, not the
+     *  updated order — re-fetch to see new timestamps (picked_up_at etc). */
     pickup: (id: string) =>
-      sellerFetch<SellerOrder>(`/seller/orders/${id}/pickup`, { method: "PATCH" }),
+      sellerFetch<OrderStatusAck>(`/seller/orders/${id}/pickup`, { method: "PATCH" }),
     deliver: (id: string) =>
-      sellerFetch<SellerOrder>(`/seller/orders/${id}/deliver`, { method: "PATCH" }),
-    /** Hand an open self-delivery order off to an external provider. */
+      sellerFetch<OrderStatusAck>(`/seller/orders/${id}/deliver`, { method: "PATCH" }),
+    /** Hand an open self-delivery order off to an external provider. One-way;
+     *  returns dispatch details, not the order (EscalateToUber in orders.go). */
     escalate: (id: string) =>
-      sellerFetch<SellerOrder>(`/seller/orders/${id}/escalate`, { method: "PATCH" }),
+      sellerFetch<EscalateResult>(`/seller/orders/${id}/escalate`, { method: "PATCH" }),
   },
 
   deals: {

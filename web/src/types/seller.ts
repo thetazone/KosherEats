@@ -338,6 +338,24 @@ export interface SellerOrder {
   updated_at: string;
 }
 
+/**
+ * PATCH /seller/orders/{id}/pickup and /deliver response — these two
+ * self-delivery transitions return a bare status ack, NOT the full order
+ * (SellerPickupOrder / SellerDeliverOrder in handlers/orders.go). Callers
+ * re-fetch the order to pick up the new timestamps.
+ */
+export interface OrderStatusAck {
+  status: string; // "picked_up" | "delivered"
+}
+
+/** PATCH /seller/orders/{id}/escalate response (EscalateToUber in orders.go). */
+export interface EscalateResult {
+  status: string; // "dispatched"
+  provider: string; // "uber_direct" | "doordash_drive"
+  delivery_id: string;
+  tracking_url: string;
+}
+
 // ── Deals ────────────────────────────────────────────────────
 
 /** models.Deal — a limited-time promotion for the seller's restaurant. */
