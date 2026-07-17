@@ -148,17 +148,82 @@ export interface Order {
   user_id: string;
   restaurant_id: string;
   restaurant_name: string;
+  // Present on single-order loads (GetOrder joins the restaurant row);
+  // omitted when 0 (Go omitempty).
+  restaurant_lat?: number;
+  restaurant_lng?: number;
   status: OrderStatus;
   items: OrderItem[];
   subtotal: number;
+  // Deal discount applied to the subtotal before tax, in cents (0 when no
+  // deal). subtotal - discount + delivery_fee + service_fee + tax +
+  // courier_tip == total.
+  discount?: number;
   delivery_fee: number;
   service_fee: number;
   tax: number;
   total: number;
   delivery_address: string;
+  // (0,0) for pickup orders — mirror the iOS guard and treat that as "no
+  // delivery coordinate" rather than a real point.
+  delivery_lat?: number;
+  delivery_lng?: number;
   est_delivery_time: string;
+  // Consumer-chosen scheduled delivery time (RFC3339); absent for ASAP.
+  scheduled_for?: string | null;
+  // Courier assignment (platform deliveries only).
+  courier_id?: string | null;
+  courier?: CourierPublic | null;
+  claimed_at?: string | null;
+  picked_up_at?: string | null;
+  delivered_at?: string | null;
+  courier_payout?: number;
+  courier_tip?: number;
+  // Populated once the consumer has rated their courier (1-5).
+  courier_rating?: number | null;
+  // Drop-off photo from the courier, when one was taken.
+  delivery_proof_url?: string;
+  // "delivery" (default) or "pickup".
+  fulfillment_type?: "delivery" | "pickup";
+  // External courier dispatch (Uber Direct / DoorDash Drive fallback).
+  external_delivery_id?: string | null;
+  external_provider?: string | null;
+  external_tracking_url?: string | null;
+  // Delivery mode for this order: "platform" | "external" | "restaurant"
+  // (self-delivery). Backend COALESCEs to the restaurant default.
+  delivery_mode?: string;
   created_at: string;
   updated_at: string;
+}
+
+// CourierPublic is the consumer-visible slice of the assigned courier
+// (backend models.CourierPublic). lat/lng are the courier's last known
+// position snapshot; live updates arrive via the order location SSE stream.
+export interface CourierPublic {
+  id: string;
+  first_name: string;
+  phone: string;
+  avatar_url?: string;
+  vehicle_type: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_color?: string;
+  license_plate?: string;
+  rating: number;
+  total_deliveries: number;
+  lat: number;
+  lng: number;
+}
+
+// CourierLocationEvent is one SSE "location" event on
+// GET /orders/{id}/location/stream (backend broker.LocationEvent).
+export interface CourierLocationEvent {
+  order_id: string;
+  lat: number;
+  lng: number;
+  heading: number;
+  speed: number;
+  at: string;
 }
 
 export interface OrderItem {

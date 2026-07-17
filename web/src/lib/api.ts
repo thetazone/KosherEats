@@ -1,6 +1,7 @@
 import type {
   AuthResponse,
   ChatMessage,
+  CourierLocationEvent,
   Deal,
   DeliveryQuote,
   LinkedProvider,
@@ -308,6 +309,93 @@ export const cart = {
   clear: (token: string) => fetchAPI("/cart", { method: "DELETE", token }),
 };
 
+// Live courier-location SSE stream (GET /orders/{id}/location/stream).
+// EventSource cannot send an Authorization header, so we consume the stream
+// with fetch + a minimal SSE parser over the response body. The server emits
+// `event: location` frames with a JSON body plus `: ping` heartbeat comments
+// every 25s. Resolves when the server closes the stream cleanly; rejects on
+// HTTP/network errors and on abort (callers distinguish an intentional stop
+// via `signal.aborted`). On a 401 we run the shared single-flight refresh
+// once and retry with the new token, mirroring fetchAPI's replay behaviour.
+async function streamOrderLocation(
+  token: string,
+  orderId: string,
+  onEvent: (event: CourierLocationEvent) => void,
+  signal: AbortSignal
+): Promise<void> {
+  const open = (authToken: string) =>
+    fetch(`${API_BASE}/orders/${orderId}/location/stream`, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        Accept: "text/event-stream",
+      },
+      cache: "no-store",
+      signal,
+    });
+
+  let res = await open(token);
+  if (res.status === 401 && getStored(REFRESH_TOKEN_KEY)) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      res = await open(newToken);
+    }
+  }
+  if (!res.ok || !res.body) {
+    throw new Error(`Location stream failed (HTTP ${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventName = "";
+  let dataLines: string[] = [];
+
+  // End of one SSE event (blank line): dispatch and reset per-event state.
+  const dispatch = () => {
+    const name = eventName || "message";
+    const data = dataLines.join("\n");
+    eventName = "";
+    dataLines = [];
+    if (name !== "location" || data === "") return;
+    try {
+      onEvent(JSON.parse(data) as CourierLocationEvent);
+    } catch {
+      // Malformed frame — skip it; the next ping will be along shortly.
+    }
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // Process complete lines; a trailing partial line stays buffered until
+    // the next chunk completes it.
+    let newlineIdx: number;
+    while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+      let line = buffer.slice(0, newlineIdx);
+      buffer = buffer.slice(newlineIdx + 1);
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+
+      if (line === "") {
+        dispatch();
+        continue;
+      }
+      if (line.startsWith(":")) continue; // heartbeat comment
+
+      const colonIdx = line.indexOf(":");
+      const field = colonIdx === -1 ? line : line.slice(0, colonIdx);
+      let fieldValue = colonIdx === -1 ? "" : line.slice(colonIdx + 1);
+      if (fieldValue.startsWith(" ")) fieldValue = fieldValue.slice(1);
+
+      if (field === "event") eventName = fieldValue;
+      else if (field === "data") dataLines.push(fieldValue);
+      // id/retry fields are unused by this stream.
+    }
+  }
+  dispatch(); // flush a final unterminated event, if any
+}
+
 // Orders
 export const orders = {
   // tip is in cents. scheduled_for is RFC3339 (omit for ASAP).
@@ -330,10 +418,16 @@ export const orders = {
 
   list: (token: string) => fetchAPI("/orders", { token }),
 
-  get: (token: string, id: string) => fetchAPI(`/orders/${id}`, { token }),
+  get: (token: string, id: string) => fetchAPI<Order>(`/orders/${id}`, { token }),
 
+  // Returns the refreshed (cancelled) order so callers can update local
+  // state without a follow-up GET.
   cancel: (token: string, id: string) =>
-    fetchAPI(`/orders/${id}/cancel`, { method: "PATCH", token }),
+    fetchAPI<Order>(`/orders/${id}/cancel`, { method: "PATCH", token }),
+
+  // Live courier location while the tracking screen is open. See
+  // streamOrderLocation above for the SSE contract.
+  streamLocation: streamOrderLocation,
 
   // Idempotent post-payment recovery: resolve the order created for a
   // PaymentIntent the client just confirmed (e.g. after a redirect or a

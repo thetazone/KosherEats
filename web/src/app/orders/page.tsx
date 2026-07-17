@@ -1,8 +1,10 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
+import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { cart as cartApi, orders as ordersApi } from "@/lib/api";
 import type { Order, OrderStatus } from "@/types";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -58,6 +60,11 @@ export default function OrdersPage() {
   const [reorderingId, setReorderingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Order currently being rated in the modal, if any. The list payload has
+  // no courier/rating info (that only comes on single-order GETs), so we
+  // track ids rated this session to hide the button after submission.
+  const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
+  const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
@@ -231,7 +238,9 @@ export default function OrdersPage() {
                 <div key={order.id} className="card p-5 hover:border-dark-600 transition-colors">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <h3 className="font-bold text-lg">{order.restaurant_name}</h3>
+                      <Link href={`/orders/${order.id}`} className="hover:text-brand-400 transition-colors">
+                        <h3 className="font-bold text-lg">{order.restaurant_name}</h3>
+                      </Link>
                       <p className="text-dark-500 text-sm">
                         {new Date(order.created_at).toLocaleDateString("en-US", {
                           month: "short",
@@ -312,6 +321,14 @@ export default function OrdersPage() {
 
                   {/* Actions */}
                   <div className="mt-3 flex gap-3">
+                    {isActive && (
+                      <Link
+                        href={`/orders/${order.id}`}
+                        className="btn-primary py-2 px-4 text-sm inline-block"
+                      >
+                        Track Order
+                      </Link>
+                    )}
                     {isActive && canCancel && (
                       <button
                         onClick={() => cancelOrder(order.id)}
@@ -330,6 +347,16 @@ export default function OrdersPage() {
                         {isReordering ? "Adding to cart…" : "Reorder"}
                       </button>
                     )}
+                    {order.status === "delivered" &&
+                      order.fulfillment_type !== "pickup" &&
+                      !ratedIds.has(order.id) && (
+                        <button
+                          onClick={() => setRatingOrderId(order.id)}
+                          className="btn-secondary py-2 px-4 text-sm"
+                        >
+                          Rate Courier
+                        </button>
+                      )}
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : order.id)}
                       className="btn-secondary py-2 px-4 text-sm"
@@ -343,6 +370,28 @@ export default function OrdersPage() {
           </div>
         )}
       </main>
+
+      {/* Courier rating modal. No courier name here — the list payload
+          doesn't carry courier info (only single-order GETs do). */}
+      {ratingOrderId && token && (
+        <CourierRatingModal
+          token={token}
+          orderId={ratingOrderId}
+          onSubmitted={() => {
+            setRatedIds((prev) => {
+              const next = new Set(prev);
+              next.add(ratingOrderId);
+              return next;
+            });
+            setRatingOrderId(null);
+          }}
+          onClose={() => setRatingOrderId(null)}
+          onUnauthorized={() => {
+            window.localStorage.removeItem("token");
+            router.replace("/auth");
+          }}
+        />
+      )}
     </>
   );
 }
