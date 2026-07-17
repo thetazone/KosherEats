@@ -130,6 +130,8 @@ function statusHeadline(order: Order): string {
       return "Your order is on the way";
     case "delivered":
       return "Delivered — enjoy!";
+    case "completed":
+      return "Order completed";
     case "cancelled":
       return "Order was cancelled";
     case "rejected":
@@ -164,6 +166,8 @@ function statusSubtext(order: Order): string {
       return "Your courier has the order and is heading to your delivery address.";
     case "delivered":
       return "The dropoff is complete.";
+    case "completed":
+      return "This order has been closed.";
     case "cancelled":
       return "The order will not be fulfilled. If you were charged, your payment will be refunded.";
     case "rejected":
@@ -175,8 +179,9 @@ function statusSubtext(order: Order): string {
 // One step per OrderStatus. The stepper itself renders the progression
 // statuses (scheduled → pending → accepted → preparing → ready → picked_up →
 // delivered); the two terminal failure statuses (cancelled / rejected) render
-// as a red banner instead of a step — together the timeline accounts for all
-// 8 non-overlapping states an order can land in after placement.
+// as a red banner instead of a step, and "completed" (the pickup-order
+// terminal status) maps to the final step — together the timeline accounts
+// for every state an order can land in after placement.
 
 interface TimelineStep {
   key: OrderStatus;
@@ -210,8 +215,9 @@ function buildTimeline(order: Order): { steps: TimelineStep[]; activeIndex: numb
   let activeIndex: number;
   if (order.status === "cancelled" || order.status === "rejected") {
     activeIndex = -1; // stepper hidden — terminal banner takes over
-  } else if (pickup && order.status === "delivered") {
-    // A pickup order can be closed out as delivered; its last step is "Picked up".
+  } else if (order.status === "completed" || (pickup && order.status === "delivered")) {
+    // "completed" is the pickup-order terminal status (and a pickup order can
+    // also be closed out as delivered) — either way, land on the last step.
     activeIndex = steps.length - 1;
   } else {
     activeIndex = steps.findIndex((s) => s.key === order.status);
