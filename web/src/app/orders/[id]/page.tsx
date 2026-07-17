@@ -4,6 +4,12 @@ import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { OrderChat } from "@/components/orders/OrderChat";
 import { orders as ordersApi } from "@/lib/api";
+import { formatUSD } from "@/lib/format";
+import {
+  CANCELLABLE_ORDER_STATUSES,
+  ORDER_STATUS_META,
+  TERMINAL_ORDER_STATUSES,
+} from "@/lib/orderStatus";
 import type { Order, OrderStatus } from "@/types";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -17,6 +23,7 @@ import {
   Clock,
   ExternalLink,
   Home,
+  Loader2,
   MapPin,
   Package,
   Phone,
@@ -28,31 +35,11 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const TERMINAL_STATUSES: OrderStatus[] = ["delivered", "cancelled", "rejected"];
-// Mirrors backend CancelOrder: scheduled/pending/accepted are cancellable,
-// but never once an external provider owns the delivery.
-const CANCELLABLE_STATUSES: OrderStatus[] = ["scheduled", "pending", "accepted"];
 const POLL_INTERVAL_MS = 15_000;
-
-const STATUS_BADGE: Record<OrderStatus, { label: string; color: string; bg: string }> = {
-  scheduled: { label: "Scheduled", color: "text-yellow-300", bg: "bg-yellow-900/30" },
-  pending: { label: "Pending", color: "text-yellow-400", bg: "bg-yellow-900/30" },
-  accepted: { label: "Accepted", color: "text-blue-400", bg: "bg-blue-900/30" },
-  preparing: { label: "Preparing", color: "text-brand-400", bg: "bg-brand-900/30" },
-  ready: { label: "Ready", color: "text-green-400", bg: "bg-green-900/30" },
-  picked_up: { label: "On the way", color: "text-blue-400", bg: "bg-blue-900/30" },
-  delivered: { label: "Delivered", color: "text-green-400", bg: "bg-green-900/30" },
-  cancelled: { label: "Cancelled", color: "text-red-400", bg: "bg-red-900/30" },
-  rejected: { label: "Rejected", color: "text-red-400", bg: "bg-red-900/30" },
-};
 
 function isUnauthorized(err: unknown): boolean {
   const msg = String(err instanceof Error ? err.message : err).toLowerCase();
   return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
-
-function formatUSD(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function formatTime(iso: string): string {
@@ -352,7 +339,7 @@ export default function OrderTrackingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
-  const isActive = order != null && !TERMINAL_STATUSES.includes(order.status);
+  const isActive = order != null && !TERMINAL_ORDER_STATUSES.includes(order.status);
 
   // Visibility-aware 15s polling while the order is active: pause when the
   // tab is hidden, refresh immediately + resume on return.
@@ -519,11 +506,12 @@ export default function OrderTrackingPage() {
     );
   }
 
-  const badge = STATUS_BADGE[order.status];
+  const badge = ORDER_STATUS_META[order.status];
   const pickup = isPickup(order);
   const external = isExternalDelivery(order);
   const failed = order.status === "cancelled" || order.status === "rejected";
-  const canCancel = CANCELLABLE_STATUSES.includes(order.status) && !order.external_delivery_id;
+  const canCancel =
+    CANCELLABLE_ORDER_STATUSES.includes(order.status) && !order.external_delivery_id;
   const eta = isActive && order.status !== "pending" ? sanitizedETA(order.est_delivery_time) : null;
 
   // Live courier position: prefer the SSE stream, fall back to the courier's
@@ -580,7 +568,7 @@ export default function OrderTrackingPage() {
               </p>
             </div>
             <span
-              className={`${badge.bg} ${badge.color} text-sm font-medium px-3 py-1 rounded-full whitespace-nowrap`}
+              className={`${badge.pill} text-sm font-medium px-3 py-1 rounded-full whitespace-nowrap`}
             >
               {badge.label}
             </span>
@@ -886,8 +874,9 @@ export default function OrderTrackingPage() {
                   <button
                     onClick={() => void cancelOrder()}
                     disabled={cancelling}
-                    className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl text-sm transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
+                    {cancelling && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {cancelling ? "Cancelling…" : "Yes, cancel order"}
                   </button>
                   <button

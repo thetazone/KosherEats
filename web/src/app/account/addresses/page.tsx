@@ -4,7 +4,7 @@ import { formatAddress } from "@/components/checkout/checkoutShared";
 import { Header } from "@/components/layout/Header";
 import { user as userApi } from "@/lib/api";
 import type { Address } from "@/types";
-import { ArrowLeft, MapPin, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, MapPin, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -380,8 +380,9 @@ export default function AddressesPage() {
                   <button
                     type="submit"
                     disabled={saving}
-                    className="btn-primary text-sm py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
+                    {saving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {saving ? "Saving…" : "Save address"}
                   </button>
                   <button

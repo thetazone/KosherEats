@@ -1,7 +1,8 @@
 "use client";
 
+import { formatUSD, formatUSDDelta } from "@/lib/format";
 import type { MenuItem, Modifier, ModifierGroup, SelectedModifier } from "@/types";
-import { AlertTriangle, Check, Minus, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Minus, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // MenuItemSelection is what the modal hands back on Add: the raw ids the
@@ -19,17 +20,6 @@ export interface MenuItemSelection {
 
 const MAX_QUANTITY = 99; // backend rejects quantity > 99
 const MAX_NOTES_LENGTH = 500; // backend rejects notes > 500 chars
-
-function formatUSD(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
-// "+$2.00" / "−$1.50" / "" — mirrors the iOS Modifier.priceDeltaFormatted.
-function formatDelta(cents: number): string {
-  if (cents === 0) return "";
-  const abs = (Math.abs(cents) / 100).toFixed(2);
-  return `${cents > 0 ? "+" : "−"}$${abs}`;
-}
 
 // A group must be satisfied if the seller flagged it required OR set a
 // positive minimum (mirrors the iOS AddToCartSheet.canAdd gate).
@@ -259,7 +249,7 @@ export function MenuItemModal({
                 <div className="bg-dark-800/50 border border-dark-800 rounded-xl divide-y divide-dark-800 overflow-hidden">
                   {sortedModifiers.map((mod) => {
                     const isSelected = picked.includes(mod.id);
-                    const delta = formatDelta(mod.price_delta);
+                    const delta = formatUSDDelta(mod.price_delta);
                     return (
                       <button
                         key={mod.id}
@@ -369,9 +359,10 @@ export function MenuItemModal({
             <button
               onClick={handleSubmit}
               disabled={!canAdd || submitting}
-              className="btn-primary flex-1 flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary flex-1 flex items-center justify-between gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>
+              <span className="flex items-center gap-2">
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                 {submitting
                   ? "Adding…"
                   : canAdd

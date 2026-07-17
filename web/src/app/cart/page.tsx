@@ -2,7 +2,6 @@
 
 import {
   clearPendingOrder,
-  formatUSD,
   isUnauthorized,
   loadPendingOrder,
   submitPendingOrder,
@@ -13,7 +12,9 @@ import {
 import { CheckoutPanel } from "@/components/checkout/CheckoutPanel";
 import { Header } from "@/components/layout/Header";
 import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
+import { formatUSD } from "@/lib/format";
 import type { Cart } from "@/types";
+import { Loader2, ShoppingCart, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -178,7 +179,28 @@ export default function CartPage() {
       <>
         <Header />
         <main className="flex-1 max-w-4xl mx-auto px-4 py-8">
-          <div className="card p-12 text-center text-dark-400">Loading your cart…</div>
+          <h1 className="text-3xl font-extrabold mb-8">Your Cart</h1>
+          <div className="flex flex-col lg:flex-row gap-8 animate-pulse" aria-hidden="true">
+            <div className="flex-1 space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="card p-4 flex items-center justify-between">
+                  <div className="flex-1 space-y-2 pr-3">
+                    <div className="h-5 w-1/2 bg-dark-800 rounded" />
+                    <div className="h-4 w-16 bg-dark-800 rounded" />
+                  </div>
+                  <div className="h-11 w-28 bg-dark-800 rounded-xl" />
+                </div>
+              ))}
+            </div>
+            <div className="lg:w-80">
+              <div className="card p-5 space-y-3">
+                <div className="h-5 w-1/2 bg-dark-800 rounded" />
+                <div className="h-10 bg-dark-800 rounded-xl" />
+                <div className="h-10 bg-dark-800 rounded-xl" />
+                <div className="h-12 bg-dark-800 rounded-xl" />
+              </div>
+            </div>
+          </div>
         </main>
       </>
     );
@@ -244,9 +266,11 @@ export default function CartPage() {
 
         {finalizing ? null : items.length === 0 ? (
           <div className="card p-12 text-center">
-            <svg className="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
-            </svg>
+            <ShoppingCart
+              className="w-16 h-16 text-dark-600 mx-auto mb-4"
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
             <h2 className="text-xl font-bold mb-2">Your cart is empty</h2>
             <p className="text-dark-400 mb-6">Add items from a restaurant to get started.</p>
             <a href="/search" className="btn-primary inline-block">Browse Restaurants</a>
@@ -291,14 +315,18 @@ export default function CartPage() {
                           className="w-7 h-7 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                         >
                           {item.quantity === 1 ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
+                            <Trash2 className="w-4 h-4" aria-hidden="true" />
                           ) : (
                             "-"
                           )}
                         </button>
-                        <span className="font-semibold w-6 text-center">{item.quantity}</span>
+                        <span className="font-semibold w-6 text-center inline-flex items-center justify-center">
+                          {isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            item.quantity
+                          )}
+                        </span>
                         <button
                           onClick={() => mutateQuantity(item.id, 1)}
                           disabled={isPending}

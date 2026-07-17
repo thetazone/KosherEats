@@ -1,3 +1,4 @@
+import { Header } from "@/components/layout/Header";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -7,9 +8,11 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-16 text-neutral-200">
+    <>
+      <Header />
+      <main className="max-w-3xl mx-auto px-6 py-16 text-dark-200">
       <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
-      <p className="text-neutral-400 mb-10">Last updated: April 5, 2026</p>
+      <p className="text-dark-400 mb-10">Last updated: April 5, 2026</p>
 
       <div className="space-y-8 text-sm leading-relaxed">
         <Section title="1. Who We Are">
@@ -60,8 +63,8 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>Restaurants:</strong> receive your name, delivery address, and order details to prepare your food.</li>
             <li><strong>Couriers:</strong> receive the restaurant address, your delivery address, and your first name to complete the delivery.</li>
-            <li><strong>Payment processors:</strong> Stripe processes payments and courier payouts. Their use of your data is governed by <a href="https://stripe.com/privacy" className="text-orange-400 underline" target="_blank" rel="noopener noreferrer">Stripe&apos;s Privacy Policy</a>.</li>
-            <li><strong>Background check provider:</strong> Checkr processes courier background checks. Their use is governed by <a href="https://checkr.com/privacy-policy" className="text-orange-400 underline" target="_blank" rel="noopener noreferrer">Checkr&apos;s Privacy Policy</a>.</li>
+            <li><strong>Payment processors:</strong> Stripe processes payments and courier payouts. Their use of your data is governed by <a href="https://stripe.com/privacy" className="text-brand-400 underline" target="_blank" rel="noopener noreferrer">Stripe&apos;s Privacy Policy</a>.</li>
+            <li><strong>Background check provider:</strong> Checkr processes courier background checks. Their use is governed by <a href="https://checkr.com/privacy-policy" className="text-brand-400 underline" target="_blank" rel="noopener noreferrer">Checkr&apos;s Privacy Policy</a>.</li>
             <li><strong>Cloud infrastructure:</strong> we use Amazon Web Services (S3) for document and image storage, and Fly.io for application hosting.</li>
             <li><strong>Legal requirements:</strong> we may disclose information if required by law, regulation, or legal process.</li>
           </ul>
@@ -130,13 +133,14 @@ export default function PrivacyPolicyPage() {
           </p>
           <p className="mt-2">
             <strong>Email:</strong>{" "}
-            <a href="mailto:privacy@koshereats.shop" className="text-orange-400 underline">
+            <a href="mailto:privacy@koshereats.shop" className="text-brand-400 underline">
               privacy@koshereats.shop
             </a>
           </p>
         </Section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
@@ -144,11 +148,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section>
       <h2 className="text-xl font-semibold text-white mb-3">{title}</h2>
-      <div className="space-y-3 text-neutral-300">{children}</div>
+      <div className="space-y-3 text-dark-300">{children}</div>
     </section>
   );
 }
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 className="font-semibold text-neutral-200 mt-4 mb-1">{children}</h3>;
+  return <h3 className="font-semibold text-dark-200 mt-4 mb-1">{children}</h3>;
 }

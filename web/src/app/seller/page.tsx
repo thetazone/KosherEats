@@ -16,6 +16,7 @@ import {
   DollarSign,
   Flame,
   Inbox,
+  Loader2,
   ShoppingBag,
   Store,
   X,
@@ -443,19 +444,31 @@ function DeliveryModeTile({
 }) {
   const mode = restaurant.delivery_mode;
 
+  // The update is NOT optimistic (the restaurant only changes on response),
+  // so remember which pill was pressed to spin exactly that one in flight.
+  const [pendingMode, setPendingMode] = useState<"external" | "restaurant" | null>(null);
+  useEffect(() => {
+    if (!saving) setPendingMode(null);
+  }, [saving]);
+
   const pill = (label: string, value: "external" | "restaurant") => {
     const selected = mode === value;
+    const inFlight = saving && pendingMode === value;
     return (
       <button
-        onClick={() => onSelect(value)}
+        onClick={() => {
+          setPendingMode(value);
+          onSelect(value);
+        }}
         disabled={saving}
         aria-pressed={selected}
-        className={`w-full py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
           selected
             ? "bg-green-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700"
         }`}
       >
+        {inFlight && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
         {label}
       </button>
     );

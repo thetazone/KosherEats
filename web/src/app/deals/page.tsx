@@ -8,9 +8,9 @@
 // id, and re-sort the deals nearest-first. Denied/unsupported geolocation
 // falls back to the server's expiry-interleaved order.
 
-import { formatUSD } from "@/components/checkout/checkoutShared";
 import { Header } from "@/components/layout/Header";
 import { deals as dealsApi, restaurants as restaurantsApi } from "@/lib/api";
+import { formatUSD } from "@/lib/format";
 import type { Deal } from "@/types";
 import { Clock, MapPin, Tag } from "lucide-react";
 import Image from "next/image";

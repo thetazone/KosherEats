@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   ImageIcon,
+  Loader2,
   Pencil,
   Plus,
   Store,
@@ -278,8 +279,9 @@ export default function SellerMenuPage() {
             <button
               type="submit"
               disabled={!newCategoryName.trim() || creatingCategory}
-              className="btn-primary py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary py-2.5 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {creatingCategory && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {creatingCategory ? "Creating…" : "Create"}
             </button>
             <button
@@ -570,8 +572,9 @@ function ConfirmDeleteDialog({
           <button
             onClick={onConfirm}
             disabled={busy}
-            className="flex-1 py-2.5 px-6 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Deleting…" : "Delete"}
           </button>
         </div>

@@ -11,8 +11,8 @@
 // MenuItemModal shapes (types/index.ts ModifierGroup/Modifier) unchanged.
 
 import { useEffect, useState } from "react";
-import { Minus, Pencil, Plus, Star, Trash2, X } from "lucide-react";
-import { sellerApi } from "@/lib/sellerApi";
+import { Loader2, Minus, Pencil, Plus, Star, Trash2, X } from "lucide-react";
+import { centsToDollars, sellerApi } from "@/lib/sellerApi";
 import type {
   ModifierGroupRequest,
   SellerModifier,
@@ -25,10 +25,6 @@ function parseDollarsToCents(text: string): number | null {
   if (cleaned === "") return 0; // blank price delta = free option
   if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
   return Math.round(parseFloat(cleaned) * 100);
-}
-
-function centsToDollarsText(cents: number): string {
-  return (cents / 100).toFixed(2);
 }
 
 /** "pick 1", "pick 0-3" — matches the iOS selection summary. */
@@ -56,7 +52,7 @@ function draftFromModifier(m: SellerModifier): OptionDraft {
     key: `existing-${m.id}`,
     id: m.id,
     name: m.name,
-    priceText: m.price_delta === 0 ? "" : centsToDollarsText(m.price_delta),
+    priceText: m.price_delta === 0 ? "" : centsToDollars(m.price_delta),
     is_default: m.is_default,
     is_available: m.is_available,
   };
@@ -162,8 +158,11 @@ export function ModifierGroupsEditor({
                         type="button"
                         onClick={() => deleteGroup(group.id)}
                         disabled={deletingId === group.id}
-                        className="text-xs font-semibold text-red-400 hover:text-red-300 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-300 px-2 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-wait"
                       >
+                        {deletingId === group.id && (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                        )}
                         {deletingId === group.id ? "Deleting…" : "Confirm delete"}
                       </button>
                       <button
@@ -526,8 +525,9 @@ function GroupForm({
           type="button"
           onClick={save}
           disabled={!canSave}
-          className="btn-primary flex-1 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary flex-1 py-2.5 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          {saving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
           {saving ? "Saving…" : existing ? "Save group" : "Create group"}
         </button>
       </div>

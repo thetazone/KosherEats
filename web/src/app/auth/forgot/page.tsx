@@ -3,7 +3,7 @@
 import { OtpInput } from "@/components/auth/OtpInput";
 import { Header } from "@/components/layout/Header";
 import { auth } from "@/lib/api";
-import { ArrowLeft, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -175,8 +175,9 @@ function ForgotPasswordFlow() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Please wait..." : "Send reset code"}
           </button>
         </form>
@@ -229,8 +230,9 @@ function ForgotPasswordFlow() {
           <button
             type="submit"
             disabled={loading || code.length !== 6}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Please wait..." : "Reset password"}
           </button>
           <p className="text-center text-sm text-dark-400">

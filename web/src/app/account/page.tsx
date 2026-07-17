@@ -15,6 +15,7 @@ import {
   ChevronRight,
   CreditCard,
   KeyRound,
+  Loader2,
   LogOut,
   Mail,
   MapPin,
@@ -189,8 +190,9 @@ function EmailChangeFlow({
             <button
               type="submit"
               disabled={busy || !isEmailShaped}
-              className="btn-primary text-sm py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {busy ? "Sending…" : "Send code"}
             </button>
             <button type="button" onClick={onCancel} className="btn-secondary text-sm py-2 px-4">
@@ -215,8 +217,9 @@ function EmailChangeFlow({
             type="button"
             onClick={() => void verifyCode(code)}
             disabled={busy || code.length !== EMAIL_CODE_LENGTH}
-            className="btn-primary w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Verifying…" : "Verify"}
           </button>
           <div className="flex items-center justify-between text-sm">
@@ -380,8 +383,9 @@ function PhoneChangeFlow({
             <button
               type="submit"
               disabled={busy || digits.length < 7}
-              className="btn-primary text-sm py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {busy ? "Sending…" : "Send code"}
             </button>
             <button type="button" onClick={onCancel} className="btn-secondary text-sm py-2 px-4">
@@ -418,8 +422,9 @@ function PhoneChangeFlow({
           <button
             type="submit"
             disabled={busy || code.trim().length < 4}
-            className="btn-primary w-full text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Verifying…" : "Verify"}
           </button>
           <div className="flex items-center justify-between text-sm">
@@ -810,8 +815,11 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={savingName || !firstName.trim() || !lastName.trim()}
-                      className="btn-primary text-sm py-2 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
+                      {savingName && (
+                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                      )}
                       {savingName ? "Saving…" : "Save"}
                     </button>
                     <button
@@ -1144,8 +1152,9 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={deleting || deleteText !== DELETE_CONFIRM_WORD}
-                      className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl transition-colors text-sm inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
+                      {deleting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                       {deleting ? "Deleting…" : "Permanently delete my account"}
                     </button>
                     <button

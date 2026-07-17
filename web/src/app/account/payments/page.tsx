@@ -5,7 +5,7 @@ import { payments as paymentsApi } from "@/lib/api";
 import type { PaymentCustomerBundle } from "@/types";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
-import { ArrowLeft, CreditCard, Lock, Plus, ShieldCheck, Wrench } from "lucide-react";
+import { ArrowLeft, CreditCard, Loader2, Lock, Plus, ShieldCheck, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -96,8 +96,9 @@ function AddCardForm({
         <button
           type="submit"
           disabled={!stripe || !elements || submitting}
-          className="btn-primary flex-1 text-center disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
           {submitting ? "Saving…" : "Save card"}
         </button>
         <button
@@ -313,7 +314,11 @@ export default function PaymentMethodsPage() {
                   disabled={opening}
                   className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Plus className="w-4 h-4" aria-hidden="true" />
+                  {opening ? (
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Plus className="w-4 h-4" aria-hidden="true" />
+                  )}
                   {opening ? "Preparing…" : "Add payment method"}
                 </button>
               </div>

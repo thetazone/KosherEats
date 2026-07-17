@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { ModifierGroupsEditor } from "@/components/seller/ModifierGroupsEditor";
-import { sellerApi, uploadImage } from "@/lib/sellerApi";
+import { centsToDollars, sellerApi, uploadImage } from "@/lib/sellerApi";
 import type {
   MenuItemRequest,
   SellerMenuCategory,
@@ -45,10 +45,6 @@ function parseDollarsToCents(text: string): number | null {
   return Math.round(parseFloat(cleaned) * 100);
 }
 
-function centsToDollarsText(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
-
 export function MenuItemForm({
   categories,
   item,
@@ -73,7 +69,7 @@ export function MenuItemForm({
 }) {
   const [name, setName] = useState(item?.name ?? "");
   const [description, setDescription] = useState(item?.description ?? "");
-  const [priceText, setPriceText] = useState(item ? centsToDollarsText(item.price) : "");
+  const [priceText, setPriceText] = useState(item ? centsToDollars(item.price) : "");
   const [categoryId, setCategoryId] = useState(
     item?.category_id ?? defaultCategoryId ?? categories[0]?.id ?? "",
   );
@@ -379,8 +375,9 @@ export function MenuItemForm({
             <button
               type="submit"
               disabled={!canSave}
-              className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {saving && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {saving ? "Saving…" : item ? "Save changes" : "Add item"}
             </button>
           </div>

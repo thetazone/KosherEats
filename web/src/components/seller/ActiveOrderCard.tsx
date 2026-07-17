@@ -12,12 +12,14 @@ import {
   ChefHat,
   Clock,
   Flame,
+  Loader2,
   OctagonX,
   ShoppingBag,
   X,
 } from "lucide-react";
+import { ORDER_STATUS_META } from "@/lib/orderStatus";
 import { formatCents } from "@/lib/sellerApi";
-import type { OrderStatus, SellerOrder } from "@/types/seller";
+import type { SellerOrder } from "@/types/seller";
 
 /** Quick actions the dashboard can fire. Maps 1:1 to sellerApi.orders.* */
 export type OrderQuickAction =
@@ -34,32 +36,6 @@ export type OrderQuickAction =
 const PENDING_TTL_MS = 10 * 60 * 1000;
 /** Countdown flips to red inside the last 2 minutes. Purely visual. */
 const PENDING_URGENT_MS = 2 * 60 * 1000;
-
-const STATUS_PILL: Record<OrderStatus, string> = {
-  scheduled: "bg-sky-500/15 text-sky-300",
-  pending: "bg-amber-500/15 text-amber-300",
-  accepted: "bg-blue-500/15 text-blue-300",
-  preparing: "bg-yellow-500/15 text-yellow-300",
-  ready: "bg-orange-500/15 text-orange-300",
-  picked_up: "bg-purple-500/15 text-purple-300",
-  delivered: "bg-green-500/15 text-green-300",
-  completed: "bg-green-500/15 text-green-300",
-  cancelled: "bg-red-500/15 text-red-300",
-  rejected: "bg-red-500/15 text-red-300",
-};
-
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  scheduled: "Scheduled",
-  pending: "New order",
-  accepted: "Accepted",
-  preparing: "Preparing",
-  ready: "Ready",
-  picked_up: "Out for delivery",
-  delivered: "Delivered",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  rejected: "Rejected",
-};
 
 function isPickup(order: SellerOrder): boolean {
   return order.fulfillment_type === "pickup";
@@ -104,9 +80,18 @@ export function ActiveOrderCard({
   // Reject is destructive (refunds the customer), so it takes a second click.
   const [confirmingReject, setConfirmingReject] = useState(false);
 
+  // Which quick action was just fired — pairs with `acting` so only the
+  // pressed button shows the in-flight spinner (the parent only tracks the
+  // order id, not the action).
+  const [pendingAction, setPendingAction] = useState<OrderQuickAction | null>(null);
+  useEffect(() => {
+    if (!acting) setPendingAction(null);
+  }, [acting]);
+
   const items = order.items ?? [];
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const placedAt = new Date(order.created_at);
+  const statusMeta = ORDER_STATUS_META[order.status];
 
   return (
     <div
@@ -128,9 +113,9 @@ export function ActiveOrderCard({
           </div>
         </div>
         <span
-          className={`shrink-0 text-xs px-2.5 py-1 rounded-lg font-semibold ${STATUS_PILL[order.status] ?? "bg-dark-700 text-dark-300"}`}
+          className={`shrink-0 text-xs px-2.5 py-1 rounded-lg font-semibold ${statusMeta?.pill ?? "bg-dark-700 text-dark-300"}`}
         >
-          {STATUS_LABEL[order.status] ?? order.status}
+          {statusMeta?.sellerLabel ?? order.status}
         </span>
       </div>
 
@@ -178,9 +163,13 @@ export function ActiveOrderCard({
       <QuickActions
         order={order}
         acting={acting}
+        pendingAction={pendingAction}
         confirmingReject={confirmingReject}
         setConfirmingReject={setConfirmingReject}
-        onAction={onAction}
+        onAction={(o, action) => {
+          setPendingAction(action);
+          onAction(o, action);
+        }}
       />
     </div>
   );
@@ -191,18 +180,29 @@ export function ActiveOrderCard({
 function QuickActions({
   order,
   acting,
+  pendingAction,
   confirmingReject,
   setConfirmingReject,
   onAction,
 }: {
   order: SellerOrder;
   acting: boolean;
+  /** The action in flight (when `acting`) — that button shows the spinner. */
+  pendingAction: OrderQuickAction | null;
   confirmingReject: boolean;
   setConfirmingReject: (v: boolean) => void;
   onAction: (order: SellerOrder, action: OrderQuickAction) => void;
 }) {
   const btn =
     "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+
+  /** The pressed button's icon swaps to a spinner while its PATCH runs. */
+  const icon = (action: OrderQuickAction, idle: React.ReactNode) =>
+    acting && pendingAction === action ? (
+      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+    ) : (
+      idle
+    );
 
   switch (order.status) {
     case "pending":
@@ -214,7 +214,7 @@ function QuickActions({
               disabled={acting}
               className={`${btn} bg-red-500/15 text-red-400 hover:bg-red-500/25`}
             >
-              <OctagonX className="w-4 h-4" aria-hidden="true" />
+              {icon("reject", <OctagonX className="w-4 h-4" aria-hidden="true" />)}
               Confirm reject &amp; refund
             </button>
             <button
@@ -234,7 +234,7 @@ function QuickActions({
             disabled={acting}
             className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
           >
-            <Check className="w-4 h-4" aria-hidden="true" />
+            {icon("accept", <Check className="w-4 h-4" aria-hidden="true" />)}
             Accept
           </button>
           <button
@@ -256,7 +256,7 @@ function QuickActions({
             disabled={acting}
             className={`${btn} bg-brand-500/15 text-brand-400 hover:bg-brand-500/25`}
           >
-            <Flame className="w-4 h-4" aria-hidden="true" />
+            {icon("preparing", <Flame className="w-4 h-4" aria-hidden="true" />)}
             Start preparing
           </button>
         </div>
@@ -270,7 +270,7 @@ function QuickActions({
             disabled={acting}
             className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
           >
-            <ChefHat className="w-4 h-4" aria-hidden="true" />
+            {icon("ready", <ChefHat className="w-4 h-4" aria-hidden="true" />)}
             {readyLabel(order)}
           </button>
         </div>
@@ -287,7 +287,7 @@ function QuickActions({
               disabled={acting}
               className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
             >
-              <Check className="w-4 h-4" aria-hidden="true" />
+              {icon("complete", <Check className="w-4 h-4" aria-hidden="true" />)}
               Customer picked up
             </button>
           </div>
@@ -301,7 +301,7 @@ function QuickActions({
               disabled={acting}
               className={`${btn} bg-brand-500/15 text-brand-400 hover:bg-brand-500/25`}
             >
-              <Bike className="w-4 h-4" aria-hidden="true" />
+              {icon("pickup", <Bike className="w-4 h-4" aria-hidden="true" />)}
               Driver picked up
             </button>
           </div>
@@ -329,7 +329,7 @@ function QuickActions({
               disabled={acting}
               className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
             >
-              <Check className="w-4 h-4" aria-hidden="true" />
+              {icon("deliver", <Check className="w-4 h-4" aria-hidden="true" />)}
               Mark delivered
             </button>
           </div>

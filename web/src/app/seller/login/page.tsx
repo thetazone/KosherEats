@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Store } from "lucide-react";
+import { Loader2, Store } from "lucide-react";
 import { sellerApi, sellerAuth } from "@/lib/sellerApi";
 
 /**
@@ -96,8 +96,9 @@ export default function SellerLoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
+            {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>

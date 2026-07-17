@@ -29,6 +29,7 @@ import {
   Clock,
   CreditCard,
   Flame,
+  Loader2,
   MapPin,
   OctagonX,
   Phone,
@@ -39,36 +40,9 @@ import {
   User,
   X,
 } from "lucide-react";
+import { ORDER_STATUS_META } from "@/lib/orderStatus";
 import { formatCents, sellerApi } from "@/lib/sellerApi";
 import type { OrderStatus, SellerCourierPublic, SellerOrder } from "@/types/seller";
-
-// ── Status maps (same values as /seller/orders + ActiveOrderCard) ──
-
-const STATUS_PILL: Record<OrderStatus, string> = {
-  scheduled: "bg-sky-500/15 text-sky-300",
-  pending: "bg-amber-500/15 text-amber-300",
-  accepted: "bg-blue-500/15 text-blue-300",
-  preparing: "bg-yellow-500/15 text-yellow-300",
-  ready: "bg-orange-500/15 text-orange-300",
-  picked_up: "bg-purple-500/15 text-purple-300",
-  delivered: "bg-green-500/15 text-green-300",
-  completed: "bg-green-500/15 text-green-300",
-  cancelled: "bg-red-500/15 text-red-300",
-  rejected: "bg-red-500/15 text-red-300",
-};
-
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  scheduled: "Scheduled",
-  pending: "New order",
-  accepted: "Accepted",
-  preparing: "Preparing",
-  ready: "Ready",
-  picked_up: "Out for delivery",
-  delivered: "Delivered",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  rejected: "Rejected",
-};
 
 /** Matches pendingOrderTTL in backend/internal/scheduler/dispatcher.go —
  *  after 10 minutes in 'pending' the backend auto-rejects and refunds. */
@@ -352,10 +326,10 @@ export default function SellerOrderDetailPage() {
           <>
             <span
               className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${
-                STATUS_PILL[order.status] ?? "bg-dark-700 text-dark-300"
+                ORDER_STATUS_META[order.status]?.pill ?? "bg-dark-700 text-dark-300"
               }`}
             >
-              {STATUS_LABEL[order.status] ?? order.status}
+              {ORDER_STATUS_META[order.status]?.sellerLabel ?? order.status}
             </span>
             <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-400 bg-brand-500/15 px-2.5 py-1 rounded-lg">
               {isPickup(order) ? (
@@ -560,7 +534,11 @@ function ActionsCard({
             disabled={acting}
             className={`${btn} bg-red-500/15 text-red-400 hover:bg-red-500/25`}
           >
-            <OctagonX className="w-4 h-4" aria-hidden="true" />
+            {busy === "reject" ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <OctagonX className="w-4 h-4" aria-hidden="true" />
+            )}
             {busy === "reject" ? "Rejecting…" : "Confirm reject & refund"}
           </button>
           <button
@@ -582,7 +560,11 @@ function ActionsCard({
             disabled={acting}
             className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
           >
-            <Check className="w-4 h-4" aria-hidden="true" />
+            {busy === "accept" ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Check className="w-4 h-4" aria-hidden="true" />
+            )}
             {busy === "accept" ? "Accepting…" : "Accept order"}
           </button>
           <button
@@ -604,7 +586,11 @@ function ActionsCard({
           disabled={acting}
           className={`${btn} bg-brand-500/15 text-brand-400 hover:bg-brand-500/25`}
         >
-          <Flame className="w-4 h-4" aria-hidden="true" />
+          {busy === "preparing" ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Flame className="w-4 h-4" aria-hidden="true" />
+          )}
           {busy === "preparing" ? "Updating…" : "Start preparing"}
         </button>
       );
@@ -617,7 +603,11 @@ function ActionsCard({
           disabled={acting}
           className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
         >
-          <ChefHat className="w-4 h-4" aria-hidden="true" />
+          {busy === "ready" ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <ChefHat className="w-4 h-4" aria-hidden="true" />
+          )}
           {busy === "ready" ? "Updating…" : readyLabel(order)}
         </button>
       );
@@ -631,7 +621,11 @@ function ActionsCard({
             disabled={acting}
             className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
           >
-            <Check className="w-4 h-4" aria-hidden="true" />
+            {busy === "complete" ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Check className="w-4 h-4" aria-hidden="true" />
+            )}
             {busy === "complete" ? "Updating…" : "Customer picked up"}
           </button>
         );
@@ -642,7 +636,11 @@ function ActionsCard({
             disabled={acting}
             className={`${btn} bg-brand-500/15 text-brand-400 hover:bg-brand-500/25`}
           >
-            <Bike className="w-4 h-4" aria-hidden="true" />
+            {busy === "pickup" ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Bike className="w-4 h-4" aria-hidden="true" />
+            )}
             {busy === "pickup" ? "Updating…" : "Driver picked up"}
           </button>
         );
@@ -670,7 +668,11 @@ function ActionsCard({
             disabled={acting}
             className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
           >
-            <Check className="w-4 h-4" aria-hidden="true" />
+            {busy === "deliver" ? (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Check className="w-4 h-4" aria-hidden="true" />
+            )}
             {busy === "deliver" ? "Updating…" : "Mark delivered"}
           </button>
         );
@@ -701,7 +703,7 @@ function ActionsCard({
               <Check className="w-4 h-4 text-green-400" aria-hidden="true" />
             )
           }
-          text={STATUS_LABEL[order.status] ?? order.status}
+          text={ORDER_STATUS_META[order.status]?.sellerLabel ?? order.status}
         />
       );
   }
@@ -788,17 +790,21 @@ function RoutingCard({
 
   const pill = (label: string, value: "external" | "restaurant") => {
     const selected = mode === value;
+    // The mode flips optimistically, so while the PATCH is in flight the
+    // selected pill IS the one that was just clicked — spin there.
+    const inFlight = busy === "mode" && selected;
     return (
       <button
         onClick={() => onSetMode(value)}
         disabled={acting || selected}
         aria-pressed={selected}
-        className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
+        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
           selected
             ? "bg-green-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700 disabled:opacity-50"
         }`}
       >
+        {inFlight && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
         {label}
       </button>
     );
@@ -834,7 +840,11 @@ function RoutingCard({
                 disabled={acting}
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-semibold bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Truck className="w-4 h-4" aria-hidden="true" />
+                {busy === "escalate" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Truck className="w-4 h-4" aria-hidden="true" />
+                )}
                 {busy === "escalate" ? "Dispatching…" : "Confirm — dispatch a driver"}
               </button>
               <button

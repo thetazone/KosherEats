@@ -21,7 +21,7 @@ import {
   Store,
 } from "lucide-react";
 import { PhotoUpload } from "@/components/seller/PhotoUpload";
-import { parseCents, sellerApi } from "@/lib/sellerApi";
+import { centsToDollars, parseCents, sellerApi } from "@/lib/sellerApi";
 import type {
   DeliveryMode,
   KosherCertification,
@@ -42,11 +42,6 @@ const KOSHER_CERTIFICATIONS: KosherCertification[] = [
 
 function certLabel(cert: KosherCertification): string {
   return cert === "other" ? "Other" : cert;
-}
-
-/** Render integer cents as a plain dollars string for an input, e.g. 1234 -> "12.34". */
-function centsToInput(cents: number): string {
-  return (cents / 100).toFixed(2);
 }
 
 export default function SellerSettingsPage() {
@@ -101,8 +96,8 @@ export default function SellerSettingsPage() {
     setCity(r.city);
     setStateField(r.state);
     setZip(r.zip_code);
-    setDeliveryFee(centsToInput(r.delivery_fee));
-    setMinOrder(centsToInput(r.min_order));
+    setDeliveryFee(centsToDollars(r.delivery_fee));
+    setMinOrder(centsToDollars(r.min_order));
     setEstMin(String(r.est_delivery_min));
     setEstMax(String(r.est_delivery_max));
     setDeliveryMode(r.delivery_mode || "external");

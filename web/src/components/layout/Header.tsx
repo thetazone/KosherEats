@@ -2,6 +2,7 @@
 
 import { cart as cartApi } from "@/lib/api";
 import type { Cart, User } from "@/types";
+import { MapPin, Menu, ShoppingCart, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -50,6 +51,12 @@ export function Header() {
     void refresh();
   }, [refresh, pathname]);
 
+  // Close the mobile menu whenever navigation happens so it never lingers
+  // open over the next page.
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [pathname]);
+
   function handleSignOut() {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("token");
@@ -80,25 +87,7 @@ export function Header() {
           href={addressHref}
           className="hidden md:flex items-center gap-2 bg-dark-800 rounded-full px-4 py-2 text-sm hover:bg-dark-700 transition-colors"
         >
-          <svg
-            className="w-4 h-4 text-brand-500"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
+          <MapPin className="w-4 h-4 text-brand-500" aria-hidden="true" />
           <span className="text-dark-300">Enter delivery address</span>
         </Link>
 
@@ -124,21 +113,10 @@ export function Header() {
           </Link>
           <Link
             href="/cart"
+            aria-label={`Cart${cartCount > 0 ? ` (${cartCount} items)` : ""}`}
             className="relative text-dark-300 hover:text-white transition-colors"
           >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"
-              />
-            </svg>
+            <ShoppingCart className="w-6 h-6" aria-hidden="true" />
             {cartCount > 0 && (
               <span className="absolute -top-1 -right-2 bg-brand-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
                 {cartCount}
@@ -171,24 +149,14 @@ export function Header() {
         <button
           className="md:hidden text-dark-300"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
+          aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={isMenuOpen}
         >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d={
-                isMenuOpen
-                  ? "M6 18L18 6M6 6l12 12"
-                  : "M4 6h16M4 12h16M4 18h16"
-              }
-            />
-          </svg>
+          {isMenuOpen ? (
+            <X className="w-6 h-6" aria-hidden="true" />
+          ) : (
+            <Menu className="w-6 h-6" aria-hidden="true" />
+          )}
         </button>
       </div>
 

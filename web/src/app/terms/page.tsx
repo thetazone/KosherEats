@@ -1,3 +1,4 @@
+import { Header } from "@/components/layout/Header";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -7,11 +8,13 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-16 text-neutral-200">
+    <>
+      <Header />
+      <main className="max-w-3xl mx-auto px-6 py-16 text-dark-200">
       <h1 className="text-4xl font-bold text-white mb-2">Terms of Service</h1>
-      <p className="text-neutral-400 mb-10">Last updated: April 5, 2026</p>
+      <p className="text-dark-400 mb-10">Last updated: April 5, 2026</p>
 
-      <div className="space-y-8 text-sm leading-relaxed text-neutral-300">
+      <div className="space-y-8 text-sm leading-relaxed text-dark-300">
         <section>
           <h2 className="text-xl font-semibold text-white mb-3">1. Acceptance</h2>
           <p>
@@ -109,12 +112,13 @@ export default function TermsPage() {
           <h2 className="text-xl font-semibold text-white mb-3">10. Contact</h2>
           <p>
             Questions about these terms? Email{" "}
-            <a href="mailto:support@koshereats.shop" className="text-orange-400 underline">
+            <a href="mailto:support@koshereats.shop" className="text-brand-400 underline">
               support@koshereats.shop
             </a>.
           </p>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
