@@ -43,7 +43,7 @@ func normalizeKosherCertification(v string) string {
 // UpdateRestaurantRequest is a partial update — every field is optional.
 // Nil means "leave this column alone"; non-nil means "write this value."
 // Using pointers here lets the seller UI save a single section without
-// clobbering fields it doesn't render (e.g. lat/lng, is_active).
+// clobbering fields it doesn't render (e.g. is_active).
 type UpdateRestaurantRequest struct {
 	Name        *string  `json:"name"`
 	Description *string  `json:"description"`
@@ -69,6 +69,10 @@ type UpdateRestaurantRequest struct {
 	DeliveryMode         *string `json:"delivery_mode"`
 	ImageURL             *string `json:"image_url"`
 	LogoURL              *string `json:"logo_url"`
+	// Coordinates must be sent as a pair (both or neither) — a half-updated
+	// pin is worse than none. Same range validation as AddAddress.
+	Lat *float64 `json:"lat"`
+	Lng *float64 `json:"lng"`
 }
 
 type CreateMenuItemRequest struct {
@@ -138,6 +142,10 @@ type CreateRestaurantRequest struct {
 	// address/phone/picture get filled by the import worker afterward — relax
 	// those required-field checks (name/email/cert stay required up front).
 	FromImport bool `json:"from_import"`
+	// Coordinates are optional and must be sent as a pair (both or neither);
+	// when omitted the handler falls back to the NYC-center default.
+	Lat *float64 `json:"lat"`
+	Lng *float64 `json:"lng"`
 }
 
 // CreateRestaurant inserts a new restaurant owned by the calling seller.
@@ -147,8 +155,9 @@ type CreateRestaurantRequest struct {
 // orders don't immediately route to a kitchen that isn't ready, sensible
 // delivery-fee/time defaults the seller can tune in Settings.
 //
-// lat/lng default to NYC-center for now (no geocoding wired up). The seller
-// can fix these in Settings, or we add geocoding in a follow-up.
+// Clients MAY send lat/lng (both together, validated like AddAddress); when
+// omitted they default to NYC-center. The seller can fix the pin in Settings,
+// or we add geocoding in a follow-up.
 func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 	user, err := getUserFromContext(r)
 	if err != nil {
@@ -208,20 +217,36 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "description too long (max 2000)")
 		return
 	}
+	// Coordinates travel as a pair — a lone lat (or lng) would half-update the
+	// pin, which is worse than falling back to the default. Ranges mirror the
+	// consumer AddAddress check.
+	if (req.Lat == nil) != (req.Lng == nil) {
+		writeError(w, http.StatusBadRequest, "lat and lng must be provided together")
+		return
+	}
+	if req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90 || *req.Lng < -180 || *req.Lng > 180) {
+		writeError(w, http.StatusBadRequest, "lat must be [-90,90] and lng must be [-180,180]")
+		return
+	}
 
 	cuisine := req.CuisineType
 	if cuisine == nil {
 		cuisine = []string{}
 	}
 
-	// NYC default — geocoding is a follow-up. The seller can correct this in
-	// Settings; the consumer map view will show the restaurant at this point
-	// until then.
+	// NYC fallback for clients that didn't send coordinates — geocoding is a
+	// follow-up. The seller can correct this in Settings; the consumer map
+	// view will show the restaurant at this point until then.
 	const defaultLat, defaultLng = 40.7128, -74.0060
 	const defaultDeliveryFee = 399 // $3.99 cents
 	const defaultMinOrder = 0
 	const defaultEstMin = 25
 	const defaultEstMax = 45
+
+	lat, lng := defaultLat, defaultLng
+	if req.Lat != nil && req.Lng != nil {
+		lat, lng = *req.Lat, *req.Lng
+	}
 
 	// New restaurants land pending — the platform admin reviews them via
 	// the emailed magic links before they become visible to consumers.
@@ -258,7 +283,7 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at`,
 		user["user_id"], req.Name, req.Description, req.ImageURL, req.LogoURL,
-		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, defaultLat, defaultLng,
+		req.Phone, req.Email, req.Street, req.City, req.State, req.ZipCode, lat, lng,
 		req.KosherCertification, req.CertifyingAgency, req.IsCholovYisroel, req.IsPasYisroel,
 		req.IsGlattKosher, req.KosherCertificateURL, cuisine, defaultDeliveryFee, defaultMinOrder,
 		defaultEstMin, defaultEstMax, approvalToken, sellerVertical,
@@ -375,6 +400,16 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "description too long (max 2000)")
 		return
 	}
+	// Coordinates travel as a pair — a lone lat (or lng) would half-update the
+	// pin, which is worse than none. Ranges mirror the consumer AddAddress check.
+	if (req.Lat == nil) != (req.Lng == nil) {
+		writeError(w, http.StatusBadRequest, "lat and lng must be provided together")
+		return
+	}
+	if req.Lat != nil && (*req.Lat < -90 || *req.Lat > 90 || *req.Lng < -180 || *req.Lng > 180) {
+		writeError(w, http.StatusBadRequest, "lat must be [-90,90] and lng must be [-180,180]")
+		return
+	}
 	if req.DeliveryMode != nil {
 		switch *req.DeliveryMode {
 		case "platform", "external", "restaurant":
@@ -465,6 +500,8 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 			kosher_certificate_url = COALESCE($22, kosher_certificate_url),
 			image_url              = COALESCE($23, image_url),
 			logo_url               = COALESCE($24, logo_url),
+			lat                    = COALESCE($25, lat),
+			lng                    = COALESCE($26, lng),
 			updated_at             = NOW()
 		 WHERE id = $21`,
 		req.Name, req.Description, req.Phone, req.Email,
@@ -474,7 +511,8 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		req.IsOpen, req.KosherCertification, req.CertifyingAgency,
 		req.IsCholovYisroel, req.IsPasYisroel, req.IsGlattKosher,
 		req.DeliveryMode,
-		restID, req.KosherCertificateURL, req.ImageURL, req.LogoURL)
+		restID, req.KosherCertificateURL, req.ImageURL, req.LogoURL,
+		req.Lat, req.Lng)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update restaurant")
