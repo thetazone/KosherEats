@@ -247,25 +247,6 @@ paths:
         "200": { description: Password updated }
         "400": { $ref: "#/components/responses/Error" }
 
-  /api/v1/auth/reviewer/seller:
-    post:
-      tags: [auth]
-      summary: App Store reviewer bypass login (only when REVIEWER_SECRET is set)
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                secret: { type: string }
-              required: [secret]
-      responses:
-        "200": { $ref: "#/components/responses/AuthTokenResponse" }
-        "401": { $ref: "#/components/responses/Error" }
-        "404": { description: Endpoint not registered (REVIEWER_SECRET unset) }
-
   # ── Restaurants (public, optional auth) ───────────────────────────────────
   /api/v1/restaurants:
     get:

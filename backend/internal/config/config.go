@@ -60,10 +60,6 @@ type Config struct {
 	TwilioAuthToken        string
 	TwilioVerifyServiceSID string
 
-	// ReviewerSecret gates the App Store reviewer backdoor endpoint.
-	// Empty → endpoint disabled entirely.
-	ReviewerSecret string
-
 	// VerificationEnforced turns ON the hard side of consumer phone+email
 	// verification: requiring an email-OTP proof at register and blocking
 	// order/payment for unverified consumers. Default OFF so the backend can be
@@ -186,8 +182,6 @@ func Load() *Config {
 		TwilioAccountSID:       getEnv("TWILIO_ACCOUNT_SID", ""),
 		TwilioAuthToken:        getEnv("TWILIO_AUTH_TOKEN", ""),
 		TwilioVerifyServiceSID: getEnv("TWILIO_VERIFY_SERVICE_SID", ""),
-
-		ReviewerSecret: getEnv("REVIEWER_SECRET", ""),
 
 		VerificationEnforced: getEnvBool("VERIFICATION_ENFORCED", false),
 

@@ -31,9 +31,6 @@ interface ApiService {
     @POST("auth/phone/verify")
     suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<LoginResponse>
 
-    @POST("auth/reviewer/seller")
-    suspend fun reviewerLogin(@Header("X-Reviewer-Secret") secret: String): Response<LoginResponse>
-
     // --- Dashboard ---
 
     @GET("seller/dashboard/stats")

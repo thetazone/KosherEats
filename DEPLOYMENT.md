@@ -78,7 +78,6 @@ real values. Below is a summary by category:
 | | `DOORDASH_KEY_ID` | No | |
 | | `DOORDASH_SIGNING_KEY` | No | |
 | | `DOORDASH_WEBHOOK_SECRET` | No | |
-| **Misc** | `REVIEWER_SECRET` | No | App Store reviewer backdoor; empty = disabled |
 
 ---
 
