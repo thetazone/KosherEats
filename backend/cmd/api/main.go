@@ -217,16 +217,6 @@ func main() {
 		r.Post("/api/v1/auth/email/check", h.CheckEmail)
 	})
 
-	// App Store reviewer bypass — only registered when REVIEWER_SECRET is set.
-	// Uses a dedicated tight limiter (5 req/min) to prevent secret brute-force.
-	if cfg.ReviewerSecret != "" {
-		reviewerLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(5.0/60), 5, 30*time.Minute)
-		r.Group(func(r chi.Router) {
-			r.Use(reviewerLimiter.PerIP)
-			r.Post("/api/v1/auth/reviewer/seller", h.ReviewerSellerLogin)
-		})
-	}
-
 	// Restaurants (public, IP rate limited). OptionalAuthMiddleware lets
 	// authenticated users carry their vertical (kosher / vegan) into the
 	// query scope — anonymous browsers fall back to the `?vertical=` query

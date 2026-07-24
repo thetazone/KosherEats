@@ -182,7 +182,12 @@ func (d *Dispatcher) SetPayoutStarter(s *payout.Starter) { d.payoutStarter = s }
 
 // SetAlerter injects the admin alerter used for auto-refund and failed-payout
 // anomaly alerts. Optional: a nil alerter (the default) degrades to log-only.
-func (d *Dispatcher) SetAlerter(a *notify.Alerter) { d.alerter = a }
+// Also forwards to the shared external dispatcher so a dispatch-fallback fires
+// the same admin alert (it's constructed before the alerter is wired).
+func (d *Dispatcher) SetAlerter(a *notify.Alerter) {
+	d.alerter = a
+	d.external.SetAlerter(a)
+}
 
 // alert is a nil-safe shim so call sites don't have to guard d.alerter.
 func (d *Dispatcher) alert(subject, body string) {
@@ -197,7 +202,7 @@ func (d *Dispatcher) alert(subject, body string) {
 
 func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
 	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd,
-		external: dispatch.New(db, u, dd, n)}
+		external: dispatch.New(db, u, dd, n, nil)}
 }
 
 // Start launches a goroutine that runs both sweeps every minute. Runs once

@@ -74,3 +74,4 @@ android/**/app/*/release/
 
 # local stub-mode API binary (dev testing of dispatch happy-path)
 backend/ke-api-stub
+build/

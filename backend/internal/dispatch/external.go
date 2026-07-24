@@ -31,11 +31,19 @@ type ExternalDispatcher struct {
 	// dispatch falls back to the internal pool. Nil-safe (fallback still flips
 	// the order; couriers then find it via the marketplace poll).
 	notify *notify.Notifier
+	// alerter raises an admin anomaly alert when an order silently changes
+	// delivery paths. notify.Alerter.Alert is nil-receiver-safe, so a nil
+	// alerter degrades to a logged WARN — the fallback still happens.
+	alerter *notify.Alerter
 }
 
-func New(db *pgxpool.Pool, uber *uberdirect.Client, doordash *doordash.Client, n *notify.Notifier) *ExternalDispatcher {
-	return &ExternalDispatcher{db: db, uber: uber, doordash: doordash, notify: n}
+func New(db *pgxpool.Pool, uber *uberdirect.Client, doordash *doordash.Client, n *notify.Notifier, alerter *notify.Alerter) *ExternalDispatcher {
+	return &ExternalDispatcher{db: db, uber: uber, doordash: doordash, notify: n, alerter: alerter}
 }
+
+// SetAlerter injects the admin alerter after construction — the scheduler
+// builds its ExternalDispatcher before its own alerter is wired.
+func (e *ExternalDispatcher) SetAlerter(a *notify.Alerter) { e.alerter = a }
 
 // maxExternalDispatchAttempts bounds how many failed dispatch attempts (quote
 // or create) an order may accumulate before it stops being retried against
@@ -81,6 +89,15 @@ func permanentStatus(code int) bool {
 		return false
 	}
 	return code >= 400 && code < 500
+}
+
+// truncate bounds an untrusted provider error string before it goes into an
+// operator email — provider bodies are unbounded and can echo customer PII.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…(truncated)"
 }
 
 // Input is everything Dispatch needs about an order. Callers build it from
@@ -226,9 +243,12 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 			return
 		}
 		if permanent || attempts >= maxExternalDispatchAttempts {
-			// Retired above (delivery_mode now 'platform'); this can run at
-			// most once per order — afterwards the claim CAS's cap guard keeps
-			// every non-escalation caller out, so fail() is unreachable.
+			// External dispatch is retired for this order (delivery_mode is now
+			// 'platform' if it wasn't already). Runs at most once per order —
+			// the claim CAS's cap guard then blocks every non-escalation caller.
+			// The announcement is worded to hold whether this was a genuine
+			// external→platform reroute or a platform order that merely fell
+			// through to external and failed (delivery_mode already 'platform').
 			e.announceFallback(in, permanent, attempts, cause)
 		}
 	}
@@ -424,6 +444,31 @@ func (e *ExternalDispatcher) announceFallback(in Input, permanent bool, attempts
 		slog.Bool("permanent", permanent),
 		slog.Int("attempts", attempts),
 		slog.String("cause", cause.Error()))
+
+	// Alert an operator: the fallback keeps the food moving ONLY if a courier
+	// is online. With a thin pool, "rerouted but nobody claims it" is a real
+	// (and otherwise invisible) way for an order to stall — so page someone.
+	// Alert is nil-receiver-safe, so this is always safe to call.
+	//
+	// Fired in a goroutine: Alert → email.Send → net/smtp has no timeout, and
+	// announceFallback runs inside the sequential auto-dispatch sweep (which
+	// holds a cluster-wide advisory lock), so a hung SMTP server must not stall
+	// the tick. The truncated cause bounds the email size and limits how much of
+	// the provider's raw response body (which can echo the customer's
+	// address/phone) reaches the ops mailbox.
+	reason := "transient failures exhausted the retry budget"
+	if permanent {
+		reason = "a permanent provider rejection (bad address/phone or account issue)"
+	}
+	// Wording holds for both a genuine external→platform reroute AND a platform
+	// order that only fell through to external — in both cases the order now
+	// depends on the internal courier pool. Avoid claiming a "reroute" that a
+	// platform-origin order didn't experience.
+	subject := "External courier dispatch failed — order is on the internal courier pool"
+	body := fmt.Sprintf("Order %s at %q could not be dispatched to an external courier after %s (%d attempt(s)): %s. "+
+		"It is now in the KosherEats courier pool and will be delivered only if a courier claims it — check courier coverage.",
+		in.OrderID, in.RestaurantName, reason, attempts, truncate(cause.Error(), 300))
+	go e.alerter.Alert(subject, body)
 
 	if e.notify != nil {
 		var payout int
