@@ -1,22 +1,22 @@
-import Link from "next/link";
+import { KosherBadge } from "@/components/restaurant/KosherBadge";
+import { formatUSD } from "@/lib/format";
+import type { Restaurant } from "@/types";
+import { Heart, Star } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
-interface Restaurant {
-  id: string;
-  name: string;
-  image_url: string;
-  kosher_certification: string;
-  cuisine_type: string[];
-  rating: number;
-  review_count: number;
-  delivery_fee: number;
-  est_delivery_min: number;
-  est_delivery_max: number;
-  is_glatt_kosher: boolean;
-  is_open: boolean;
-}
-
-export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
+// isFavorite/onToggleFavorite are optional (mirrors the iOS
+// RestaurantCardView): pass onToggleFavorite only for signed-in users —
+// when omitted, no heart is rendered.
+export function RestaurantCard({
+  restaurant,
+  isFavorite = false,
+  onToggleFavorite,
+}: {
+  restaurant: Restaurant;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
+}) {
   return (
     <Link href={`/restaurant/${restaurant.id}`}>
       <div
@@ -46,16 +46,34 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
             </div>
           )}
 
+          {/* Favorite heart — stops the Link navigation so a heart tap never
+              opens the restaurant page. */}
+          {onToggleFavorite && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleFavorite();
+              }}
+              aria-label={
+                isFavorite
+                  ? `Remove ${restaurant.name} from favorites`
+                  : `Add ${restaurant.name} to favorites`
+              }
+              className="absolute top-3 right-3 z-30 bg-dark-900/70 hover:bg-dark-900/90 rounded-full w-11 h-11 flex items-center justify-center transition-colors"
+            >
+              <Heart
+                className={`w-5 h-5 transition-colors ${
+                  isFavorite ? "text-red-500 fill-red-500" : "text-white"
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+          )}
+
           {/* Certification badge */}
           <div className="absolute top-3 left-3 z-20">
-            <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
-              {restaurant.kosher_certification}
-            </span>
-            {restaurant.is_glatt_kosher && (
-              <span className="bg-dark-900/80 text-brand-400 text-xs font-bold px-2 py-1 rounded-lg ml-1">
-                Glatt
-              </span>
-            )}
+            <KosherBadge restaurant={restaurant} size="compact" />
           </div>
         </div>
 
@@ -67,13 +85,7 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
 
           <div className="flex items-center gap-2 mt-1">
             <div className="flex items-center gap-1">
-              <svg
-                className="w-4 h-4 text-brand-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
+              <Star className="w-4 h-4 text-brand-400 fill-brand-400" aria-hidden="true" />
               <span className="text-sm font-medium">{restaurant.rating}</span>
               <span className="text-dark-500 text-sm">
                 ({restaurant.review_count})
@@ -91,7 +103,7 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
             </span>
             <span className="text-dark-600">·</span>
             <span>
-              ${(restaurant.delivery_fee / 100).toFixed(2)} delivery
+              {formatUSD(restaurant.delivery_fee)} delivery
             </span>
           </div>
         </div>
