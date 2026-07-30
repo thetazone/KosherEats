@@ -81,13 +81,19 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 	// hammers this endpoint forever. Deliveries created outside our dispatch path
 	// (the portal's Delivery Simulator mints its own ids) land here, so ACK and
 	// drop: an id that cannot name one of our orders is nothing to reconcile.
-	if _, uerr := uuid.Parse(orderID); uerr != nil {
+	parsedID, uerr := uuid.Parse(orderID)
+	if uerr != nil {
 		slog.Warn("doordash webhook: external_delivery_id is not one of our order ids, ignoring",
 			slog.String("external_delivery_id", orderID),
 			slog.String("event", event))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	// Query on the CANONICAL spelling, not the raw string: uuid.Parse also accepts
+	// urn:uuid:, braced and unhyphenated forms, and Postgres's uuid type rejects
+	// the urn: one — so passing the raw value through would slip past this guard
+	// and 22P02 anyway, reopening the retry loop the guard exists to close.
+	orderID = parsedID.String()
 
 	// Idempotency + atomicity: claim the event and mutate order state in one tx
 	// (migration 052). Blocks replay of a captured 'cancelled' from re-clearing

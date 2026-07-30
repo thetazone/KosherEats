@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // flexFloat accepts a JSON number OR a quoted numeric string. Uber Direct sends
@@ -32,29 +34,29 @@ func (f *flexFloat) UnmarshalJSON(b []byte) error {
 }
 
 type uberWebhookPayload struct {
-	Kind       string              `json:"kind"`
-	DeliveryID string              `json:"delivery_id"`
-	Status     string              `json:"status"`
-	Data       uberWebhookData     `json:"data"`
+	Kind       string          `json:"kind"`
+	DeliveryID string          `json:"delivery_id"`
+	Status     string          `json:"status"`
+	Data       uberWebhookData `json:"data"`
 }
 
 type uberWebhookData struct {
-	Status           string          `json:"status"`
-	CourierImminent  bool            `json:"courier_imminent"`
-	TrackingURL      string          `json:"tracking_url"`
-	Fee              int             `json:"fee"`
-	Tip              int             `json:"tip"`
-	Courier          *uberCourier    `json:"courier,omitempty"`
-	ExternalID       string          `json:"external_id"`
+	Status          string       `json:"status"`
+	CourierImminent bool         `json:"courier_imminent"`
+	TrackingURL     string       `json:"tracking_url"`
+	Fee             int          `json:"fee"`
+	Tip             int          `json:"tip"`
+	Courier         *uberCourier `json:"courier,omitempty"`
+	ExternalID      string       `json:"external_id"`
 }
 
 type uberCourier struct {
-	Name        string       `json:"name"`
-	Phone       string       `json:"phone_number"`
-	Rating      flexFloat    `json:"rating"`
-	VehicleType string       `json:"vehicle_type"`
-	Location    *uberLatLng  `json:"location,omitempty"`
-	ImgHref     string       `json:"img_href"`
+	Name        string      `json:"name"`
+	Phone       string      `json:"phone_number"`
+	Rating      flexFloat   `json:"rating"`
+	VehicleType string      `json:"vehicle_type"`
+	Location    *uberLatLng `json:"location,omitempty"`
+	ImgHref     string      `json:"img_href"`
 }
 
 type uberLatLng struct {
@@ -105,6 +107,28 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	// orders.id is a uuid column, so a non-UUID external_id doesn't merely match
+	// zero rows — every query below fails with SQLSTATE 22P02, and the
+	// pickup_complete/delivered/canceled branches answer 500, which Uber retries.
+	// That makes such a delivery a poison pill that re-hits this endpoint
+	// indefinitely. We only ever set external_id to our own order UUID, so a value
+	// that isn't one cannot name an order to reconcile: ACK and drop. Guarding
+	// before Begin also avoids a pointless idempotency row.
+	parsedID, uerr := uuid.Parse(externalID)
+	if uerr != nil {
+		slog.Warn("uber webhook: external_id is not one of our order ids, ignoring",
+			slog.String("external_id", externalID),
+			slog.String("delivery_id", payload.DeliveryID),
+			slog.String("status", status))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// Query on the CANONICAL spelling, not the raw string: uuid.Parse also accepts
+	// urn:uuid:, braced and unhyphenated forms, and Postgres's uuid type rejects
+	// the urn: one — so passing the raw value through would slip past this guard
+	// and 22P02 anyway, reopening the retry loop the guard exists to close.
+	externalID = parsedID.String()
 
 	// Idempotency + atomicity: claim the event and apply the order-state change in
 	// one transaction (see migration 052). A replayed 'canceled' would otherwise
