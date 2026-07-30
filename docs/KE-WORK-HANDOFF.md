@@ -238,9 +238,13 @@ the running image.**
    `email_invalid` 500. Added a `mail.ParseAddress` guard (create customer w/o
    email rather than 500) **and** corrected the row in prod (now
    `mamiyesammy@gmail.com`; 0 malformed of 82 users).
-4. **Stripe still in TEST mode.** Go-live runbook written: `docs/stripe-go-live.md`
-   (plan only — real-money decision; the critical gotcha is nulling cached
-   test `stripe_customer_id`s on cutover).
+4. ~~**Stripe still in TEST mode.**~~ **OUTDATED — Stripe went LIVE in the 6/23
+   cutover** (`sk_live_` verified in prod 6/25; a real-CC order succeeded). The
+   `docs/stripe-go-live.md` runbook this pointed at has been **deleted**: it still
+   announced "PLAN ONLY / prod is on test keys" and its step 2 was
+   `UPDATE users SET stripe_customer_id = NULL`, so anyone trusting the banner
+   would have nulled *live* customer IDs. That cutover step was already performed
+   (8 rows cleared) — see `KE-TODO.md` § "Stripe / payments — LIVE KEYS SET".
 
 ## T7 — Temporal Cloud provisioning + payout cutover
 

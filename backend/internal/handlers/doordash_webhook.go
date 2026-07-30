@@ -140,7 +140,11 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 
 		var consumerID, restaurantID string
 		err := tx.QueryRow(ctx,
-			`SELECT user_id, restaurant_id FROM orders WHERE id = $1`,
+			// Scoped to THIS provider: unscoped, a DoorDash-authenticated webhook
+			// naming an Uber-dispatched order would push "your courier is on the
+			// way" to the wrong consumer.
+			`SELECT user_id, restaurant_id FROM orders
+			  WHERE id = $1 AND external_provider = 'doordash_drive'`,
 			orderID).Scan(&consumerID, &restaurantID)
 		if err == nil && h.notify != nil {
 			postCommit = append(postCommit, func() {
@@ -149,19 +153,24 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "DASHER_PICKED_UP":
-		if _, err := tx.Exec(ctx,
+		tag, uerr := tx.Exec(ctx,
 			// Match any pre-pickup state: an order can be escalated to a provider
 			// while still 'accepted'/'preparing' (EscalateToUber allows those), so
 			// keying only on 'ready' stranded those orders. Mirrors the Uber webhook.
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready') AND external_delivery_id IS NOT NULL`,
-			time.Now(), orderID); err != nil {
+			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready')
+			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
+			time.Now(), orderID)
+		if err := uerr; err != nil {
 			// Fail closed so DoorDash retries rather than stranding the order.
 			slog.Error("doordash webhook: pickup update failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
 		}
 
 		var consumerID string
@@ -180,7 +189,7 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		tag, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
-			    AND external_delivery_id IS NOT NULL`,
+			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
 			now, orderID)
 		if err != nil {
 			slog.Error("doordash webhook: delivered update failed",
@@ -191,6 +200,7 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		// Don't fire a duplicate "delivered" push on a 0-row (late/duplicate) match.
 		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
 			break
 		}
 
@@ -209,13 +219,19 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 	case "DELIVERY_CANCELLED":
 		slog.Warn("doordash delivery canceled — order needs re-dispatch",
 			slog.String("order_id", orderID))
+		// external_provider scoping is LOAD-BEARING here, not defensive: this
+		// statement clears the provider linkage and resets picked_up -> ready, which
+		// re-arms auto-dispatch. Unscoped, a cancel naming an order that is out with
+		// the OTHER provider would clear that order's linkage and the next sweep
+		// would buy a SECOND paid delivery for a delivery already in flight.
 		if _, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
-			  WHERE id = $1 AND status IN ('ready', 'picked_up')`, orderID); err != nil {
+			  WHERE id = $1 AND status IN ('ready', 'picked_up')
+			    AND external_provider = 'doordash_drive'`, orderID); err != nil {
 			slog.Error("doordash webhook: cancel cleanup failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))
