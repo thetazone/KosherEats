@@ -95,6 +95,42 @@ Entirely mechanical — no code changes.
 
 ---
 
+## The Get Started checklist is frozen — don't chase it
+
+As of 2026-07-29, after (a) creating a sandbox delivery via the API, (b) advancing
+it through the **entire** Delivery Simulator lifecycle to Delivered, and (c)
+entering a billing credit card, the portal checklist **still** reads:
+
+- Generate a credential — ✅
+- Create a delivery — *In progress*
+- Set up your organization details — *Not ready*
+- Build your integration — *Not ready*
+- Get ready to go live — *Not ready*
+
+Nothing we can do advances it. The tutorial says "Create a delivery" completes by
+clicking *Advance to Next Step* in the Simulator, and that was done — the webhooks
+arrived and were processed. Conclusion: these steps are gated behind DoorDash's
+production-access review, not behind any action of ours. **Do not interpret
+"Not ready" as missing work on our side**, and don't re-do the Simulator run
+hoping to flip it.
+
+### Verifying whether the billing card saved
+
+You can't, from the UI. The card input is a **Stripe element** (the page loads
+`js.stripe.com`), so the value is tokenized and write-only — the box renders as an
+empty `0000 0000 0000 0000` placeholder whether or not a card is on file, and
+`Update` greys out simply because the input is empty. There is no "•••• 4242"
+confirmation row, no Apollo cache to inspect, and the page embeds no billing state
+client-side (all checked).
+
+To confirm, either ask on the open support thread (the production-access request
+already created one), or look for a $0/small authorization from DoorDash on the
+card statement. Note the page's own hint: *"Invoice billing is available. Please
+reach out to support for more information"* — billing here is partly
+support-mediated anyway.
+
+---
+
 ## Gotchas (each one cost real debugging)
 
 - **Webhooks are NOT body-signed.** Unlike Uber Direct's `X-Uber-Signature`
