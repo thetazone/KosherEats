@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ddWebhookPayload mirrors DoorDash Drive's webhook body. Field names verified
@@ -69,6 +71,20 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		slog.String("event", event))
 
 	if orderID == "" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// orders.id is a uuid column, so a non-UUID external_delivery_id makes every
+	// query below fail with SQLSTATE 22P02 rather than simply matching no rows.
+	// That returned 500, which DoorDash retries — an unfixable poison pill that
+	// hammers this endpoint forever. Deliveries created outside our dispatch path
+	// (the portal's Delivery Simulator mints its own ids) land here, so ACK and
+	// drop: an id that cannot name one of our orders is nothing to reconcile.
+	if _, uerr := uuid.Parse(orderID); uerr != nil {
+		slog.Warn("doordash webhook: external_delivery_id is not one of our order ids, ignoring",
+			slog.String("external_delivery_id", orderID),
+			slog.String("event", event))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
