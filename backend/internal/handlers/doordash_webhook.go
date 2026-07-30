@@ -31,9 +31,13 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.doordash.VerifyWebhook(body, r.Header.Get("X-Doordash-Signature")) {
-		slog.Warn("doordash webhook signature verification failed")
-		writeError(w, http.StatusBadRequest, "invalid signature")
+	// DoorDash Drive authenticates webhooks with a static bearer token echoed in
+	// the header configured in the Developer Portal (we use `Authorization`), not
+	// a body HMAC — see doordash.Client.VerifyWebhook. 401, not 400: the request
+	// is well-formed, its credential isn't.
+	if !h.doordash.VerifyWebhook(r.Header.Get("Authorization")) {
+		slog.Warn("doordash webhook authorization failed")
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 

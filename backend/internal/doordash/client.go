@@ -11,8 +11,8 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,8 +63,11 @@ type Quote struct {
 	ExternalDeliveryID string `json:"external_delivery_id"`
 	Fee                int    `json:"fee"`
 	Currency           string `json:"currency"`
-	EstPickupTime      string `json:"estimated_pickup_time"`
-	EstDeliveryTime    string `json:"estimated_delivery_time"`
+	// Field names verified against a live sandbox /quotes response — DoorDash
+	// sends <phase>_time_estimated, NOT estimated_<phase>_time (which parsed as
+	// empty strings). Dropoff, not delivery, matches their vocabulary.
+	EstPickupTime  string `json:"pickup_time_estimated"`
+	EstDropoffTime string `json:"dropoff_time_estimated"`
 }
 
 type Delivery struct {
@@ -166,14 +169,36 @@ func (c *Client) CancelDelivery(ctx context.Context, externalID string) error {
 	return err
 }
 
-func (c *Client) VerifyWebhook(body []byte, signature string) bool {
-	if c.cfg.WebhookSec == "" {
+// VerifyWebhook authenticates an inbound Drive webhook from the value of the
+// authorization header DoorDash was configured to send.
+//
+// Unlike Uber Direct (which HMACs the request body into X-Uber-Signature),
+// DoorDash Drive does NOT sign webhook payloads: the Developer Portal's webhook
+// config offers only a STATIC token that it echoes back verbatim in a header of
+// your choosing (we use the default `Authorization`). So there is nothing to
+// HMAC — verification is a constant-time comparison of the presented token
+// against the configured secret. This is why the body isn't a parameter: an
+// HMAC check here would never match a real DoorDash call.
+//
+// The "Bearer " prefix is optional on BOTH sides, so the secret may be stored
+// as the bare token or with the prefix the portal displays it with.
+func (c *Client) VerifyWebhook(authHeader string) bool {
+	secret := bearerToken(c.cfg.WebhookSec)
+	if secret == "" {
 		return false
 	}
-	mac := hmac.New(sha256.New, []byte(c.cfg.WebhookSec))
-	mac.Write(body)
-	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(signature), []byte(expected))
+	return subtle.ConstantTimeCompare([]byte(bearerToken(authHeader)), []byte(secret)) == 1
+}
+
+// bearerToken strips surrounding whitespace and an optional case-insensitive
+// "Bearer " prefix, yielding the bare token.
+func bearerToken(s string) string {
+	s = strings.TrimSpace(s)
+	const prefix = "bearer "
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		s = strings.TrimSpace(s[len(prefix):])
+	}
+	return s
 }
 
 func (c *Client) buildBody(req CreateDeliveryRequest) map[string]any {
