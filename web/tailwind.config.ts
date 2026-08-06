@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import colors from "tailwindcss/colors";
 
 const config: Config = {
   content: [
@@ -36,6 +37,19 @@ const config: Config = {
           900: "#171717",
           950: "#0a0a0a",
         },
+        // Semantic states — alias Tailwind hues so intent stays greppable.
+        // Raw hue classes (red-*, green-*, …) are banned in TSX; see
+        // docs/DESIGN_RUBRIC.md.
+        success: colors.green,
+        warning: colors.yellow,
+        danger: colors.red,
+        info: colors.blue,
+        transit: colors.purple, // order picked_up / in-transit state
+        // Kosher triad — dietary badges ONLY. A meat badge that isn't red
+        // is a correctness bug.
+        meat: colors.red,
+        dairy: colors.blue,
+        pareve: colors.green,
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

@@ -151,7 +151,7 @@ export default function NewRestaurantPage() {
   return (
     <div className="max-w-3xl">
       <h1 className="text-3xl font-bold mb-2">New Restaurant</h1>
-      <p className="text-neutral-400 mb-8">
+      <p className="text-dark-400 mb-8">
         Creates a seller account + restaurant in one step. Share the seller login with the operator.
       </p>
 
@@ -183,18 +183,18 @@ export default function NewRestaurantPage() {
             <Field label="Latitude" value={latitude} onChange={setLatitude} type="number" placeholder="40.7128" required />
             <Field label="Longitude" value={longitude} onChange={setLongitude} type="number" placeholder="-74.0060" required />
           </div>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-dark-500">
             Required for distance-based listing. Look up the exact coordinates (e.g. right-click the spot in Google Maps) — don&apos;t leave these at (0, 0).
           </p>
         </Section>
 
         <Section title="Kashrus">
           <div>
-            <label className="block text-sm text-neutral-400 mb-2">Certification</label>
+            <label className="block text-sm text-dark-400 mb-2">Certification</label>
             <select
               value={kosherCert}
               onChange={(e) => setKosherCert(e.target.value)}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-white"
+              className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-3 text-white"
             >
               <option value="OU">OU</option>
               <option value="OK">OK</option>
@@ -216,20 +216,20 @@ export default function NewRestaurantPage() {
           <Field label="Delivery fee ($)" value={deliveryFee} onChange={setDeliveryFee} type="text" />
         </Section>
 
-        {error && <div className="text-red-400">{error}</div>}
+        {error && <div className="text-danger-400">{error}</div>}
 
         <div className="flex gap-3">
           <button
             type="submit"
             disabled={loading}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg px-6 py-3 transition disabled:opacity-50"
+            className="bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-lg px-6 py-3 transition disabled:opacity-50"
           >
             {loading ? "Creating…" : "Create Restaurant"}
           </button>
           <button
             type="button"
             onClick={() => router.back()}
-            className="text-neutral-400 hover:text-white px-6 py-3"
+            className="text-dark-400 hover:text-white px-6 py-3"
           >
             Cancel
           </button>
@@ -241,7 +241,7 @@ export default function NewRestaurantPage() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
+    <div className="bg-dark-900 border border-dark-800 rounded-xl p-6 space-y-4">
       <h2 className="text-lg font-semibold">{title}</h2>
       {children}
     </div>
@@ -265,14 +265,14 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm text-neutral-400 mb-2">{label}</label>
+      <label className="block text-sm text-dark-400 mb-2">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
+        className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-3 text-white focus:border-brand-500 focus:outline-none"
       />
     </div>
   );
@@ -281,12 +281,12 @@ function Field({
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
-      <label className="block text-sm text-neutral-400 mb-2">{label}</label>
+      <label className="block text-sm text-dark-400 mb-2">{label}</label>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={3}
-        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 focus:outline-none"
+        className="w-full bg-dark-800 border border-dark-700 rounded-lg px-4 py-3 text-white focus:border-brand-500 focus:outline-none"
       />
     </div>
   );
@@ -299,9 +299,9 @@ function Checkbox({ label, checked, onChange }: { label: string; checked: boolea
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded border-neutral-700 bg-neutral-800 text-orange-500 focus:ring-orange-500"
+        className="w-4 h-4 rounded border-dark-700 bg-dark-800 text-brand-500 focus:ring-brand-500"
       />
-      <span className="text-sm text-neutral-300">{label}</span>
+      <span className="text-sm text-dark-300">{label}</span>
     </label>
   );
 }

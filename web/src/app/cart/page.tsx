@@ -484,7 +484,7 @@ export default function CartPage() {
         {(finalizing || finalizeError) && (
           <div
             className={`card p-6 mb-6 border ${
-              finalizeError ? "border-red-800 bg-red-900/20" : "border-brand-700 bg-brand-900/10"
+              finalizeError ? "border-danger-800 bg-danger-900/20" : "border-brand-700 bg-brand-900/10"
             }`}
             role="status"
             aria-live="polite"
@@ -493,7 +493,7 @@ export default function CartPage() {
               <p className="text-dark-200">Finishing your order… please don&apos;t close this tab.</p>
             ) : (
               <>
-                <p className="text-red-300 mb-4">{finalizeError}</p>
+                <p className="text-danger-300 mb-4">{finalizeError}</p>
                 <button onClick={retryFinalize} className="btn-primary inline-block">
                   Retry confirming order
                 </button>
@@ -516,7 +516,7 @@ export default function CartPage() {
             {/* Items */}
             <div className="flex-1 space-y-4">
               {mutationError && (
-                <div className="card p-3 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+                <div className="card p-3 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
                   {mutationError}
                 </div>
               )}
@@ -677,7 +677,7 @@ export default function CartPage() {
                       <p className="text-xs text-dark-500">
                         Used for delivery routing and to estimate your delivery fee.
                       </p>
-                      {addressError && <div className="text-sm text-red-400">{addressError}</div>}
+                      {addressError && <div className="text-sm text-danger-400">{addressError}</div>}
                       <div className="flex gap-2 pt-1">
                         <button
                           type="submit"
@@ -710,7 +710,7 @@ export default function CartPage() {
                 </div>
 
                 {checkoutError && (
-                  <div className="mb-3 text-sm text-red-400">{checkoutError}</div>
+                  <div className="mb-3 text-sm text-danger-400">{checkoutError}</div>
                 )}
 
                 <button
@@ -813,7 +813,7 @@ function CheckoutForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement />
-      {localError && <div className="text-sm text-red-400">{localError}</div>}
+      {localError && <div className="text-sm text-danger-400">{localError}</div>}
       <button
         type="submit"
         disabled={!stripe || !elements || submitting}

@@ -50,56 +50,56 @@ export default function RestaurantsPage() {
     }
   }
 
-  if (loading) return <div className="text-neutral-500">Loading…</div>;
-  if (error) return <div className="text-red-400">Failed: {error}</div>;
+  if (loading) return <div className="text-dark-500">Loading…</div>;
+  if (error) return <div className="text-danger-400">Failed: {error}</div>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Restaurants</h1>
-          <p className="text-neutral-400 mt-1">{restaurants.length} total</p>
+          <p className="text-dark-400 mt-1">{restaurants.length} total</p>
         </div>
         <Link
           href="/admin/restaurants/new"
-          className="bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg px-4 py-2 transition"
+          className="bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-lg px-4 py-2 transition"
         >
           + New Restaurant
         </Link>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+      <div className="bg-dark-900 border border-dark-800 rounded-xl overflow-hidden">
         <table className="w-full">
-          <thead className="bg-neutral-800/50">
+          <thead className="bg-dark-800/50">
             <tr>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Name</th>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Cert</th>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Location</th>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Delivery Fee</th>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Rating</th>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Status</th>
-              <th className="text-left px-4 py-3 text-xs text-neutral-400 uppercase">Approval</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Name</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Cert</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Location</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Delivery Fee</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Rating</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Status</th>
+              <th className="text-left px-4 py-3 text-xs text-dark-400 uppercase">Approval</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-800">
+          <tbody className="divide-y divide-dark-800">
             {restaurants.map((r) => {
               const approval = r.approval_status ?? "approved";
               const approvalColor =
                 approval === "approved"
-                  ? "bg-green-500/20 text-green-400"
+                  ? "bg-success-500/20 text-success-400"
                   : approval === "rejected"
-                  ? "bg-red-500/20 text-red-400"
-                  : "bg-amber-500/20 text-amber-300";
+                  ? "bg-danger-500/20 text-danger-400"
+                  : "bg-warning-500/20 text-warning-300";
               const busy = busyId === r.id;
               return (
-                <tr key={r.id} className="hover:bg-neutral-800/30 transition">
+                <tr key={r.id} className="hover:bg-dark-800/30 transition">
                   <td className="px-4 py-3">
                     <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-neutral-500">{r.cuisine_type.join(" • ")}</div>
+                    <div className="text-xs text-dark-500">{r.cuisine_type.join(" • ")}</div>
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {r.kosher_certification}
-                    {r.is_glatt_kosher && <div className="text-xs text-orange-400">Glatt</div>}
+                    {r.is_glatt_kosher && <div className="text-xs text-brand-400">Glatt</div>}
                   </td>
                   <td className="px-4 py-3 text-sm">
                     {r.city}, {r.state}
@@ -107,20 +107,20 @@ export default function RestaurantsPage() {
                   <td className="px-4 py-3 text-sm">{formatCents(r.delivery_fee)}</td>
                   <td className="px-4 py-3 text-sm">
                     ★ {r.rating.toFixed(1)}{" "}
-                    <span className="text-neutral-500">({r.review_count})</span>
+                    <span className="text-dark-500">({r.review_count})</span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <span
                         className={`text-xs px-2 py-1 rounded ${
-                          r.is_active ? "bg-green-500/20 text-green-400" : "bg-neutral-500/20 text-neutral-400"
+                          r.is_active ? "bg-success-500/20 text-success-400" : "bg-dark-500/20 text-dark-400"
                         }`}
                       >
                         {r.is_active ? "Active" : "Inactive"}
                       </span>
                       <span
                         className={`text-xs px-2 py-1 rounded ${
-                          r.is_open ? "bg-blue-500/20 text-blue-400" : "bg-neutral-700/50 text-neutral-500"
+                          r.is_open ? "bg-info-500/20 text-info-400" : "bg-dark-700/50 text-dark-500"
                         }`}
                       >
                         {r.is_open ? "Open" : "Closed"}
@@ -135,7 +135,7 @@ export default function RestaurantsPage() {
                           <button
                             disabled={busy}
                             onClick={() => override(r, "approved")}
-                            className="px-2 py-0.5 rounded bg-green-600/80 hover:bg-green-600 text-white disabled:opacity-50"
+                            className="px-2 py-0.5 rounded bg-success-600/80 hover:bg-success-600 text-white disabled:opacity-50"
                           >
                             Approve
                           </button>
@@ -144,7 +144,7 @@ export default function RestaurantsPage() {
                           <button
                             disabled={busy}
                             onClick={() => override(r, "rejected")}
-                            className="px-2 py-0.5 rounded bg-red-600/80 hover:bg-red-600 text-white disabled:opacity-50"
+                            className="px-2 py-0.5 rounded bg-danger-600/80 hover:bg-danger-600 text-white disabled:opacity-50"
                           >
                             Reject
                           </button>
@@ -153,7 +153,7 @@ export default function RestaurantsPage() {
                           <button
                             disabled={busy}
                             onClick={() => override(r, "pending")}
-                            className="px-2 py-0.5 rounded bg-neutral-700 hover:bg-neutral-600 text-white disabled:opacity-50"
+                            className="px-2 py-0.5 rounded bg-dark-700 hover:bg-dark-600 text-white disabled:opacity-50"
                           >
                             Reset
                           </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
+import { certLabel } from "@/lib/kosher";
 import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
 import type { MenuCategory, MenuItem, Restaurant } from "@/types";
 import { useParams, useRouter } from "next/navigation";
@@ -148,9 +149,15 @@ export default function RestaurantPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-dark-950 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 max-w-7xl mx-auto">
             <div className="flex items-center gap-3 mb-2">
-              <span className="bg-brand-500 text-white text-sm font-bold px-3 py-1 rounded-lg">
-                {rest.kosher_certification}
-              </span>
+              {certLabel(rest.kosher_certification) ? (
+                <span className="bg-brand-500 text-white text-sm font-bold px-3 py-1 rounded-lg">
+                  {certLabel(rest.kosher_certification)}
+                </span>
+              ) : (
+                <span className="bg-dark-800/90 text-dark-300 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
+                  Cert pending
+                </span>
+              )}
               {rest.is_glatt_kosher && (
                 <span className="bg-dark-800 text-brand-400 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
                   Glatt Kosher
@@ -204,7 +211,11 @@ export default function RestaurantPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div>
                 <span className="text-dark-400">Certification</span>
-                <p className="font-medium">{rest.kosher_certification} — {rest.certifying_agency}</p>
+                <p className="font-medium">
+                  {[certLabel(rest.kosher_certification) ?? "Pending", rest.certifying_agency]
+                    .filter(Boolean)
+                    .join(" — ")}
+                </p>
               </div>
               <div>
                 <span className="text-dark-400">Glatt Kosher</span>
@@ -244,7 +255,7 @@ export default function RestaurantPage() {
               </div>
 
               {mutationError && (
-                <div className="card p-3 mb-4 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+                <div className="card p-3 mb-4 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
                   {mutationError}
                 </div>
               )}
@@ -270,13 +281,13 @@ export default function RestaurantPage() {
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold">{item.name}</h3>
                                 {item.is_meat && (
-                                  <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
+                                  <DietaryBadge label="Meat" color="bg-meat-900/40 text-meat-400" />
                                 )}
                                 {item.is_dairy && (
-                                  <DietaryBadge label="Dairy" color="bg-blue-900/40 text-blue-400" />
+                                  <DietaryBadge label="Dairy" color="bg-dairy-900/40 text-dairy-400" />
                                 )}
                                 {item.is_pareve && (
-                                  <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
+                                  <DietaryBadge label="Pareve" color="bg-pareve-900/40 text-pareve-400" />
                                 )}
                               </div>
                               <p className="text-dark-400 text-sm mb-2">

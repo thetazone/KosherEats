@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { certLabel } from "@/lib/kosher";
 
 interface Restaurant {
   id: string;
@@ -48,9 +49,15 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
 
           {/* Certification badge */}
           <div className="absolute top-3 left-3 z-20">
-            <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
-              {restaurant.kosher_certification}
-            </span>
+            {certLabel(restaurant.kosher_certification) ? (
+              <span className="bg-brand-500 text-white text-xs font-bold px-2 py-1 rounded-lg">
+                {certLabel(restaurant.kosher_certification)}
+              </span>
+            ) : (
+              <span className="bg-dark-900/80 text-dark-300 text-xs font-bold px-2 py-1 rounded-lg">
+                Cert pending
+              </span>
+            )}
             {restaurant.is_glatt_kosher && (
               <span className="bg-dark-900/80 text-brand-400 text-xs font-bold px-2 py-1 rounded-lg ml-1">
                 Glatt
