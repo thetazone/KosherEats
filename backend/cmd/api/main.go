@@ -41,6 +41,20 @@ func main() {
 	}
 	slog.SetDefault(logger)
 
+	// Config safety gate for deployments serving real customers. Warnings are
+	// logged and we keep serving; a fatal means the process would lie about
+	// deliveries, so refuse to start rather than take orders we can't fulfil.
+	fatalCfg, cfgWarnings := cfg.Validate()
+	for _, w := range cfgWarnings {
+		slog.Warn("config warning for a production deployment", slog.String("problem", w.Error()))
+	}
+	if len(fatalCfg) > 0 {
+		for _, p := range fatalCfg {
+			slog.Error("FATAL config problem for a production deployment", slog.String("problem", p.Error()))
+		}
+		log.Fatalf("refusing to start: %d unsafe production config problem(s) above", len(fatalCfg))
+	}
+
 	if len(cfg.JWTSecret) < 32 {
 		log.Fatal("JWT_SECRET must be set to a random value of at least 32 characters")
 	}

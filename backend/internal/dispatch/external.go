@@ -411,6 +411,26 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 			slog.String("order_id", in.OrderID),
 			slog.String("provider", best.provider),
 			slog.String("delivery_id", deliveryID))
+		// We have been billed for a courier we cannot associate with the order, so
+		// nothing downstream will ever reference it: no tracking URL for the
+		// customer, no cancel path, and no way to notice from the order row. That
+		// is only recoverable by a human reading the provider dashboard, so it has
+		// to leave the log and reach someone.
+		go e.alerter.Alert(
+			"URGENT: paid courier delivery is orphaned — manual reconciliation required",
+			fmt.Sprintf(
+				"A %s delivery (%s) was created and billed for order %s at %q, but the order row could not be "+
+					"updated to reference it (the dispatch claim sentinel was lost between create and persist).\n\n"+
+					"Consequences until reconciled: the customer sees no tracking, the order will not advance on "+
+					"provider webhooks, and auto-dispatch may buy a SECOND delivery for the same order.\n\n"+
+					"Do this now:\n"+
+					"  1. Open the %s dashboard and find delivery %s.\n"+
+					"  2. Cancel it if the order is not genuinely in flight.\n"+
+					"  3. Otherwise set external_provider/external_delivery_id on order %s by hand so the "+
+					"webhooks bind and the customer gets tracking.",
+				best.provider, deliveryID, in.OrderID, in.RestaurantName,
+				best.provider, deliveryID, in.OrderID),
+		)
 		return best.provider, deliveryID, fee,
 			fmt.Errorf("dispatch persisted 0 rows for order %s (provider delivery %s already created)", in.OrderID, deliveryID)
 	}
