@@ -1,11 +1,17 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
+	// AppEnv is the deployment environment ("production" in prod). Optional —
+	// IsProduction also infers production from a live Stripe key so the safety
+	// guards cannot be defeated by forgetting to set it.
+	AppEnv               string
 	Port                 string
 	DatabaseURL          string
 	RedisURL             string
@@ -140,8 +146,84 @@ type TemporalConfig struct {
 	TLSKey  string // TEMPORAL_TLS_KEY — path to client key for mTLS
 }
 
+// IsProduction reports whether this process is serving real customers.
+//
+// Deliberately does NOT rely solely on an explicit env var. The failure this
+// guards against is a configuration mistake, so a guard that only fires when
+// someone remembered to set APP_ENV is worth very little. A live Stripe secret
+// key is an unforgeable signal: if we can charge real cards, we are production,
+// whatever the other variables say.
+func (c *Config) IsProduction() bool {
+	if strings.EqualFold(c.AppEnv, "production") || strings.EqualFold(c.AppEnv, "prod") {
+		return true
+	}
+	return strings.HasPrefix(c.StripeSecretKey, "sk_live_")
+}
+
+// Validate checks for configurations that would fake or strand real deliveries.
+//
+// Returns fatal problems (refuse to boot) separately from warnings (log loudly,
+// keep serving), and reports all of them at once so a bad deploy is diagnosed in
+// one pass rather than one restart per mistake.
+//
+// The split matters because "production" here is not one thing. This deployment
+// is production by Stripe — live keys, real cards — while still pointed at the
+// Uber SANDBOX account before launch. That combination is deliberate, so a guard
+// that treats every sandbox-shaped setting as fatal would refuse to boot a
+// perfectly intentional pre-launch config. Only genuinely unrecoverable states
+// are fatal:
+//
+//   - UBER_DIRECT_STUB fabricates deliveries. It does not fail, it lies: orders
+//     reach "delivered" with no courier dispatched and no food sent, and nothing
+//     in the data model distinguishes that from a real delivery afterward. Never
+//     legitimate against real customers. FATAL.
+//   - UBER_DIRECT_ROBO asks the real Uber API to simulate a courier. Uber rejects
+//     it on production credentials, so the failure is loud rather than silent,
+//     and against sandbox credentials it is the correct setting. WARN.
+//   - A missing webhook secret strands orders at "ready" — bad, but visible, and
+//     sweepStuckExternalDeliveries now alerts on exactly that. WARN.
+func (c *Config) Validate() (fatal []error, warnings []error) {
+	if !c.IsProduction() {
+		return nil, nil
+	}
+
+	if c.UberDirectStub {
+		fatal = append(fatal, errors.New(
+			"UBER_DIRECT_STUB=true with real customers: the Uber client reports itself enabled and "+
+				"returns canned responses, so orders advance to delivered with no courier dispatched and "+
+				"no food sent. Unset it: fly secrets unset -a koshereats-api UBER_DIRECT_STUB"))
+	}
+
+	if c.UberDirectRoboCourier {
+		warnings = append(warnings, errors.New(
+			"UBER_DIRECT_ROBO=true: deliveries are run by Uber's simulated auto-advancing courier. "+
+				"Correct while pointed at the Uber SANDBOX account; it must be unset before the "+
+				"production-credential cutover, since Uber rejects the field on live credentials "+
+				"(fly secrets unset -a koshereats-api UBER_DIRECT_ROBO)"))
+	}
+
+	if !c.UberDirectStub && c.UberDirectClientID != "" && c.UberDirectWebhookSec == "" {
+		warnings = append(warnings, errors.New(
+			"UBER_DIRECT_WEBHOOK_SECRET is empty while Uber Direct credentials are set: deliveries will "+
+				"be created but every status webhook fails signature verification, so orders stick at "+
+				"'ready' forever. Register the webhook and set the secret Uber generates on creation"))
+	}
+
+	// The new money/dispatch alerts degrade to log-only without a destination, so
+	// the conditions they exist to surface would pass unnoticed.
+	if c.AdminAlertEmail == "" {
+		warnings = append(warnings, errors.New(
+			"ADMIN_ALERT_EMAIL is unset: orphaned paid deliveries, exhausted refunds (customer charged "+
+				"on a cancelled order) and stalled deliveries will only be written to logs, where nobody "+
+				"is watching. Set it: fly secrets set -a koshereats-api ADMIN_ALERT_EMAIL=..."))
+	}
+
+	return fatal, warnings
+}
+
 func Load() *Config {
 	return &Config{
+		AppEnv:               getEnv("APP_ENV", ""),
 		Port:                 getEnv("PORT", "8080"),
 		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/koshereats?sslmode=disable"),
 		RedisURL:             getEnv("REDIS_URL", "redis://localhost:6379"),
@@ -197,15 +279,15 @@ func Load() *Config {
 		DoorDashSigningKey:  getEnv("DOORDASH_SIGNING_KEY", ""),
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
 
-		TaxRatePercent:   getEnvInt("TAX_RATE_PERCENT", 9),
+		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
 
 		DeliveryMarkupCents:        getEnvInt("DELIVERY_MARKUP_CENTS", 100),
 		DeliveryMarkupLargeCents:   getEnvInt("DELIVERY_MARKUP_LARGE_CENTS", 200),
 		DeliveryMarkupHighestCents: getEnvInt("DELIVERY_MARKUP_HIGHEST_CENTS", 300),
 		DeliveryLargeOrderCents:    getEnvInt("DELIVERY_LARGE_ORDER_CENTS", 4000),
 		DeliveryHighestOrderCents:  getEnvInt("DELIVERY_HIGHEST_ORDER_CENTS", 8000),
-		StripeTaxEnabled: getEnv("STRIPE_TAX_ENABLED", "") == "true",
-		AdminAlertEmail:  getEnv("ADMIN_ALERT_EMAIL", ""),
+		StripeTaxEnabled:           getEnv("STRIPE_TAX_ENABLED", "") == "true",
+		AdminAlertEmail:            getEnv("ADMIN_ALERT_EMAIL", ""),
 
 		SentryDSN: getEnv("SENTRY_DSN", ""),
 

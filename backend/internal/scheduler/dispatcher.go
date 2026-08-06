@@ -41,6 +41,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -174,7 +175,29 @@ type Dispatcher struct {
 	// degrades to a logged no-op, so a dispatcher with no alerter wired keeps
 	// its original behavior.
 	alerter *notify.Alerter
+
+	// stuckAlerted remembers which orders we've already alerted about, so a
+	// genuinely stuck delivery doesn't email once per minute forever. Kept in
+	// memory rather than as an orders column on purpose: this is an alerting
+	// concern, not order state, and it isn't worth a migration. The cost is one
+	// duplicate alert per stuck order after a restart, which is the harmless
+	// direction to fail. Guarded because sweeps and SetAlerter can race.
+	stuckMu      sync.Mutex
+	stuckAlerted map[string]time.Time
 }
+
+// How long a dispatched order may sit in each status before we treat it as
+// stuck. These are "the provider has gone quiet" thresholds, not SLAs: normal
+// deliveries move in minutes, so anything past these means the status webhook
+// stopped flowing (the exact failure that left prod's external_webhook_events
+// empty) or the provider stalled without telling us.
+var (
+	stuckReadyAfter    = graceSeconds("STUCK_DISPATCH_READY_SECONDS", 45*time.Minute)
+	stuckPickedUpAfter = graceSeconds("STUCK_DISPATCH_PICKED_UP_SECONDS", 90*time.Minute)
+	// Re-alert cadence for an order that stays stuck, so it isn't forgotten
+	// after one email but also doesn't spam every tick.
+	stuckRealertEvery = graceSeconds("STUCK_DISPATCH_REALERT_SECONDS", 6*time.Hour)
+)
 
 // SetPayoutStarter injects the Temporal payout starter. Passing a nil starter
 // (the default) leaves the dispatcher in legacy direct-transfer mode.
@@ -284,6 +307,145 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 	d.sweepOrphanPayments(ctx)
 	d.sweepPendingRefunds(ctx)
 	d.sweepCourierPayouts(ctx)
+	d.sweepStuckExternalDeliveries(ctx)
+}
+
+// sweepStuckExternalDeliveries alerts when an order handed to an external
+// courier stops advancing.
+//
+// This is the monitor for the failure mode that is otherwise invisible: the
+// provider webhook silently stops arriving. When that happened in prod,
+// external_webhook_events sat at 0 and every dispatched order simply parked at
+// 'ready' — nothing errored, nothing retried, and it was only found by someone
+// going and looking. sweepExternalDeliveryStatus polls Uber to self-heal, so
+// reaching these thresholds means both the push and the pull path have failed,
+// or the provider has stalled without telling us.
+//
+// Detection only — it deliberately changes no order state. Waking a human is
+// the correct response: the recovery (cancel the delivery, refund, re-dispatch,
+// or call the provider) depends on facts only the provider dashboard has.
+func (d *Dispatcher) sweepStuckExternalDeliveries(ctx context.Context) {
+	rows, err := d.db.Query(ctx, `
+		SELECT o.id, o.status, o.external_provider, o.external_delivery_id,
+		       COALESCE(r.name, '(unknown restaurant)'),
+		       EXTRACT(EPOCH FROM (NOW() - o.updated_at))::bigint,
+		       o.external_tracking_url
+		  FROM orders o
+		  LEFT JOIN restaurants r ON r.id = o.restaurant_id
+		 WHERE o.external_delivery_id IS NOT NULL
+		   AND o.external_provider IS NOT NULL
+		   AND o.external_provider <> 'dispatching'
+		   AND ( (o.status = 'ready'     AND o.updated_at < NOW() - $1::interval)
+		      OR (o.status = 'picked_up' AND o.updated_at < NOW() - $2::interval) )
+		 ORDER BY o.updated_at
+		 LIMIT 50`,
+		fmt.Sprintf("%d seconds", int(stuckReadyAfter.Seconds())),
+		fmt.Sprintf("%d seconds", int(stuckPickedUpAfter.Seconds())),
+	)
+	if err != nil {
+		slog.Error("stuck-dispatch: query failed", slog.String("error", err.Error()))
+		return
+	}
+	defer rows.Close()
+
+	type stuck struct {
+		id, status, provider, deliveryID, restaurant, trackingURL string
+		stalledFor                                                time.Duration
+	}
+	var found []stuck
+	for rows.Next() {
+		var s stuck
+		var secs int64
+		var trackingURL *string
+		if err := rows.Scan(&s.id, &s.status, &s.provider, &s.deliveryID, &s.restaurant, &secs, &trackingURL); err != nil {
+			slog.Error("stuck-dispatch: scan failed", slog.String("error", err.Error()))
+			return
+		}
+		s.stalledFor = time.Duration(secs) * time.Second
+		if trackingURL != nil {
+			s.trackingURL = *trackingURL
+		}
+		found = append(found, s)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("stuck-dispatch: rows error", slog.String("error", err.Error()))
+		return
+	}
+	if len(found) == 0 {
+		return
+	}
+
+	now := time.Now()
+	d.stuckMu.Lock()
+	if d.stuckAlerted == nil {
+		d.stuckAlerted = make(map[string]time.Time)
+	}
+	// Drop bookkeeping for orders that are no longer stuck so the map can't grow
+	// without bound in a long-lived process.
+	live := make(map[string]bool, len(found))
+	for _, s := range found {
+		live[s.id] = true
+	}
+	for id := range d.stuckAlerted {
+		if !live[id] {
+			delete(d.stuckAlerted, id)
+		}
+	}
+	var toAlert []stuck
+	for _, s := range found {
+		if last, seen := d.stuckAlerted[s.id]; seen && now.Sub(last) < stuckRealertEvery {
+			continue
+		}
+		d.stuckAlerted[s.id] = now
+		toAlert = append(toAlert, s)
+	}
+	d.stuckMu.Unlock()
+
+	for _, s := range toAlert {
+		slog.Error("stuck-dispatch: dispatched order has not advanced — provider webhook may have stopped",
+			slog.String("order_id", s.id),
+			slog.String("status", s.status),
+			slog.String("provider", s.provider),
+			slog.String("delivery_id", s.deliveryID),
+			slog.Duration("stalled_for", s.stalledFor))
+
+		expected := "picked up by the courier"
+		if s.status == "picked_up" {
+			expected = "delivered"
+		}
+		d.alert(
+			fmt.Sprintf("Delivery stalled %s in '%s' — %s", roundDur(s.stalledFor), s.status, s.restaurant),
+			fmt.Sprintf(
+				"Order %s at %q was dispatched to %s (delivery %s) and has been sitting in '%s' for %s "+
+					"without advancing. It should have been %s well before now.\n\n"+
+					"The most likely cause is that %s status webhooks have stopped reaching us — that failure is "+
+					"silent, so nothing else will flag it.\n\n"+
+					"Check, in order:\n"+
+					"  1. The %s dashboard: is delivery %s actually progressing?\n"+
+					"  2. Webhook delivery health in the provider dashboard, and whether new rows are landing in "+
+					"external_webhook_events at all.\n"+
+					"  3. Our logs for signature-verification rejections, which present as 400s on the webhook "+
+					"endpoint and would mean the signing secret has drifted from the one the provider generated.\n\n"+
+					"%s",
+				s.id, s.restaurant, s.provider, s.deliveryID, s.status, roundDur(s.stalledFor),
+				expected, s.provider, s.provider, s.deliveryID,
+				trackingLine(s.trackingURL)),
+		)
+	}
+}
+
+func roundDur(d time.Duration) string {
+	if d >= time.Hour {
+		return d.Round(time.Minute).String()
+	}
+	return d.Round(time.Second).String()
+}
+
+func trackingLine(url string) string {
+	if url == "" {
+		return "No provider tracking URL was recorded for this order."
+	}
+	return "Provider tracking: " + url
 }
 
 // reapStaleDispatchClaims releases the external-dispatch claim sentinel
@@ -476,6 +638,21 @@ func (d *Dispatcher) sweepPendingRefunds(ctx context.Context) {
 					slog.String("payment_intent", p.paymentID),
 					slog.Int("attempts", attempts),
 					slog.String("error", err.Error()))
+				// At the cap the row drops out of the partial index and this sweep
+				// never looks at it again — so this is the last moment anything
+				// automated will mention a real customer who paid for an order that
+				// was cancelled. Log-only here means the money quietly stays taken.
+				d.alert(
+					"URGENT: customer charged on a cancelled order and the refund will not retry",
+					fmt.Sprintf(
+						"Order %s was cancelled or rejected but its refund failed %d times, which is the retry cap. "+
+							"The order has now dropped out of the automatic refund sweep and will NOT be retried.\n\n"+
+							"The customer is still charged.\n\n"+
+							"Last Stripe error: %s\n\n"+
+							"Refund PaymentIntent %s by hand in the Stripe dashboard, then set orders.refunded_at "+
+							"for order %s so reporting reflects it.",
+						p.id, attempts, err.Error(), p.paymentID, p.id),
+				)
 			} else {
 				slog.Error("pending-refund: refund failed, will retry next sweep",
 					slog.String("order_id", p.id),
