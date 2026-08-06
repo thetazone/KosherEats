@@ -33,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!ready) return null;
 
   if (isLoginPage) {
-    return <div className="min-h-screen bg-neutral-950">{children}</div>;
+    return <div className="min-h-screen bg-dark-950">{children}</div>;
   }
 
   const navItems = [
@@ -44,11 +44,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ];
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white flex">
-      <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col">
-        <div className="px-6 py-6 border-b border-neutral-800">
-          <div className="text-orange-500 font-bold text-xl">KosherEats</div>
-          <div className="text-xs text-neutral-500">Admin</div>
+    <div className="min-h-screen bg-dark-950 text-white flex">
+      <aside className="w-64 bg-dark-900 border-r border-dark-800 flex flex-col">
+        <div className="px-6 py-6 border-b border-dark-800">
+          <div className="text-brand-500 font-bold text-xl">KosherEats</div>
+          <div className="text-xs text-dark-500">Admin</div>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
@@ -59,8 +59,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 href={item.href}
                 className={`block px-3 py-2 rounded-md text-sm font-medium transition ${
                   active
-                    ? "bg-orange-500/15 text-orange-400"
-                    : "text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                    ? "bg-brand-500/15 text-brand-400"
+                    : "text-dark-400 hover:bg-dark-800 hover:text-white"
                 }`}
               >
                 {item.label}
@@ -68,13 +68,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             );
           })}
         </nav>
-        <div className="p-4 border-t border-neutral-800">
+        <div className="p-4 border-t border-dark-800">
           <button
             onClick={() => {
               adminAuth.clear();
               router.replace("/admin/login");
             }}
-            className="w-full text-left text-sm text-neutral-400 hover:text-white transition"
+            className="w-full text-left text-sm text-dark-400 hover:text-white transition"
           >
             Sign out
           </button>

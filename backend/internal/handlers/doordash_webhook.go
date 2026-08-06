@@ -6,17 +6,29 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
+// ddWebhookPayload mirrors DoorDash Drive's webhook body. Field names verified
+// against the Drive webhook reference and a live sandbox delivery.
 type ddWebhookPayload struct {
 	ExternalDeliveryID string `json:"external_delivery_id"`
-	DeliveryStatus     string `json:"delivery_status"`
-	TrackingURL        string `json:"tracking_url"`
-	DasherName         string `json:"dasher_name,omitempty"`
-	DasherPhone        string `json:"dasher_dropoff_phone_number,omitempty"`
-	DasherLat          float64 `json:"dasher_location_lat,omitempty"`
-	DasherLng          float64 `json:"dasher_location_lng,omitempty"`
+	// EventName carries the transition, e.g. DASHER_DROPPED_OFF. NOT
+	// delivery_status: that field exists only on quote/create API *responses*,
+	// never on webhooks, so reading it here parsed as "" and made every webhook
+	// a silent no-op — orders dispatched to DoorDash never advanced past 'ready'.
+	EventName   string `json:"event_name"`
+	TrackingURL string `json:"tracking_url"`
+	DasherName  string `json:"dasher_name,omitempty"`
+	DasherPhone string `json:"dasher_dropoff_phone_number,omitempty"`
+	// A nested object, not flat dasher_location_lat/lng fields.
+	DasherLocation struct {
+		Lat float64 `json:"lat"`
+		Lng float64 `json:"lng"`
+	} `json:"dasher_location,omitempty"`
 }
 
 func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
@@ -31,9 +43,13 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.doordash.VerifyWebhook(body, r.Header.Get("X-Doordash-Signature")) {
-		slog.Warn("doordash webhook signature verification failed")
-		writeError(w, http.StatusBadRequest, "invalid signature")
+	// DoorDash Drive authenticates webhooks with a static bearer token echoed in
+	// the header configured in the Developer Portal (we use `Authorization`), not
+	// a body HMAC — see doordash.Client.VerifyWebhook. 401, not 400: the request
+	// is well-formed, its credential isn't.
+	if !h.doordash.VerifyWebhook(r.Header.Get("Authorization")) {
+		slog.Warn("doordash webhook authorization failed")
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
@@ -45,16 +61,39 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	orderID := payload.ExternalDeliveryID
-	status := payload.DeliveryStatus
+	// Uppercased because the documented casing isn't uniform: the core lifecycle
+	// events are UPPER_SNAKE while the opt-in tracking events
+	// (dasher_enroute_to_pickup, …) are lowercase.
+	event := strings.ToUpper(strings.TrimSpace(payload.EventName))
 
 	slog.Info("doordash webhook",
 		slog.String("order_id", orderID),
-		slog.String("status", status))
+		slog.String("event", event))
 
 	if orderID == "" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	// orders.id is a uuid column, so a non-UUID external_delivery_id makes every
+	// query below fail with SQLSTATE 22P02 rather than simply matching no rows.
+	// That returned 500, which DoorDash retries — an unfixable poison pill that
+	// hammers this endpoint forever. Deliveries created outside our dispatch path
+	// (the portal's Delivery Simulator mints its own ids) land here, so ACK and
+	// drop: an id that cannot name one of our orders is nothing to reconcile.
+	parsedID, uerr := uuid.Parse(orderID)
+	if uerr != nil {
+		slog.Warn("doordash webhook: external_delivery_id is not one of our order ids, ignoring",
+			slog.String("external_delivery_id", orderID),
+			slog.String("event", event))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// Query on the CANONICAL spelling, not the raw string: uuid.Parse also accepts
+	// urn:uuid:, braced and unhyphenated forms, and Postgres's uuid type rejects
+	// the urn: one — so passing the raw value through would slip past this guard
+	// and 22P02 anyway, reopening the retry loop the guard exists to close.
+	orderID = parsedID.String()
 
 	// Idempotency + atomicity: claim the event and mutate order state in one tx
 	// (migration 052). Blocks replay of a captured 'cancelled' from re-clearing
@@ -68,7 +107,7 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	fresh, err := claimWebhookEvent(ctx, tx, "doordash_drive", webhookEventID(body), status)
+	fresh, err := claimWebhookEvent(ctx, tx, "doordash_drive", webhookEventID(body), event)
 	if err != nil {
 		slog.Error("doordash webhook: claim event failed",
 			slog.String("order_id", orderID), slog.String("error", err.Error()))
@@ -83,15 +122,17 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 
 	var postCommit []func()
 
-	// DoorDash Drive statuses: created, confirmed, enroute_to_pickup,
-	// arrived_at_pickup, picked_up, enroute_to_dropoff, arrived_at_dropoff,
-	// delivered, cancelled
-	switch status {
-	case "confirmed":
-		// Fire the consumer "a courier is on the way" push on exactly ONE status.
-		// The DoorDash Drive lifecycle emits both 'confirmed' and 'enroute_to_pickup';
-		// firing on both double-sent the push. 'enroute_to_pickup' is now a no-op,
-		// matching the Uber Direct webhook (single-status OrderClaimed).
+	// DoorDash Drive event_name values: DASHER_CONFIRMED,
+	// DASHER_CONFIRMED_PICKUP_ARRIVAL, DASHER_PICKED_UP,
+	// DASHER_CONFIRMED_DROPOFF_ARRIVAL, DASHER_DROPPED_OFF, DELIVERY_CANCELLED,
+	// plus return-flow, batching and opt-in tracking events. Anything not handled
+	// below is an intentional no-op (already logged above).
+	switch event {
+	case "DASHER_CONFIRMED":
+		// Fire the consumer "a courier is on the way" push on exactly ONE event.
+		// The arrival/tracking events also imply a Dasher is assigned; firing on
+		// those too would double-send. Matches the Uber Direct webhook
+		// (single-event OrderClaimed).
 		dasherName := "DoorDash courier"
 		if payload.DasherName != "" {
 			dasherName = payload.DasherName
@@ -99,7 +140,11 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 
 		var consumerID, restaurantID string
 		err := tx.QueryRow(ctx,
-			`SELECT user_id, restaurant_id FROM orders WHERE id = $1`,
+			// Scoped to THIS provider: unscoped, a DoorDash-authenticated webhook
+			// naming an Uber-dispatched order would push "your courier is on the
+			// way" to the wrong consumer.
+			`SELECT user_id, restaurant_id FROM orders
+			  WHERE id = $1 AND external_provider = 'doordash_drive'`,
 			orderID).Scan(&consumerID, &restaurantID)
 		if err == nil && h.notify != nil {
 			postCommit = append(postCommit, func() {
@@ -107,20 +152,25 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-	case "picked_up":
-		if _, err := tx.Exec(ctx,
+	case "DASHER_PICKED_UP":
+		tag, uerr := tx.Exec(ctx,
 			// Match any pre-pickup state: an order can be escalated to a provider
 			// while still 'accepted'/'preparing' (EscalateToUber allows those), so
 			// keying only on 'ready' stranded those orders. Mirrors the Uber webhook.
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready') AND external_delivery_id IS NOT NULL`,
-			time.Now(), orderID); err != nil {
+			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready')
+			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
+			time.Now(), orderID)
+		if err := uerr; err != nil {
 			// Fail closed so DoorDash retries rather than stranding the order.
 			slog.Error("doordash webhook: pickup update failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
 		}
 
 		var consumerID string
@@ -132,14 +182,14 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-	case "delivered":
+	case "DASHER_DROPPED_OFF":
 		now := time.Now()
 		// Accept any pre-delivered external-dispatched state (a dropped pickup
 		// webhook would otherwise strand the order); mirrors the Uber webhook.
 		tag, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
-			    AND external_delivery_id IS NOT NULL`,
+			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
 			now, orderID)
 		if err != nil {
 			slog.Error("doordash webhook: delivered update failed",
@@ -150,6 +200,7 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		// Don't fire a duplicate "delivered" push on a 0-row (late/duplicate) match.
 		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
 			break
 		}
 
@@ -165,16 +216,22 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-	case "cancelled":
+	case "DELIVERY_CANCELLED":
 		slog.Warn("doordash delivery canceled — order needs re-dispatch",
 			slog.String("order_id", orderID))
+		// external_provider scoping is LOAD-BEARING here, not defensive: this
+		// statement clears the provider linkage and resets picked_up -> ready, which
+		// re-arms auto-dispatch. Unscoped, a cancel naming an order that is out with
+		// the OTHER provider would clear that order's linkage and the next sweep
+		// would buy a SECOND paid delivery for a delivery already in flight.
 		if _, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
-			  WHERE id = $1 AND status IN ('ready', 'picked_up')`, orderID); err != nil {
+			  WHERE id = $1 AND status IN ('ready', 'picked_up')
+			    AND external_provider = 'doordash_drive'`, orderID); err != nil {
 			slog.Error("doordash webhook: cancel cleanup failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))

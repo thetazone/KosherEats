@@ -155,7 +155,12 @@ Courier payouts depend on Stripe Connect. In the Stripe Dashboard:
 1. **Enable Connect** (Settings → Connect settings → enable Express accounts)
 2. **Set the product description** and branding — couriers see these during onboarding
 3. **Create an API key** in test mode first, swap to live mode before launch
-4. **Add a webhook endpoint**: `https://koshereats-api.fly.dev/api/v1/webhooks/stripe`, subscribe to `account.updated` and `payment_intent.succeeded`
+4. **Add a webhook endpoint**: `https://koshereats-api.fly.dev/api/v1/webhooks/stripe`, subscribing to exactly the three events the backend handles (see the `switch` in `internal/handlers/payments.go`):
+   - `account.updated` — courier Connect onboarding / `payout_ready`
+   - `charge.refunded` — **required**: drives `haltPayoutOrderID`, which stops a courier payout on a refunded order
+   - `charge.dispute.created` — **required**: same payout halt on a dispute
+
+   Do NOT rely on `payment_intent.succeeded`; the backend does not handle it. Omitting the two `charge.*` events is a money bug, not a nicety: refunds and disputes then never halt payouts, so you refund the customer and still pay the courier. If this endpoint was configured from an older version of this doc, re-check its subscribed events.
 5. **Copy the webhook signing secret** into `STRIPE_WEBHOOK_SECRET`
 
 Then:
@@ -222,10 +227,12 @@ distribution domain for faster reads + better caching.
 fly secrets set CHECKR_API_KEY=... --app koshereats-api
 ```
 
-**Note:** The current `internal/background/checkr.go` has a dev stub that
-auto-approves couriers after 2s. Before real launch, implement the two
-outbound calls in `InitiateCheck` (Candidate + Invitation creation).
-There's a `TODO` block in the file marking exactly where.
+**Note:** `internal/background/checkr.go` is fully implemented — `InitiateCheck`
+makes both real outbound calls (`POST /candidates`, then `POST /invitations`).
+It falls back to a dev stub that auto-approves couriers after 2s **only when
+`CHECKR_API_KEY` is empty**, so setting that secret is all that's required. Be
+aware the stub is gated solely on the missing credential, with no `APP_ENV`
+guard — an unset key in production silently auto-approves couriers to drive.
 
 ---
 
@@ -279,8 +286,9 @@ fly logs --app koshereats-web
 ## 11. Ongoing operations
 
 **Monitoring.** Fly exposes Grafana dashboards automatically at
-`https://fly-metrics.net`. For app-level errors add a Sentry DSN and uncomment
-the Sentry init line in `main.go` (currently stubbed behind structured logging).
+`https://fly-metrics.net`. For app-level errors Sentry is already wired (`observability.InitSentry` in
+`main.go` plus the `SentryRecover` middleware) and activates as soon as
+`SENTRY_DSN` is set — no code change needed.
 
 **Database backups.** Fly Postgres takes daily snapshots. For anything
 critical, add a `pg_dump` cron via `fly ssh console`.
@@ -293,10 +301,11 @@ fly scale count 2 --app koshereats-api
 fly scale vm shared-cpu-2x --app koshereats-api
 ```
 
-The scheduler in `internal/scheduler/dispatcher.go` is NOT safe to run on
-multiple replicas as-is — it would double-dispatch scheduled orders. If you
-scale the API horizontally, wrap the sweeper in a Postgres advisory lock or
-move it to a dedicated singleton worker.
+The scheduler in `internal/scheduler/dispatcher.go` **is** safe to run on
+multiple replicas: every sweep tick is gated by a cluster-wide Postgres advisory
+lock (`sweepAdvisoryLockKey`, taken with non-blocking `pg_try_advisory_lock`), so
+a replica that doesn't win the lock skips the tick instead of double-dispatching.
+No extra work is needed to scale the API horizontally.
 
 **Migrations.** Just commit new `.sql` files in `backend/internal/database/migrations/`
 with the next sequential number — the runner applies them automatically on

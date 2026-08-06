@@ -1259,14 +1259,24 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 // completed; on failure reschedules with backoff or — if we've exhausted
 // maxPayoutAttempts — flips to failed_permanent so a human can intervene.
 func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
-	// TODO(temporal-cutover): this legacy path keys the Stripe idempotency key on
-	// the queue row id (p.id), but the Temporal path (payout/payout.go) keys it on
-	// "payout-"+orderID (the WorkflowID). If a payout is attempted under one regime
-	// and re-attempted under the other across a cutover, Stripe sees two different
-	// keys and DOUBLE-PAYS. Before enabling Temporal payouts, align both on a
-	// single stable key — order_id is UNIQUE in courier_payout_queue, so switch
-	// this call to "payout-"+p.orderID to match WorkflowID. (Temporal is off in
-	// prod today, so this is latent.)
+	// Stripe idempotency key = the courier_payout_queue row id. The Temporal path
+	// deliberately derives the SAME value (payout/payout.go resolves
+	// `SELECT id::text FROM courier_payout_queue WHERE order_id = $1` and passes
+	// that), so a payout attempted under one regime and re-attempted under the
+	// other across a cutover presents an identical key and Stripe de-dupes it.
+	// Verified aligned 2026-07-29.
+	//
+	// DO NOT "fix" this to "payout-"+p.orderID. An earlier TODO here instructed
+	// exactly that, on the false premise that Temporal keyed on the WorkflowID —
+	// following it would have made the two paths disagree and CREATED the
+	// double-pay it warned about. Any change here must change both paths together.
+	//
+	// Caveat that IS still open: the retry backoff (5m/15m/1h/6h/24h over
+	// maxPayoutAttempts) puts the final attempt past t+31h, and Stripe drops
+	// idempotency keys after 24h — so a transfer that succeeded but returned an
+	// error can still be replayed as a second transfer by a late attempt. Cap
+	// cumulative retry time under 24h, or reconcile against Stripe's transfer list
+	// before the last attempt.
 	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID, p.id)
 	if err == nil {
 		ct, uerr := d.db.Exec(ctx, `

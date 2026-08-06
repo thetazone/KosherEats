@@ -16,10 +16,10 @@ export default function AdminDashboard() {
   }, []);
 
   if (error) {
-    return <div className="text-red-400">Failed to load stats: {error}</div>;
+    return <div className="text-danger-400">Failed to load stats: {error}</div>;
   }
   if (!stats) {
-    return <div className="text-neutral-500">Loading…</div>;
+    return <div className="text-dark-500">Loading…</div>;
   }
 
   const cards: { label: string; value: string; accent: string; sub?: string }[] = [
@@ -27,25 +27,25 @@ export default function AdminDashboard() {
       label: "Restaurants",
       value: stats.active_restaurants.toString(),
       sub: `${stats.total_restaurants} total`,
-      accent: "text-orange-400",
+      accent: "text-brand-400",
     },
     {
       label: "Approved Couriers",
       value: stats.approved_couriers.toString(),
       sub: stats.pending_couriers > 0 ? `${stats.pending_couriers} awaiting review` : "none pending",
-      accent: stats.pending_couriers > 0 ? "text-yellow-400" : "text-green-400",
+      accent: stats.pending_couriers > 0 ? "text-warning-400" : "text-success-400",
     },
     {
       label: "Today's Orders",
       value: stats.today_orders.toString(),
       sub: `${stats.lifetime_orders} lifetime`,
-      accent: "text-blue-400",
+      accent: "text-info-400",
     },
     {
       label: "Today's Revenue",
       value: formatCents(stats.today_revenue),
       sub: "across all restaurants",
-      accent: "text-green-400",
+      accent: "text-success-400",
     },
   ];
 
@@ -53,25 +53,25 @@ export default function AdminDashboard() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-neutral-400 mt-1">Platform overview at a glance.</p>
+        <p className="text-dark-400 mt-1">Platform overview at a glance.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card) => (
-          <div key={card.label} className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-            <div className="text-sm text-neutral-400">{card.label}</div>
+          <div key={card.label} className="bg-dark-900 border border-dark-800 rounded-xl p-6">
+            <div className="text-sm text-dark-400">{card.label}</div>
             <div className={`mt-2 text-3xl font-bold ${card.accent}`}>{card.value}</div>
-            {card.sub && <div className="text-xs text-neutral-500 mt-1">{card.sub}</div>}
+            {card.sub && <div className="text-xs text-dark-500 mt-1">{card.sub}</div>}
           </div>
         ))}
       </div>
 
       {stats.pending_couriers > 0 && (
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-yellow-400 font-semibold">
+        <div className="bg-warning-500/10 border border-warning-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 text-warning-400 font-semibold">
             ⚠ {stats.pending_couriers} courier{stats.pending_couriers === 1 ? "" : "s"} waiting for approval
           </div>
-          <a href="/admin/couriers" className="text-yellow-300 text-sm underline mt-1 inline-block">
+          <a href="/admin/couriers" className="text-warning-300 text-sm underline mt-1 inline-block">
             Review them →
           </a>
         </div>

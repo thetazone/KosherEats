@@ -7,15 +7,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; bg: string }> = {
-  scheduled: { label: "Scheduled", color: "text-yellow-300", bg: "bg-yellow-900/30" },
-  pending: { label: "Pending", color: "text-yellow-400", bg: "bg-yellow-900/30" },
-  accepted: { label: "Accepted", color: "text-blue-400", bg: "bg-blue-900/30" },
+  scheduled: { label: "Scheduled", color: "text-warning-300", bg: "bg-warning-900/30" },
+  pending: { label: "Pending", color: "text-warning-400", bg: "bg-warning-900/30" },
+  accepted: { label: "Accepted", color: "text-info-400", bg: "bg-info-900/30" },
   preparing: { label: "Preparing", color: "text-brand-400", bg: "bg-brand-900/30" },
-  ready: { label: "Ready", color: "text-green-400", bg: "bg-green-900/30" },
-  picked_up: { label: "On the way", color: "text-blue-400", bg: "bg-blue-900/30" },
-  delivered: { label: "Delivered", color: "text-green-400", bg: "bg-green-900/30" },
-  cancelled: { label: "Cancelled", color: "text-red-400", bg: "bg-red-900/30" },
-  rejected: { label: "Rejected", color: "text-red-400", bg: "bg-red-900/30" },
+  ready: { label: "Ready", color: "text-success-400", bg: "bg-success-900/30" },
+  picked_up: { label: "On the way", color: "text-info-400", bg: "bg-info-900/30" },
+  delivered: { label: "Delivered", color: "text-success-400", bg: "bg-success-900/30" },
+  cancelled: { label: "Cancelled", color: "text-danger-400", bg: "bg-danger-900/30" },
+  rejected: { label: "Rejected", color: "text-danger-400", bg: "bg-danger-900/30" },
 };
 
 const TERMINAL_STATUSES: OrderStatus[] = ["delivered", "cancelled", "rejected"];
@@ -196,7 +196,7 @@ export default function OrdersPage() {
         </div>
 
         {actionError && (
-          <div className="card p-3 mb-4 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+          <div className="card p-3 mb-4 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
             {actionError}
           </div>
         )}

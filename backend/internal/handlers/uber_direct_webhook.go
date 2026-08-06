@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // flexFloat accepts a JSON number OR a quoted numeric string. Uber Direct sends
@@ -32,29 +34,29 @@ func (f *flexFloat) UnmarshalJSON(b []byte) error {
 }
 
 type uberWebhookPayload struct {
-	Kind       string              `json:"kind"`
-	DeliveryID string              `json:"delivery_id"`
-	Status     string              `json:"status"`
-	Data       uberWebhookData     `json:"data"`
+	Kind       string          `json:"kind"`
+	DeliveryID string          `json:"delivery_id"`
+	Status     string          `json:"status"`
+	Data       uberWebhookData `json:"data"`
 }
 
 type uberWebhookData struct {
-	Status           string          `json:"status"`
-	CourierImminent  bool            `json:"courier_imminent"`
-	TrackingURL      string          `json:"tracking_url"`
-	Fee              int             `json:"fee"`
-	Tip              int             `json:"tip"`
-	Courier          *uberCourier    `json:"courier,omitempty"`
-	ExternalID       string          `json:"external_id"`
+	Status          string       `json:"status"`
+	CourierImminent bool         `json:"courier_imminent"`
+	TrackingURL     string       `json:"tracking_url"`
+	Fee             int          `json:"fee"`
+	Tip             int          `json:"tip"`
+	Courier         *uberCourier `json:"courier,omitempty"`
+	ExternalID      string       `json:"external_id"`
 }
 
 type uberCourier struct {
-	Name        string       `json:"name"`
-	Phone       string       `json:"phone_number"`
-	Rating      flexFloat    `json:"rating"`
-	VehicleType string       `json:"vehicle_type"`
-	Location    *uberLatLng  `json:"location,omitempty"`
-	ImgHref     string       `json:"img_href"`
+	Name        string      `json:"name"`
+	Phone       string      `json:"phone_number"`
+	Rating      flexFloat   `json:"rating"`
+	VehicleType string      `json:"vehicle_type"`
+	Location    *uberLatLng `json:"location,omitempty"`
+	ImgHref     string      `json:"img_href"`
 }
 
 type uberLatLng struct {
@@ -106,6 +108,28 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// orders.id is a uuid column, so a non-UUID external_id doesn't merely match
+	// zero rows — every query below fails with SQLSTATE 22P02, and the
+	// pickup_complete/delivered/canceled branches answer 500, which Uber retries.
+	// That makes such a delivery a poison pill that re-hits this endpoint
+	// indefinitely. We only ever set external_id to our own order UUID, so a value
+	// that isn't one cannot name an order to reconcile: ACK and drop. Guarding
+	// before Begin also avoids a pointless idempotency row.
+	parsedID, uerr := uuid.Parse(externalID)
+	if uerr != nil {
+		slog.Warn("uber webhook: external_id is not one of our order ids, ignoring",
+			slog.String("external_id", externalID),
+			slog.String("delivery_id", payload.DeliveryID),
+			slog.String("status", status))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// Query on the CANONICAL spelling, not the raw string: uuid.Parse also accepts
+	// urn:uuid:, braced and unhyphenated forms, and Postgres's uuid type rejects
+	// the urn: one — so passing the raw value through would slip past this guard
+	// and 22P02 anyway, reopening the retry loop the guard exists to close.
+	externalID = parsedID.String()
+
 	// Idempotency + atomicity: claim the event and apply the order-state change in
 	// one transaction (see migration 052). A replayed 'canceled' would otherwise
 	// re-clear the provider linkage and re-arm auto-dispatch → a new paid delivery.
@@ -143,7 +167,11 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 
 		var consumerID, restaurantID string
 		err := tx.QueryRow(ctx,
-			`SELECT user_id, restaurant_id FROM orders WHERE id = $1`,
+			// Scoped to THIS provider: without it, an Uber-authenticated webhook
+			// naming an order dispatched to DoorDash would push "your courier is on
+			// the way" to the wrong consumer. See the provider-scoping note below.
+			`SELECT user_id, restaurant_id FROM orders
+			  WHERE id = $1 AND external_provider = 'uber_direct'`,
 			externalID).Scan(&consumerID, &restaurantID)
 		if err != nil {
 			// 'pickup' only drives a notification (no state mutation); a lookup miss
@@ -161,10 +189,12 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "pickup_complete":
-		if _, err := tx.Exec(ctx,
+		tag, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
-			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready') AND external_delivery_id IS NOT NULL`,
-			time.Now(), externalID); err != nil {
+			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready')
+			    AND external_provider = 'uber_direct' AND external_delivery_id IS NOT NULL`,
+			time.Now(), externalID)
+		if err != nil {
 			// State mutation failed — fail closed so Uber retries (the rolled-back
 			// claim lets the retry reprocess) rather than stranding the order.
 			slog.Error("uber webhook: pickup_complete update failed",
@@ -172,6 +202,9 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", err.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "uber", "pickup_complete", externalID, "uber_direct")
 		}
 
 		var consumerID string
@@ -192,7 +225,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		tag, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
-			    AND external_delivery_id IS NOT NULL`,
+			    AND external_provider = 'uber_direct' AND external_delivery_id IS NOT NULL`,
 			now, externalID)
 		if err != nil {
 			slog.Error("uber webhook: delivered update failed",
@@ -205,6 +238,7 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		// late webhook on an already-terminal order, which must not fire a second
 		// "delivered" push. Still commit the claim so the event is recorded.
 		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "uber", "delivered", externalID, "uber_direct")
 			break
 		}
 
@@ -225,6 +259,11 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("order_id", externalID),
 			slog.String("delivery_id", payload.DeliveryID))
 
+		// external_provider scoping is LOAD-BEARING here, not defensive: this
+		// statement clears the provider linkage and resets picked_up -> ready, which
+		// re-arms auto-dispatch. Unscoped, a cancel naming an order that is out with
+		// the OTHER provider would clear that order's linkage and the next sweep
+		// would buy a SECOND paid delivery for a delivery already in flight.
 		if _, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
@@ -236,7 +275,8 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			        -- the linkage and is picked up by the next sweep as before.
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
-			  WHERE id = $1 AND status IN ('ready', 'picked_up')`,
+			  WHERE id = $1 AND status IN ('ready', 'picked_up')
+			    AND external_provider = 'uber_direct'`,
 			externalID); err != nil {
 			slog.Error("uber webhook: cancel cleanup failed",
 				slog.String("order_id", externalID),
