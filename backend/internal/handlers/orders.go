@@ -85,6 +85,17 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-check orderability at order time, not just add-to-cart time: a cart can
+	// outlive a restaurant's approval, and a preview listing must never take an
+	// order regardless of how its items got into a cart.
+	if ok, oerr := h.restaurantOrderable(r.Context(), cart.RestaurantID); oerr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify restaurant")
+		return
+	} else if !ok {
+		writeError(w, http.StatusForbidden, "this restaurant is not accepting orders on KosherEats yet")
+		return
+	}
+
 	// Get cart items. ci.unit_price is the modifier-adjusted per-unit price
 	// snapshotted at add-to-cart time — use that, not mi.price, so the
 	// subtotal matches what the customer saw.

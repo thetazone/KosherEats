@@ -244,6 +244,9 @@ func main() {
 		r.Get("/{id}", h.GetRestaurant)
 		r.Get("/{id}/menu", h.GetMenu)
 		r.Get("/{id}/deals", h.ListRestaurantDeals)
+		// "Request restaurant" heart on preview listings — auth required (one
+		// request per user per restaurant), toggle semantics.
+		r.With(h.AuthMiddleware).Post("/{id}/request", h.ToggleRestaurantRequest)
 	})
 
 	// Delivery fee quote (authenticated — checkout screen calls this)

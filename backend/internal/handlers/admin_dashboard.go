@@ -44,7 +44,12 @@ func (h *Handler) AdminRestaurantsPage(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT id, name, COALESCE(street,''), COALESCE(city,''), COALESCE(state,''),
 		        COALESCE(phone,''), COALESCE(array_to_string(cuisine_type, ', '), ''), created_at
-		 FROM restaurants WHERE approval_status = 'pending' ORDER BY created_at DESC`)
+		 FROM restaurants
+		 WHERE approval_status = 'pending' AND listing_visibility = 'standard'
+		 ORDER BY created_at DESC`)
+	// listing_visibility filter: seeded preview listings are 'pending' by design
+	// (they only approve at activation, with a real owner + verified cert) and
+	// would otherwise bury genuine seller applications under the whole catalog.
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		writeAdminPage(w, "Error", `<p>Could not load restaurants.</p>`)

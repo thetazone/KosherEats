@@ -206,6 +206,7 @@ func buildRouter(h *Handler) http.Handler {
 		r.Get("/", h.ListRestaurants)
 		r.Get("/{id}/menu", h.GetMenu)
 		r.Get("/{id}", h.GetRestaurant)
+		r.With(h.AuthMiddleware).Post("/{id}/request", h.ToggleRestaurantRequest)
 	})
 
 	r.Route("/api/v1/orders", func(r chi.Router) {

@@ -134,6 +134,15 @@ type Restaurant struct {
 	DeliveryMode         string              `json:"delivery_mode"`
 	CreatedAt            time.Time           `json:"created_at"`
 	UpdatedAt            time.Time           `json:"updated_at"`
+
+	// Preview-listing fields, stamped on by decorateRestaurantListings after the
+	// shared scan (the 34-column scanner is untouched so seller/admin paths are
+	// unaffected). Orderable is authoritative — clients render the cart CTA off
+	// this, and the server enforces it independently in cart/order/payment.
+	Orderable         bool   `json:"orderable"`
+	ListingVisibility string `json:"listing_visibility,omitempty"`
+	RequestCount      int    `json:"request_count,omitempty"`
+	RequestedByMe     bool   `json:"requested_by_me,omitempty"`
 }
 
 type MenuCategory struct {

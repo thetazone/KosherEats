@@ -111,6 +111,19 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Hard gate: the restaurant must be orderable — active, approved, and not a
+	// preview listing. This is the server half of "grayed out": the UI hides the
+	// cart on previews, but a stale build or a scripted client hits this instead.
+	// (Also closes a pre-existing hole: this handler previously validated only
+	// the menu item, so a deactivated/de-approved restaurant stayed cartable.)
+	if ok, oerr := h.restaurantOrderable(r.Context(), req.RestaurantID); oerr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify restaurant")
+		return
+	} else if !ok {
+		writeError(w, http.StatusForbidden, "this restaurant is not accepting orders on KosherEats yet")
+		return
+	}
+
 	// Get or create cart — if switching restaurants, clear existing cart.
 	// Use a transaction with SELECT FOR UPDATE to prevent TOCTOU races when
 	// concurrent requests from different restaurants interleave here.

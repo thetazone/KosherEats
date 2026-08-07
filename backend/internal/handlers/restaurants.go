@@ -18,12 +18,33 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	lng := r.URL.Query().Get("lng")
 	vertical := verticalFromRequest(r)
 
-	const baseQuery = `SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
+	previews := includePreviews(r)
+	cuisine := r.URL.Query().Get("cuisine")
+
+	// Previews ride behind the opt-in flag so already-shipped builds keep the
+	// orderable-only feed. $3 (cuisine chip) matches a tag case-insensitively,
+	// '' disables the filter. Orderable restaurants always sort above previews
+	// (never buried), operator-priority previews above the long tail, then the
+	// caller's distance/rating sort.
+	const baseQuery = `SELECT id, COALESCE(owner_id::text, '') AS owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
-		FROM restaurants WHERE is_active = true AND approval_status = 'approved' AND vertical = $1`
+		FROM restaurants
+		WHERE vertical = $1
+		  AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		    OR ($2::boolean AND listing_visibility = 'preview'))
+		  AND ($3::text = '' OR EXISTS (SELECT 1 FROM unnest(cuisine_type) ct WHERE ct ILIKE $3::text))`
+	const orderPrefix = ` ORDER BY (is_active AND approval_status = 'approved' AND listing_visibility = 'standard') DESC,
+		listing_priority DESC, `
+
+	// The classic feed stays capped at 50; a preview-aware client is asking for
+	// the whole catalog (287 previews today), so give it room.
+	limit := ` LIMIT 50`
+	if previews {
+		limit = ` LIMIT 400`
+	}
 
 	var rows pgx.Rows
 	var err error
@@ -36,10 +57,11 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 
 	if useDistance {
 		rows, err = h.db.Pool.Query(r.Context(),
-			baseQuery+` ORDER BY point($2, $3) <-> point(lng, lat) LIMIT 50`,
-			vertical, lngF, latF)
+			baseQuery+orderPrefix+`point($4, $5) <-> point(lng, lat)`+limit,
+			vertical, previews, cuisine, lngF, latF)
 	} else {
-		rows, err = h.db.Pool.Query(r.Context(), baseQuery+` ORDER BY rating DESC LIMIT 50`, vertical)
+		rows, err = h.db.Pool.Query(r.Context(),
+			baseQuery+orderPrefix+`rating DESC`+limit, vertical, previews, cuisine)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch restaurants")
@@ -52,6 +74,7 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to fetch restaurants")
 		return
 	}
+	restaurants = h.decorateRestaurantListings(r.Context(), restaurants, optionalUserID(r))
 	writeJSON(w, http.StatusOK, redactPublicRestaurants(restaurants))
 }
 
@@ -99,12 +122,14 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 
 	var rest models.Restaurant
 	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
+		`SELECT id, COALESCE(owner_id::text, '') AS owner_id, name, description, image_url, cover_image_url, logo_url,
 		phone, email, street, city, state, zip_code, lat, lng,
 		kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
-		FROM restaurants WHERE id = $1 AND vertical = $2 AND is_active = true AND approval_status = 'approved'`, id, vertical,
+		FROM restaurants WHERE id = $1 AND vertical = $2
+		  AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		    OR ($3::boolean AND listing_visibility = 'preview'))`, id, vertical, includePreviews(r),
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
 		&rest.Lat, &rest.Lng, &rest.KosherCertification, &rest.CertifyingAgency,
@@ -119,6 +144,9 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rest.OwnerID = "" // see redactPublicRestaurants — consumer endpoint, don't leak the seller's user id
+	if decorated := h.decorateRestaurantListings(r.Context(), []models.Restaurant{rest}, optionalUserID(r)); len(decorated) == 1 {
+		rest = decorated[0]
+	}
 	writeJSON(w, http.StatusOK, rest)
 }
 
@@ -132,8 +160,10 @@ func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 	var visible bool
 	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT EXISTS(SELECT 1 FROM restaurants
-		   WHERE id = $1 AND vertical = $2 AND is_active = true AND approval_status = 'approved')`,
-		id, vertical,
+		   WHERE id = $1 AND vertical = $2
+		     AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		       OR ($3::boolean AND listing_visibility = 'preview')))`,
+		id, vertical, includePreviews(r),
 	).Scan(&visible); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch menu")
 		return
@@ -311,18 +341,21 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 
 	vertical := verticalFromRequest(r)
 	rows, err := h.db.Pool.Query(r.Context(),
-		`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
+		`SELECT id, COALESCE(owner_id::text, '') AS owner_id, name, description, image_url, cover_image_url, logo_url,
 		 phone, email, street, city, state, zip_code, lat, lng,
 		 kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 		 is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		 est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		 FROM restaurants
-		 WHERE is_active = true AND approval_status = 'approved' AND vertical = $2
+		 WHERE vertical = $2
+		   AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		     OR ($3::boolean AND listing_visibility = 'preview'))
 		   AND (name ILIKE $1 OR EXISTS (
 		       SELECT 1 FROM unnest(cuisine_type) ct WHERE ct ILIKE $1
 		   ))
-		 ORDER BY rating DESC LIMIT 50`,
-		"%"+q+"%", vertical)
+		 ORDER BY (is_active AND approval_status = 'approved' AND listing_visibility = 'standard') DESC,
+		   listing_priority DESC, rating DESC LIMIT 100`,
+		"%"+q+"%", vertical, includePreviews(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
@@ -334,6 +367,7 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
+	restaurants = h.decorateRestaurantListings(r.Context(), restaurants, optionalUserID(r))
 	writeJSON(w, http.StatusOK, redactPublicRestaurants(restaurants))
 }
 
@@ -403,13 +437,13 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	var familiarRestaurants []models.Restaurant
 	if len(familiarIDs) > 0 {
 		famRows, err := h.db.Pool.Query(ctx,
-			`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
+			`SELECT id, COALESCE(owner_id::text, '') AS owner_id, name, description, image_url, cover_image_url, logo_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE id = ANY($1) AND vertical = $2 AND is_active = true AND approval_status = 'approved'`, familiarIDs, vertical)
+			  WHERE id = ANY($1) AND vertical = $2 AND is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard'`, familiarIDs, vertical)
 		if err == nil {
 			scanned, _ := scanRestaurants(famRows)
 			famRows.Close()
@@ -437,13 +471,13 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	var unfamiliarRestaurants []models.Restaurant
 	if len(allOrderedIDs) > 0 {
 		unfamRows, err := h.db.Pool.Query(ctx,
-			`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
+			`SELECT id, COALESCE(owner_id::text, '') AS owner_id, name, description, image_url, cover_image_url, logo_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE is_active = true AND approval_status = 'approved' AND vertical = $3 AND id != ALL($1)
+			  WHERE is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard' AND vertical = $3 AND id != ALL($1)
 			  ORDER BY rating DESC
 			  LIMIT $2`, allOrderedIDs, limit, vertical)
 		if err == nil {
@@ -453,13 +487,13 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Guest user or no order history — just serve top-rated restaurants.
 		unfamRows, err := h.db.Pool.Query(ctx,
-			`SELECT id, owner_id, name, description, image_url, cover_image_url, logo_url,
+			`SELECT id, COALESCE(owner_id::text, '') AS owner_id, name, description, image_url, cover_image_url, logo_url,
 			        phone, email, street, city, state, zip_code, lat, lng,
 			        kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE is_active = true AND approval_status = 'approved' AND vertical = $2
+			  WHERE is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard' AND vertical = $2
 			  ORDER BY rating DESC
 			  LIMIT $1`, limit, vertical)
 		if err == nil {

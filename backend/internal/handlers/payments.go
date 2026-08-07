@@ -87,6 +87,17 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Never mint a PaymentIntent against a non-orderable restaurant: a charge
+	// that CreateOrder will then refuse is the charged-but-no-order failure mode.
+	// Previews and de-approved restaurants both stop here, before Stripe.
+	if ok, oerr := h.restaurantOrderable(r.Context(), cartRestID); oerr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify restaurant")
+		return
+	} else if !ok {
+		writeError(w, http.StatusForbidden, "this restaurant is not accepting orders on KosherEats yet")
+		return
+	}
+
 	rows, err := h.db.Pool.Query(r.Context(),
 		`SELECT ci.unit_price, ci.quantity
 		   FROM cart_items ci
