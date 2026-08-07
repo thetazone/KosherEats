@@ -127,3 +127,52 @@ func TestIsPermanentProviderError_JoinIsUnsafeForMixedBatches(t *testing.T) {
 	// The two joins differ only in order yet classify oppositely → join-based
 	// classification is order-dependent, so Dispatch must (and does) iterate.
 }
+
+// missingRequiredPhone gates every paid provider call. Both Uber Direct and
+// DoorDash require pickup_phone_number AND dropoff_phone_number and reject the
+// create with a 400 — but the QUOTE succeeds either way, so an unguarded empty
+// phone burns a quote and then permanently fails after the kitchen has already
+// started cooking.
+//
+// The dropoff half of this was missing entirely and is reachable in production:
+// the Google/Apple signup INSERT (handlers/social_auth.go) writes no phone, and
+// VERIFICATION_ENFORCED defaults to false, so nothing backfills one.
+func TestMissingRequiredPhone(t *testing.T) {
+	cases := []struct {
+		name        string
+		restPhone   string
+		custPhone   string
+		wantMissing string
+	}{
+		{"both present", "+17183771818", "+13156645801", phonePresent},
+		{"no pickup phone", "", "+13156645801", phonePickup},
+		{"no dropoff phone — the social-signup consumer", "+17183771818", "", phoneDropoff},
+		{"neither present reports pickup first", "", "", phonePickup},
+
+		// Whitespace-only is the same as absent: it would serialize into the
+		// provider payload as a blank string and be rejected identically.
+		{"whitespace pickup", "   ", "+13156645801", phonePickup},
+		{"whitespace dropoff", "+17183771818", "  \t ", phoneDropoff},
+		{"newline dropoff", "+17183771818", "\n", phoneDropoff},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := missingRequiredPhone(tt.restPhone, tt.custPhone); got != tt.wantMissing {
+				t.Fatalf("missingRequiredPhone(%q, %q) = %q, want %q",
+					tt.restPhone, tt.custPhone, got, tt.wantMissing)
+			}
+		})
+	}
+}
+
+// A missing phone must classify as PERMANENT. If it were transient the sweep
+// would retry it up to the attempt cap, paying for a quote each time, and never
+// succeed — the exact loop the pickup-phone guard was originally added to stop.
+func TestMissingPhoneIsPermanent(t *testing.T) {
+	for _, which := range []string{phonePickup, phoneDropoff} {
+		err := fmt.Errorf("%w: missing %s phone", ErrNotDispatchable, which)
+		if !IsPermanent(err) {
+			t.Fatalf("a missing %s phone must be permanent, got transient for %v", which, err)
+		}
+	}
+}

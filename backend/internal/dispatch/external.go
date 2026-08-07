@@ -57,6 +57,30 @@ const maxExternalDispatchAttempts = 5
 // permanent by IsPermanent.
 var ErrNotDispatchable = errors.New("order not dispatchable")
 
+// Which required phone number is absent, as reported by missingRequiredPhone.
+const (
+	phonePresent = ""
+	phonePickup  = "pickup"
+	phoneDropoff = "dropoff"
+)
+
+// missingRequiredPhone reports which required phone number is missing, or
+// phonePresent when both are on file.
+//
+// Extracted as a pure function so this precondition is unit-testable —
+// Dispatch itself needs a database pool, which is exactly why the dropoff half
+// of the check went missing for so long. Pickup is reported first only because
+// a seller can self-serve that fix; both are hard blockers.
+func missingRequiredPhone(restPhone, customerPhone string) string {
+	if strings.TrimSpace(restPhone) == "" {
+		return phonePickup
+	}
+	if strings.TrimSpace(customerPhone) == "" {
+		return phoneDropoff
+	}
+	return phonePresent
+}
+
 // isPermanentProviderError reports whether the provider rejected the request
 // for a reason a retry cannot fix — a 4xx validation rejection of THIS order's
 // data, such as a missing pickup phone or an unserviceable address. Network
@@ -253,20 +277,53 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		}
 	}
 
-	// A missing pickup phone can never dispatch: providers require
-	// pickup_phone_number and reject the create with a 400 — while the quote
-	// succeeds, so the failure is only discovered AFTER a wasted quote call.
-	// (This exact gap — a seeded restaurant with an empty phone — once looped
-	// the sweep forever.) Fail fast as permanent before any provider call.
-	if strings.TrimSpace(in.RestPhone) == "" {
+	// Neither phone can be missing: providers require BOTH pickup_phone_number
+	// and dropoff_phone_number (uberdirect/client.go, doordash/client.go) and
+	// reject the create with a 400 — while the QUOTE succeeds, so the failure is
+	// only discovered after a wasted quote call. (The pickup gap — a seeded
+	// restaurant with an empty phone — once looped the sweep forever.) Fail fast
+	// as permanent before any provider call.
+	switch missingRequiredPhone(in.RestPhone, in.CustomerPhone) {
+	case phonePickup:
 		perr := fmt.Errorf("%w: restaurant %q has no phone on file; delivery providers require a pickup phone number", ErrNotDispatchable, in.RestaurantName)
 		slog.Error("external-dispatch: missing pickup phone",
 			slog.String("order_id", in.OrderID),
 			slog.String("restaurant", in.RestaurantName))
 		fail(true, perr)
 		return "", "", 0, perr
+
+	case phoneDropoff:
+		// Same failure shape as the pickup phone, and previously unguarded.
+		//
+		// Reachable, not theoretical: the Google/Apple signup INSERT
+		// (handlers/social_auth.go:180) writes no phone at all, and
+		// VERIFICATION_ENFORCED defaults to false, so nothing backfills one — any
+		// social-signup consumer ordering delivery lands here.
+		//
+		// Alerts as well as failing, unlike the pickup case: a seller can fix
+		// their own phone in Settings, but nobody can resolve a missing customer
+		// phone without contacting them for a number or refunding, so this has to
+		// reach a human rather than only the log.
+		perr := fmt.Errorf("%w: order %s has no customer phone on file; delivery providers require a dropoff phone number", ErrNotDispatchable, in.OrderID)
+		slog.Error("external-dispatch: missing dropoff phone",
+			slog.String("order_id", in.OrderID),
+			slog.String("restaurant", in.RestaurantName))
+		go e.alerter.Alert(
+			"Order cannot be delivered — customer has no phone number on file",
+			fmt.Sprintf(
+				"Order %s at %q cannot be dispatched to any courier: the customer has no phone number on "+
+					"record, and both Uber Direct and DoorDash require a dropoff phone.\n\n"+
+					"The likeliest cause is a consumer who signed up with Apple or Google, since that path "+
+					"does not collect a phone number.\n\n"+
+					"The customer has been charged and the restaurant may already be preparing the food. "+
+					"Get a phone number from the customer and dispatch manually, or cancel and refund.",
+				in.OrderID, in.RestaurantName),
+		)
+		fail(true, perr)
+		return "", "", 0, perr
 	}
 
+	//nolint:gocritic // the switch above returns in every non-empty case
 	type providerQuote struct {
 		provider    string
 		feeCents    int
