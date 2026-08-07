@@ -309,11 +309,20 @@ fun KosherEatsNavHost(
             composable(
                 route = Screen.Restaurant.route,
                 arguments = listOf(navArgument("restaurantId") { type = NavType.StringType }),
-            ) {
+            ) { backStackEntry ->
+                val restaurantId = backStackEntry.arguments?.getString("restaurantId")
                 RestaurantDetailScreen(
                     onBackClick = { navController.popBackStack() },
                     onCartClick = { navController.navigate(Screen.Cart.route) },
                     cartViewModel = cartViewModel,
+                    isLoggedIn = authState.sessionState == SessionState.Authenticated,
+                    // Guest tapping "Request restaurant" — sign in, then return here.
+                    onRequireAuth = {
+                        requireAuth(
+                            restaurantId?.let { Screen.Restaurant.createRoute(it) }
+                                ?: Screen.Home.route,
+                        )
+                    },
                 )
             }
 

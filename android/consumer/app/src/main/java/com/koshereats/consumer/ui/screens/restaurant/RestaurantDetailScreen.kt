@@ -33,6 +33,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -107,6 +109,11 @@ fun RestaurantDetailScreen(
     onBackClick: () -> Unit,
     onCartClick: () -> Unit,
     cartViewModel: CartViewModel,
+    // "Request restaurant" (preview listings) needs an auth token: guests who
+    // tap it are routed to sign-in via onRequireAuth, mirroring the home
+    // screen's auth gate for restricted actions.
+    isLoggedIn: Boolean = true,
+    onRequireAuth: () -> Unit = {},
     viewModel: RestaurantViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -176,7 +183,15 @@ fun RestaurantDetailScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = if (totalItemCount > 0) 88.dp else 16.dp),
+                // Previews pin the Request bar at the bottom instead of the cart
+                // FAB — leave room for it.
+                contentPadding = PaddingValues(
+                    bottom = when {
+                        restaurant.isPreview -> 132.dp
+                        totalItemCount > 0 -> 88.dp
+                        else -> 16.dp
+                    },
+                ),
             ) {
                 // Hero image
                 item {
@@ -208,8 +223,24 @@ fun RestaurantDetailScreen(
                                 )
                         )
 
-                        // Closed overlay — mirrors iOS RestaurantDetailView + home card
-                        if (!restaurant.isOpen) {
+                        // Preview overlay — same gray treatment as the closed state
+                        // (a preview is never "closed", it just isn't live yet).
+                        if (restaurant.isPreview) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(BackgroundBlack.copy(alpha = 0.6f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "Coming Soon",
+                                    color = TextWhite,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                            }
+                        } else if (!restaurant.isOpen) {
+                            // Closed overlay — mirrors iOS RestaurantDetailView + home card
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -264,42 +295,58 @@ fun RestaurantDetailScreen(
                             color = TextTertiary,
                         )
 
-                        // Stats row — mirrors iOS RestaurantDetailView (rating, ETA, fee)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            StatPill(
-                                icon = Icons.Filled.Star,
-                                text = "%.1f (%d)".format(restaurant.rating, restaurant.reviewCount),
-                                color = Orange,
-                            )
-                            if (restaurant.deliveryTimeMax > 0) {
+                        if (!restaurant.isPreview) {
+                            // Stats row — mirrors iOS RestaurantDetailView (rating, ETA, fee).
+                            // Hidden for previews: they have no ratings, ETA, or fee yet.
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 StatPill(
-                                    icon = Icons.Filled.Schedule,
-                                    text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
-                                    color = TextSecondary,
+                                    icon = Icons.Filled.Star,
+                                    text = "%.1f (%d)".format(restaurant.rating, restaurant.reviewCount),
+                                    color = Orange,
+                                )
+                                if (restaurant.deliveryTimeMax > 0) {
+                                    StatPill(
+                                        icon = Icons.Filled.Schedule,
+                                        text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
+                                        color = TextSecondary,
+                                    )
+                                }
+                                StatPill(
+                                    icon = Icons.Filled.LocalOffer,
+                                    text = if (restaurant.deliveryFee == 0) "Free Delivery"
+                                    else restaurant.deliveryFee.formatPrice(),
+                                    color = if (restaurant.deliveryFee == 0) SuccessGreen else TextSecondary,
                                 )
                             }
-                            StatPill(
-                                icon = Icons.Filled.LocalOffer,
-                                text = if (restaurant.deliveryFee == 0) "Free Delivery"
-                                else restaurant.deliveryFee.formatPrice(),
-                                color = if (restaurant.deliveryFee == 0) SuccessGreen else TextSecondary,
+
+                            if (restaurant.minimumOrder > 0) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Min. order: ${restaurant.minimumOrder.formatPriceWhole()}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted,
+                                )
+                            }
+                        }
+
+                        if (restaurant.isPreview) {
+                            // Where the closed banner / cart-adjacent copy would sit:
+                            // the "Request restaurant" card for preview listings.
+                            Spacer(modifier = Modifier.height(12.dp))
+                            PreviewRequestCard(
+                                requested = restaurant.requestedByMe,
+                                count = restaurant.requestCount,
+                                onRequestClick = {
+                                    if (isLoggedIn) viewModel.toggleRequest() else onRequireAuth()
+                                },
                             )
                         }
 
-                        if (restaurant.minimumOrder > 0) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Min. order: ${restaurant.minimumOrder.formatPriceWhole()}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted,
-                            )
-                        }
-
-                        if (!restaurant.isOpen) {
+                        if (!restaurant.isPreview && !restaurant.isOpen) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier
@@ -326,13 +373,17 @@ fun RestaurantDetailScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Kosher info
-                        KosherInfoRow(
-                            certification = restaurant.kosherCertification ?: KosherCertification.OTHER,
-                            isGlatt = restaurant.isGlattKosher,
-                            isCholovYisroel = restaurant.isCholovYisroel,
-                            isPasYisroel = restaurant.isPasYisroel,
-                        )
+                        // Kosher info. An empty-string kosher_certification decodes
+                        // to UNKNOWN via the fallback enum adapter — render no
+                        // certification row at all rather than a "?" badge.
+                        if (restaurant.kosherCertification != KosherCertification.UNKNOWN) {
+                            KosherInfoRow(
+                                certification = restaurant.kosherCertification ?: KosherCertification.OTHER,
+                                isGlatt = restaurant.isGlattKosher,
+                                isCholovYisroel = restaurant.isCholovYisroel,
+                                isPasYisroel = restaurant.isPasYisroel,
+                            )
+                        }
 
                         if (!restaurant.certifyingAgency.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(12.dp))
@@ -455,17 +506,42 @@ fun RestaurantDetailScreen(
                             }
                         }
                         // Menu loaded successfully but the restaurant genuinely has no items.
+                        // Previews routinely ship without a menu — show a friendly
+                        // "coming soon" state, never a blank screen.
                         MenuLoadState.Loaded -> {
                             item(key = "empty_menu") {
                                 Column(
                                     modifier = Modifier.fillMaxWidth().padding(32.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
-                                    Text(
-                                        text = "This restaurant has no menu items yet.",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = TextMuted,
-                                    )
+                                    if (restaurant.isPreview) {
+                                        Icon(
+                                            Icons.Filled.Schedule,
+                                            contentDescription = null,
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(36.dp),
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Text(
+                                            text = "Menu coming soon",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = TextSecondary,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "We'll add the menu once this restaurant joins KosherEats.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextMuted,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "This restaurant has no menu items yet.",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = TextMuted,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -523,10 +599,11 @@ fun RestaurantDetailScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                         }
                         items(selectedCategory.items, key = { it.id }) { menuItem ->
-                            // An item is orderable only when the restaurant is open AND the
-                            // item itself isn't paused (is_available=false); otherwise the
+                            // An item is orderable only when the restaurant itself is
+                            // orderable (not a preview listing), is open, AND the item
+                            // isn't paused (is_available=false); otherwise the
                             // add-to-cart sheet would open for an unavailable item.
-                            val orderable = restaurant.isOpen && menuItem.isAvailable
+                            val orderable = restaurant.orderable && restaurant.isOpen && menuItem.isAvailable
                             VerticalMenuItemCard(
                                 menuItem = menuItem,
                                 isOrderable = orderable,
@@ -580,9 +657,23 @@ fun RestaurantDetailScreen(
                 )
             }
 
-            // Floating cart FAB
+            // Preview listings show NO cart UI at all — where the cart CTA would
+            // be, the pinned "Request restaurant" bar takes over.
+            if (restaurant.isPreview) {
+                PreviewRequestBar(
+                    requested = restaurant.requestedByMe,
+                    count = restaurant.requestCount,
+                    onRequestClick = {
+                        if (isLoggedIn) viewModel.toggleRequest() else onRequireAuth()
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+
+            // Floating cart FAB (never on previews — they have no cart UI, even
+            // when another restaurant's cart has items).
             AnimatedVisibility(
-                visible = totalItemCount > 0,
+                visible = totalItemCount > 0 && !restaurant.isPreview,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
@@ -699,7 +790,7 @@ fun RestaurantDetailScreen(
                 val linkedItem = uiState.menuCategories
                     .flatMap { it.items }
                     .find { it.id == pendingDeal.menuItemId }
-                if (linkedItem != null && restaurant?.isOpen == true) {
+                if (linkedItem != null && restaurant?.isOpen == true && restaurant.orderable) {
                     sheetItem = linkedItem
                 }
                 cartViewModel.clearPendingDealItem()
@@ -723,6 +814,112 @@ fun RestaurantDetailScreen(
                         specialInstructions = instructions,
                     )
                 },
+            )
+        }
+    }
+}
+
+/**
+ * Inline "Request restaurant" card on a preview listing's detail page — sits
+ * where the closed banner / order copy normally goes. Heart fills orange while
+ * the signed-in user has an active request; count mirrors request_count.
+ */
+@Composable
+private fun PreviewRequestCard(
+    requested: Boolean,
+    count: Int,
+    onRequestClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Orange.copy(alpha = 0.12f))
+            .clickable(onClick = onRequestClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (requested) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (requested) "Retract request" else "Request restaurant",
+            tint = Orange,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Not on KosherEats yet — request this restaurant",
+                style = MaterialTheme.typography.titleSmall,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = when {
+                    requested && count > 1 -> "You and ${count - 1} others requested it"
+                    requested -> "You requested it — tap to retract"
+                    count > 0 -> "$count ${if (count == 1) "person has" else "people have"} requested it"
+                    else -> "Be the first to request it"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = TextTertiary,
+            )
+        }
+    }
+}
+
+/**
+ * Bottom-pinned Request control on preview detail pages — occupies the slot
+ * the cart CTA would normally hold (previews have no cart UI at all).
+ */
+@Composable
+private fun PreviewRequestBar(
+    requested: Boolean,
+    count: Int,
+    onRequestClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(BackgroundDark)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Not on KosherEats yet — request this restaurant",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = onRequestClick,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = if (requested) {
+                ButtonDefaults.buttonColors(
+                    containerColor = Orange.copy(alpha = 0.15f),
+                    contentColor = Orange,
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = Orange,
+                    contentColor = TextWhite,
+                )
+            },
+        ) {
+            Icon(
+                imageVector = if (requested) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = buildString {
+                    append(if (requested) "Requested" else "Request restaurant")
+                    if (count > 0) append(" · $count")
+                },
+                fontWeight = FontWeight.Bold,
             )
         }
     }

@@ -3,7 +3,6 @@ package com.koshereats.consumer.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiPaging
-import com.koshereats.consumer.data.models.CuisineType
 import com.koshereats.consumer.data.models.KosherCertification
 import com.koshereats.consumer.data.models.Restaurant
 import com.koshereats.consumer.data.repository.Resource
@@ -21,12 +20,14 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class HomeUiState(
-    // The list the feed actually renders. This is the raw server list with the
-    // active cuisine/kosher filters applied client-side: the backend ignores all
-    // filter query params and always returns the same set, so filtering must
-    // happen here for the feed to be truthful (mirrors iOS
-    // RestaurantStore.filteredRestaurants). HomeScreen renders this field
-    // directly, so it MUST hold the post-filter list — not the raw set.
+    // The list the feed actually renders: the raw server list with the active
+    // KOSHER filters applied client-side (the backend ignores those params, so
+    // filtering must happen here for the feed to be truthful; mirrors iOS
+    // RestaurantStore.filteredRestaurants). Cuisine is NOT filtered here — the
+    // backend filters ?cuisine= server-side, and the server's ordering
+    // (orderable restaurants first, previews after) must be preserved as-is.
+    // HomeScreen renders this field directly, so it MUST hold the post-filter
+    // list — not the raw set.
     val allRestaurants: List<Restaurant> = emptyList(),
     // Raw, unfiltered list as returned by the server. Backs client-side filtering
     // and pagination dedup, and is the correct source for KosherFilterSheet's live
@@ -40,7 +41,9 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     val isSearching: Boolean = false,
     val searchQuery: String = "",
-    val selectedCuisine: CuisineType? = null,
+    // Server-side cuisine tag (case-insensitive match on the backend), or null
+    // for "All". These are free-form tags, not CuisineType enum values.
+    val selectedCuisine: String? = null,
     val filterGlattOnly: Boolean = false,
     val filterCholovYisroelOnly: Boolean = false,
     val filterPasYisroelOnly: Boolean = false,
@@ -74,7 +77,9 @@ class HomeViewModel @Inject constructor(
         // never send a meaningless 0,0 proximity sort.
         val latitude: Double? = null,
         val longitude: Double? = null,
-        val cuisine: CuisineType? = null,
+        // Server-side cuisine tag, sent verbatim as ?cuisine= (backend matches
+        // case-insensitively).
+        val cuisine: String? = null,
         val glattOnly: Boolean = false,
         val cholovYisroelOnly: Boolean = false,
         val pasYisroelOnly: Boolean = false,
@@ -92,7 +97,7 @@ class HomeViewModel @Inject constructor(
                         page = trigger.page,
                         latitude = trigger.latitude,
                         longitude = trigger.longitude,
-                        cuisine = trigger.cuisine?.name?.lowercase(),
+                        cuisine = trigger.cuisine,
                         isGlattKosher = if (trigger.glattOnly) true else null,
                         isCholovYisroel = if (trigger.cholovYisroelOnly) true else null,
                         isPasYisroel = if (trigger.pasYisroelOnly) true else null,
@@ -160,20 +165,23 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    // Client-side cuisine + kosher filtering. The backend ignores all filter
-    // query params and always returns the same set, so the UI must filter the
-    // fetched list itself to be truthful. AND-combined, mirroring iOS
-    // RestaurantStore.filteredRestaurants.
+    // Client-side KOSHER filtering. The backend ignores the kosher filter query
+    // params and always returns the same set, so the UI must filter the fetched
+    // list itself to be truthful. AND-combined, mirroring iOS
+    // RestaurantStore.filteredRestaurants. Cuisine is deliberately NOT filtered
+    // here: ?cuisine= is honored server-side (the fetched list already reflects
+    // it), and re-filtering locally would break for tags that don't map onto
+    // the CuisineType enum (Bagels, Heimish, …). Ordering is also preserved
+    // as-is — the server puts orderable restaurants first and preview listings
+    // after, and the client must never re-sort previews above orderable rows.
     private fun applyFilters(source: List<Restaurant>, state: HomeUiState): List<Restaurant> =
         source.filter { r ->
-            val cuisineOk = state.selectedCuisine == null ||
-                r.cuisineTypes.contains(state.selectedCuisine)
             val glattOk = !state.filterGlattOnly || r.isGlattKosher
             val cholovOk = !state.filterCholovYisroelOnly || r.isCholovYisroel
             val pasOk = !state.filterPasYisroelOnly || r.isPasYisroel
             val certOk = state.filterCertifications.isEmpty() ||
                 r.kosherCertification in state.filterCertifications
-            cuisineOk && glattOk && cholovOk && pasOk && certOk
+            glattOk && cholovOk && pasOk && certOk
         }
 
     private fun KosherCertification.toApiString(): String = when (this) {
@@ -256,18 +264,58 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    fun selectCuisine(cuisine: CuisineType?) {
-        // Re-filter the already-fetched list immediately so the feed updates
-        // even before the (no-op, server-ignores-filters) refetch resolves.
-        _uiState.update {
-            val next = it.copy(selectedCuisine = cuisine)
-            next.copy(allRestaurants = applyFilters(next.rawRestaurants, next))
-        }
+    /**
+     * Select a server-side cuisine tag (one of [CUISINE_TAGS]) or null for
+     * "All". The backend filters ?cuisine= itself, so this just refetches
+     * page 1 with the tag — no client-side re-filtering.
+     */
+    fun selectCuisine(cuisine: String?) {
+        _uiState.update { it.copy(selectedCuisine = cuisine) }
         loadTrigger.value = loadTrigger.value.copy(
             cuisine = cuisine,
             page = 1,
             generation = loadTrigger.value.generation + 1,
         )
+    }
+
+    /**
+     * Toggle the signed-in user's "Request restaurant" state on a preview
+     * listing (feed + search rows). Optimistic flip, reconciled with the
+     * server's authoritative {requested, request_count} response; reverted on
+     * failure. Callers must auth-gate: guests should be routed to sign-in
+     * instead (the endpoint requires a token).
+     */
+    fun toggleRequest(restaurantId: String) {
+        val current = (_uiState.value.rawRestaurants + _uiState.value.searchResults)
+            .find { it.id == restaurantId } ?: return
+        if (current.orderable) return // Request is only meaningful for previews.
+        val optimisticRequested = !current.requestedByMe
+        val optimisticCount =
+            (current.requestCount + if (optimisticRequested) 1 else -1).coerceAtLeast(0)
+        patchRequestState(restaurantId, optimisticRequested, optimisticCount)
+        viewModelScope.launch {
+            when (val result = repository.toggleRestaurantRequest(restaurantId)) {
+                is Resource.Success ->
+                    patchRequestState(restaurantId, result.data.requested, result.data.requestCount)
+                is Resource.Error ->
+                    // Roll back to the pre-toggle snapshot for this restaurant only.
+                    patchRequestState(restaurantId, current.requestedByMe, current.requestCount)
+                is Resource.Loading -> {}
+            }
+        }
+    }
+
+    private fun patchRequestState(restaurantId: String, requested: Boolean, count: Int) {
+        fun List<Restaurant>.patched() = map { r ->
+            if (r.id == restaurantId) r.copy(requestedByMe = requested, requestCount = count) else r
+        }
+        _uiState.update {
+            it.copy(
+                rawRestaurants = it.rawRestaurants.patched(),
+                allRestaurants = it.allRestaurants.patched(),
+                searchResults = it.searchResults.patched(),
+            )
+        }
     }
 
     fun toggleGlattFilter() {
@@ -341,5 +389,18 @@ class HomeViewModel @Inject constructor(
             generation = loadTrigger.value.generation + 1,
         )
         loadSuggested()
+    }
+
+    companion object {
+        /**
+         * Cuisine tags the backend filters on server-side (case-insensitive
+         * match against the restaurant's tag list). Rendered as the chip row on
+         * the home feed; keep in sync with the backend's known tags.
+         */
+        val CUISINE_TAGS = listOf(
+            "Israeli", "Grill", "Pizza", "Sushi", "Asian", "Cafe", "Deli",
+            "Bagels", "BBQ", "Burgers", "Steakhouse", "Meat", "Dairy",
+            "Pareve", "Takeout", "Heimish",
+        )
     }
 }

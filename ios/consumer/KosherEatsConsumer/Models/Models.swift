@@ -246,6 +246,26 @@ struct Restaurant: Codable, Identifiable {
     var createdAt: Date
     var updatedAt: Date
 
+    // Preview-listing fields (backend restaurant_preview.go). ALL of these may
+    // be absent from the JSON — older payloads and orderable rows omit them —
+    // so the custom decoder uses decodeIfPresent with the documented defaults.
+    /// False for preview listings: browsable but not orderable. Default true.
+    var orderable: Bool
+    /// "standard" | "preview". Default "standard" when absent.
+    var listingVisibility: String
+    /// How many users asked to bring this restaurant onto the platform.
+    /// Omitted by the backend when 0.
+    var requestCount: Int
+    /// Whether the signed-in user has an active request. Omitted when false.
+    var requestedByMe: Bool
+    /// False when the backend sent an empty/missing kosher_certification —
+    /// e.g. preview listings imported without cert data. The UI renders no
+    /// certification badge/row at all in that case.
+    var hasKosherCertification: Bool
+
+    /// A preview listing: grayed out, tappable, request-able — never orderable.
+    var isPreview: Bool { !orderable }
+
     var deliveryFeeFormatted: String {
         deliveryFee == 0 ? "Free Delivery" : Money.dollars(deliveryFee)
     }
@@ -284,6 +304,10 @@ struct Restaurant: Codable, Identifiable {
         case isActive = "is_active"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case orderable
+        case listingVisibility = "listing_visibility"
+        case requestCount = "request_count"
+        case requestedByMe = "requested_by_me"
     }
 }
 
@@ -304,7 +328,13 @@ extension Restaurant {
         zipCode = try c.decode(String.self, forKey: .zipCode)
         lat = try c.decode(Double.self, forKey: .lat)
         lng = try c.decode(Double.self, forKey: .lng)
-        kosherCertification = try c.decode(KosherCertification.self, forKey: .kosherCertification)
+        // Decode the certification as a raw string first so an empty value
+        // ("" — e.g. a preview listing imported without cert data) can be
+        // remembered as "no certification" and the UI hides the badge instead
+        // of rendering a bogus "other" chip.
+        let certRaw = try c.decodeIfPresent(String.self, forKey: .kosherCertification) ?? ""
+        kosherCertification = KosherCertification(rawValue: certRaw) ?? .other
+        hasKosherCertification = !certRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         certifyingAgency = try c.decodeIfPresent(String.self, forKey: .certifyingAgency) ?? ""
         isCholovYisroel = try c.decode(Bool.self, forKey: .isCholovYisroel)
         isPasYisroel = try c.decode(Bool.self, forKey: .isPasYisroel)
@@ -321,6 +351,13 @@ extension Restaurant {
         isActive = try c.decode(Bool.self, forKey: .isActive)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        // Preview fields — every one may be absent (older payloads, orderable
+        // rows). Missing must mean the documented default, never a decode
+        // failure that blanks the whole restaurant list.
+        orderable = try c.decodeIfPresent(Bool.self, forKey: .orderable) ?? true
+        listingVisibility = try c.decodeIfPresent(String.self, forKey: .listingVisibility) ?? "standard"
+        requestCount = try c.decodeIfPresent(Int.self, forKey: .requestCount) ?? 0
+        requestedByMe = try c.decodeIfPresent(Bool.self, forKey: .requestedByMe) ?? false
     }
 }
 

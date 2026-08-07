@@ -139,6 +139,15 @@ interface ApiService {
     @GET("restaurants/{id}/menu")
     suspend fun getRestaurantMenu(@Path("id") restaurantId: String): Response<List<MenuCategory>>
 
+    /**
+     * Toggle the caller's "Request restaurant" state on a PREVIEW listing
+     * (tap on = request, tap again = retract). Auth required; live restaurants
+     * return 400. Note: `include_previews=1` itself is appended centrally by
+     * the PreviewOptInInterceptor in RetrofitClient, not per endpoint here.
+     */
+    @POST("restaurants/{id}/request")
+    suspend fun toggleRestaurantRequest(@Path("id") restaurantId: String): Response<RestaurantRequestResponse>
+
     // ── Cart (server-backed, used during checkout sync) ──
 
     @GET("cart")

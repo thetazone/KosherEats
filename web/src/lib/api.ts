@@ -150,17 +150,41 @@ export const auth = {
 };
 
 // Restaurants
+//
+// Every consumer restaurant read opts into preview listings (agency-certified
+// restaurants seeded before their owners onboard) with include_previews=1,
+// added HERE and only here — the backend defaults to the old orderable-only
+// feed for clients that don't send it. The stored access token also rides
+// along: these routes sit behind OptionalAuthMiddleware, so a valid token
+// personalizes `requested_by_me` while an expired/absent one silently means
+// anonymous results — never an error.
+function restaurantQuery(params: Record<string, string | number | undefined> = {}): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  query.set("include_previews", "1");
+  return `?${query.toString()}`;
+}
+
+function optionalToken(): string | undefined {
+  return getStored(TOKEN_KEY) ?? undefined;
+}
+
 export const restaurants = {
-  list: (params?: { lat?: number; lng?: number }) => {
-    const query = params ? `?lat=${params.lat}&lng=${params.lng}` : "";
-    return fetchAPI(`/restaurants${query}`);
-  },
+  list: (params?: { lat?: number; lng?: number; cuisine?: string }) =>
+    fetchAPI(`/restaurants${restaurantQuery(params)}`, { token: optionalToken() }),
 
-  get: (id: string) => fetchAPI(`/restaurants/${id}`),
+  get: (id: string) => fetchAPI(`/restaurants/${id}${restaurantQuery()}`, { token: optionalToken() }),
 
-  getMenu: (id: string) => fetchAPI(`/restaurants/${id}/menu`),
+  getMenu: (id: string) => fetchAPI(`/restaurants/${id}/menu${restaurantQuery()}`, { token: optionalToken() }),
 
-  search: (q: string) => fetchAPI(`/restaurants/search?q=${encodeURIComponent(q)}`),
+  search: (q: string) => fetchAPI(`/restaurants/search${restaurantQuery({ q })}`, { token: optionalToken() }),
+
+  // "Request restaurant" toggle on a preview listing (tap on = request, tap
+  // again = retract). Auth required; live restaurants 400.
+  request: (token: string, id: string) =>
+    fetchAPI(`/restaurants/${id}/request`, { method: "POST", token }),
 };
 
 // Cart

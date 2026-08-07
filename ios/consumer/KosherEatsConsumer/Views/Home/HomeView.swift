@@ -4,12 +4,15 @@ struct HomeView: View {
     @EnvironmentObject var vm: RestaurantStore
     @EnvironmentObject var cartVM: CartViewModel
     @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var authVM: AuthViewModel
     @State private var showKosherFilter = false
     @State private var searchText = ""
-    @State private var selectedCuisine: String?
     @State private var kosherFilters = KosherFilters()
     @State private var isFilterTransitioning = false
     @State private var deepLinkPath: [String] = []
+    // Presented when a signed-out user taps a preview listing's Request
+    // control — same auth-gate pattern as checkout.
+    @State private var showLoginSheet = false
 
     // Server-backed search. While the user is typing we debounce by 300ms and
     // hit GET /restaurants/search, which matches the whole catalog by name OR
@@ -83,6 +86,11 @@ struct HomeView: View {
                 Haptics.impact(.light)
                 await vm.refreshRestaurants()
             }
+            .sheet(isPresented: $showLoginSheet) {
+                LoginView(dismissLabel: "Back")
+                    .environmentObject(authVM)
+                    .presentationDetents([.medium, .large])
+            }
             .sheet(isPresented: $showKosherFilter) {
                 KosherFilterSheet(
                     isPresented: $showKosherFilter,
@@ -121,16 +129,39 @@ struct HomeView: View {
         // searchRestaurants(query:kosherFilters:).
         if isSearchActive {
             let results = searchResults ?? []
-            guard let cuisine = selectedCuisine else { return results }
+            guard let cuisine = vm.selectedCuisine else { return results }
             return results.filter { restaurant in
                 restaurant.cuisineType.contains { $0.localizedCaseInsensitiveContains(cuisine) }
             }
         }
+        // The cuisine chip is applied server-side (?cuisine=), so the local
+        // pass is only a safety net over an already-filtered list.
         return vm.filteredRestaurants(
             searchText: "",
-            selectedCuisine: selectedCuisine,
+            selectedCuisine: vm.selectedCuisine,
             kosherFilters: kosherFilters
         )
+    }
+
+    /// Auth-gated Request toggle for preview listings — mirrors the checkout
+    /// gate: signed-out users get the login sheet instead of a failed call.
+    /// After the store reconciles with the server, any active search-results
+    /// copy of the row is updated too so the card doesn't snap back.
+    private func handleRequestTap(_ restaurantID: String) {
+        guard authVM.isAuthenticated else {
+            showLoginSheet = true
+            return
+        }
+        Haptics.impact(.light)
+        Task {
+            guard let result = await vm.toggleRequest(restaurantID) else { return }
+            if var results = searchResults,
+               let idx = results.firstIndex(where: { $0.id == restaurantID }) {
+                results[idx].requestedByMe = result.requested
+                results[idx].requestCount = result.requestCount
+                searchResults = results
+            }
+        }
     }
 
     /// Featured carousel, gated through the active kosher filters so the curated
@@ -275,21 +306,13 @@ struct HomeView: View {
                 ForEach(vm.cuisineFilters, id: \.self) { cuisine in
                     CuisineChip(
                         title: cuisine,
-                        isSelected: selectedCuisine == cuisine || (cuisine == "All" && selectedCuisine == nil)
+                        isSelected: vm.selectedCuisine == cuisine || (cuisine == "All" && vm.selectedCuisine == nil)
                     ) {
-                        isFilterTransitioning = true
-                        if cuisine == "All" {
-                            selectedCuisine = nil
-                        } else {
-                            selectedCuisine = selectedCuisine == cuisine ? nil : cuisine
-                        }
-                        // Brief delay so the user sees a loading flash,
-                        // then reveal the filtered list.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                isFilterTransitioning = false
-                            }
-                        }
+                        // Server-side filter: selecting a chip refetches with
+                        // ?cuisine=<tag>; "All" (or re-tapping) clears it. The
+                        // store's isLoading drives the loading state.
+                        let next = (cuisine == "All" || vm.selectedCuisine == cuisine) ? nil : cuisine
+                        Task { await vm.selectCuisine(next) }
                     }
                 }
             }
@@ -335,7 +358,8 @@ struct HomeView: View {
                         RestaurantCardView(
                             restaurant: restaurant,
                             isFavorite: true,
-                            onToggleFavorite: { Task { await vm.toggleFavorite(restaurant.id) } }
+                            onToggleFavorite: { Task { await vm.toggleFavorite(restaurant.id) } },
+                            onToggleRequest: { handleRequestTap(restaurant.id) }
                         )
                     }
                     .buttonStyle(.plain)
@@ -381,7 +405,8 @@ struct HomeView: View {
                             RestaurantCardView(
                                 restaurant: restaurant,
                                 isFavorite: vm.favoriteIDs.contains(restaurant.id),
-                                onToggleFavorite: { Task { await vm.toggleFavorite(restaurant.id) } }
+                                onToggleFavorite: { Task { await vm.toggleFavorite(restaurant.id) } },
+                                onToggleRequest: { handleRequestTap(restaurant.id) }
                             )
                         }
                         .buttonStyle(.plain)
@@ -434,8 +459,10 @@ struct FeaturedRestaurantCard: View {
                                 endPoint: .bottom,
                             )),
                     )
-                KosherBadge(certification: restaurant.kosherCertification, size: .small)
-                    .padding(8)
+                if restaurant.hasKosherCertification {
+                    KosherBadge(certification: restaurant.kosherCertification, size: .small)
+                        .padding(8)
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {

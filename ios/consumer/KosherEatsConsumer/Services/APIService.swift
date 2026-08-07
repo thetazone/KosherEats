@@ -533,22 +533,59 @@ class APIService: ObservableObject {
 
     // MARK: - Restaurants
 
-    func listRestaurants() async throws -> [Restaurant] {
-        try await request(method: "GET", path: "/restaurants")
+    /// Opt-in for preview listings, appended centrally to every restaurant
+    /// read. Without it the backend returns only orderable restaurants (the
+    /// old behavior), which is exactly what stale builds that can't render
+    /// previews keep getting. Server-side sorting puts orderable rows first;
+    /// callers must never re-sort previews above them.
+    private func withPreviewOptIn(_ path: String) -> String {
+        path.contains("?") ? "\(path)&include_previews=1" : "\(path)?include_previews=1"
+    }
+
+    private static let queryValueAllowed =
+        CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))
+
+    /// Lists restaurants, optionally filtered server-side by a cuisine tag
+    /// (case-insensitive tag match, e.g. "Israeli", "Bagels", "Heimish").
+    func listRestaurants(cuisine: String? = nil) async throws -> [Restaurant] {
+        var path = "/restaurants"
+        if let cuisine, !cuisine.isEmpty {
+            let encoded = cuisine.addingPercentEncoding(withAllowedCharacters: Self.queryValueAllowed) ?? cuisine
+            path += "?cuisine=\(encoded)"
+        }
+        return try await request(method: "GET", path: withPreviewOptIn(path))
     }
 
     func getRestaurant(id: String) async throws -> Restaurant {
-        try await request(method: "GET", path: "/restaurants/\(id)")
+        try await request(method: "GET", path: withPreviewOptIn("/restaurants/\(id)"))
     }
 
     func getMenu(restaurantID: String) async throws -> [MenuCategory] {
-        try await request(method: "GET", path: "/restaurants/\(restaurantID)/menu")
+        try await request(method: "GET", path: withPreviewOptIn("/restaurants/\(restaurantID)/menu"))
     }
 
     func searchRestaurants(query: String) async throws -> [Restaurant] {
-        let allowed = CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?#"))
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: allowed) ?? query
-        return try await request(method: "GET", path: "/restaurants/search?q=\(encoded)")
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: Self.queryValueAllowed) ?? query
+        return try await request(method: "GET", path: withPreviewOptIn("/restaurants/search?q=\(encoded)"))
+    }
+
+    // MARK: - Restaurant requests (preview listings)
+
+    struct RestaurantRequestResponse: Decodable {
+        let requested: Bool
+        let requestCount: Int
+
+        enum CodingKeys: String, CodingKey {
+            case requested
+            case requestCount = "request_count"
+        }
+    }
+
+    /// Toggles the signed-in user's "bring this restaurant onto KosherEats"
+    /// request on a preview listing — tap on = request, tap again = retract.
+    /// Only valid for preview restaurants; live ones return 400.
+    func toggleRestaurantRequest(restaurantID: String) async throws -> RestaurantRequestResponse {
+        try await request(method: "POST", path: "/restaurants/\(restaurantID)/request", authenticated: true)
     }
 
     // MARK: - Deals

@@ -137,6 +137,27 @@ class RestaurantRepository @Inject constructor(
         }
     }
 
+    /**
+     * One-shot "Request restaurant" toggle for preview listings. Returns the
+     * server's authoritative state so callers can reconcile optimistic updates.
+     */
+    suspend fun toggleRestaurantRequest(restaurantId: String): Resource<RestaurantRequestResponse> {
+        return try {
+            val response = apiService.toggleRestaurantRequest(restaurantId)
+            if (response.isSuccessful) {
+                response.body()?.let { Resource.Success(it) }
+                    ?: Resource.Error("No data returned")
+            } else {
+                Resource.Error("Failed to update request", response.code())
+            }
+        } catch (e: IOException) {
+            Resource.Error("Network error", null)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Resource.Error(e.localizedMessage ?: "Unexpected error")
+        }
+    }
+
     fun getOrders(
         cursor: String? = null,
         status: String? = null,

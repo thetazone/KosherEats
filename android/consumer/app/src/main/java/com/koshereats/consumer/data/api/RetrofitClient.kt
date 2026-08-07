@@ -188,6 +188,7 @@ object NetworkModule {
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(PreviewOptInInterceptor)
             .authenticator(TokenAuthenticator(tokenProvider, sessionManager))
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -223,6 +224,27 @@ object NetworkModule {
     @Singleton
     fun provideApiService(retrofit: Retrofit): ApiService {
         return retrofit.create(ApiService::class.java)
+    }
+}
+
+// Opts this build into preview listings by appending include_previews=1 to
+// every restaurant read (GET /restaurants, /restaurants/search,
+// /restaurants/{id}, /restaurants/{id}/menu). The backend keys the whole
+// feature off this param — builds that don't send it keep the orderable-only
+// feed — so it is added once here at the HTTP layer instead of at each call
+// site, where a new endpoint could silently forget it. GET-only, so writes
+// (e.g. POST /restaurants/{id}/request) are untouched; endpoints that don't
+// know the param ignore it.
+private object PreviewOptInInterceptor : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+        val request = chain.request()
+        val isRestaurantRead = request.method == "GET" &&
+            request.url.pathSegments.contains("restaurants")
+        if (!isRestaurantRead) return chain.proceed(request)
+        val url = request.url.newBuilder()
+            .setQueryParameter("include_previews", "1")
+            .build()
+        return chain.proceed(request.newBuilder().url(url).build())
     }
 }
 

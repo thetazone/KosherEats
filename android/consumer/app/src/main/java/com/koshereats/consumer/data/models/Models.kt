@@ -227,7 +227,19 @@ data class Restaurant(
     @SerializedName("zip_code") val zipCode: String = "",
     @SerializedName("lat") val latitude: Double = 0.0,
     @SerializedName("lng") val longitude: Double = 0.0,
+    // ── Preview listings ──────────────────────────────────
+    // Restaurants seeded before their owners onboard: browsable behind
+    // ?include_previews=1, never orderable. All four fields may be ABSENT from
+    // the JSON (live restaurants / older payloads omit them), so the defaults
+    // must make an absent-field payload read as a normal orderable listing.
+    val orderable: Boolean = true,
+    @SerializedName("listing_visibility") val listingVisibility: String = "standard",
+    @SerializedName("request_count") val requestCount: Int = 0,
+    @SerializedName("requested_by_me") val requestedByMe: Boolean = false,
 ) {
+    /** Preview listing: browsable, never orderable — renders grayed out with a Request control. */
+    val isPreview: Boolean get() = !orderable
+
     /** Convenience: build an [Address] from the flat fields for UI code that expects one. */
     val address: Address
         get() = Address(
@@ -240,6 +252,15 @@ data class Restaurant(
         )
 
 }
+
+/**
+ * Response of POST /restaurants/{id}/request — the authoritative state after a
+ * "Request restaurant" toggle. UI reconciles any optimistic update with this.
+ */
+data class RestaurantRequestResponse(
+    val requested: Boolean = false,
+    @SerializedName("request_count") val requestCount: Int = 0,
+)
 
 data class OperatingHour(
     @SerializedName("day_of_week") val dayOfWeek: Int = 0,

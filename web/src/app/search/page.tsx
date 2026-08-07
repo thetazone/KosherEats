@@ -8,8 +8,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const CERTIFICATIONS = ["All", "OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
 
+// Cuisine chips — server-side filter (?cuisine=, case-insensitive tag match).
+// Tag list mirrors the backend's known tags.
+const CUISINES = [
+  "All",
+  "Israeli",
+  "Grill",
+  "Pizza",
+  "Sushi",
+  "Asian",
+  "Cafe",
+  "Deli",
+  "Bagels",
+  "BBQ",
+  "Burgers",
+  "Steakhouse",
+  "Meat",
+  "Dairy",
+  "Pareve",
+  "Takeout",
+  "Heimish",
+];
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
+  const [selectedCuisine, setSelectedCuisine] = useState("All");
   const [selectedCert, setSelectedCert] = useState("All");
   const [glattOnly, setGlattOnly] = useState(false);
   const [sortBy, setSortBy] = useState<"rating" | "delivery_time" | "delivery_fee">("rating");
@@ -22,9 +45,10 @@ export default function SearchPage() {
   const requestSeq = useRef(0);
 
   // Fetch the real discovery results for the current query. An empty/whitespace
-  // query lists everything; a non-empty query hits the search endpoint (which
-  // 400s on an empty `q`, so we must branch here rather than always searching).
-  const loadResults = useCallback(async (q: string) => {
+  // query lists everything (with the cuisine chip applied server-side via
+  // ?cuisine=); a non-empty query hits the search endpoint (which 400s on an
+  // empty `q`, so we must branch here rather than always searching).
+  const loadResults = useCallback(async (q: string, cuisine: string) => {
     const seq = ++requestSeq.current;
     setLoading(true);
     setLoadError(null);
@@ -32,7 +56,7 @@ export default function SearchPage() {
       const trimmed = q.trim();
       const data = (trimmed
         ? await restaurantsApi.search(trimmed)
-        : await restaurantsApi.list()) as Restaurant[];
+        : await restaurantsApi.list(cuisine !== "All" ? { cuisine } : undefined)) as Restaurant[];
       if (seq !== requestSeq.current) return; // a newer request superseded this one
       setResults(data);
     } catch (err) {
@@ -45,16 +69,25 @@ export default function SearchPage() {
 
   // Debounce query input (~300ms) so we don't fire a request per keystroke.
   // This also drives the initial load: it runs on mount with an empty query,
-  // which lists every restaurant.
+  // which lists every restaurant. A cuisine-chip tap refetches through the
+  // same path.
   useEffect(() => {
     const handle = setTimeout(() => {
-      void loadResults(query);
+      void loadResults(query, selectedCuisine);
     }, 300);
     return () => clearTimeout(handle);
-  }, [query, loadResults]);
+  }, [query, selectedCuisine, loadResults]);
 
-  // Client-side refinement over the REAL results from the API.
+  // Client-side refinement over the REAL results from the API. The cuisine
+  // chip is server-side on the list call; text-search results don't take
+  // ?cuisine=, so the same tag match is applied here (idempotent for the
+  // already-filtered list response).
   let filtered = results;
+  if (selectedCuisine !== "All") {
+    filtered = filtered.filter((r) =>
+      r.cuisine_type.some((c) => c.toLowerCase() === selectedCuisine.toLowerCase())
+    );
+  }
   if (selectedCert !== "All") {
     filtered = filtered.filter((r) => r.kosher_certification === selectedCert);
   }
@@ -63,6 +96,12 @@ export default function SearchPage() {
   }
 
   filtered = [...filtered].sort((a, b) => {
+    // Server contract: orderable restaurants always come before previews.
+    // Sort only WITHIN each partition — never float previews (rating 0,
+    // $0 delivery) above orderable rows.
+    const aOrderable = a.orderable !== false ? 1 : 0;
+    const bOrderable = b.orderable !== false ? 1 : 0;
+    if (aOrderable !== bOrderable) return bOrderable - aOrderable;
     if (sortBy === "rating") return b.rating - a.rating;
     if (sortBy === "delivery_time") return a.est_delivery_min - b.est_delivery_min;
     return a.delivery_fee - b.delivery_fee;
@@ -85,6 +124,24 @@ export default function SearchPage() {
             className="w-full input pl-12 py-4 text-lg"
             autoFocus
           />
+        </div>
+
+        {/* Cuisine chips — horizontally scrollable; a tap refetches with
+            ?cuisine= server-side, "All" clears it. */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          {CUISINES.map((cuisine) => (
+            <button
+              key={cuisine}
+              onClick={() => setSelectedCuisine(cuisine)}
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                selectedCuisine === cuisine
+                  ? "bg-brand-500 text-white"
+                  : "bg-dark-800 text-dark-300 hover:bg-dark-700"
+              }`}
+            >
+              {cuisine}
+            </button>
+          ))}
         </div>
 
         {/* Filters */}
@@ -150,7 +207,7 @@ export default function SearchPage() {
           <div className="card p-12 text-center">
             <h2 className="text-xl font-bold mb-2">Couldn&apos;t load restaurants</h2>
             <p className="text-dark-400 mb-6">{loadError}</p>
-            <button onClick={() => loadResults(query)} className="btn-primary inline-block">
+            <button onClick={() => loadResults(query, selectedCuisine)} className="btn-primary inline-block">
               Retry
             </button>
           </div>

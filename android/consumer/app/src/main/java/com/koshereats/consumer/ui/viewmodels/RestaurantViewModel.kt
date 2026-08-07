@@ -126,6 +126,52 @@ class RestaurantViewModel @Inject constructor(
         _uiState.update { it.copy(selectedCategoryIndex = index) }
     }
 
+    /**
+     * Toggle the signed-in user's "Request restaurant" state on a preview
+     * listing (tap on = request, tap again = retract). Optimistic flip,
+     * reconciled with the server's authoritative {requested, request_count}
+     * response and reverted on failure. No-op for orderable restaurants —
+     * the endpoint 400s on live listings. Callers must auth-gate: guests are
+     * routed to sign-in instead (the endpoint requires a token).
+     */
+    fun toggleRequest() {
+        val current = _uiState.value.restaurant ?: return
+        if (current.orderable) return
+        val optimisticRequested = !current.requestedByMe
+        val optimisticCount =
+            (current.requestCount + if (optimisticRequested) 1 else -1).coerceAtLeast(0)
+        _uiState.update {
+            it.copy(
+                restaurant = it.restaurant?.copy(
+                    requestedByMe = optimisticRequested,
+                    requestCount = optimisticCount,
+                ),
+            )
+        }
+        viewModelScope.launch {
+            when (val result = repository.toggleRestaurantRequest(current.id)) {
+                is Resource.Success -> _uiState.update {
+                    it.copy(
+                        restaurant = it.restaurant?.copy(
+                            requestedByMe = result.data.requested,
+                            requestCount = result.data.requestCount,
+                        ),
+                    )
+                }
+                is Resource.Error -> _uiState.update {
+                    // Revert to the pre-toggle snapshot.
+                    it.copy(
+                        restaurant = it.restaurant?.copy(
+                            requestedByMe = current.requestedByMe,
+                            requestCount = current.requestCount,
+                        ),
+                    )
+                }
+                is Resource.Loading -> {}
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }

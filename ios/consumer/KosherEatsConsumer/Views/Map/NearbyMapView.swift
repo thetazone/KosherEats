@@ -102,7 +102,11 @@ struct NearbyMapView: View {
             searchText: "",
             selectedCuisine: nil,
             kosherFilters: KosherFilters()
-        ).filter { $0.lat != 0 || $0.lng != 0 }
+        )
+        // Map pins imply "order here" (open/closed state, rating) — keep
+        // preview listings off the map; they live in the home feed instead.
+        .filter { $0.orderable }
+        .filter { $0.lat != 0 || $0.lng != 0 }
     }
 }
 

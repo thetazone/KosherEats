@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +49,10 @@ fun RestaurantCard(
     restaurant: Restaurant,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // "Request restaurant" tap handler for preview listings (orderable == false).
+    // The caller decides auth-gating: signed-in users toggle the request, guests
+    // are routed to sign-in. Ignored for live restaurants.
+    onRequestClick: (() -> Unit)? = null,
 ) {
     Card(
         modifier = modifier
@@ -96,7 +102,25 @@ fun RestaurantCard(
                     )
                 }
 
-                if (!restaurant.isOpen) {
+                if (restaurant.isPreview) {
+                    // Preview listing — same gray scrim treatment as the closed
+                    // state so it reads as browsable-but-not-orderable. Takes
+                    // precedence over the closed overlay (a preview is never
+                    // "closed", it just isn't on the platform yet).
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(BackgroundBlack.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "Not on KosherEats yet",
+                            color = TextWhite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                        )
+                    }
+                } else if (!restaurant.isOpen) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -129,7 +153,12 @@ fun RestaurantCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    KosherBadge(certification = restaurant.kosherCertification ?: KosherCertification.OTHER)
+                    // Empty-string kosher_certification decodes to UNKNOWN via the
+                    // fallback enum adapter — render NO badge rather than a "?" one.
+                    // Absent (null) keeps the legacy generic-K fallback for live rows.
+                    if (restaurant.kosherCertification != KosherCertification.UNKNOWN) {
+                        KosherBadge(certification = restaurant.kosherCertification ?: KosherCertification.OTHER)
+                    }
                     if (restaurant.isGlattKosher) {
                         GlattBadge()
                     }
@@ -157,51 +186,106 @@ fun RestaurantCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Decision-driving metadata, matching the iOS list card:
-                // star rating + review count, estimated delivery window, and
-                // delivery fee (free delivery highlighted in green).
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+                if (restaurant.isPreview) {
+                    // Previews have no rating/ETA/fee worth showing — the row
+                    // becomes the "Request restaurant" control instead.
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Star,
-                            contentDescription = null,
-                            tint = KosherStar,
-                            modifier = Modifier.size(13.dp),
+                        RequestChip(
+                            requested = restaurant.requestedByMe,
+                            count = restaurant.requestCount,
+                            onClick = onRequestClick,
                         )
                         Text(
-                            text = String.format(Locale.US, "%.1f", restaurant.rating),
-                            color = TextWhite,
+                            text = "Coming soon",
+                            color = TextTertiary,
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "(${restaurant.reviewCount})",
-                            color = TextMuted,
-                            fontSize = 12.sp,
                         )
                     }
+                } else {
+                    // Decision-driving metadata, matching the iOS list card:
+                    // star rating + review count, estimated delivery window, and
+                    // delivery fee (free delivery highlighted in green).
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = null,
+                                tint = KosherStar,
+                                modifier = Modifier.size(13.dp),
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%.1f", restaurant.rating),
+                                color = TextWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "(${restaurant.reviewCount})",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                            )
+                        }
 
-                    Text(
-                        text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
-                        color = TextSecondary,
-                        fontSize = 13.sp,
-                    )
+                        Text(
+                            text = "${restaurant.deliveryTimeMin}-${restaurant.deliveryTimeMax} min",
+                            color = TextSecondary,
+                            fontSize = 13.sp,
+                        )
 
-                    val freeDelivery = restaurant.deliveryFee == 0
-                    Text(
-                        text = if (freeDelivery) "Free Delivery" else restaurant.deliveryFee.formatPrice(),
-                        color = if (freeDelivery) SuccessGreen else TextSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                    )
+                        val freeDelivery = restaurant.deliveryFee == 0
+                        Text(
+                            text = if (freeDelivery) "Free Delivery" else restaurant.deliveryFee.formatPrice(),
+                            color = if (freeDelivery) SuccessGreen else TextSecondary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * "Request restaurant" pill for preview listings: heart + count, filled/orange
+ * while the signed-in user has an active request. The tap target is the pill
+ * itself so it wins over the enclosing card's click.
+ */
+@Composable
+private fun RequestChip(
+    requested: Boolean,
+    count: Int,
+    onClick: (() -> Unit)?,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (requested) Orange.copy(alpha = 0.18f) else SurfaceDark)
+            .clickable(enabled = onClick != null) { onClick?.invoke() }
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Icon(
+            imageVector = if (requested) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (requested) "Retract request" else "Request restaurant",
+            tint = if (requested) Orange else TextSecondary,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = if (count > 0) "Request · $count" else "Request",
+            color = if (requested) Orange else TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }

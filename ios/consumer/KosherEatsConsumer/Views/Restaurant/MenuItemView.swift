@@ -6,12 +6,15 @@ struct MenuItemView: View {
     /// Name of the restaurant this item belongs to. Used to phrase the
     /// cross-restaurant cart-switch confirmation; nil degrades to generic copy.
     var restaurantName: String? = nil
+    /// False for preview (not-yet-orderable) restaurants: the row renders
+    /// browse-only — no add affordance, no AddToCartSheet on tap.
+    var allowsOrdering: Bool = true
     @EnvironmentObject var cartVM: CartViewModel
     @State private var showAddSheet = false
 
     var body: some View {
         Button {
-            if item.isAvailable {
+            if allowsOrdering && item.isAvailable {
                 showAddSheet = true
             }
         } label: {
@@ -53,7 +56,11 @@ struct MenuItemView: View {
 
                         Spacer()
 
-                        if !item.isAvailable {
+                        if !allowsOrdering {
+                            // Browse-only (preview restaurant): no add button,
+                            // no availability noise.
+                            EmptyView()
+                        } else if !item.isAvailable {
                             Text(String(localized: "Unavailable"))
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.keError)
@@ -71,10 +78,10 @@ struct MenuItemView: View {
             .opacity(item.isAvailable ? 1.0 : 0.6)
         }
         .buttonStyle(.plain)
-        .disabled(!item.isAvailable)
+        .disabled(!allowsOrdering || !item.isAvailable)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.name), \(item.priceFormatted)\(item.isAvailable ? "" : ", unavailable")")
-        .accessibilityHint(item.isAvailable ? String(localized: "Double tap to customize and add to cart") : "")
+        .accessibilityLabel("\(item.name), \(item.priceFormatted)\(item.isAvailable || !allowsOrdering ? "" : ", unavailable")")
+        .accessibilityHint(allowsOrdering && item.isAvailable ? String(localized: "Double tap to customize and add to cart") : "")
         .sheet(isPresented: $showAddSheet) {
             AddToCartSheet(item: item, restaurantID: restaurantID, restaurantName: restaurantName)
         }

@@ -11,6 +11,32 @@ class RestaurantViewModel: ObservableObject {
     private let api = APIService.shared
     private var loadGeneration = 0
     private var dealsTask: Task<[Deal], Never>?
+    private var isTogglingRequest = false
+
+    /// Optimistically toggles the user's "request this restaurant" vote for a
+    /// preview listing and reconciles with the server response, reverting on
+    /// failure. No-op for orderable restaurants (the backend 400s those).
+    func toggleRequest() async {
+        guard var current = restaurant, current.isPreview, !isTogglingRequest else { return }
+        isTogglingRequest = true
+        defer { isTogglingRequest = false }
+
+        let original = current
+        current.requestedByMe.toggle()
+        current.requestCount = max(current.requestCount + (current.requestedByMe ? 1 : -1), 0)
+        restaurant = current
+
+        do {
+            let response = try await api.toggleRestaurantRequest(restaurantID: original.id)
+            guard restaurant?.id == original.id else { return }
+            restaurant?.requestedByMe = response.requested
+            restaurant?.requestCount = response.requestCount
+        } catch {
+            guard restaurant?.id == original.id else { return }
+            restaurant?.requestedByMe = original.requestedByMe
+            restaurant?.requestCount = original.requestCount
+        }
+    }
 
     func load(restaurantID: String) async {
         loadGeneration &+= 1

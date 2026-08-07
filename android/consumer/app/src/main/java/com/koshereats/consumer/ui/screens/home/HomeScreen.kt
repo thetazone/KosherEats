@@ -69,7 +69,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.koshereats.consumer.data.models.CuisineType
 import com.koshereats.consumer.ui.components.RestaurantCardShimmer
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.data.models.Address
@@ -245,7 +244,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Cuisine filters
+            // Cuisine filters — server-side tags (?cuisine=), "All" clears.
             item {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -270,11 +269,11 @@ fun HomeScreen(
                             ),
                         )
                     }
-                    items(CuisineType.entries) { cuisine ->
+                    items(HomeViewModel.CUISINE_TAGS) { tag ->
                         FilterChip(
-                            selected = uiState.selectedCuisine == cuisine,
-                            onClick = { viewModel.selectCuisine(cuisine) },
-                            label = { Text(cuisine.displayName, style = MaterialTheme.typography.labelLarge) },
+                            selected = uiState.selectedCuisine == tag,
+                            onClick = { viewModel.selectCuisine(tag) },
+                            label = { Text(tag, style = MaterialTheme.typography.labelLarge) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Orange,
                                 selectedLabelColor = TextWhite,
@@ -285,7 +284,7 @@ fun HomeScreen(
                                 borderColor = SurfaceDarkBorder,
                                 selectedBorderColor = Orange,
                                 enabled = true,
-                                selected = uiState.selectedCuisine == cuisine,
+                                selected = uiState.selectedCuisine == tag,
                             ),
                         )
                     }
@@ -367,6 +366,12 @@ fun HomeScreen(
                                 restaurant = restaurant,
                                 onClick = { onRestaurantClick(restaurant.id) },
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                // Requests need an auth token — guests go to sign-in,
+                                // same gate as the address picker above.
+                                onRequestClick = {
+                                    if (isLoggedIn) viewModel.toggleRequest(restaurant.id)
+                                    else onRequireAuth()
+                                },
                             )
                         }
                     }
@@ -393,6 +398,12 @@ fun HomeScreen(
                             restaurant = restaurant,
                             onClick = { onRestaurantClick(restaurant.id) },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            // Requests need an auth token — guests go to sign-in,
+                            // same gate as the address picker above.
+                            onRequestClick = {
+                                if (isLoggedIn) viewModel.toggleRequest(restaurant.id)
+                                else onRequireAuth()
+                            },
                         )
                     }
 

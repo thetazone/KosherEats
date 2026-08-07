@@ -4,11 +4,15 @@ struct RestaurantDetailView: View {
     let restaurantID: String
     @StateObject private var vm = RestaurantViewModel()
     @EnvironmentObject var cartVM: CartViewModel
+    @EnvironmentObject var authVM: AuthViewModel
     @Environment(\.dismiss) var dismiss
     @State private var showCertificate = false
     /// Menu item whose AddToCartSheet is presented after tapping a deal that
     /// links to a specific item (mirrors Android's deal -> item-sheet flow).
     @State private var dealLinkedItem: MenuItem?
+    /// Presented when a signed-out user taps the Request control on a preview
+    /// listing — same auth-gate pattern as checkout.
+    @State private var showLoginSheet = false
 
     var body: some View {
         ZStack {
@@ -42,8 +46,12 @@ struct RestaurantDetailView: View {
                         // Restaurant Info
                         infoSection(restaurant)
 
-                        // Kashrus Details
-                        kashrusSection(restaurant)
+                        // Kashrus Details — skipped entirely when there's
+                        // nothing to show (e.g. a preview imported without
+                        // certification data), so no empty header renders.
+                        if hasKashrusContent(restaurant) {
+                            kashrusSection(restaurant)
+                        }
 
                         // Deals
                         if !vm.deals.isEmpty {
@@ -58,7 +66,14 @@ struct RestaurantDetailView: View {
                         // Menu
                         menuSection
                     }
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 120)
+                }
+                // Preview listings have no cart CTA at all — where it would
+                // live, pin the Request control instead.
+                .overlay(alignment: .bottom) {
+                    if restaurant.isPreview {
+                        requestBar(restaurant)
+                    }
                 }
                 .sheet(item: $dealLinkedItem) { item in
                     AddToCartSheet(
@@ -78,6 +93,78 @@ struct RestaurantDetailView: View {
         .task {
             await vm.load(restaurantID: restaurantID)
         }
+        .sheet(isPresented: $showLoginSheet) {
+            LoginView(dismissLabel: "Back")
+                .environmentObject(authVM)
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    /// True when the kashrus section has anything at all to render. Previews
+    /// imported without certification data would otherwise show a bare header.
+    private func hasKashrusContent(_ restaurant: Restaurant) -> Bool {
+        restaurant.hasKosherCertification
+            || restaurant.isGlattKosher
+            || restaurant.isCholovYisroel
+            || restaurant.isPasYisroel
+            || !restaurant.certifyingAgency.isEmpty
+            || !(restaurant.kosherCertificateUrl ?? "").isEmpty
+    }
+
+    // MARK: - Request bar (preview listings)
+
+    /// Bottom-pinned Request control shown where the cart CTA would be for an
+    /// orderable restaurant. Toggle semantics: tap = request, tap again =
+    /// retract; state reconciles with the server response in the view model.
+    private func requestBar(_ restaurant: Restaurant) -> some View {
+        VStack(spacing: 0) {
+            Divider().background(Color.keDivider)
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "Not on KosherEats yet — request this restaurant"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.keTextPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if restaurant.requestCount > 0 {
+                        Text(String(localized: "\(restaurant.requestCount) requests so far"))
+                            .font(.system(size: 12))
+                            .foregroundColor(.keTextSecondary)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    if authVM.isAuthenticated {
+                        Haptics.impact(.light)
+                        Task { await vm.toggleRequest() }
+                    } else {
+                        showLoginSheet = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: restaurant.requestedByMe ? "heart.fill" : "heart")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(restaurant.requestedByMe ? String(localized: "Requested") : String(localized: "Request"))
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(restaurant.requestedByMe ? .keTextOnAccent : .kePrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(restaurant.requestedByMe ? Color.kePrimary : Color.kePrimary.opacity(0.12))
+                    .cornerRadius(Theme.cornerRadiusMedium)
+                }
+                .accessibilityLabel(
+                    restaurant.requestedByMe
+                        ? String(localized: "Retract your request for \(restaurant.name)")
+                        : String(localized: "Request \(restaurant.name) on KosherEats")
+                )
+            }
+            .padding()
+            .background(Color.keBackgroundElevated)
+        }
     }
 
     // MARK: - Hero
@@ -87,6 +174,9 @@ struct RestaurantDetailView: View {
             RemoteImage(url: restaurant.coverImageURL ?? restaurant.imageURL)
                 .frame(maxWidth: .infinity)
                 .frame(height: 240)
+                // Previews get the closed-state gray treatment: desaturated
+                // hero under a dimming scrim.
+                .saturation(restaurant.isPreview ? 0 : 1)
                 .accessibilityLabel("\(restaurant.name) cover photo")
 
             // Dark gradient at the bottom so text is readable even on bright photos.
@@ -98,7 +188,19 @@ struct RestaurantDetailView: View {
             .frame(height: 120)
             .accessibilityHidden(true)
 
-            if !restaurant.isOpen {
+            if restaurant.isPreview {
+                // Same scrim as the closed state, different message: this
+                // restaurant isn't on the platform yet.
+                Color.black.opacity(0.55)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 240)
+                    .overlay(
+                        Text(String(localized: "Coming Soon"))
+                            .font(.title2.bold())
+                            .foregroundColor(.keTextOnAccent),
+                    )
+                    .accessibilityLabel(String(localized: "Restaurant is not on KosherEats yet"))
+            } else if !restaurant.isOpen {
                 Color.black.opacity(0.55)
                     .frame(maxWidth: .infinity)
                     .frame(height: 240)
@@ -131,17 +233,31 @@ struct RestaurantDetailView: View {
 
                 Spacer()
 
-                KosherBadge(certification: restaurant.kosherCertification, size: .regular)
+                // No badge at all when certification is empty (previews often
+                // arrive without cert data) — never an empty chip.
+                if restaurant.hasKosherCertification {
+                    KosherBadge(certification: restaurant.kosherCertification, size: .regular)
+                }
             }
 
-            // Stats row
-            HStack(spacing: 20) {
-                StatPill(icon: "star.fill", text: "\(restaurant.ratingFormatted) (\(restaurant.reviewCount))", color: .kePrimary)
-                StatPill(icon: "clock", text: restaurant.deliveryTimeFormatted, color: .keTextSecondary)
-                StatPill(icon: "bicycle", text: restaurant.deliveryFeeFormatted, color: restaurant.deliveryFee == 0 ? .keSuccess : .keTextSecondary)
+            if restaurant.isPreview {
+                // Rating/ETA/fee are meaningless for a listing that can't take
+                // orders — show the request tally instead.
+                StatPill(
+                    icon: "heart.fill",
+                    text: String(localized: "\(restaurant.requestCount) requests"),
+                    color: .kePrimary
+                )
+            } else {
+                // Stats row
+                HStack(spacing: 20) {
+                    StatPill(icon: "star.fill", text: "\(restaurant.ratingFormatted) (\(restaurant.reviewCount))", color: .kePrimary)
+                    StatPill(icon: "clock", text: restaurant.deliveryTimeFormatted, color: .keTextSecondary)
+                    StatPill(icon: "bicycle", text: restaurant.deliveryFeeFormatted, color: restaurant.deliveryFee == 0 ? .keSuccess : .keTextSecondary)
+                }
             }
 
-            if restaurant.minOrder > 0 {
+            if !restaurant.isPreview, restaurant.minOrder > 0 {
                 Text(String(localized: "Min. order: \(restaurant.minOrderFormatted)"))
                     .font(.system(size: 13))
                     .foregroundColor(.keTextMuted)
@@ -166,12 +282,14 @@ struct RestaurantDetailView: View {
                 .foregroundColor(.keTextPrimary)
 
             HStack(spacing: 12) {
-                KashrusInfoChip(
-                    title: restaurant.kosherCertification.displayName,
-                    subtitle: "Certification",
-                    icon: "checkmark.seal.fill",
-                    color: .kePrimary
-                )
+                if restaurant.hasKosherCertification {
+                    KashrusInfoChip(
+                        title: restaurant.kosherCertification.displayName,
+                        subtitle: "Certification",
+                        icon: "checkmark.seal.fill",
+                        color: .kePrimary
+                    )
+                }
 
                 if restaurant.isGlattKosher {
                     KashrusInfoChip(title: "Glatt", subtitle: "Kosher", icon: "checkmark.circle.fill", color: .keSuccess)
@@ -356,12 +474,16 @@ struct RestaurantDetailView: View {
                     Image(systemName: "menucard")
                         .font(.system(size: 48))
                         .foregroundColor(.keTextMuted)
-                    Text("Menu not available")
+                    Text(vm.restaurant?.isPreview == true ? "Menu coming soon" : "Menu not available")
                         .font(.headline)
                         .foregroundColor(.keTextPrimary)
-                    Text("This restaurant hasn't published a menu yet.")
+                    Text(vm.restaurant?.isPreview == true
+                         ? "This restaurant isn't on KosherEats yet — its menu will appear once it joins."
+                         : "This restaurant hasn't published a menu yet.")
                         .font(.subheadline)
                         .foregroundColor(.keTextSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
                 }
                 .frame(maxWidth: .infinity, minHeight: 100)
             } else {
@@ -372,7 +494,10 @@ struct RestaurantDetailView: View {
                                 MenuItemView(
                                     item: item,
                                     restaurantID: restaurantID,
-                                    restaurantName: vm.restaurant?.name
+                                    restaurantName: vm.restaurant?.name,
+                                    // Previews are browse-only: no add-to-cart
+                                    // affordance anywhere on the page.
+                                    allowsOrdering: vm.restaurant?.isPreview != true
                                 )
                                 .padding(.horizontal)
                             }
