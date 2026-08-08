@@ -1,16 +1,18 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type LinkProviderRequest struct {
-	Provider string `json:"provider"`       // "google", "apple", "phone"
+	Provider string `json:"provider"`        // "google", "apple", "phone"
 	Token    string `json:"token,omitempty"` // ID token (Google/Apple)
 	Phone    string `json:"phone,omitempty"` // E.164, phone linking only
 	Code     string `json:"code,omitempty"`  // OTP, phone linking only
@@ -99,6 +101,18 @@ func (h *Handler) LinkProvider(w http.ResponseWriter, r *http.Request) {
 		 ON CONFLICT (user_id, provider) DO UPDATE SET provider_id = $3`,
 		userID, req.Provider, providerID,
 	); err != nil {
+		// uq_uap_provider_identity (migration 046) is globally unique on
+		// (provider, provider_id), but the pre-check above is scoped to this
+		// user's role+vertical. Linking an identity already bound to a DIFFERENT
+		// account (e.g. the same Apple ID on your consumer account, now linking
+		// on the seller app) slips past the pre-check and violates the global
+		// index — a 23505 that must surface as a clean 409, not a 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			writeError(w, http.StatusConflict,
+				fmt.Sprintf("this %s account is already linked to another KosherEats account", req.Provider))
+			return
+		}
 		slog.Error("failed to link provider",
 			slog.String("user_id", userID), slog.String("provider", req.Provider),
 			slog.String("error", err.Error()))
@@ -106,15 +120,13 @@ func (h *Handler) LinkProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Keep legacy columns in sync for backward compatibility during rollout.
-	if _, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE users SET auth_provider = $1, auth_provider_id = $2, updated_at = NOW()
-		 WHERE id = $3 AND (auth_provider IS NULL OR auth_provider = '' OR auth_provider = 'email')`,
-		req.Provider, providerID, userID,
-	); err != nil {
-		slog.Warn("failed to update legacy auth_provider columns",
-			slog.String("user_id", userID), slog.String("error", err.Error()))
-	}
+	// Intentionally does NOT sync users.auth_provider. That legacy column is the
+	// password-eligibility gate (Login + password_reset filter on
+	// auth_provider IS NULL OR 'email'); its WHERE clause here targeted exactly
+	// the password accounts and flipped them to the social provider, silently
+	// disabling password login AND password reset for anyone who linked a
+	// provider to their password account. The junction insert above is the
+	// authoritative link record; the legacy column must stay put.
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "linked"})
 }

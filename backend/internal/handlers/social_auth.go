@@ -24,11 +24,11 @@ import (
 )
 
 type SocialLoginRequest struct {
-	Provider  string          `json:"provider"`        // "google", "apple", "facebook"
-	Token     string          `json:"token"`           // ID token or access token from provider
-	FirstName string          `json:"first_name"`      // optional, from provider
-	LastName  string          `json:"last_name"`       // optional, from provider
-	Role      models.UserRole `json:"role"`            // consumer or seller
+	Provider  string          `json:"provider"`   // "google", "apple", "facebook"
+	Token     string          `json:"token"`      // ID token or access token from provider
+	FirstName string          `json:"first_name"` // optional, from provider
+	LastName  string          `json:"last_name"`  // optional, from provider
+	Role      models.UserRole `json:"role"`       // consumer or seller
 	// Vertical scopes the account to a branded app ('kosher' | 'vegan').
 	// Empty defaults to 'kosher' for older clients.
 	Vertical string `json:"vertical,omitempty"`
@@ -195,18 +195,26 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		// (b) email_verified when the provider just asserted THIS exact email as
 		//     verified (guarded on users.email = token email so we never flip a
 		//     custom unverified address the user typed in later).
+		// NB: deliberately does NOT write users.auth_provider / auth_provider_id.
+		// The junction upsert below is the authoritative record of provider
+		// links. Overwriting the legacy column here is how an email+password
+		// account matched via the email fallback got flipped to auth_provider =
+		// 'google'/'apple', which the Login and password-reset filters
+		// (auth.go, password_reset.go: auth_provider IS NULL OR 'email') then
+		// exclude — permanently and unrecoverably disabling the password the
+		// user set. The column's only meaning is the password-eligibility gate,
+		// and a linked account must stay password-eligible.
 		if err := h.db.Pool.QueryRow(r.Context(),
 			`UPDATE users SET avatar_url = COALESCE(NULLIF($1, ''), avatar_url),
-			   auth_provider = $2, auth_provider_id = $3,
-			   first_name = CASE WHEN $5 <> '' AND (first_name = '' OR lower(first_name) IN ('apple', 'user', 'new'))
-			                     THEN $5 ELSE first_name END,
-			   last_name  = CASE WHEN $6 <> '' AND (last_name = '' OR lower(last_name) IN ('apple', 'user', 'new'))
-			                     THEN $6 ELSE last_name END,
-			   email_verified = CASE WHEN email = $7 THEN true ELSE email_verified END,
+			   first_name = CASE WHEN $3 <> '' AND (first_name = '' OR lower(first_name) IN ('apple', 'user', 'new'))
+			                     THEN $3 ELSE first_name END,
+			   last_name  = CASE WHEN $4 <> '' AND (last_name = '' OR lower(last_name) IN ('apple', 'user', 'new'))
+			                     THEN $4 ELSE last_name END,
+			   email_verified = CASE WHEN email = $5 THEN true ELSE email_verified END,
 			   updated_at = NOW()
-			 WHERE id = $4
+			 WHERE id = $2
 			 RETURNING first_name, last_name, email_verified`,
-			avatarURL, req.Provider, providerID, user.ID,
+			avatarURL, user.ID,
 			strings.TrimSpace(firstName), strings.TrimSpace(lastName), email,
 		).Scan(&user.FirstName, &user.LastName, &user.EmailVerified); err != nil {
 			slog.Warn("failed to update user on social login re-auth",

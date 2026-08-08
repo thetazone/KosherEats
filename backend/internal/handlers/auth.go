@@ -17,11 +17,11 @@ import (
 const userContextKey = ctxkeys.UserKey
 
 type RegisterRequest struct {
-	Email     string          `json:"email"`
-	Password  string          `json:"password"`
-	FirstName string          `json:"first_name"`
-	LastName  string          `json:"last_name"`
-	Phone     string          `json:"phone"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Phone     string `json:"phone"`
 	// Role is the role being signed up for. Empty defaults to consumer so
 	// older consumer-app builds without the role field keep working.
 	Role models.UserRole `json:"role,omitempty"`
@@ -31,8 +31,8 @@ type RegisterRequest struct {
 }
 
 type LoginRequest struct {
-	Email    string          `json:"email"`
-	Password string          `json:"password"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 	// Role scopes the lookup since (email, role) is now the unique key.
 	// Empty defaults to consumer for backward compatibility.
 	Role models.UserRole `json:"role,omitempty"`
@@ -217,19 +217,39 @@ func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	vertical := normalizeVertical(req.Vertical)
 
-	var found string
+	var authProvider *string
+	var hasPassword bool
 	err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT role FROM users WHERE email = $1 AND role = $2 AND vertical = $3`, email, role, vertical,
-	).Scan(&found)
+		`SELECT auth_provider, password_hash <> '' FROM users
+		 WHERE email = $1 AND role = $2 AND vertical = $3`, email, role, vertical,
+	).Scan(&authProvider, &hasPassword)
 
 	if err != nil {
 		// Any error — including pgx.ErrNoRows — is treated as "doesn't
 		// exist". Callers should branch on `exists` rather than the role.
 		writeJSON(w, http.StatusOK, map[string]any{
-			"exists": false,
-			"role":   "",
+			"exists":      false,
+			"role":        "",
+			"auth_method": "",
 		})
 		return
+	}
+
+	// auth_method tells a preview-aware client HOW to sign this account in, so it
+	// doesn't dead-end an OAuth/phone account on the password screen: Login and
+	// password reset only accept auth_provider NULL/'email', so an account
+	// provisioned via Google/Apple/phone (password_hash blanked by migration 045)
+	// reports exists=true but can never satisfy a password login. Mirrors Login's
+	// eligibility rule exactly. Older clients ignore the field and keep their
+	// current behavior. `exists` stays "any account" so Register still 409s
+	// correctly.
+	authMethod := "password"
+	if authProvider != nil && *authProvider != "" && *authProvider != "email" {
+		authMethod = *authProvider // "google" | "apple" | "phone"
+	} else if !hasPassword {
+		// auth_provider is NULL/'email' but there is no usable password hash —
+		// treat as no password path rather than steering to a doomed screen.
+		authMethod = ""
 	}
 
 	// Don't expose the user's role. Note the boolean `exists` itself is an
@@ -239,8 +259,9 @@ func (h *Handler) CheckEmail(w http.ResponseWriter, r *http.Request) {
 	// per-IP limiter (emailCheckLimiter in cmd/api/main.go), not the shared
 	// authLimiter, so enumeration can't ride the looser /login burst budget.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"exists": true,
-		"role":   "",
+		"exists":      true,
+		"role":        "",
+		"auth_method": authMethod,
 	})
 }
 

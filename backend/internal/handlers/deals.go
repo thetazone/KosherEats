@@ -98,6 +98,14 @@ func (h *Handler) CreateDeal(w http.ResponseWriter, r *http.Request) {
 	if req.StartsAt != nil {
 		startsAt = *req.StartsAt
 	}
+	// A deal whose window is inverted (starts_at >= expires_at) can never satisfy
+	// the listing predicate starts_at <= NOW() AND expires_at > NOW(), so it
+	// would insert 201-OK yet silently never appear — while still being
+	// redeemable by deal id via resolveDealDiscount. Reject it at create time.
+	if !startsAt.Before(req.ExpiresAt) {
+		writeError(w, http.StatusBadRequest, "starts_at must be before expires_at")
+		return
+	}
 
 	minOrderAmount := 0
 	if req.MinOrderAmount != nil {
@@ -234,9 +242,9 @@ func (h *Handler) DeactivateDeal(w http.ResponseWriter, r *http.Request) {
 //   - percentage: subtotal * value / 100, capped at subtotal
 //   - fixed:      min(value, subtotal)
 //   - bogo:       price of the cheapest individual unit in the cart, when
-//                 the cart has at least 2 units total. Otherwise 0.
-//                 Crude but matches the "buy one get one free" promise
-//                 without item-targeting logic.
+//     the cart has at least 2 units total. Otherwise 0.
+//     Crude but matches the "buy one get one free" promise
+//     without item-targeting logic.
 func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID, userID string, subtotal int, items []models.OrderItem) (int, error) {
 	if dealID == "" {
 		return 0, nil
@@ -248,13 +256,14 @@ func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID,
 		discountValue int
 		minOrder      int
 		isActive      bool
+		startsAt      time.Time
 		expiresAt     time.Time
 	)
 	err := h.db.Pool.QueryRow(ctx,
 		`SELECT restaurant_id, discount_type, discount_value, COALESCE(min_order_amount, 0),
-		        is_active, expires_at
+		        is_active, starts_at, expires_at
 		 FROM deals WHERE id = $1`, dealID,
-	).Scan(&dealRestID, &discountType, &discountValue, &minOrder, &isActive, &expiresAt)
+	).Scan(&dealRestID, &discountType, &discountValue, &minOrder, &isActive, &startsAt, &expiresAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return 0, fmt.Errorf("deal not found")
@@ -264,6 +273,14 @@ func (h *Handler) resolveDealDiscount(ctx context.Context, dealID, restaurantID,
 
 	if !isActive {
 		return 0, fmt.Errorf("deal is no longer active")
+	}
+	// Redemption must honor the same window as the listing queries
+	// (starts_at <= NOW() AND expires_at > NOW()). Without the starts_at check a
+	// customer holding a deal id — leaked from a preview, a shared link, or the
+	// seller UI — could redeem a scheduled promo before it goes live, so the
+	// seller funds a discount that isn't supposed to exist yet.
+	if startsAt.After(time.Now()) {
+		return 0, fmt.Errorf("deal is not active yet")
 	}
 	if !expiresAt.After(time.Now()) {
 		return 0, fmt.Errorf("deal has expired")

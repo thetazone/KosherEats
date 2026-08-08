@@ -200,6 +200,7 @@ func buildRouter(h *Handler) http.Handler {
 	r.Post("/api/v1/auth/email/start", h.StartEmailSignup)
 	r.Post("/api/v1/auth/email/verify", h.VerifyEmailSignup)
 	r.Post("/api/v1/auth/social", h.SocialLogin)
+	r.Post("/api/v1/auth/email/check", h.CheckEmail)
 
 	r.Route("/api/v1/restaurants", func(r chi.Router) {
 		r.Use(h.OptionalAuthMiddleware)
@@ -334,6 +335,17 @@ func (e *testEnv) resetVolatile(t *testing.T) {
 // unique index.
 func uniqueEmail(prefix string) string {
 	return fmt.Sprintf("%s+%d@example.com", prefix, time.Now().UnixNano())
+}
+
+// userEmail returns the stored (lowercased) email for a user id.
+func (e *testEnv) userEmail(t *testing.T, userID string) string {
+	t.Helper()
+	var email string
+	if err := e.h.db.Pool.QueryRow(context.Background(),
+		`SELECT email FROM users WHERE id = $1`, userID).Scan(&email); err != nil {
+		t.Fatalf("userEmail(%s): %v", userID, err)
+	}
+	return email
 }
 
 // verifySignupEmail stamps the signup OTP proof so a subsequent consumer

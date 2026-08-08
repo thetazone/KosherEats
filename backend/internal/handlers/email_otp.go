@@ -22,10 +22,10 @@ import (
 //
 // Two purposes share the table, keyed (email, purpose):
 //   - 'signup'    — unauthenticated, pre-account. Verify sets verified_at; that
-//                   timestamp is the proof window Register checks before it
-//                   creates the consumer account (see signupEmailVerified).
+//     timestamp is the proof window Register checks before it
+//     creates the consumer account (see signupEmailVerified).
 //   - 'add_email' — authenticated. Used by the phone-first and Apple flows to
-//                   attach and verify a real inbox onto an existing account.
+//     attach and verify a real inbox onto an existing account.
 const (
 	emailOTPPurposeSignup   = "signup"
 	emailOTPPurposeAddEmail = "add_email"
@@ -79,28 +79,33 @@ func (h *Handler) startEmailOTP(ctx context.Context, email, purpose string) erro
 // counter and burns the code at the cap. Returns the HTTP status + message the
 // caller should write when !ok.
 func (h *Handler) checkEmailOTP(ctx context.Context, email, purpose, code string) (ok bool, status int, msg string) {
+	// Atomically reserve one attempt slot BEFORE checking the code. The old
+	// read-then-write (SELECT attempts … then UPDATE SET attempts=$1) let N
+	// concurrent /verify requests all read attempts=0 and all get checked
+	// against the hash while the counter recorded only 1 — a brute-force bypass
+	// of the 5-attempt cap on the 6-digit code. The single UPDATE … attempts + 1
+	// … WHERE attempts < cap RETURNING makes each concurrent request consume a
+	// distinct slot, and the row drops out of the WHERE once the cap is hit.
 	var codeHash string
 	var expires *time.Time
 	var attempts int
 	err := h.db.Pool.QueryRow(ctx,
-		`SELECT code_hash, expires_at, attempts FROM email_otp WHERE email = $1 AND purpose = $2`,
-		email, purpose,
+		`UPDATE email_otp SET attempts = attempts + 1
+		   WHERE email = $1 AND purpose = $2 AND attempts < $3 AND expires_at > NOW()
+		 RETURNING code_hash, expires_at, attempts`,
+		email, purpose, maxEmailOTPAttempts,
 	).Scan(&codeHash, &expires, &attempts)
-	if err != nil || codeHash == "" || expires == nil || time.Now().After(*expires) {
-		return false, http.StatusBadRequest, "invalid or expired code"
-	}
-	if attempts >= maxEmailOTPAttempts {
+	if err != nil || codeHash == "" || expires == nil {
+		// No OTP row, expired, or the attempt cap is already exhausted. Burn any
+		// remaining row so a stale/maxed code can't linger.
 		h.clearEmailOTP(ctx, email, purpose)
 		return false, http.StatusBadRequest, "invalid or expired code"
 	}
 	if bcrypt.CompareHashAndPassword([]byte(codeHash), []byte(code)) != nil {
-		attempts++
+		// The attempt was already counted atomically above. Burn the row once the
+		// cap is reached so no further guesses are possible even before expiry.
 		if attempts >= maxEmailOTPAttempts {
 			h.clearEmailOTP(ctx, email, purpose)
-		} else {
-			_, _ = h.db.Pool.Exec(ctx,
-				`UPDATE email_otp SET attempts = $1 WHERE email = $2 AND purpose = $3`,
-				attempts, email, purpose)
 		}
 		return false, http.StatusBadRequest, "invalid or expired code"
 	}
