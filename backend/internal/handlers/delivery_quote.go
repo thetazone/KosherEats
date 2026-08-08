@@ -63,13 +63,20 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Item subtotal of the user's cart decides the markup tier ($1 vs $2 over
-	// the large-order threshold), so the preview matches what checkout charges.
+	// Item subtotal of the user's cart decides the markup tier ($1 vs $2 vs $3
+	// over the large-order thresholds), so the preview matches what checkout
+	// charges. A swallowed error here left subtotal=0, silently quoting the
+	// cheapest tier on a big cart — the customer then sees a lower fee than
+	// checkout independently computes, recreating the quote-vs-charge mismatch.
+	// Fail the quote rather than under-quote the marketplace fee.
 	var subtotal int
-	_ = h.db.Pool.QueryRow(r.Context(),
+	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT COALESCE(SUM(ci.unit_price * ci.quantity), 0)
 		   FROM cart_items ci JOIN carts c ON ci.cart_id = c.id
-		  WHERE c.user_id = $1`, user["user_id"]).Scan(&subtotal)
+		  WHERE c.user_id = $1`, user["user_id"]).Scan(&subtotal); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to compute delivery quote")
+		return
+	}
 
 	quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restDeliveryMode, restDeliveryFee)
 

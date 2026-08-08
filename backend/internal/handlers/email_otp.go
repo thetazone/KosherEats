@@ -327,7 +327,17 @@ func (h *Handler) RequireVerifiedMiddleware(next http.Handler) http.Handler {
 			`SELECT email_verified, phone_verified FROM users WHERE id = $1`,
 			userData["user_id"],
 		).Scan(&emailVerified, &phoneVerified); err != nil {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
+			// A genuinely missing user row (deleted account, live token) is a
+			// real auth failure. Any OTHER error is a transient DB problem
+			// (connection drop, pool exhaustion — this Fly PG has a history of
+			// it) and must be a retryable 503, NOT a 401: the client reads 401
+			// as an expired session and logs the user out mid-checkout over a
+			// blip that should have been retried.
+			if errors.Is(err, pgx.ErrNoRows) {
+				writeError(w, http.StatusUnauthorized, "unauthorized")
+			} else {
+				writeError(w, http.StatusServiceUnavailable, "temporarily unavailable, please retry")
+			}
 			return
 		}
 		if !emailVerified || !phoneVerified {
