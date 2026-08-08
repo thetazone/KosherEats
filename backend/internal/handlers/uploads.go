@@ -5,9 +5,16 @@ import (
 	"strings"
 )
 
-// Upload presigning. Clients (courier iOS for docs, consumer/seller for photos)
-// call this to get a short-lived PUT URL, then upload directly to S3. The
-// file never passes through our Go server.
+// Upload presigning. Clients call this to get a short-lived PUT URL, then
+// upload directly to S3. The file never passes through our Go server.
+//
+// Uploaders are the courier app (onboarding docs, delivery proof) and the
+// seller app (restaurant cover/logo/certificate, menu-item and deal images).
+// The CONSUMER app uploads nothing today — every allowlisted kind below is
+// role-gated to courier or seller/admin, so a consumer caller gets 403 for all
+// of them. (An earlier version of this comment claimed consumers upload photos;
+// there is no consumer upload feature — no avatar or review-photo path exists.
+// If one is added, introduce a consumer-scoped kind AND its role gate together.)
 //
 // Accepted kinds are allowlisted so a malicious client can't use this to
 // write arbitrary keys.
