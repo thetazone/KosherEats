@@ -28,7 +28,7 @@ const apiBase = "https://openapi.doordash.com/drive/v2"
 type Config struct {
 	DeveloperID string
 	KeyID       string
-	SigningKey   string
+	SigningKey  string
 	WebhookSec  string
 }
 
@@ -103,7 +103,7 @@ func (c *Client) GetQuote(ctx context.Context, req CreateDeliveryRequest) (*Quot
 	if !c.enabled {
 		return &Quote{
 			ExternalDeliveryID: "stub_dd_" + fmt.Sprintf("%d", time.Now().UnixMilli()),
-			Fee: 975, Currency: "USD",
+			Fee:                975, Currency: "USD",
 		}, nil
 	}
 
@@ -132,7 +132,7 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 		return &Delivery{
 			ExternalDeliveryID: req.ExternalDeliveryID,
 			TrackingURL:        "https://stub.doordash.com/track/test",
-			Fee: 975, Currency: "USD", DeliveryStatus: "created",
+			Fee:                975, Currency: "USD", DeliveryStatus: "created",
 		}, nil
 	}
 
@@ -203,14 +203,14 @@ func bearerToken(s string) string {
 
 func (c *Client) buildBody(req CreateDeliveryRequest) map[string]any {
 	body := map[string]any{
-		"external_delivery_id":     req.ExternalDeliveryID,
-		"pickup_address":           req.PickupAddress,
-		"pickup_business_name":     req.PickupBusinessName,
-		"pickup_phone_number":      req.PickupPhone,
-		"dropoff_address":          req.DropoffAddress,
+		"external_delivery_id":       req.ExternalDeliveryID,
+		"pickup_address":             req.PickupAddress,
+		"pickup_business_name":       req.PickupBusinessName,
+		"pickup_phone_number":        req.PickupPhone,
+		"dropoff_address":            req.DropoffAddress,
 		"dropoff_contact_given_name": req.DropoffContactName,
-		"dropoff_phone_number":     req.DropoffPhone,
-		"order_value":              req.OrderValue,
+		"dropoff_phone_number":       req.DropoffPhone,
+		"order_value":                req.OrderValue,
 	}
 	if req.PickupInstructions != "" {
 		body["pickup_instructions"] = req.PickupInstructions
@@ -241,11 +241,11 @@ func (c *Client) mintJWT() (string, error) {
 	header := base64url([]byte(`{"alg":"HS256","dd-ver":"DD-JWT-V1","typ":"JWT"}`))
 
 	claims := map[string]any{
-		"aud":          "doordash",
-		"iss":          c.cfg.DeveloperID,
-		"kid":          c.cfg.KeyID,
-		"iat":          time.Now().Unix(),
-		"exp":          time.Now().Add(5 * time.Minute).Unix(),
+		"aud": "doordash",
+		"iss": c.cfg.DeveloperID,
+		"kid": c.cfg.KeyID,
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
 	}
 	claimsJSON, _ := json.Marshal(claims)
 	payload := base64url(claimsJSON)

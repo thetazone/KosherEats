@@ -18,13 +18,13 @@ type PresignRequest struct {
 }
 
 var allowedUploadKinds = map[string]bool{
-	"courier/license":      true,
-	"courier/insurance":    true,
-	"courier/registration": true,
-	"courier/profile":      true,
-	"delivery_proof":       true,
-	"restaurant/cover":     true,
-	"restaurant/logo":         true,
+	"courier/license":        true,
+	"courier/insurance":      true,
+	"courier/registration":   true,
+	"courier/profile":        true,
+	"delivery_proof":         true,
+	"restaurant/cover":       true,
+	"restaurant/logo":        true,
 	"restaurant/certificate": true,
 	"menu_item":              true,
 	"deal":                   true,

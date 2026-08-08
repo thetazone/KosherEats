@@ -91,10 +91,10 @@ func orderPayload(order *models.Order) map[string]any {
 	for _, it := range order.Items {
 		// Clover prices are cents-as-int per unit, which matches our schema.
 		items = append(items, map[string]any{
-			"name":     it.Name,
-			"price":    it.Price,
-			"unitQty":  it.Quantity,
-			"note":     it.Notes,
+			"name":    it.Name,
+			"price":   it.Price,
+			"unitQty": it.Quantity,
+			"note":    it.Notes,
 		})
 	}
 	// Deliberately omit a top-level "total": order.Total is the customer-paid

@@ -27,12 +27,12 @@ import (
 	"github.com/stripe/stripe-go/v78"
 	"github.com/stripe/stripe-go/v78/account"
 	"github.com/stripe/stripe-go/v78/accountlink"
+	stripecustomer "github.com/stripe/stripe-go/v78/customer"
 	"github.com/stripe/stripe-go/v78/ephemeralkey"
 	"github.com/stripe/stripe-go/v78/paymentintent"
 	"github.com/stripe/stripe-go/v78/refund"
 	"github.com/stripe/stripe-go/v78/setupintent"
 	"github.com/stripe/stripe-go/v78/transfer"
-	stripecustomer "github.com/stripe/stripe-go/v78/customer"
 )
 
 type Client struct {
@@ -189,11 +189,11 @@ func (c *Client) CreateAccountLink(accountID, returnURL, refreshURL string) (str
 
 // AccountStatus is the subset of Stripe account fields we care about.
 type AccountStatus struct {
-	ID                 string
-	ChargesEnabled     bool
-	PayoutsEnabled     bool
-	DetailsSubmitted   bool
-	RequirementsOpen   bool
+	ID               string
+	ChargesEnabled   bool
+	PayoutsEnabled   bool
+	DetailsSubmitted bool
+	RequirementsOpen bool
 }
 
 // GetAccountStatus polls Stripe for the current state of a courier's account.
@@ -468,9 +468,9 @@ func (c *Client) TransferToCourier(accountID string, amountCents int, orderID st
 	}
 
 	params := &stripe.TransferParams{
-		Amount:      stripe.Int64(int64(amountCents)),
-		Currency:    stripe.String(string(stripe.CurrencyUSD)),
-		Destination: stripe.String(accountID),
+		Amount:        stripe.Int64(int64(amountCents)),
+		Currency:      stripe.String(string(stripe.CurrencyUSD)),
+		Destination:   stripe.String(accountID),
 		TransferGroup: stripe.String("order_" + orderID),
 	}
 	if idempotencyKey != "" {

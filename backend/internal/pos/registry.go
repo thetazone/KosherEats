@@ -68,8 +68,8 @@ func (r *Registry) AdapterFor(p Provider) (Adapter, bool) {
 
 func (r *Registry) loadActiveIntegration(ctx context.Context, restaurantID string) (Integration, error) {
 	var (
-		integ                          Integration
-		accessEnc, refreshEnc          []byte
+		integ                 Integration
+		accessEnc, refreshEnc []byte
 	)
 	row := r.db.QueryRow(ctx,
 		`SELECT id, restaurant_id, provider, merchant_id,

@@ -72,7 +72,7 @@ func New(cfg *config.Config) *Client {
 // Keys are namespaced by user and kind so courier documents don't collide
 // with restaurant images.
 //
-//   kind examples: "courier/license", "courier/insurance", "courier/profile"
+//	kind examples: "courier/license", "courier/insurance", "courier/profile"
 func (c *Client) Presign(ctx context.Context, userID, kind, contentType string) (*PresignResult, error) {
 	key := buildKey(userID, kind, contentType)
 

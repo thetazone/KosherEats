@@ -441,14 +441,14 @@ func (h *Handler) AdminListOrders(w http.ResponseWriter, r *http.Request) {
 // AdminStats rolls up platform-wide numbers for the admin dashboard hero.
 func (h *Handler) AdminStats(w http.ResponseWriter, r *http.Request) {
 	type Stats struct {
-		TotalRestaurants int `json:"total_restaurants"`
+		TotalRestaurants  int `json:"total_restaurants"`
 		ActiveRestaurants int `json:"active_restaurants"`
-		TotalCouriers    int `json:"total_couriers"`
-		ApprovedCouriers int `json:"approved_couriers"`
-		PendingCouriers  int `json:"pending_couriers"`
-		TodayOrders      int `json:"today_orders"`
-		TodayRevenue     int `json:"today_revenue"` // cents
-		LifetimeOrders   int `json:"lifetime_orders"`
+		TotalCouriers     int `json:"total_couriers"`
+		ApprovedCouriers  int `json:"approved_couriers"`
+		PendingCouriers   int `json:"pending_couriers"`
+		TodayOrders       int `json:"today_orders"`
+		TodayRevenue      int `json:"today_revenue"` // cents
+		LifetimeOrders    int `json:"lifetime_orders"`
 	}
 	var s Stats
 	if err := h.db.Pool.QueryRow(r.Context(), `

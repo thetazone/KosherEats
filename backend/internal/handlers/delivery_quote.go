@@ -17,17 +17,17 @@ const (
 )
 
 type DeliveryQuoteRequest struct {
-	RestaurantID   string  `json:"restaurant_id"`
-	DeliveryLat    float64 `json:"delivery_lat"`
-	DeliveryLng    float64 `json:"delivery_lng"`
-	DeliveryAddress string `json:"delivery_address"`
+	RestaurantID    string  `json:"restaurant_id"`
+	DeliveryLat     float64 `json:"delivery_lat"`
+	DeliveryLng     float64 `json:"delivery_lng"`
+	DeliveryAddress string  `json:"delivery_address"`
 }
 
 type DeliveryQuoteResponse struct {
-	DeliveryFeeCents   int    `json:"delivery_fee"`
-	EstMinutes         int    `json:"est_minutes"`
-	Provider           string `json:"provider"`
-	ProviderFeeCents   int    `json:"provider_fee"`
+	DeliveryFeeCents int    `json:"delivery_fee"`
+	EstMinutes       int    `json:"est_minutes"`
+	Provider         string `json:"provider"`
+	ProviderFeeCents int    `json:"provider_fee"`
 }
 
 // DeliveryQuote returns the dynamic delivery fee for a given restaurant →

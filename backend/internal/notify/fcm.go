@@ -44,15 +44,15 @@ type serviceAccount struct {
 }
 
 type FCM struct {
-	cfg        *config.Config
-	client     *http.Client
-	sa         *serviceAccount
-	privKey    *rsa.PrivateKey
-	enabled    bool
-	projectID  string
-	tokenMu    sync.Mutex
-	cachedTok  string
-	cachedExp  time.Time
+	cfg       *config.Config
+	client    *http.Client
+	sa        *serviceAccount
+	privKey   *rsa.PrivateKey
+	enabled   bool
+	projectID string
+	tokenMu   sync.Mutex
+	cachedTok string
+	cachedExp time.Time
 }
 
 func NewFCM(cfg *config.Config) *FCM {

@@ -1,12 +1,12 @@
 // Package background wraps the Checkr API for courier background checks.
 //
 // Real flow (prod):
-//   1. Courier submits documents → we create a Checkr candidate
-//   2. We invite them to complete the check → Checkr emails them a link
-//   3. Courier completes identity verification on Checkr's hosted flow
-//   4. Checkr runs the report asynchronously (hours to days)
-//   5. Checkr POSTs a webhook to /webhooks/checkr when the report is ready
-//   6. We flip courier_profiles.onboarding_status = 'approved' or 'rejected'
+//  1. Courier submits documents → we create a Checkr candidate
+//  2. We invite them to complete the check → Checkr emails them a link
+//  3. Courier completes identity verification on Checkr's hosted flow
+//  4. Checkr runs the report asynchronously (hours to days)
+//  5. Checkr POSTs a webhook to /webhooks/checkr when the report is ready
+//  6. We flip courier_profiles.onboarding_status = 'approved' or 'rejected'
 //
 // Dev stub mode: when no CHECKR_API_KEY is configured we skip the real API
 // and auto-approve the courier after a short delay. Keeps the onboarding

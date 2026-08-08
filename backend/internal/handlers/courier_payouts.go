@@ -24,10 +24,10 @@ type PayoutLinkResponse struct {
 }
 
 type PayoutStatusResponse struct {
-	PayoutReady     bool   `json:"payout_ready"`
-	ConnectID       string `json:"connect_id,omitempty"`
-	OnboardingURL   string `json:"onboarding_url,omitempty"`
-	DetailsSubmitted bool  `json:"details_submitted"`
+	PayoutReady      bool   `json:"payout_ready"`
+	ConnectID        string `json:"connect_id,omitempty"`
+	OnboardingURL    string `json:"onboarding_url,omitempty"`
+	DetailsSubmitted bool   `json:"details_submitted"`
 }
 
 // CreatePayoutAccount creates a Stripe Express account for the courier if

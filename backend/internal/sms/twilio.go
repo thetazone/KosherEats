@@ -26,11 +26,11 @@ import (
 const devStubCode = "1234"
 
 type Client struct {
-	accountSID  string
-	authToken   string
-	serviceSID  string
-	enabled     bool
-	httpClient  *http.Client
+	accountSID string
+	authToken  string
+	serviceSID string
+	enabled    bool
+	httpClient *http.Client
 }
 
 func New(cfg *config.Config) *Client {

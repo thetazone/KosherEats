@@ -9,9 +9,9 @@ import (
 
 func testQuoteHandler() *Handler {
 	return &Handler{cfg: &config.Config{
-		DeliveryMarkupCents:        100, // $1
-		DeliveryMarkupLargeCents:   200, // $2
-		DeliveryMarkupHighestCents: 300, // $3
+		DeliveryMarkupCents:        100,  // $1
+		DeliveryMarkupLargeCents:   200,  // $2
+		DeliveryMarkupHighestCents: 300,  // $3
 		DeliveryLargeOrderCents:    4000, // $40
 		DeliveryHighestOrderCents:  8000, // $80
 	}}
