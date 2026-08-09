@@ -64,8 +64,10 @@ struct RestaurantCardView: View {
 
                     if restaurant.isPreview {
                         // Preview listings reuse the CLOSED badge styling in a
-                        // neutral tone: browsable, not orderable yet.
-                        Text("COMING SOON")
+                        // neutral tone: browsable, not orderable yet. The badge
+                        // is a call to action — tapping the heart requests the
+                        // restaurant be onboarded.
+                        Text("REQUEST ONBOARDING")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.keTextMuted)
                             .padding(.horizontal, 8)
