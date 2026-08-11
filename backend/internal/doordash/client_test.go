@@ -75,3 +75,42 @@ func TestEnabled(t *testing.T) {
 		})
 	}
 }
+
+// Regression for the 2026-08-10 incident on order 356a73e9: the seller's phone
+// was stored as a bare "9178130167" and the checkout quote carried no dropoff
+// contact, so DoorDash answered 400 on both pickup_phone_number ("Unknown phone
+// number format") and customer ("first_name contains no letters"). The client
+// now normalizes at the edge, so no call site can reintroduce either.
+func TestBuildBodyNormalizesContactFields(t *testing.T) {
+	c := &Client{}
+	body := c.buildBody(CreateDeliveryRequest{
+		ExternalDeliveryID: "order_1",
+		PickupAddress:      "1547 East 5th St, Brooklyn, NY 11230",
+		PickupPhone:        "9178130167",
+		DropoffAddress:     "1200 Ocean Pkwy, Brooklyn, NY 11230",
+		DropoffPhone:       "(917) 555-0142",
+	})
+
+	if got := body["pickup_phone_number"]; got != "+19178130167" {
+		t.Errorf("pickup_phone_number = %v, want +19178130167", got)
+	}
+	if got := body["dropoff_phone_number"]; got != "+19175550142" {
+		t.Errorf("dropoff_phone_number = %v, want +19175550142", got)
+	}
+	// Empty contact name must become a letter-bearing placeholder, not "".
+	if got := body["dropoff_contact_given_name"]; got != "Customer" {
+		t.Errorf("dropoff_contact_given_name = %v, want Customer", got)
+	}
+}
+
+func TestBuildBodyKeepsRealName(t *testing.T) {
+	c := &Client{}
+	body := c.buildBody(CreateDeliveryRequest{DropoffContactName: "Sam Mamiye"})
+	if got := body["dropoff_contact_given_name"]; got != "Sam Mamiye" {
+		t.Errorf("dropoff_contact_given_name = %v, want Sam Mamiye", got)
+	}
+	// No phone at all stays empty rather than becoming a bare "+".
+	if got := body["dropoff_phone_number"]; got != "" {
+		t.Errorf("dropoff_phone_number = %q, want empty", got)
+	}
+}

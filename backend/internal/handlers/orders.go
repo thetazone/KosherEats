@@ -186,14 +186,16 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var restAddress string
+	var restName, restAddress, restPhone string
 	restaurantDeliveryMode := "platform"
 	var restaurantDeliveryFee int
 	if err := tx.QueryRow(r.Context(),
-		`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+		`SELECT name,
+		        COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+		        COALESCE(phone, ''),
 		        COALESCE(delivery_mode, 'platform'), delivery_fee
 		   FROM restaurants WHERE id = $1`, cart.RestaurantID,
-	).Scan(&restAddress, &restaurantDeliveryMode, &restaurantDeliveryFee); err != nil {
+	).Scan(&restName, &restAddress, &restPhone, &restaurantDeliveryMode, &restaurantDeliveryFee); err != nil {
 		writeError(w, http.StatusBadRequest, "restaurant not found")
 		return
 	}
@@ -201,7 +203,26 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	deliveryFee := 0
 	if fulfillmentType != "pickup" {
 		if restAddress != "" {
-			quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restaurantDeliveryMode, restaurantDeliveryFee)
+			// Best-effort dropoff contact, matching dispatch's payload.
+			var customerName, customerPhone string
+			if uerr := tx.QueryRow(r.Context(),
+				`SELECT COALESCE(first_name || ' ' || last_name, ''), COALESCE(phone, '')
+				   FROM users WHERE id = $1`, user["user_id"],
+			).Scan(&customerName, &customerPhone); uerr != nil {
+				slog.Warn("create-order: customer lookup failed, quoting without contact",
+					slog.String("error", uerr.Error()))
+			}
+			quote := h.quoteDeliveryFee(r.Context(), quoteParams{
+				pickupAddress:   restAddress,
+				dropoffAddress:  req.DeliveryAddress,
+				restaurantName:  restName,
+				restaurantPhone: restPhone,
+				customerName:    customerName,
+				customerPhone:   customerPhone,
+				subtotalCents:   subtotal,
+				deliveryMode:    restaurantDeliveryMode,
+				restaurantFee:   restaurantDeliveryFee,
+			})
 			deliveryFee = quote.consumerFee
 		} else {
 			deliveryFee = deliveryFeeFallbackCents

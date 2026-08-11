@@ -47,7 +47,10 @@ func TestQuoteDeliveryFee_SelfDelivery(t *testing.T) {
 	h := testQuoteHandler()
 
 	// $3.99 restaurant fee + $1 marketplace fee (small order) = $4.99.
-	q := h.quoteDeliveryFee(context.Background(), "pickup", "dropoff", 2000, "restaurant", 399)
+	q := h.quoteDeliveryFee(context.Background(), quoteParams{
+		pickupAddress: "pickup", dropoffAddress: "dropoff",
+		subtotalCents: 2000, deliveryMode: "restaurant", restaurantFee: 399,
+	})
 	if q.provider != "self_delivery" {
 		t.Errorf("provider = %q, want self_delivery", q.provider)
 	}
@@ -63,7 +66,10 @@ func TestQuoteDeliveryFee_SelfDelivery(t *testing.T) {
 	}
 
 	// Highest-tier basket → $3 marketplace fee: 399 + 300 = 699.
-	big := h.quoteDeliveryFee(context.Background(), "p", "d", 9000, "restaurant", 399)
+	big := h.quoteDeliveryFee(context.Background(), quoteParams{
+		pickupAddress: "p", dropoffAddress: "d",
+		subtotalCents: 9000, deliveryMode: "restaurant", restaurantFee: 399,
+	})
 	if big.consumerFee != 699 {
 		t.Errorf("highest-tier consumerFee = %d, want 699", big.consumerFee)
 	}

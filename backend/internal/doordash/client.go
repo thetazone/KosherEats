@@ -21,6 +21,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
+
+	"github.com/koshereats/backend/internal/phone"
 )
 
 const apiBase = "https://openapi.doordash.com/drive/v2"
@@ -201,15 +204,28 @@ func bearerToken(s string) string {
 	return s
 }
 
+// givenName guarantees a dropoff name containing at least one letter. DoorDash
+// rejects a blank or digits-only given name with 400 "Customer first_name
+// contains no letters", which fails the whole request — so a customer whose
+// profile has no name must not be able to block their own delivery.
+func givenName(s string) string {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return strings.TrimSpace(s)
+		}
+	}
+	return "Customer"
+}
+
 func (c *Client) buildBody(req CreateDeliveryRequest) map[string]any {
 	body := map[string]any{
 		"external_delivery_id":       req.ExternalDeliveryID,
 		"pickup_address":             req.PickupAddress,
 		"pickup_business_name":       req.PickupBusinessName,
-		"pickup_phone_number":        req.PickupPhone,
+		"pickup_phone_number":        phone.ToE164(req.PickupPhone),
 		"dropoff_address":            req.DropoffAddress,
-		"dropoff_contact_given_name": req.DropoffContactName,
-		"dropoff_phone_number":       req.DropoffPhone,
+		"dropoff_contact_given_name": givenName(req.DropoffContactName),
+		"dropoff_phone_number":       phone.ToE164(req.DropoffPhone),
 		"order_value":                req.OrderValue,
 	}
 	if req.PickupInstructions != "" {
