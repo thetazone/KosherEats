@@ -204,8 +204,15 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if fulfillmentType != "pickup" {
 		if restAddress != "" {
 			// Best-effort dropoff contact, matching dispatch's payload.
+			//
+			// Deliberately on h.db.Pool, NOT tx: this lookup is allowed to fail
+			// (we quote without the contact and warn). A failed statement inside
+			// the transaction would abort it in Postgres, so every later
+			// statement — including the order INSERT — would fail too. Since the
+			// PaymentIntent is already charged by this point, poisoning the tx
+			// here would turn a cosmetic lookup failure into charged-but-no-order.
 			var customerName, customerPhone string
-			if uerr := tx.QueryRow(r.Context(),
+			if uerr := h.db.Pool.QueryRow(r.Context(),
 				`SELECT COALESCE(first_name || ' ' || last_name, ''), COALESCE(phone, '')
 				   FROM users WHERE id = $1`, user["user_id"],
 			).Scan(&customerName, &customerPhone); uerr != nil {
