@@ -197,6 +197,29 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 			deliveryFee = deliveryFeeFallbackCents
 			deliveryMethod = "flat_rate"
 		}
+
+		// Refuse the charge when no courier can actually be had.
+		//
+		// "flat_rate" is the only in-band signal that every provider failed:
+		// quoteDeliveryFee returns it when no provider is configured OR when
+		// every quote errored (delivery_quote.go). We cannot ask the providers
+		// whether they are healthy — Enabled() is credential-presence only, so a
+		// disabled or suspended account still reports enabled, and
+		// AnyProviderEnabled() reports true right along with it. The quote
+		// outcome is the only thing that tells the truth.
+		//
+		// Without this, checkout charges the fallback fee for a delivery nobody
+		// can perform: the order is paid, dispatch fails every attempt, and it
+		// strands in 'ready' with no automatic refund. That is exactly how
+		// orders 356a73e9 and d2bee10e were charged and stranded on 2026-08-11.
+		// Failing here costs a checkout; failing later costs a customer's money.
+		if deliveryMethod == "flat_rate" {
+			slog.Error("checkout: refusing delivery order — no courier provider could quote",
+				slog.String("restaurant_id", cartRestID))
+			writeError(w, http.StatusServiceUnavailable,
+				"delivery is temporarily unavailable — please choose pickup")
+			return
+		}
 	}
 	serviceFee := 0
 	// Default: flat TaxRatePercent (unchanged). When StripeTaxEnabled is set we
