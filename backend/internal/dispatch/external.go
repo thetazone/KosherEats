@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/notify"
+	"github.com/koshereats/backend/internal/shipday"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
 
@@ -27,6 +28,7 @@ type ExternalDispatcher struct {
 	db       *pgxpool.Pool
 	uber     *uberdirect.Client
 	doordash *doordash.Client
+	shipday  *shipday.Client
 	// notify broadcasts OrderReady to online couriers when a failed external
 	// dispatch falls back to the internal pool. Nil-safe (fallback still flips
 	// the order; couriers then find it via the marketplace poll).
@@ -37,8 +39,8 @@ type ExternalDispatcher struct {
 	alerter *notify.Alerter
 }
 
-func New(db *pgxpool.Pool, uber *uberdirect.Client, doordash *doordash.Client, n *notify.Notifier, alerter *notify.Alerter) *ExternalDispatcher {
-	return &ExternalDispatcher{db: db, uber: uber, doordash: doordash, notify: n, alerter: alerter}
+func New(db *pgxpool.Pool, uber *uberdirect.Client, doordash *doordash.Client, sd *shipday.Client, n *notify.Notifier, alerter *notify.Alerter) *ExternalDispatcher {
+	return &ExternalDispatcher{db: db, uber: uber, doordash: doordash, shipday: sd, notify: n, alerter: alerter}
 }
 
 // SetAlerter injects the admin alerter after construction — the scheduler
@@ -104,6 +106,10 @@ func isPermanentProviderError(err error) bool {
 	if errors.As(err, &de) {
 		return permanentStatus(de.StatusCode)
 	}
+	var se *shipday.APIError
+	if errors.As(err, &se) {
+		return permanentStatus(se.StatusCode)
+	}
 	return false
 }
 
@@ -146,7 +152,9 @@ type Input struct {
 // AnyProviderEnabled reports whether at least one external provider is usable.
 // Callers check this before deciding to dispatch externally.
 func (e *ExternalDispatcher) AnyProviderEnabled() bool {
-	return (e.uber != nil && e.uber.Enabled()) || (e.doordash != nil && e.doordash.Enabled())
+	return (e.uber != nil && e.uber.Enabled()) ||
+		(e.doordash != nil && e.doordash.Enabled()) ||
+		(e.shipday != nil && e.shipday.Enabled())
 }
 
 // Dispatch quotes the configured providers, picks the cheapest, creates the
@@ -328,6 +336,9 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		provider    string
 		feeCents    int
 		uberQuoteID string
+		// Shipday's winning third-party service + estimate, threaded to assign.
+		shipdayService  string
+		shipdayEstimate string
 	}
 	var quotes []providerQuote
 	var quoteErrs []error
@@ -361,6 +372,19 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 				slog.String("order_id", in.OrderID), slog.String("error", qerr.Error()))
 		} else {
 			quotes = append(quotes, providerQuote{provider: "doordash_drive", feeCents: q.Fee})
+		}
+	}
+	if e.shipday != nil && e.shipday.Enabled() {
+		q, qerr := e.shipday.GetQuote(ctx, in.RestAddress, in.DeliveryAddress)
+		if qerr != nil {
+			quoteErrs = append(quoteErrs, qerr)
+			slog.Warn("external-dispatch: shipday quote failed",
+				slog.String("order_id", in.OrderID), slog.String("error", qerr.Error()))
+		} else {
+			quotes = append(quotes, providerQuote{
+				provider: "shipday", feeCents: q.FeeCents,
+				shipdayService: q.ServiceName, shipdayEstimate: q.EstimateReference,
+			})
 		}
 	}
 
@@ -444,6 +468,31 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 			return "", "", 0, cerr
 		}
 		deliveryID, trackingURL, fee = del.ExternalDeliveryID, del.TrackingURL, del.Fee
+
+	case "shipday":
+		del, cerr := e.shipday.CreateDelivery(ctx, shipday.CreateDeliveryRequest{
+			OrderID:           in.OrderID,
+			RestaurantName:    in.RestaurantName,
+			RestaurantAddress: in.RestAddress,
+			RestaurantPhone:   in.RestPhone,
+			CustomerName:      in.CustomerName,
+			CustomerAddress:   in.DeliveryAddress,
+			CustomerPhone:     in.CustomerPhone,
+			SubtotalCents:     in.Subtotal,
+			TipCents:          in.TipCents,
+			ServiceName:       best.shipdayService,
+			EstimateReference: best.shipdayEstimate,
+		})
+		if cerr != nil {
+			slog.Error("external-dispatch: shipday create failed",
+				slog.String("order_id", in.OrderID), slog.String("error", cerr.Error()))
+			fail(isPermanentProviderError(cerr), cerr)
+			return "", "", 0, cerr
+		}
+		// external_delivery_id is Shipday's numeric order id (not our UUID):
+		// webhook state changes match on it, and the assign-time fee replaces
+		// the availability estimate.
+		deliveryID, trackingURL, fee = del.ShipdayOrderID, del.TrackingURL, del.FeeCents
 	}
 
 	// Persist the real delivery id keyed on OUR claim sentinel — we won the

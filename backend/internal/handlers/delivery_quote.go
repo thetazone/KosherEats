@@ -224,6 +224,17 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, p quoteParams) deliveryQ
 		}
 	}
 
+	if h.shipday != nil && h.shipday.Enabled() {
+		q, err := h.shipday.GetQuote(ctx, p.pickupAddress, p.dropoffAddress)
+		if err != nil {
+			slog.Warn("delivery-quote: shipday quote failed", slog.String("error", err.Error()))
+		} else {
+			quotes = append(quotes, providerQuote{
+				provider: "shipday", feeCents: q.FeeCents, estMinutes: q.EstMinutes,
+			})
+		}
+	}
+
 	if len(quotes) == 0 {
 		return deliveryQuoteResult{
 			consumerFee: deliveryFeeFallbackCents,

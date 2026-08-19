@@ -52,6 +52,7 @@ import (
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
 	"github.com/koshereats/backend/internal/payout"
+	"github.com/koshereats/backend/internal/shipday"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
 
@@ -159,6 +160,7 @@ type Dispatcher struct {
 	stripe   *payments.Client
 	uber     *uberdirect.Client
 	doordash *doordash.Client
+	shipday  *shipday.Client
 	// external is the shared external-courier dispatcher (also used inline by the
 	// handlers). Created from the same clients so both paths quote+create+claim
 	// identically.
@@ -223,9 +225,9 @@ func (d *Dispatcher) alert(subject, body string) {
 	d.alerter.Alert(subject, body)
 }
 
-func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client) *Dispatcher {
-	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd,
-		external: dispatch.New(db, u, dd, n, nil)}
+func New(db *pgxpool.Pool, n *notify.Notifier, s *payments.Client, u *uberdirect.Client, dd *doordash.Client, sd *shipday.Client) *Dispatcher {
+	return &Dispatcher{db: db, notify: n, stripe: s, uber: u, doordash: dd, shipday: sd,
+		external: dispatch.New(db, u, dd, sd, n, nil)}
 }
 
 // Start launches a goroutine that runs both sweeps every minute. Runs once
@@ -926,9 +928,7 @@ func (d *Dispatcher) tryExternalDispatch(ctx context.Context, o staleOrder) {
 		return
 	}
 
-	uberEnabled := d.uber != nil && d.uber.Enabled()
-	ddEnabled := d.doordash != nil && d.doordash.Enabled()
-	if !uberEnabled && !ddEnabled {
+	if !d.external.AnyProviderEnabled() {
 		slog.Info("auto-dispatch: no eligible courier and no external provider configured",
 			slog.String("order_id", o.orderID))
 		return

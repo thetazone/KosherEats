@@ -16,6 +16,7 @@ import (
 	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/pos"
 	"github.com/koshereats/backend/internal/pos/clover"
+	"github.com/koshereats/backend/internal/shipday"
 	"github.com/koshereats/backend/internal/sms"
 	"github.com/koshereats/backend/internal/storage"
 	"github.com/koshereats/backend/internal/uberdirect"
@@ -33,6 +34,7 @@ type Handler struct {
 	email         *email.Client
 	uber          *uberdirect.Client
 	doordash      *doordash.Client
+	shipday       *shipday.Client
 	posRegistry   *pos.Registry
 	payoutStarter *payout.Starter
 	// dispatcher is the shared external-courier dispatcher, used inline to
@@ -69,9 +71,13 @@ func New(db *database.DB, cfg *config.Config) *Handler {
 			SigningKey:  cfg.DoorDashSigningKey,
 			WebhookSec:  cfg.DoorDashWebhookSec,
 		}),
+		shipday: shipday.New(shipday.Config{
+			APIKey:       cfg.ShipdayAPIKey,
+			WebhookToken: cfg.ShipdayWebhookToken,
+		}),
 		posRegistry: pos.NewRegistry(db.Pool, clover.New()),
 	}
-	h.dispatcher = dispatch.New(h.db.Pool, h.uber, h.doordash, h.notify, h.Alerter())
+	h.dispatcher = dispatch.New(h.db.Pool, h.uber, h.doordash, h.shipday, h.notify, h.Alerter())
 	return h
 }
 
@@ -96,6 +102,10 @@ func (h *Handler) UberDirect() *uberdirect.Client { return h.uber }
 // DoorDash exposes the DoorDash Drive client for the scheduler's external
 // dispatch fallback chain.
 func (h *Handler) DoorDash() *doordash.Client { return h.doordash }
+
+// Shipday exposes the Shipday aggregator client for the scheduler's external
+// dispatch fallback chain.
+func (h *Handler) Shipday() *shipday.Client { return h.shipday }
 
 // Alerter builds an admin anomaly alerter from the configured AdminAlertEmail
 // and the shared email client, so the scheduler can alert on auto-refunds and
