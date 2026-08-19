@@ -3,6 +3,7 @@ package shipday
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 )
 
@@ -113,5 +114,47 @@ func TestCustomerNamePlaceholder(t *testing.T) {
 	}
 	if got := customerName("Sam Mamiye"); got != "Sam Mamiye" {
 		t.Errorf("real name = %q, want unchanged", got)
+	}
+}
+
+// Assign failures after a successful insert are where duplicate paid
+// deliveries are born (review finding): a clean 4xx means Shipday rejected the
+// assign and no courier was engaged; everything else must be treated as
+// outcome-unknown so dispatch never blindly retries.
+func TestAssignOutcomeUnknown(t *testing.T) {
+	if assignOutcomeUnknown(&APIError{StatusCode: 400, Body: "bad service"}) {
+		t.Error("clean 4xx = known non-execution, must not be unknown")
+	}
+	if assignOutcomeUnknown(&APIError{StatusCode: 422}) {
+		t.Error("422 = known non-execution")
+	}
+	if !assignOutcomeUnknown(&APIError{StatusCode: 500}) {
+		t.Error("5xx may have executed server-side, must be unknown")
+	}
+	if !assignOutcomeUnknown(errors.New("net/http: request canceled (timeout)")) {
+		t.Error("transport error must be unknown")
+	}
+}
+
+// AssignError must keep the underlying *APIError reachable through errors.As —
+// dispatch's isPermanentProviderError classifies through the wrap chain.
+func TestAssignErrorUnwrap(t *testing.T) {
+	wrapped := &AssignError{InsertedOrderID: 42, OutcomeUnknown: false,
+		Err: &APIError{StatusCode: 422, Body: "no"}}
+	var api *APIError
+	if !errors.As(wrapped, &api) || api.StatusCode != 422 {
+		t.Error("errors.As must reach the wrapped *APIError through AssignError")
+	}
+}
+
+// A Fly secret pasted with a trailing newline must not 401 every webhook.
+func TestVerifyWebhookTrimsConfiguredToken(t *testing.T) {
+	c := New(Config{APIKey: "k", WebhookToken: "tok123\n"})
+	if !c.VerifyWebhook("tok123") {
+		t.Error("configured token with trailing newline must still verify")
+	}
+	whitespaceOnly := New(Config{APIKey: "k", WebhookToken: "  \n"})
+	if whitespaceOnly.VerifyWebhook("") {
+		t.Error("whitespace-only configured token must fail closed")
 	}
 }

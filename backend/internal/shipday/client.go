@@ -61,6 +61,39 @@ func (e *APIError) Error() string { return fmt.Sprintf("shipday %d: %s", e.Statu
 // ErrDisabled is returned by every API method when the client has no API key.
 var ErrDisabled = errors.New("shipday client disabled (no API key)")
 
+// AssignError reports a failed /on-demand/assign for an order that was ALREADY
+// inserted. The two-call flow has no idempotency key, so this error class is
+// where a duplicate paid delivery can be born: when OutcomeUnknown is true the
+// assign may have executed server-side (transport error, 5xx, or an unparseable
+// 2xx body) and a blind retry could buy a SECOND courier while the first is en
+// route. OutcomeUnknown=false means Shipday rejected the assign cleanly (4xx)
+// and no courier was engaged. Dispatch treats unknown outcomes as
+// manual-reconciliation cases, never silent retries. Review finding.
+type AssignError struct {
+	// InsertedOrderID is the Shipday order the failed assign targeted — the
+	// handle a human needs to reconcile against the Shipday dashboard.
+	InsertedOrderID int64
+	OutcomeUnknown  bool
+	Err             error
+}
+
+func (e *AssignError) Error() string {
+	return fmt.Sprintf("shipday assign (inserted order %d, outcome unknown=%t): %v",
+		e.InsertedOrderID, e.OutcomeUnknown, e.Err)
+}
+
+func (e *AssignError) Unwrap() error { return e.Err }
+
+// assignOutcomeUnknown classifies an assign failure: a clean 4xx is a known
+// non-execution; anything else (5xx, transport error) may have executed.
+func assignOutcomeUnknown(err error) bool {
+	var ae *APIError
+	if errors.As(err, &ae) {
+		return ae.StatusCode >= 500
+	}
+	return true
+}
+
 type Client struct {
 	cfg     Config
 	enabled bool
@@ -277,11 +310,14 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 
 	data, err = c.doReq(ctx, http.MethodPost, apiBase+"/on-demand/assign", assignBody)
 	if err != nil {
-		return nil, fmt.Errorf("shipday assign (inserted order %d): %w", ins.OrderID, err)
+		return nil, &AssignError{InsertedOrderID: ins.OrderID, OutcomeUnknown: assignOutcomeUnknown(err), Err: err}
 	}
 	var asg assignResponse
 	if err := json.Unmarshal(data, &asg); err != nil {
-		return nil, fmt.Errorf("shipday assign parse (inserted order %d): %w", ins.OrderID, err)
+		// 2xx with an unreadable body: the assign executed, we just can't see
+		// the result — the most dangerous shape of "unknown".
+		return nil, &AssignError{InsertedOrderID: ins.OrderID, OutcomeUnknown: true,
+			Err: fmt.Errorf("assign response parse: %w", err)}
 	}
 
 	fee := asg.TotalBillableAmount
@@ -313,11 +349,14 @@ func (c *Client) CancelDelivery(ctx context.Context, shipdayOrderID string) erro
 // sign payloads; it echoes the dashboard-configured validation token verbatim
 // in a `token` header. Constant-time compare; fail closed when unconfigured.
 func (c *Client) VerifyWebhook(tokenHeader string) bool {
-	if c.cfg.WebhookToken == "" {
+	// Trim BOTH sides: a trailing newline in the Fly secret (a paste artifact,
+	// e.g. `echo` instead of `printf`) must not silently 401 every webhook.
+	token := strings.TrimSpace(c.cfg.WebhookToken)
+	if token == "" {
 		return false
 	}
 	return subtle.ConstantTimeCompare(
-		[]byte(strings.TrimSpace(tokenHeader)), []byte(c.cfg.WebhookToken)) == 1
+		[]byte(strings.TrimSpace(tokenHeader)), []byte(token)) == 1
 }
 
 // customerName guarantees a non-empty customer name — Shipday requires one,

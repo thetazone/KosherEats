@@ -57,6 +57,11 @@ func (h *Handler) ShipdayWebhook(w http.ResponseWriter, r *http.Request) {
 
 	var payload shipdayWebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
+		// ACK (a retry can't fix a malformed body) but leave a trace — a silent
+		// drop here would make a Shipday payload-format change indistinguishable
+		// from no webhooks at all. Review finding.
+		slog.Warn("shipday webhook: unparseable body ignored",
+			slog.String("error", err.Error()), slog.Int("bytes", len(body)))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -177,8 +182,12 @@ func (h *Handler) ShipdayWebhook(w http.ResponseWriter, r *http.Request) {
 
 	case "ORDER_COMPLETED":
 		now := time.Now()
+		// COALESCE picked_up_at: when the pickup events were missed (webhook
+		// outage, late registration), delivered must still leave a plausible
+		// pickup timestamp — analytics and courier-time metrics divide by it.
 		tag, uerr := tx.Exec(ctx,
-			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
+			`UPDATE orders SET status = 'delivered', delivered_at = $1,
+			        picked_up_at = COALESCE(picked_up_at, $1), updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
 			    AND external_provider = 'shipday' AND external_delivery_id = $3`,
 			now, orderID, shipdayID)
@@ -212,19 +221,29 @@ func (h *Handler) ShipdayWebhook(w http.ResponseWriter, r *http.Request) {
 		// DELIVERY_CANCELLED comment): clearing the linkage re-arms auto-dispatch,
 		// and doing so for an order out with another delivery would buy a second
 		// paid courier for food already in flight.
-		if _, err := tx.Exec(ctx,
+		// Status set matches the dispatch claim CAS ('accepted','preparing','ready')
+		// plus 'picked_up': an order escalated to Shipday while still preparing
+		// gets its dead linkage cleared too. A narrower set (the first cut used
+		// only ready/picked_up) welded such orders to a failed delivery forever —
+		// the event dedupes in external_webhook_events, so it never reprocesses,
+		// and the claim CAS requires NULL linkage to re-arm. Review finding.
+		tag, uerr := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
-			  WHERE id = $1 AND status IN ('ready', 'picked_up')
+			  WHERE id = $1 AND status IN ('accepted', 'preparing', 'ready', 'picked_up')
 			    AND external_provider = 'shipday' AND external_delivery_id = $2`,
-			orderID, shipdayID); err != nil {
+			orderID, shipdayID)
+		if uerr != nil {
 			slog.Error("shipday webhook: failure cleanup failed",
-				slog.String("order_id", orderID), slog.String("error", err.Error()))
+				slog.String("order_id", orderID), slog.String("error", uerr.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "shipday", event, orderID, "shipday")
 		}
 	}
 

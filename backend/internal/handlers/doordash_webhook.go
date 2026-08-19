@@ -224,13 +224,17 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		// re-arms auto-dispatch. Unscoped, a cancel naming an order that is out with
 		// the OTHER provider would clear that order's linkage and the next sweep
 		// would buy a SECOND paid delivery for a delivery already in flight.
+		// 'accepted'/'preparing' included to match the dispatch claim CAS: an
+		// order escalated to DoorDash while still preparing must get its dead
+		// linkage cleared here too, or it can never re-arm (the event dedupes,
+		// the claim CAS requires NULL linkage). Same fix as the Shipday handler.
 		if _, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
-			  WHERE id = $1 AND status IN ('ready', 'picked_up')
+			  WHERE id = $1 AND status IN ('accepted', 'preparing', 'ready', 'picked_up')
 			    AND external_provider = 'doordash_drive'`, orderID); err != nil {
 			slog.Error("doordash webhook: cancel cleanup failed",
 				slog.String("order_id", orderID),

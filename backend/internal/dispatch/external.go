@@ -486,6 +486,32 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		if cerr != nil {
 			slog.Error("external-dispatch: shipday create failed",
 				slog.String("order_id", in.OrderID), slog.String("error", cerr.Error()))
+			// Unknown assign outcome (transport error / 5xx / unreadable 2xx
+			// after the insert): the assign MAY have engaged a paid courier, and
+			// Shipday's two-call flow has no idempotency key, so a sweep retry
+			// could buy a SECOND delivery for food already moving. Retire the
+			// order from the external path (permanent → platform fallback) and
+			// page a human to reconcile against the Shipday dashboard — the same
+			// loud treatment as the orphaned-delivery persist failure.
+			var ae *shipday.AssignError
+			if errors.As(cerr, &ae) && ae.OutcomeUnknown {
+				go e.alerter.Alert(
+					"URGENT: Shipday assign outcome unknown — manual reconciliation required",
+					fmt.Sprintf(
+						"Order %s at %q: Shipday order %d was inserted, but the assign call failed with an "+
+							"UNKNOWN outcome (%s). A third-party courier MAY have been engaged and billed.\n\n"+
+							"The order has been moved to the internal courier pool so no automatic retry can buy a "+
+							"second delivery.\n\nDo this now:\n"+
+							"  1. Open the Shipday dashboard and find order %d (order number %s).\n"+
+							"  2. If a courier IS assigned, unassign it (or let it run and hand the order back by "+
+							"setting external_provider='shipday', external_delivery_id='%d' on the order row).\n"+
+							"  3. If no courier is assigned, nothing was billed — no action needed.",
+						in.OrderID, in.RestaurantName, ae.InsertedOrderID, truncate(cerr.Error(), 200),
+						ae.InsertedOrderID, in.OrderID, ae.InsertedOrderID),
+				)
+				fail(true, cerr)
+				return "", "", 0, cerr
+			}
 			fail(isPermanentProviderError(cerr), cerr)
 			return "", "", 0, cerr
 		}
