@@ -5,9 +5,23 @@ Uber (account-level risk/state action, not billing — see
 `koshereats-uber-direct-accounts` memory) and DoorDash Drive production access
 is restricted to existing partners. Shipday is a courier **aggregator**: one
 self-serve account dispatches DoorDash/Uber/local fleets under Shipday's own
-master agreements. Published rates ~$6.49 base + 3% payment fee; software plan
-(~$39/mo Professional — third-party dispatch may require a higher plan, verify
-at signup).
+master agreements, so we do NOT need our own Uber Direct or DoorDash Drive
+account. That is the whole reason it unblocks us — orchestration-only vendors
+(Cartwheel, and similar) require the merchant to bring their own DSP accounts.
+
+## Cost model (verified 2026-08-28)
+
+- **Software: $99/mo "Elite"** — third-party dispatch is gated to Elite or
+  above; the cheaper Professional ($39/mo) tier does NOT include it. 300
+  orders/mo included, $0.20 per additional order. US/Canada/Australia only.
+- **Courier fee, per delivery, passed through**: DoorDash $6.49 for the first
+  5 mi then +$1/mi up to 10 mi; Uber $6.49 (≤5 mi), $8.99 (5–8 mi), $11.49
+  (8–10 mi). Quote is visible before dispatch (`POST /on-demand/availability`),
+  which is what `provider_fee_cents` records.
+- **Shipday surcharge: +3% on third-party delivery charges only** — NOT on
+  order value/GMV. Their example: "$100 worth of 3rd party services" → card
+  charged $103. At a ~$10 delivery that is ~$0.30/order.
+- Billed weekly to the card on file.
 
 ## Integration summary (code-complete on `feat/shipday-provider`)
 
@@ -72,3 +86,10 @@ Status → order mapping (`shipday_webhook.go`):
   verification on on-demand) — irrelevant today, relevant if wine is added.
 - Dispatch retry after a failed assign leaves an unassigned Shipday order
   behind (harmless, unbilled); webhook scoping by delivery id ignores it.
+- **Refunds are a two-hop appeal on a 72-hour clock.** A failed/disputed
+  delivery must be appealed to the provider **within 72 hours of pickup**
+  (Uber's web form / DoorDash email), then forwarded to support@shipday.com.
+  Shipday does not adjudicate it for us and there is no separate
+  failed-delivery compensation. If a courier cancels, Shipday auto-redispatches.
+  Ops consequence: a stranded delivery needs to be caught and appealed the same
+  day — do not let `ORDER_FAILED` events sit unreviewed over a weekend.
