@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/koshereats/backend/internal/phone"
 )
 
 const (
@@ -194,10 +196,10 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 		"quote_id":             req.QuoteID,
 		"pickup_name":          req.PickupName,
 		"pickup_address":       req.PickupAddress.JSON(),
-		"pickup_phone_number":  req.PickupPhone,
+		"pickup_phone_number":  phone.ToE164(req.PickupPhone),
 		"dropoff_name":         req.DropoffName,
 		"dropoff_address":      req.DropoffAddress.JSON(),
-		"dropoff_phone_number": req.DropoffPhone,
+		"dropoff_phone_number": phone.ToE164(req.DropoffPhone),
 		"manifest_items":       items,
 		"manifest_total_value": req.TotalCents,
 		"external_id":          req.ExternalID,

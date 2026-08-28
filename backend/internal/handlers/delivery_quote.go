@@ -49,18 +49,32 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var restAddress, restPhone, restDeliveryMode string
+	var restName, restAddress, restPhone, restDeliveryMode string
 	var restLat, restLng float64
 	var restDeliveryFee int
 	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+		`SELECT name,
+		        COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
 		        COALESCE(phone, ''), lat, lng,
 		        COALESCE(delivery_mode, 'external'), delivery_fee
 		   FROM restaurants WHERE id = $1`, req.RestaurantID,
-	).Scan(&restAddress, &restPhone, &restLat, &restLng, &restDeliveryMode, &restDeliveryFee)
+	).Scan(&restName, &restAddress, &restPhone, &restLat, &restLng, &restDeliveryMode, &restDeliveryFee)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "restaurant not found")
 		return
+	}
+
+	// Dropoff contact, matching what dispatch will later send. Best-effort: a
+	// missing name or phone must not fail the quote (the provider clients
+	// substitute a placeholder name), but sending them keeps this quote and the
+	// dispatch quote on identical payloads.
+	var customerName, customerPhone string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT COALESCE(first_name || ' ' || last_name, ''), COALESCE(phone, '')
+		   FROM users WHERE id = $1`, user["user_id"],
+	).Scan(&customerName, &customerPhone); err != nil {
+		slog.Warn("delivery-quote: customer lookup failed, quoting without contact",
+			slog.String("error", err.Error()))
 	}
 
 	// Item subtotal of the user's cart decides the markup tier ($1 vs $2 vs $3
@@ -78,7 +92,17 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restDeliveryMode, restDeliveryFee)
+	quote := h.quoteDeliveryFee(r.Context(), quoteParams{
+		pickupAddress:   restAddress,
+		dropoffAddress:  req.DeliveryAddress,
+		restaurantName:  restName,
+		restaurantPhone: restPhone,
+		customerName:    customerName,
+		customerPhone:   customerPhone,
+		subtotalCents:   subtotal,
+		deliveryMode:    restDeliveryMode,
+		restaurantFee:   restDeliveryFee,
+	})
 
 	writeJSON(w, http.StatusOK, DeliveryQuoteResponse{
 		DeliveryFeeCents: quote.consumerFee,
@@ -114,21 +138,43 @@ func (h *Handler) deliveryMarkupCents(subtotalCents int) int {
 	}
 }
 
+// quoteParams is everything a provider needs to price a route. Checkout and
+// dispatch fill it from the same columns so the two quotes are directly
+// comparable.
+//
+// They used to diverge: checkout sent only the two addresses, while dispatch
+// also sent the pickup business name/phone and the dropoff contact name/phone.
+// DoorDash rejects the shorter payload (400 on pickup_phone_number and
+// "Customer first_name contains no letters"), so the provider silently dropped
+// out of the checkout auction and reappeared at dispatch — quoting a price the
+// consumer was never shown, after the card had already been charged.
+type quoteParams struct {
+	pickupAddress   string
+	dropoffAddress  string
+	restaurantName  string
+	restaurantPhone string
+	customerName    string
+	customerPhone   string
+	subtotalCents   int // item subtotal, excl. delivery — sets the markup tier
+	deliveryMode    string
+	restaurantFee   int // the restaurant's own fee, used for self-delivery
+}
+
 // quoteDeliveryFee gets quotes from available external providers, picks the
 // cheapest, and returns the consumer-facing fee: the real provider cost plus a
 // flat markup we keep ($1 normally, $2 once the item subtotal clears the
 // large-order threshold). No floor/ceiling — the fee always tracks the actual
 // quote. Falls back to a flat fee only if no provider is configured or all
-// quotes fail. subtotalCents is the item subtotal (excl. delivery).
-func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAddress string, subtotalCents int, deliveryMode string, restaurantFeeCents int) deliveryQuoteResult {
+// quotes fail.
+func (h *Handler) quoteDeliveryFee(ctx context.Context, p quoteParams) deliveryQuoteResult {
 	// Self-delivery: the restaurant fulfills with its own driver. The consumer
 	// pays the restaurant's configured fee plus the KosherEats marketplace fee;
 	// the restaurant keeps its fee in full, KE keeps the marketplace fee. No
 	// external provider is contacted.
-	if deliveryMode == "restaurant" {
+	if p.deliveryMode == "restaurant" {
 		return deliveryQuoteResult{
-			consumerFee: restaurantFeeCents + h.deliveryMarkupCents(subtotalCents),
-			providerFee: restaurantFeeCents,
+			consumerFee: p.restaurantFee + h.deliveryMarkupCents(p.subtotalCents),
+			providerFee: p.restaurantFee,
 			estMinutes:  selfDeliveryEstMinutes,
 			provider:    "self_delivery",
 		}
@@ -143,8 +189,8 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAd
 	var quotes []providerQuote
 
 	if h.uber != nil && h.uber.Enabled() {
-		pickup := uberdirect.Address{Street: []string{pickupAddress}, Country: "US"}
-		dropoff := uberdirect.Address{Street: []string{dropoffAddress}, Country: "US"}
+		pickup := uberdirect.Address{Street: []string{p.pickupAddress}, Country: "US"}
+		dropoff := uberdirect.Address{Street: []string{p.dropoffAddress}, Country: "US"}
 		q, err := h.uber.GetQuote(ctx, pickup, dropoff)
 		if err != nil {
 			slog.Warn("delivery-quote: uber quote failed", slog.String("error", err.Error()))
@@ -156,16 +202,35 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAd
 	}
 
 	if h.doordash != nil && h.doordash.Enabled() {
+		// Same field set dispatch sends (dispatch/external.go) — anything less
+		// and DoorDash 400s here but succeeds there, hiding the provider from
+		// the price the consumer actually agrees to.
 		q, err := h.doordash.GetQuote(ctx, doordash.CreateDeliveryRequest{
 			ExternalDeliveryID: "quote_check",
-			PickupAddress:      pickupAddress,
-			DropoffAddress:     dropoffAddress,
+			PickupAddress:      p.pickupAddress,
+			PickupBusinessName: p.restaurantName,
+			PickupPhone:        p.restaurantPhone,
+			DropoffAddress:     p.dropoffAddress,
+			DropoffContactName: p.customerName,
+			DropoffPhone:       p.customerPhone,
+			OrderValue:         p.subtotalCents,
 		})
 		if err != nil {
 			slog.Warn("delivery-quote: doordash quote failed", slog.String("error", err.Error()))
 		} else {
 			quotes = append(quotes, providerQuote{
 				provider: "doordash_drive", feeCents: q.Fee, estMinutes: 30,
+			})
+		}
+	}
+
+	if h.shipday != nil && h.shipday.Enabled() {
+		q, err := h.shipday.GetQuote(ctx, p.pickupAddress, p.dropoffAddress)
+		if err != nil {
+			slog.Warn("delivery-quote: shipday quote failed", slog.String("error", err.Error()))
+		} else {
+			quotes = append(quotes, providerQuote{
+				provider: "shipday", feeCents: q.FeeCents, estMinutes: q.EstMinutes,
 			})
 		}
 	}
@@ -188,7 +253,7 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, pickupAddress, dropoffAd
 
 	// Provider cost + our tiered marketplace markup. No clamping: the consumer
 	// pays exactly the courier cost plus the markup.
-	consumerFee := best.feeCents + h.deliveryMarkupCents(subtotalCents)
+	consumerFee := best.feeCents + h.deliveryMarkupCents(p.subtotalCents)
 
 	return deliveryQuoteResult{
 		consumerFee: consumerFee,

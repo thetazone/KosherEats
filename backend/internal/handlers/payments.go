@@ -156,15 +156,37 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		// here is stamped onto the PaymentIntent and reused verbatim by
 		// CreateOrder, so the two never disagree even though the quote drifts.
 		if req.DeliveryAddress != "" {
-			var restAddress, restDeliveryMode string
+			var restName, restAddress, restPhone, restDeliveryMode string
 			var restDeliveryFee int
 			err := h.db.Pool.QueryRow(r.Context(),
-				`SELECT COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+				`SELECT name,
+				        COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
+				        COALESCE(phone, ''),
 				        COALESCE(delivery_mode, 'platform'), delivery_fee
 				   FROM restaurants WHERE id = $1`, cartRestID,
-			).Scan(&restAddress, &restDeliveryMode, &restDeliveryFee)
+			).Scan(&restName, &restAddress, &restPhone, &restDeliveryMode, &restDeliveryFee)
 			if err == nil && restAddress != "" {
-				quote := h.quoteDeliveryFee(r.Context(), restAddress, req.DeliveryAddress, subtotal, restDeliveryMode, restDeliveryFee)
+				// Dropoff contact, matching dispatch's payload — best-effort so a
+				// nameless profile can't block checkout.
+				var customerName, customerPhone string
+				if uerr := h.db.Pool.QueryRow(r.Context(),
+					`SELECT COALESCE(first_name || ' ' || last_name, ''), COALESCE(phone, '')
+					   FROM users WHERE id = $1`, user["user_id"],
+				).Scan(&customerName, &customerPhone); uerr != nil {
+					slog.Warn("create-payment-intent: customer lookup failed, quoting without contact",
+						slog.String("error", uerr.Error()))
+				}
+				quote := h.quoteDeliveryFee(r.Context(), quoteParams{
+					pickupAddress:   restAddress,
+					dropoffAddress:  req.DeliveryAddress,
+					restaurantName:  restName,
+					restaurantPhone: restPhone,
+					customerName:    customerName,
+					customerPhone:   customerPhone,
+					subtotalCents:   subtotal,
+					deliveryMode:    restDeliveryMode,
+					restaurantFee:   restDeliveryFee,
+				})
 				deliveryFee = quote.consumerFee
 				deliveryMethod = quote.provider
 			} else {
@@ -174,6 +196,29 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			deliveryFee = deliveryFeeFallbackCents
 			deliveryMethod = "flat_rate"
+		}
+
+		// Refuse the charge when no courier can actually be had.
+		//
+		// "flat_rate" is the only in-band signal that every provider failed:
+		// quoteDeliveryFee returns it when no provider is configured OR when
+		// every quote errored (delivery_quote.go). We cannot ask the providers
+		// whether they are healthy — Enabled() is credential-presence only, so a
+		// disabled or suspended account still reports enabled, and
+		// AnyProviderEnabled() reports true right along with it. The quote
+		// outcome is the only thing that tells the truth.
+		//
+		// Without this, checkout charges the fallback fee for a delivery nobody
+		// can perform: the order is paid, dispatch fails every attempt, and it
+		// strands in 'ready' with no automatic refund. That is exactly how
+		// orders 356a73e9 and d2bee10e were charged and stranded on 2026-08-11.
+		// Failing here costs a checkout; failing later costs a customer's money.
+		if deliveryMethod == "flat_rate" {
+			slog.Error("checkout: refusing delivery order — no courier provider could quote",
+				slog.String("restaurant_id", cartRestID))
+			writeError(w, http.StatusServiceUnavailable,
+				"delivery is temporarily unavailable — please choose pickup")
+			return
 		}
 	}
 	serviceFee := 0

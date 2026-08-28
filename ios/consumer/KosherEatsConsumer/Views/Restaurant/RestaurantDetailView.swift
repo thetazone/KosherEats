@@ -13,6 +13,8 @@ struct RestaurantDetailView: View {
     /// Presented when a signed-out user taps the Request control on a preview
     /// listing — same auth-gate pattern as checkout.
     @State private var showLoginSheet = false
+    /// Presented from the ⋮ menu: address, map, ratings, kosher details.
+    @State private var showStoreInfo = false
 
     var body: some View {
         ZStack {
@@ -97,6 +99,35 @@ struct RestaurantDetailView: View {
             LoginView(dismissLabel: "Back")
                 .environmentObject(authVM)
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showStoreInfo) {
+            if let restaurant = vm.restaurant {
+                StoreInfoView(restaurant: restaurant)
+                    .presentationDetents([.large])
+            }
+        }
+        .toolbar {
+            if let restaurant = vm.restaurant {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showStoreInfo = true
+                        } label: {
+                            Label("Store info", systemImage: "info.circle")
+                        }
+                        ShareLink(item: "Check out \(restaurant.name) on KosherEats") {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(.keTextPrimary)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(.ultraThinMaterial))
+                    }
+                    .accessibilityLabel("More options")
+                }
+            }
         }
     }
 

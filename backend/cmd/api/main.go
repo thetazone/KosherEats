@@ -318,6 +318,7 @@ func main() {
 	r.Post("/api/v1/webhooks/checkr", h.CheckrWebhook)
 	r.Post("/api/v1/webhooks/uber-direct", h.UberDirectWebhook)
 	r.Post("/api/v1/webhooks/doordash", h.DoorDashWebhook)
+	r.Post("/api/v1/webhooks/shipday", h.ShipdayWebhook)
 
 	// Seller routes
 	r.Route("/api/v1/seller", func(r chi.Router) {
@@ -518,7 +519,7 @@ func main() {
 	//       aren't stuck watching a dead order.
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
 	defer schedulerCancel()
-	dispatcher := scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash())
+	dispatcher := scheduler.New(db.Pool, h.Notifier(), h.Stripe(), h.UberDirect(), h.DoorDash(), h.Shipday())
 	// Wire the admin alerter so auto-refunds and permanently-failed payouts
 	// raise an alert (email when ADMIN_ALERT_EMAIL is set, log-only otherwise).
 	dispatcher.SetAlerter(h.Alerter())

@@ -95,6 +95,13 @@ type Config struct {
 	DoorDashSigningKey  string
 	DoorDashWebhookSec  string
 
+	// Shipday (courier aggregator: dispatches DoorDash/Uber/local fleets under
+	// Shipday's own master agreements — no direct provider account needed).
+	// Empty API key → client disabled; unlike the direct providers there is no
+	// stub mode, disabled calls return errors.
+	ShipdayAPIKey       string
+	ShipdayWebhookToken string
+
 	// Tax rate as a whole-number percentage (e.g. 9 = 9%). Defaults to 9
 	// if TAX_RATE_PERCENT is not set.
 	TaxRatePercent int
@@ -278,6 +285,9 @@ func Load() *Config {
 		DoorDashKeyID:       getEnv("DOORDASH_KEY_ID", ""),
 		DoorDashSigningKey:  getEnv("DOORDASH_SIGNING_KEY", ""),
 		DoorDashWebhookSec:  getEnv("DOORDASH_WEBHOOK_SECRET", ""),
+
+		ShipdayAPIKey:       getEnv("SHIPDAY_API_KEY", ""),
+		ShipdayWebhookToken: getEnv("SHIPDAY_WEBHOOK_TOKEN", ""),
 
 		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
 
