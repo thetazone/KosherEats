@@ -6,7 +6,7 @@ import type { Cart } from "@/types";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface Address {
   id: string;
@@ -72,6 +72,17 @@ function isUnauthorized(err: unknown): boolean {
   return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
 }
 
+// Web has no pickup option, so the server's "please choose pickup" 503 copy
+// (backend/internal/handlers/payments.go) would point customers at a toggle
+// that doesn't exist here. Reword it instead of surfacing the raw message.
+function describeCheckoutError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.toLowerCase().includes("temporarily unavailable")) {
+    return "We couldn't line up a courier for this delivery right now. Please try again in a few minutes.";
+  }
+  return msg || "Failed to start checkout";
+}
+
 // orders.create is idempotent on payment_intent_id: if the FIRST POST committed
 // server-side but its response was lost (network blip / timeout / 5xx-after-
 // commit), every replay of the same payment_intent_id returns HTTP 409
@@ -108,6 +119,14 @@ export default function CartPage() {
   const [checkoutAddress, setCheckoutAddress] = useState<Address | null>(null);
   const [checkoutStarting, setCheckoutStarting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const checkoutDialogRef = useRef<HTMLDivElement | null>(null);
+
+  const closeCheckout = () => {
+    setIntent(null);
+    setStripePromise(null);
+    setCheckoutAddress(null);
+    setCheckoutError(null);
+  };
   // "finalizing" → charge captured, order POST in flight/retrying. We surface a
   // clear state instead of silently navigating away if orders.create fails.
   const [finalizing, setFinalizing] = useState(false);
@@ -127,9 +146,48 @@ export default function CartPage() {
   const [addressError, setAddressError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!intent) return;
+
+    const dialog = checkoutDialogRef.current;
+    dialog?.focus();
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeCheckout();
+        return;
+      }
+      if (e.key !== "Tab" || !dialog) return;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent]);
+
+  useEffect(() => {
     const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!t) {
-      router.replace("/auth");
+      router.replace("/auth?next=/cart");
       return;
     }
     setToken(t);
@@ -238,7 +296,7 @@ export default function CartPage() {
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
-        router.replace("/auth");
+        router.replace("/auth?next=/cart");
         return;
       }
       setLoadError(err instanceof Error ? err.message : "Failed to load cart");
@@ -266,7 +324,7 @@ export default function CartPage() {
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
-        router.replace("/auth");
+        router.replace("/auth?next=/cart");
         return;
       }
       setMutationError(err instanceof Error ? err.message : "Failed to update cart");
@@ -295,10 +353,10 @@ export default function CartPage() {
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
-        router.replace("/auth");
+        router.replace("/auth?next=/cart");
         return;
       }
-      setCheckoutError(err instanceof Error ? err.message : "Failed to start checkout");
+      setCheckoutError(describeCheckoutError(err));
     } finally {
       setCheckoutStarting(false);
     }
@@ -408,7 +466,7 @@ export default function CartPage() {
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
-        router.replace("/auth");
+        router.replace("/auth?next=/cart");
         return;
       }
       setAddressError(err instanceof Error ? err.message : "Failed to save address");
@@ -418,14 +476,10 @@ export default function CartPage() {
   }
 
   const subtotal = cart?.subtotal ?? 0;
-  // Preview estimates must match what CreatePaymentIntent actually charges
-  // for the default (no restaurant_id/address) intent that beginCheckout
-  // requests: delivery falls back to deliveryFeeFallbackCents (599) and the
-  // service fee is always 0. See backend/internal/handlers/payments.go.
-  const deliveryFee = 599;
-  const serviceFee = 0;
-  const tax = Math.round(subtotal * 0.09);
-  const displayTotal = intent?.total ?? subtotal + deliveryFee + serviceFee + tax;
+  // Delivery fee, service fee, and tax depend on a live courier quote against
+  // the delivery address (backend/internal/handlers/payments.go) — there is
+  // no fixed formula to preview them with before the intent comes back, so
+  // only the subtotal is shown until then.
 
   const canPlaceOrder = !!cart && cart.items.length > 0 && !!selectedAddressId && !checkoutStarting;
 
@@ -534,29 +588,33 @@ export default function CartPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
+                      <div className="flex items-center bg-dark-800 rounded-xl px-1">
                         <button
                           onClick={() => mutateQuantity(item.id, -1)}
                           disabled={isPending}
                           aria-label={item.quantity === 1 ? "Remove item" : "Decrease quantity"}
-                          className="w-7 h-7 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                          className="group w-11 h-11 disabled:opacity-50 flex items-center justify-center"
                         >
-                          {item.quantity === 1 ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          ) : (
-                            "-"
-                          )}
+                          <span className="w-8 h-8 rounded-full bg-dark-700 group-hover:bg-dark-600 flex items-center justify-center text-white transition-colors">
+                            {item.quantity === 1 ? (
+                              <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            ) : (
+                              "-"
+                            )}
+                          </span>
                         </button>
                         <span className="font-semibold w-6 text-center">{item.quantity}</span>
                         <button
                           onClick={() => mutateQuantity(item.id, 1)}
                           disabled={isPending}
                           aria-label="Increase quantity"
-                          className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                          className="group w-11 h-11 disabled:opacity-50 flex items-center justify-center"
                         >
-                          +
+                          <span className="w-8 h-8 rounded-full bg-brand-500 group-hover:bg-brand-600 flex items-center justify-center text-white transition-colors">
+                            +
+                          </span>
                         </button>
                       </div>
                       <span className="text-sm font-semibold w-16 text-right">
@@ -578,22 +636,36 @@ export default function CartPage() {
                     <span>Subtotal</span>
                     <span>{formatUSD(intent?.subtotal ?? subtotal)}</span>
                   </div>
-                  <div className="flex justify-between text-dark-400">
-                    <span>Delivery fee</span>
-                    <span>{formatUSD(intent?.delivery_fee ?? deliveryFee)}</span>
-                  </div>
-                  <div className="flex justify-between text-dark-400">
-                    <span>Service fee</span>
-                    <span>{formatUSD(intent?.service_fee ?? serviceFee)}</span>
-                  </div>
-                  <div className="flex justify-between text-dark-400">
-                    <span>Tax</span>
-                    <span>{formatUSD(intent?.tax ?? tax)}</span>
-                  </div>
-                  <div className="border-t border-dark-700 pt-2 mt-2 flex justify-between font-bold text-base">
-                    <span>Total</span>
-                    <span className="text-brand-400">{formatUSD(displayTotal)}</span>
-                  </div>
+                  {intent ? (
+                    <>
+                      <div className="flex justify-between text-dark-400">
+                        <span>Delivery fee</span>
+                        <span>{formatUSD(intent.delivery_fee)}</span>
+                      </div>
+                      <div className="flex justify-between text-dark-400">
+                        <span>Service fee</span>
+                        <span>{formatUSD(intent.service_fee)}</span>
+                      </div>
+                      <div className="flex justify-between text-dark-400">
+                        <span>Tax</span>
+                        <span>{formatUSD(intent.tax)}</span>
+                      </div>
+                      {intent.tip > 0 && (
+                        <div className="flex justify-between text-dark-400">
+                          <span>Tip</span>
+                          <span>{formatUSD(intent.tip)}</span>
+                        </div>
+                      )}
+                      <div className="border-t border-dark-700 pt-2 mt-2 flex justify-between font-bold text-base">
+                        <span>Total</span>
+                        <span className="text-brand-400">{formatUSD(intent.total)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-dark-500 text-xs pt-1">
+                      Delivery fee, service fee, and tax are calculated from your address when you start checkout.
+                    </p>
+                  )}
                 </div>
 
                 {/* Delivery Address */}
@@ -709,7 +781,7 @@ export default function CartPage() {
                   )}
                 </div>
 
-                {checkoutError && (
+                {checkoutError && !intent && (
                   <div className="mb-3 text-sm text-danger-400">{checkoutError}</div>
                 )}
 
@@ -720,7 +792,9 @@ export default function CartPage() {
                 >
                   {checkoutStarting
                     ? "Starting checkout…"
-                    : `Place Order · ${formatUSD(displayTotal)}`}
+                    : intent
+                      ? `Place Order · ${formatUSD(intent.total)}`
+                      : "Place Order"}
                 </button>
               </div>
             </div>
@@ -733,20 +807,21 @@ export default function CartPage() {
           className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="checkout-dialog-title"
+          ref={checkoutDialogRef}
+          tabIndex={-1}
         >
           <div className="card w-full max-w-md p-6 relative">
             <button
-              onClick={() => {
-                setIntent(null);
-                setStripePromise(null);
-                setCheckoutAddress(null);
-              }}
-              className="absolute top-3 right-3 text-dark-400 hover:text-white"
+              onClick={closeCheckout}
+              className="absolute top-1 right-1 w-11 h-11 flex items-center justify-center text-dark-400 hover:text-white"
               aria-label="Close checkout"
             >
               ✕
             </button>
-            <h2 className="text-xl font-bold mb-1">Checkout</h2>
+            <h2 id="checkout-dialog-title" className="text-xl font-bold mb-1">
+              Checkout
+            </h2>
             <p className="text-dark-400 text-sm mb-5">
               Pay {formatUSD(intent.total)} to complete your order.
             </p>

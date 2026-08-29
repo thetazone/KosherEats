@@ -4,7 +4,8 @@ import { Header } from "@/components/layout/Header";
 import { RestaurantCard } from "@/components/restaurant/RestaurantCard";
 import { restaurants as restaurantsApi } from "@/lib/api";
 import type { Restaurant } from "@/types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 const CERTIFICATIONS = ["All", "OU", "OK", "Star-K", "Kof-K", "cRc", "Badatz", "Chof-K"];
 
@@ -30,8 +31,33 @@ const CUISINES = [
   "Heimish",
 ];
 
-export default function SearchPage() {
-  const [query, setQuery] = useState("");
+// Shared by the in-page loading state and the Suspense fallback below — the
+// prerendered HTML is the fallback, so both need to look the same.
+function ResultsSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="card overflow-hidden animate-pulse">
+          <div className="h-48 bg-dark-800" />
+          <div className="p-4 space-y-3">
+            <div className="h-5 w-2/3 bg-dark-800 rounded" />
+            <div className="h-4 w-1/2 bg-dark-800 rounded" />
+            <div className="h-4 w-1/3 bg-dark-800 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SearchPageContent() {
+  // The landing/header SearchBar navigates here as /search?q=<term>, so the
+  // box has to start from the URL rather than empty — otherwise the term is
+  // silently dropped and the user lands on an unfiltered list.
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? "";
+
+  const [query, setQuery] = useState(urlQuery);
   const [selectedCuisine, setSelectedCuisine] = useState("All");
   const [selectedCert, setSelectedCert] = useState("All");
   const [glattOnly, setGlattOnly] = useState(false);
@@ -43,6 +69,13 @@ export default function SearchPage() {
 
   // Guards against a slow earlier request overwriting a newer one's results.
   const requestSeq = useRef(0);
+
+  // Re-sync when ?q= changes (e.g. a second search submitted from the header
+  // while already on this page). Keyed on the string, so typing in the box —
+  // which leaves the URL alone — never gets clobbered.
+  useEffect(() => {
+    setQuery(urlQuery);
+  }, [urlQuery]);
 
   // Fetch the real discovery results for the current query. An empty/whitespace
   // query lists everything (with the cuisine chip applied server-side via
@@ -190,18 +223,7 @@ export default function SearchPage() {
         {loading ? (
           <>
             <div className="mb-4 text-dark-400 text-sm">Searching restaurants…</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="card overflow-hidden animate-pulse">
-                  <div className="h-48 bg-dark-800" />
-                  <div className="p-4 space-y-3">
-                    <div className="h-5 w-2/3 bg-dark-800 rounded" />
-                    <div className="h-4 w-1/2 bg-dark-800 rounded" />
-                    <div className="h-4 w-1/3 bg-dark-800 rounded" />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ResultsSkeleton />
           </>
         ) : loadError ? (
           <div className="card p-12 text-center">
@@ -236,5 +258,24 @@ export default function SearchPage() {
         )}
       </main>
     </>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense
+      fallback={
+        <>
+          <Header />
+          <main className="flex-1 max-w-7xl mx-auto px-4 py-8">
+            <div className="mb-6 h-16 rounded-xl bg-dark-800 animate-pulse" />
+            <div className="mb-4 text-dark-400 text-sm">Loading restaurants…</div>
+            <ResultsSkeleton />
+          </main>
+        </>
+      }
+    >
+      <SearchPageContent />
+    </Suspense>
   );
 }

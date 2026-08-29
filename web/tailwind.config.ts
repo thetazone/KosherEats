@@ -52,7 +52,7 @@ const config: Config = {
         pareve: colors.green,
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
       },
     },
   },

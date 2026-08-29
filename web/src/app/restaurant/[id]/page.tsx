@@ -5,16 +5,9 @@ import { RequestButton, useRestaurantRequest } from "@/components/restaurant/Req
 import { certIsPending, certLabel } from "@/lib/kosher";
 import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
 import { isPreviewListing } from "@/types";
-import type { MenuCategory, MenuItem, Restaurant } from "@/types";
+import type { Cart, CartItem, MenuCategory, MenuItem, Restaurant } from "@/types";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-
-interface LocalCartItem {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-}
+import { useEffect, useRef, useState } from "react";
 
 function isUnauthorized(err: unknown): boolean {
   const msg = String(err instanceof Error ? err.message : err).toLowerCase();
@@ -39,10 +32,11 @@ export default function RestaurantPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [cart, setCart] = useState<LocalCartItem[]>([]);
+  const [cart, setCart] = useState<Cart | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
   const [mutatingItemId, setMutatingItemId] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // "Request restaurant" state for preview listings. The hook re-syncs when
   // the restaurant record finishes loading (before the early returns below —
@@ -63,19 +57,31 @@ export default function RestaurantPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [r, m] = await Promise.all([
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+      const [r, m, c] = await Promise.all([
         restaurantsApi.get(restaurantId) as Promise<Restaurant>,
         restaurantsApi.getMenu(restaurantId) as Promise<MenuCategory[]>,
+        // Cart is supplementary — an expired/missing token shouldn't fail the
+        // whole page load, so swallow errors here.
+        token ? (cartApi.get(token) as Promise<Cart>).catch(() => null) : Promise.resolve(null),
       ]);
       setRestaurant(r);
       const categories = [...m].sort((a, b) => a.sort_order - b.sort_order);
       setMenu(categories);
       setActiveCategory(categories[0]?.id);
+      // Only seed the sidebar with a server cart that belongs to this
+      // restaurant — one for a different restaurant isn't "your order" here.
+      setCart(c && c.restaurant_id === restaurantId ? c : null);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load restaurant");
     } finally {
       setLoading(false);
     }
+  }
+
+  function selectCategory(catId: string) {
+    setActiveCategory(catId);
+    categoryRefs.current[catId]?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function addToCart(item: MenuItem) {
@@ -89,20 +95,12 @@ export default function RestaurantPage() {
     setMutatingItemId(item.id);
     setMutationError(null);
     try {
-      await cartApi.addItem(token, {
+      const updated = await cartApi.addItem(token, {
         menu_item_id: item.id,
         restaurant_id: id,
         quantity: 1,
-      });
-      setCart((prev) => {
-        const existing = prev.find((c) => c.id === item.id);
-        if (existing) {
-          return prev.map((c) =>
-            c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c
-          );
-        }
-        return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }];
-      });
+      }) as Cart;
+      setCart(updated);
     } catch (err) {
       if (isUnauthorized(err)) {
         window.localStorage.removeItem("token");
@@ -115,8 +113,39 @@ export default function RestaurantPage() {
     }
   }
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  async function decrementCartItem(item: MenuItem, cartItem: CartItem) {
+    const token = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+    if (!token) {
+      router.push("/auth");
+      return;
+    }
+
+    setMutatingItemId(item.id);
+    setMutationError(null);
+    try {
+      const next = cartItem.quantity - 1;
+      if (next <= 0) {
+        await cartApi.removeItem(token, cartItem.id);
+      } else {
+        await cartApi.updateItem(token, cartItem.id, { quantity: next, notes: cartItem.notes ?? "" });
+      }
+      const fresh = await cartApi.get(token) as Cart;
+      setCart(fresh);
+    } catch (err) {
+      if (isUnauthorized(err)) {
+        window.localStorage.removeItem("token");
+        router.push("/auth");
+        return;
+      }
+      setMutationError(err instanceof Error ? err.message : "Failed to update cart");
+    } finally {
+      setMutatingItemId(null);
+    }
+  }
+
+  const cartItems = cart?.items ?? [];
+  const cartTotal = cart?.subtotal ?? 0;
+  const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   if (loading) {
     return (
@@ -194,8 +223,8 @@ export default function RestaurantPage() {
           </div>
         </div>
 
-        {/* pb clears the fixed mobile request bar on previews */}
-        <div className={`max-w-7xl mx-auto px-4 py-6 ${isPreview ? "pb-24 lg:pb-6" : ""}`}>
+        {/* pb clears the fixed mobile request/cart bar on previews and once items are in the cart */}
+        <div className={`max-w-7xl mx-auto px-4 py-6 ${isPreview || cartCount > 0 ? "pb-24 lg:pb-6" : ""}`}>
           {/* Restaurant Info — previews have no ratings or delivery terms,
               so only the cuisine line renders for them. */}
           <div className="flex flex-wrap items-center gap-4 mb-6">
@@ -279,11 +308,14 @@ export default function RestaurantPage() {
               {/* Category Tabs */}
               {menu.length > 0 && (
                 <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
-                  <div className="flex gap-3 overflow-x-auto">
+                  <div className="flex gap-3 overflow-x-auto" role="tablist" aria-label="Menu categories">
                     {menu.map((cat) => (
                       <button
                         key={cat.id}
-                        onClick={() => setActiveCategory(cat.id)}
+                        role="tab"
+                        aria-selected={activeCategory === cat.id}
+                        aria-controls={`category-${cat.id}`}
+                        onClick={() => selectCategory(cat.id)}
                         className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                           activeCategory === cat.id
                             ? "bg-brand-500 text-white"
@@ -332,11 +364,18 @@ export default function RestaurantPage() {
                 )
               ) : (
                 menu.map((category) => (
-                  <div key={category.id} className="mb-8">
+                  <div
+                    key={category.id}
+                    id={`category-${category.id}`}
+                    ref={(el) => {
+                      categoryRefs.current[category.id] = el;
+                    }}
+                    className="mb-8 scroll-mt-32"
+                  >
                     <h2 className="text-xl font-bold mb-4">{category.name}</h2>
                     <div className="space-y-3">
                       {(category.items ?? []).map((item) => {
-                        const cartItem = cart.find((c) => c.id === item.id);
+                        const cartItem = cartItems.find((c) => c.menu_item_id === item.id);
                         const isPending = mutatingItemId === item.id;
                         return (
                           <div
@@ -369,16 +408,35 @@ export default function RestaurantPage() {
                             {!isPreview && (
                             <div className="flex items-center gap-2">
                               {cartItem ? (
-                                <div className="flex items-center gap-3 bg-dark-800 rounded-xl px-3 py-2">
+                                <div className="flex items-center bg-dark-800 rounded-xl px-1">
+                                  <button
+                                    onClick={() => decrementCartItem(item, cartItem)}
+                                    disabled={isPending}
+                                    aria-label={cartItem.quantity === 1 ? "Remove item" : "Decrease quantity"}
+                                    className="group w-11 h-11 disabled:opacity-50 flex items-center justify-center"
+                                  >
+                                    <span className="w-8 h-8 rounded-full bg-dark-700 group-hover:bg-dark-600 flex items-center justify-center text-white transition-colors">
+                                      {cartItem.quantity === 1 ? (
+                                        <svg className="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </span>
+                                  </button>
                                   <span className="font-semibold w-6 text-center">
                                     {cartItem.quantity}
                                   </span>
                                   <button
                                     onClick={() => addToCart(item)}
                                     disabled={isPending || !item.is_available}
-                                    className="w-7 h-7 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                                    aria-label="Increase quantity"
+                                    className="group w-11 h-11 disabled:opacity-50 flex items-center justify-center"
                                   >
-                                    +
+                                    <span className="w-8 h-8 rounded-full bg-brand-500 group-hover:bg-brand-600 flex items-center justify-center text-white transition-colors">
+                                      +
+                                    </span>
                                   </button>
                                 </div>
                               ) : (
@@ -422,14 +480,14 @@ export default function RestaurantPage() {
               ) : (
               <div className="sticky top-24 card p-5">
                 <h3 className="font-bold text-lg mb-4">Your Order</h3>
-                {cart.length === 0 ? (
+                {cartItems.length === 0 ? (
                   <p className="text-dark-400 text-sm text-center py-8">
                     Your cart is empty. Add items from the menu to get started.
                   </p>
                 ) : (
                   <>
                     <div className="space-y-3 mb-4">
-                      {cart.map((item) => (
+                      {cartItems.map((item) => (
                         <div key={item.id} className="flex justify-between items-center">
                           <div>
                             <span className="text-sm font-medium">
@@ -449,14 +507,11 @@ export default function RestaurantPage() {
                       </div>
                       <div className="flex justify-between text-sm text-dark-400 mb-1">
                         <span>Delivery fee</span>
-                        <span>${(rest.delivery_fee / 100).toFixed(2)}</span>
+                        <span>from ${(rest.delivery_fee / 100).toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between font-semibold mt-2">
-                        <span>Total</span>
-                        <span className="text-brand-400">
-                          ${((cartTotal + rest.delivery_fee) / 100).toFixed(2)}
-                        </span>
-                      </div>
+                      <p className="text-dark-500 text-xs mt-2">
+                        Delivery fee, service fee, and tax are calculated from your address when you start checkout.
+                      </p>
                     </div>
                     <a href="/cart" className="btn-primary w-full block text-center">
                       Go to Checkout
@@ -496,7 +551,7 @@ export default function RestaurantPage() {
               </span>
               <span className="font-semibold">Go to Checkout</span>
               <span className="font-semibold">
-                ${((cartTotal + rest.delivery_fee) / 100).toFixed(2)}
+                ${(cartTotal / 100).toFixed(2)}
               </span>
             </a>
           </div>

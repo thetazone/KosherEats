@@ -9,13 +9,14 @@ export function SearchBar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim()) {
-      router.push(`/search?q=${encodeURIComponent(query)}`);
-    }
+    const trimmed = query.trim();
+    // /search reads ?q=; send the trimmed term so the box there matches what
+    // was actually searched. An empty submit still opens the browse list.
+    router.push(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : "/search");
   };
 
   return (
-    <form onSubmit={handleSearch} className="max-w-2xl mx-auto w-full">
+    <form onSubmit={handleSearch} className="max-w-2xl w-full">
       <div className="relative">
         <svg
           className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400"
@@ -31,11 +32,12 @@ export function SearchBar() {
           />
         </svg>
         <input
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search kosher restaurants"
           placeholder="Search for kosher restaurants, cuisines, or dishes..."
-          className="w-full bg-dark-800 border border-dark-700 rounded-2xl pl-12 pr-4 py-4 text-white placeholder-dark-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors text-lg"
+          className="w-full input rounded-2xl pl-12 pr-4 py-4 text-lg"
         />
       </div>
     </form>
