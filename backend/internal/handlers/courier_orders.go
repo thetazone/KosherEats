@@ -430,6 +430,19 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 	// in-house delivery. Removed. (Courier payout only applies to platform-mode
 	// in-house deliveries; external-mode orders are delivered + billed by the
 	// provider, and orders.provider_fee_cents records that cost for accounting.)
+	//
+	// OPEN FINDING (2026-07-29 audit), deliberately left as-is: delivery_fee is
+	// the CONSUMER-facing fee — the courier cost PLUS the tiered KosherEats
+	// marketplace markup checkout added and that KE is supposed to keep — so
+	// every in-house delivery credits the courier, and charges the payout queue,
+	// delivery_markup_cents more than intended. SellerDeliverOrder solves the
+	// identical split correctly (orders.go): it reads the markup frozen on the
+	// order row at checkout and subtracts it before paying the seller. The two
+	// payout paths therefore disagree on the same arithmetic. Not changed here
+	// because what a real courier earns is a business decision, not a
+	// test-driven cleanup; the behavior is pinned by
+	// TestIntegration_CourierPayoutIsDeliveryFeePlusFullTip so any change to the
+	// split is a reviewed edit rather than silent drift.
 	_ = subtotal
 	payout := deliveryFee + tip
 

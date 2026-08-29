@@ -68,11 +68,18 @@ type testEnv struct {
 // harness is the process-wide shared environment, built once in TestMain.
 var harness *testEnv
 
-func TestMain(m *testing.M) {
-	dbURL := os.Getenv("TEST_DATABASE_URL")
-	if dbURL == "" {
-		dbURL = defaultTestDatabaseURL
+// testDatabaseURL is the one place the suite resolves its Postgres DSN, so a
+// test that needs its own pool (see webhook_push_scope_test.go) connects to the
+// same database the harness migrated.
+func testDatabaseURL() string {
+	if url := os.Getenv("TEST_DATABASE_URL"); url != "" {
+		return url
 	}
+	return defaultTestDatabaseURL
+}
+
+func TestMain(m *testing.M) {
+	dbURL := testDatabaseURL()
 
 	// If the target database doesn't exist yet, create it by connecting to the
 	// maintenance `postgres` database on the same server. This keeps the suite
@@ -93,6 +100,11 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	if err := db.RunMigrations(ctx, migrationsDir()); err != nil {
 		fmt.Fprintf(os.Stderr, "integration harness: run migrations: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := resetFixtures(ctx, db.Pool, dbURL); err != nil {
+		fmt.Fprintf(os.Stderr, "integration harness: reset fixtures: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -124,6 +136,55 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+// resetFixtures empties the catalog and identity tables so every run starts
+// from a known-empty database.
+//
+// Without it the suite rots as it ages. seed() unconditionally INSERTs three
+// restaurants and an owner on EVERY run and removes none of the last run's, and
+// the per-test helpers that mint their own restaurants (newSellerEnv,
+// seedPreviewRestaurant) leak whenever a run is interrupted or a t.Cleanup
+// doesn't fire. The rows accumulate forever — this database had grown to 628
+// restaurants, of which 63 were abandoned preview listings.
+//
+// That is not merely untidy: the restaurant feed is LIMIT-capped (50, or 400
+// with include_previews) and ordered by rating, so once the leaked catalog
+// exceeds the cap a freshly-seeded fixture can sort outside the page.
+// TestIntegration_PreviewListings — which asserts its preview restaurant
+// appears in the preview-aware feed — had degraded into a coin flip, failing
+// about half of runs on a long-lived database while passing on a fresh one.
+// A test whose outcome depends on how many times the suite has been run before
+// cannot be trusted either way, so the fix is to remove the accumulation.
+//
+// TRUNCATE ... CASCADE from these two roots reaches every table that references
+// them (orders, carts, menus, courier profiles, payout queues, …), which is
+// exactly the intent: nothing in this database is meant to outlive a run.
+func resetFixtures(ctx context.Context, pool *pgxpool.Pool, dbURL string) error {
+	// Refuse to truncate anything that isn't obviously a throwaway test
+	// database. TEST_DATABASE_URL is operator-supplied, and this statement is
+	// unrecoverable — a name guard is cheap next to pointing it at real data.
+	cfg, err := pgx.ParseConfig(dbURL)
+	if err != nil {
+		return fmt.Errorf("parse url: %w", err)
+	}
+	if !strings.Contains(strings.ToLower(cfg.Database), "test") {
+		return fmt.Errorf("refusing to reset database %q: the name does not contain \"test\", "+
+			"so this may not be a throwaway database", cfg.Database)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`TRUNCATE users, restaurants RESTART IDENTITY CASCADE`); err != nil {
+		return fmt.Errorf("truncate fixtures: %w", err)
+	}
+	// Not FK-linked to either root, so CASCADE doesn't reach them, and both are
+	// keyed by natural values that a later run can collide with.
+	for _, tbl := range []string{"email_otp", "external_webhook_events", "stripe_webhook_events"} {
+		if _, err := pool.Exec(ctx, `TRUNCATE `+pgx.Identifier{tbl}.Sanitize()); err != nil {
+			return fmt.Errorf("truncate %s: %w", tbl, err)
+		}
+	}
+	return nil
 }
 
 // ensureDatabaseExists creates the target database if it is missing. It parses
@@ -193,6 +254,7 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Post("/api/v1/auth/register", h.Register)
 	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/refresh", h.RefreshToken)
 	r.Post("/api/v1/auth/phone/start", h.StartPhoneLogin)
 	r.Post("/api/v1/auth/phone/verify", h.VerifyPhoneLogin)
 	r.Post("/api/v1/auth/password/forgot", h.ForgotPassword)
@@ -223,6 +285,13 @@ func buildRouter(h *Handler) http.Handler {
 		r.With(h.RequireVerifiedMiddleware).Post("/intent", h.CreatePaymentIntent)
 	})
 
+	// Same shape as production (cmd/api/main.go): authenticated, no
+	// verification gate — the checkout screen quotes before it charges.
+	r.Route("/api/v1/delivery-quote", func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Post("/", h.DeliveryQuote)
+	})
+
 	r.Route("/api/v1/user", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
 		r.Put("/profile", h.UpdateProfile)
@@ -234,6 +303,7 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Route("/api/v1/cart", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
+		r.Get("/", h.GetCart)
 		r.Post("/items", h.AddToCart)
 	})
 
@@ -727,6 +797,56 @@ func TestIntegration_AddToCartRejectsCrossRestaurantItem(t *testing.T) {
 	})
 	if ok.Code != http.StatusOK {
 		t.Fatalf("matching add: status %d (want 200), body %s", ok.Code, ok.Body.String())
+	}
+}
+
+// (5b) A rejected add must not take the customer's existing cart down with it.
+//
+// Switching restaurants wipes every line and re-points carts.restaurant_id, and
+// that wipe used to be COMMITTED before the menu item was validated — so an add
+// that then failed (item just marked unavailable, deleted, or naming an item
+// that isn't on the restaurant it claims) destroyed a full cart from the OTHER
+// restaurant and answered 400. The customer lost their order and was told only
+// "menu item not found".
+func TestIntegration_AddToCartFailureLeavesTheExistingCartIntact(t *testing.T) {
+	harness.resetVolatile(t)
+	token, _ := harness.registerUser(t, "cart-keep")
+
+	// A real cart at approvedRestID.
+	harness.addToCart(t, token, harness.approvedRestID, harness.menuItemID)
+
+	// Now try to switch to otherRestID with an item that does NOT live there
+	// (menuItemID belongs to approvedRestID), which is the same 400 path a
+	// sold-out item takes.
+	bad := harness.do(http.MethodPost, "/api/v1/cart/items", token, AddToCartRequest{
+		MenuItemID:   harness.menuItemID,
+		RestaurantID: harness.otherRestID,
+		Quantity:     1,
+	})
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("bad add: status %d (want 400), body %s", bad.Code, bad.Body.String())
+	}
+
+	cart := harness.do(http.MethodGet, "/api/v1/cart/", token, nil)
+	if cart.Code != http.StatusOK {
+		t.Fatalf("get cart: status %d, body %s", cart.Code, cart.Body.String())
+	}
+	var got struct {
+		RestaurantID string `json:"restaurant_id"`
+		Items        []struct {
+			MenuItemID string `json:"menu_item_id"`
+			Quantity   int    `json:"quantity"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(cart.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode cart: %v (body %s)", err, cart.Body.String())
+	}
+	if got.RestaurantID != harness.approvedRestID {
+		t.Errorf("cart was re-pointed to %q by a failed add, want %q",
+			got.RestaurantID, harness.approvedRestID)
+	}
+	if len(got.Items) != 1 || got.Items[0].MenuItemID != harness.menuItemID {
+		t.Fatalf("failed add emptied the cart: %+v", got.Items)
 	}
 }
 

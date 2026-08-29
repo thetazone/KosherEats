@@ -1,11 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
+import { SearchBar } from "@/components/ui/SearchBar";
 import {
   Truck,
   ShieldCheck,
   Store,
   Smartphone,
-  ChevronRight,
   Star,
   Clock,
   MapPin,
@@ -46,7 +46,7 @@ const HOW_IT_WORKS = [
     icon: Truck,
     title: "Get it delivered",
     description:
-      "Track your order in real-time from kitchen to your door.",
+      "Follow your order from kitchen to door with live status at every step.",
   },
 ];
 
@@ -176,6 +176,9 @@ export default function Home() {
             <span className="text-2xl font-extrabold text-white">Eats</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
+            <Link href="/search" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">
+              Browse restaurants
+            </Link>
             <a href="#how-it-works" className="text-dark-300 hover:text-white transition-colors text-sm font-medium">
               How it works
             </a>
@@ -228,20 +231,26 @@ export default function Home() {
                   Pas Yisroel, meat, dairy, or pareve.
                 </p>
 
+                {/* Primary entry into the funnel — submitting goes to
+                    /search?q=<term>; the button below opens the full list. */}
+                <div className="mb-6">
+                  <SearchBar />
+                </div>
+
                 <div className="flex flex-col sm:flex-row gap-4">
+                  <Link
+                    href="/search"
+                    className="btn-primary text-lg py-4 px-8 flex items-center justify-center gap-2"
+                  >
+                    <Store className="w-5 h-5" />
+                    Browse restaurants
+                  </Link>
                   <a
                     href="#download"
-                    className="btn-primary text-lg py-4 px-8 flex items-center justify-center gap-2"
+                    className="btn-secondary text-lg py-4 px-8 flex items-center justify-center gap-2"
                   >
                     <Smartphone className="w-5 h-5" />
                     Download the app
-                  </a>
-                  <a
-                    href="#how-it-works"
-                    className="btn-secondary text-lg py-4 px-8 flex items-center justify-center gap-2"
-                  >
-                    Learn more
-                    <ChevronRight className="w-5 h-5" />
                   </a>
                 </div>
               </div>
@@ -528,6 +537,9 @@ export default function Home() {
             <div>
               <h4 className="font-semibold mb-4">Order</h4>
               <ul className="space-y-2 text-dark-400 text-sm">
+                <li>
+                  <Link href="/search" className="hover:text-white transition-colors">Browse restaurants</Link>
+                </li>
                 <li>
                   <a href="#download" className="hover:text-white transition-colors">Get the app</a>
                 </li>

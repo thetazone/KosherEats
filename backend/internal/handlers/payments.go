@@ -191,11 +191,11 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 				deliveryMethod = quote.provider
 			} else {
 				deliveryFee = deliveryFeeFallbackCents
-				deliveryMethod = "flat_rate"
+				deliveryMethod = deliveryProviderUnavailable
 			}
 		} else {
 			deliveryFee = deliveryFeeFallbackCents
-			deliveryMethod = "flat_rate"
+			deliveryMethod = deliveryProviderUnavailable
 		}
 
 		// Refuse the charge when no courier can actually be had.
@@ -213,7 +213,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		// strands in 'ready' with no automatic refund. That is exactly how
 		// orders 356a73e9 and d2bee10e were charged and stranded on 2026-08-11.
 		// Failing here costs a checkout; failing later costs a customer's money.
-		if deliveryMethod == "flat_rate" {
+		if deliveryMethod == deliveryProviderUnavailable {
 			slog.Error("checkout: refusing delivery order — no courier provider could quote",
 				slog.String("restaurant_id", cartRestID))
 			writeError(w, http.StatusServiceUnavailable,
@@ -268,7 +268,10 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	if isPickup {
 		deliveryAddrToStamp = ""
 	}
-	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp)
+	// cartRestID, not a client-supplied id: the whole bundle was priced against
+	// the cart's restaurant, and CreateOrder re-derives the same value from the
+	// cart, so stamping it binds the pickup end of the quoted route.
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp, cartRestID)
 	if err != nil {
 		// Surface the real Stripe error to the logs so future "failed to
 		// create payment" reports take seconds, not an hour, to diagnose.
@@ -524,14 +527,31 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 		orderID := h.lookupOrderByPaymentIntent(r.Context(), charge.PaymentIntent)
+		// charge.refunded fires for PARTIAL refunds too — a goodwill credit for a
+		// missing side, a price adjustment — and those say nothing about whether
+		// the courier earned their fee. Halting on one is unrecoverable: the queue
+		// row goes to failed_permanent, the sweep never retries it, and payout.go
+		// deliberately refuses to resurrect a terminal row, so the courier who
+		// completed that delivery is simply never paid. Only a refund of the whole
+		// charge means the delivery isn't being paid for.
+		//
+		// A charge object with no usable amount still halts: we cannot tell the two
+		// apart, and paying out of a possibly-fully-reversed charge is the more
+		// expensive mistake to make silently. Either way the admin alert fires, so
+		// a partial refund that SHOULD stop a payout still reaches a human.
+		fullRefund := charge.Amount <= 0 || charge.AmountRefunded >= charge.Amount
 		slog.Info("StripeWebhook: charge refunded",
 			slog.String("charge", charge.ID),
 			slog.String("payment_intent", charge.PaymentIntent),
 			slog.String("order_id", orderID),
-			slog.Int("amount_refunded_cents", charge.AmountRefunded))
+			slog.Int("amount_refunded_cents", charge.AmountRefunded),
+			slog.Int("amount_cents", charge.Amount),
+			slog.Bool("full_refund", fullRefund))
 		alertSubject = "Stripe charge refunded"
 		alertBody = refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded)
-		haltPayoutOrderID = orderID
+		if fullRefund {
+			haltPayoutOrderID = orderID
+		}
 	}
 
 	// Halt the courier payout for a refunded/disputed order — but only a still-

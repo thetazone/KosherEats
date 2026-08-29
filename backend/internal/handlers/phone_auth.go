@@ -158,6 +158,19 @@ func (h *Handler) StartPhoneChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "phone must be in E.164 format (+15551234567)")
 		return
 	}
+
+	// phone_otp_starts is keyed by phone alone and shared with the login flow,
+	// so this endpoint must honor the same lockout StartPhoneLogin does —
+	// otherwise any authenticated user can wipe locked_until/failed_attempts for
+	// an arbitrary number and brute-force (or SMS-bomb) it indefinitely.
+	var lockedUntil *time.Time
+	_ = h.db.Pool.QueryRow(r.Context(),
+		`SELECT locked_until FROM phone_otp_starts WHERE phone = $1`, phone).Scan(&lockedUntil)
+	if lockedUntil != nil && time.Now().Before(*lockedUntil) {
+		writeError(w, http.StatusTooManyRequests, "too many attempts — try again in a few minutes")
+		return
+	}
+
 	if err := h.sms.Start(r.Context(), phone); err != nil {
 		writeError(w, http.StatusBadGateway, "failed to send verification code")
 		return
@@ -362,7 +375,7 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	token, refresh, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
+	token, refresh, err := h.generateTokens(r.Context(), user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to issue token")
 		return

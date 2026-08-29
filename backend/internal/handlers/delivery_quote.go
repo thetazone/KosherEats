@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
@@ -14,6 +16,12 @@ const (
 	// configured or all quotes fail — we can't compute "provider + markup"
 	// without a quote, so we fall back to a flat fee rather than block delivery.
 	deliveryFeeFallbackCents = 599 // $5.99
+
+	// Sentinel provider meaning "no courier could quote this route". It is not a
+	// bookable delivery: CreatePaymentIntent refuses a delivery order priced this
+	// way with a 503 (payments.go). Named rather than spelled out at each use so
+	// the quote endpoint and the charge endpoint cannot drift apart.
+	deliveryProviderUnavailable = "flat_rate"
 )
 
 type DeliveryQuoteRequest struct {
@@ -28,6 +36,18 @@ type DeliveryQuoteResponse struct {
 	EstMinutes       int    `json:"est_minutes"`
 	Provider         string `json:"provider"`
 	ProviderFeeCents int    `json:"provider_fee"`
+
+	// True when no courier could quote this route, i.e. the fee above is the
+	// flat fallback and not a bookable price — CreatePaymentIntent will refuse a
+	// delivery order for this cart with a 503. Clients should surface "delivery
+	// unavailable, choose pickup" here rather than rendering the fee, so the
+	// consumer learns it before filling in payment instead of after.
+	//
+	// Additive on purpose: `provider` and the 200 status are a published
+	// contract that iOS, Android and web all read, so this flag carries the
+	// signal without changing either. Clients that ignore it behave exactly as
+	// before (fee shown, 503 at checkout).
+	DeliveryUnavailable bool `json:"delivery_unavailable"`
 }
 
 // DeliveryQuote returns the dynamic delivery fee for a given restaurant →
@@ -105,10 +125,11 @@ func (h *Handler) DeliveryQuote(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, DeliveryQuoteResponse{
-		DeliveryFeeCents: quote.consumerFee,
-		EstMinutes:       quote.estMinutes,
-		Provider:         quote.provider,
-		ProviderFeeCents: quote.providerFee,
+		DeliveryFeeCents:    quote.consumerFee,
+		EstMinutes:          quote.estMinutes,
+		Provider:            quote.provider,
+		ProviderFeeCents:    quote.providerFee,
+		DeliveryUnavailable: quote.provider == deliveryProviderUnavailable,
 	})
 }
 
@@ -206,7 +227,23 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, p quoteParams) deliveryQ
 		// and DoorDash 400s here but succeeds there, hiding the provider from
 		// the price the consumer actually agrees to.
 		q, err := h.doordash.GetQuote(ctx, doordash.CreateDeliveryRequest{
-			ExternalDeliveryID: "quote_check",
+			// Unique per request, never a constant. DoorDash records a quote
+			// under its external_delivery_id and answers 409
+			// duplicate_delivery_id when one is reused, which quoteDeliveryFee
+			// can only read as "this provider failed". A fixed id therefore
+			// dropped DoorDash from the CONSUMER-facing auction from its second
+			// use onward, while dispatch kept quoting it happily: the consumer
+			// is charged a price computed without the provider that then
+			// delivers, which is the same checkout/dispatch divergence
+			// documented on quoteParams. (Dispatch now mints a fresh id per
+			// attempt too — dispatch/external.go — for the mirror-image reason:
+			// there it was the RETRIES that lost DoorDash.) With
+			// DoorDash as the only provider it is worse still: every quote 409s,
+			// quoteDeliveryFee returns the "flat_rate" sentinel, and
+			// CreatePaymentIntent refuses the delivery with a 503.
+			// This is a price check, never a delivery, so the id only has to be
+			// unique — nothing later joins on it.
+			ExternalDeliveryID: "quote_" + uuid.NewString(),
 			PickupAddress:      p.pickupAddress,
 			PickupBusinessName: p.restaurantName,
 			PickupPhone:        p.restaurantPhone,
@@ -240,7 +277,7 @@ func (h *Handler) quoteDeliveryFee(ctx context.Context, p quoteParams) deliveryQ
 			consumerFee: deliveryFeeFallbackCents,
 			providerFee: 0,
 			estMinutes:  30,
-			provider:    "flat_rate",
+			provider:    deliveryProviderUnavailable,
 		}
 	}
 

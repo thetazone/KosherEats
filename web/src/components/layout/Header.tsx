@@ -118,10 +118,12 @@ export function Header() {
           </Link>
           <Link
             href="/cart"
+            aria-label={`Cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}
             className="relative text-dark-300 hover:text-white transition-colors"
           >
             <svg
               className="w-6 h-6"
+              aria-hidden="true"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -134,7 +136,10 @@ export function Header() {
               />
             </svg>
             {cartCount > 0 && (
-              <span className="absolute -top-1 -right-2 bg-brand-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              <span
+                aria-hidden="true"
+                className="absolute -top-1 -right-2 bg-brand-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold"
+              >
                 {cartCount}
               </span>
             )}
@@ -160,11 +165,16 @@ export function Header() {
 
         {/* Mobile menu button */}
         <button
-          className="md:hidden text-dark-300"
+          type="button"
+          aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={isMenuOpen}
+          aria-controls="mobile-menu"
+          className="md:hidden -mr-2 w-11 h-11 flex items-center justify-center text-dark-300"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
           <svg
             className="w-6 h-6"
+            aria-hidden="true"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -185,7 +195,10 @@ export function Header() {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden bg-dark-900 border-t border-dark-800 px-4 py-4 space-y-4">
+        <div
+          id="mobile-menu"
+          className="md:hidden bg-dark-900 border-t border-dark-800 px-4 py-4 space-y-4"
+        >
           <Link href="/search" className="block text-dark-300 text-sm font-medium">
             Search
           </Link>

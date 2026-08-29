@@ -3,6 +3,7 @@ package dispatch
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/koshereats/backend/internal/doordash"
@@ -173,6 +174,53 @@ func TestMissingPhoneIsPermanent(t *testing.T) {
 		err := fmt.Errorf("%w: missing %s phone", ErrNotDispatchable, which)
 		if !IsPermanent(err) {
 			t.Fatalf("a missing %s phone must be permanent, got transient for %v", which, err)
+		}
+	}
+}
+
+// The all-providers-failed error returned to CALLERS must carry the same
+// verdict the internal bookkeeping computed. Before quoteBatchError it did not:
+// Dispatch counted a mixed 400+503 batch as one transient attempt (right) while
+// returning an error that errors.As classified permanent (wrong, and
+// order-dependent), so EscalateToUber answered the seller 422 "permanently
+// undeliverable" during a provider outage a retry would have survived.
+func TestQuoteBatchErrorCarriesItsOwnVerdict(t *testing.T) {
+	mixed := errors.Join(
+		&uberdirect.APIError{StatusCode: 400, Body: "bad address"}, // permanent, FIRST in tree order
+		&doordash.APIError{StatusCode: 503},                        // transient
+	)
+	transientBatch := &quoteBatchError{permanent: false, causes: mixed}
+	if isPermanentProviderError(transientBatch) {
+		t.Error("a batch computed transient must not classify permanent through its causes")
+	}
+	if IsPermanent(transientBatch) {
+		t.Error("IsPermanent must honor the batch verdict, not errors.As over the join")
+	}
+
+	// The reverse ordering must classify identically — the whole point is that
+	// the verdict no longer depends on which error happens to be first.
+	reversed := &quoteBatchError{permanent: false, causes: errors.Join(
+		&doordash.APIError{StatusCode: 503},
+		&uberdirect.APIError{StatusCode: 400},
+	)}
+	if isPermanentProviderError(reversed) {
+		t.Error("classification is still order-dependent")
+	}
+
+	allPermanent := &quoteBatchError{permanent: true, causes: errors.Join(
+		&uberdirect.APIError{StatusCode: 400},
+		&doordash.APIError{StatusCode: 422},
+	)}
+	if !IsPermanent(allPermanent) {
+		t.Error("a batch where every provider gave a validation 4xx must be permanent")
+	}
+
+	// The message must still name every provider failure — an operator reading
+	// the log or the seller-facing 422 needs all of them, not just the first.
+	msg := allPermanent.Error()
+	for _, want := range []string{"all providers failed to quote", "uber 400", "doordash 422"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error message %q is missing %q", msg, want)
 		}
 	}
 }

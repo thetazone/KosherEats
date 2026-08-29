@@ -154,6 +154,34 @@ const orphanRefundBatchLimit = 20
 // still being worked.
 const payoutProcessingTimeout = 15 * time.Minute
 
+// payoutIdempotencyGuardAfter is how old a queue row may get before we stop
+// trusting the Stripe idempotency key to protect a re-attempt. Stripe retains
+// keys for payments.IdempotencyRetention (24h); this sits a few hours under
+// that so clock skew and a slow tick can't push an attempt past the real
+// cutoff. Past this age an attempt asks Stripe whether the transfer already
+// landed instead of replaying a key Stripe may have forgotten.
+//
+// The backoff schedule alone keeps a normal run well inside this (see
+// payoutRetryHorizon). The guard exists for the paths that are NOT bounded by
+// that schedule: the reaper, which resets a stuck 'processing' row to 'pending'
+// WITHOUT bumping attempt_count (so a crash loop can re-attempt forever), and
+// the Temporal branch, which re-Starts stuck 'processing' rows every tick
+// indefinitely.
+//
+// It keys off created_at, which for the common case is within a tick of the
+// first attempt. A row queued before the courier onboarded to Connect (NULL
+// connect id, backfilled days later by the account.updated webhook) is older
+// than its first attempt, so the guard fires early there — that costs one
+// read-only list call and returns "nothing transferred yet", never a wrong pay.
+const payoutIdempotencyGuardAfter = 20 * time.Hour
+
+// payoutReconcileRetrySecs is how long a payout waits when the Stripe
+// reconcile lookup itself fails. We can't transfer (the key may be expired and
+// we don't know whether money already moved) and we must not consume an
+// attempt — a failed lookup is not a failed payout — so the row goes back to
+// pending for a later tick.
+const payoutReconcileRetrySecs = 900 // 15 min
+
 type Dispatcher struct {
 	db       *pgxpool.Pool
 	notify   *notify.Notifier
@@ -472,6 +500,15 @@ func (d *Dispatcher) reapStaleDispatchClaims(ctx context.Context) {
 		   -- only a crashed/dead claim is ever this old. A shorter window risked
 		   -- resetting a still-in-flight dispatch and orphaning a paid delivery.
 		   AND updated_at < NOW() - INTERVAL '10 minutes'`)
+	// This predicate cannot tell a claim taken BEFORE the paid CreateDelivery
+	// (safe to recycle) from one stranded AFTER it (recycling buys a SECOND
+	// courier for food already in flight). Dispatch closes the common cause —
+	// its persist now runs on a detached context and pages an operator if the
+	// write still fails — but a database refusing writes can leave a post-create
+	// claim that matches here exactly. The statement above is copied verbatim
+	// into dispatch.reapStaleDispatchClaimsSQL, where
+	// TestDispatch_PersistFailureStrandsClaimAndLetsTheReaperDoubleBuy pins that
+	// residual end to end; keep the two in sync.
 	if err != nil {
 		slog.Error("reap-dispatch-claims: failed", slog.String("error", err.Error()))
 		return
@@ -784,8 +821,13 @@ type staleOrder struct {
 // the distance lookup. Safe to run concurrently with manual ClaimOrder
 // because the assignment UPDATE is CAS-style on courier_id IS NULL.
 func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
+	// LEFT JOIN + COALESCEd user_id: an order whose consumer deleted their account
+	// carries user_id = NULL, and an INNER JOIN made those rows invisible to the
+	// sweep — a paid, cooked order that no courier could ever be assigned to. The
+	// delivery address and payout live on the order itself, so it stays dispatchable
+	// without a users row; only the customer's name/phone come back empty.
 	rows, err := d.db.Query(ctx, `
-		SELECT o.id, o.user_id, o.restaurant_id, rest.name, rest.lat, rest.lng,
+		SELECT o.id, COALESCE(o.user_id::text, ''), o.restaurant_id, rest.name, rest.lat, rest.lng,
 		       COALESCE(rest.street || ', ' || rest.city || ', ' || rest.state || ' ' || rest.zip_code, ''),
 		       COALESCE(rest.phone, ''),
 		       COALESCE(o.delivery_address, ''), o.delivery_lat, o.delivery_lng,
@@ -798,7 +840,7 @@ func (d *Dispatcher) sweepAutoDispatch(ctx context.Context) {
 		       COALESCE(o.delivery_mode, rest.delivery_mode, 'platform')
 		  FROM orders o
 		  JOIN restaurants rest ON rest.id = o.restaurant_id
-		  JOIN users u ON u.id = o.user_id
+		  LEFT JOIN users u ON u.id = o.user_id
 		 WHERE o.status = 'ready'
 		   AND o.courier_id IS NULL
 		   AND o.fulfillment_type = 'delivery'
@@ -978,7 +1020,7 @@ func (d *Dispatcher) sweepExternalDeliveryStatus(ctx context.Context) {
 	}
 
 	rows, err := d.db.Query(ctx, `
-		SELECT id, user_id, status, external_delivery_id, updated_at
+		SELECT id, COALESCE(user_id::text, ''), status, external_delivery_id, updated_at
 		  FROM orders
 		 WHERE external_provider = 'uber_direct'
 		   AND external_delivery_id IS NOT NULL
@@ -1101,6 +1143,19 @@ func (d *Dispatcher) reconcileUberDeliveryStatus(ctx context.Context, o external
 		}
 
 	case uberDeliveryCanceled:
+		// 'accepted'/'preparing' belong here for the same reason all three
+		// provider webhook cancel branches carry them: EscalateToUber and the
+		// dispatch claim CAS both accept those states, so an order handed to Uber
+		// while the kitchen was still cooking can be sitting at 'accepted' or
+		// 'preparing' with live provider linkage. This reconciler is the ONLY
+		// recovery when the cancel webhook never arrives — and with the narrower
+		// set it silently matched 0 rows for exactly those orders, welding them to
+		// a dead delivery: the claim CAS needs NULL linkage to re-arm, ClaimOrder
+		// and the courier feeds exclude external_provider IS NOT NULL, CancelOrder
+		// refuses while a provider owns the row, and sweepStuckExternalDeliveries
+		// only watches 'ready'/'picked_up' — so nothing even alerted. The other two
+		// branches of this switch already accept the pre-ready states; only this
+		// one was narrow.
 		tag, err := d.db.Exec(ctx, `
 			UPDATE orders
 			   SET external_delivery_id = NULL,
@@ -1111,7 +1166,7 @@ func (d *Dispatcher) reconcileUberDeliveryStatus(ctx context.Context, o external
 			 WHERE id = $1
 			   AND external_provider = 'uber_direct'
 			   AND external_delivery_id = $2
-			   AND status IN ('ready', 'picked_up')`,
+			   AND status IN ('accepted', 'preparing', 'ready', 'picked_up')`,
 			o.orderID, o.deliveryID)
 		if err != nil {
 			slog.Error("external-status: canceled reconcile failed",
@@ -1124,7 +1179,17 @@ func (d *Dispatcher) reconcileUberDeliveryStatus(ctx context.Context, o external
 			slog.Warn("external-status: Uber delivery canceled; order re-opened for dispatch",
 				slog.String("order_id", o.orderID),
 				slog.String("delivery_id", o.deliveryID))
+			return
 		}
+		// A 0-row cancel is the branch where silence costs the most (see above):
+		// the order keeps the dead linkage and nothing else will mention it. The
+		// row was selected moments ago in an advanceable status, so reaching here
+		// means the linkage or status moved under us — say so rather than
+		// no-oping, mirroring logProviderScopeMiss on the webhook side.
+		slog.Warn("external-status: Uber delivery canceled but no order row matched — linkage may be stale",
+			slog.String("order_id", o.orderID),
+			slog.String("delivery_id", o.deliveryID),
+			slog.String("status_at_select", o.status))
 	}
 }
 
@@ -1149,8 +1214,15 @@ func (d *Dispatcher) sweepStaleRejection(ctx context.Context) {
 	// scheduled order older than the TTL the instant it went pending, so it was
 	// auto-rejected + refunded immediately. For a normally-created pending order
 	// created_at == updated_at, so this is a no-op there.
+	//
+	// user_id is COALESCEd because it can legitimately be NULL: DeleteAccount
+	// anonymizes an account's orders in place. Scanning a NULL into consumerID's
+	// plain string errors, and a scan error here means the row is skipped every
+	// tick — an anonymized paid order would never be rejected and never refunded,
+	// leaving the customer charged forever behind a repeating log line. An empty
+	// consumer id costs us only the (undeliverable) push, so reject + refund it.
 	rows, err := d.db.Query(ctx, `
-		SELECT o.id, o.user_id, rest.name, COALESCE(o.stripe_payment_id, '')
+		SELECT o.id, COALESCE(o.user_id::text, ''), rest.name, COALESCE(o.stripe_payment_id, '')
 		  FROM orders o
 		  JOIN restaurants rest ON rest.id = o.restaurant_id
 		 WHERE o.status = 'pending'
@@ -1276,6 +1348,71 @@ type pendingPayout struct {
 	connectID    string
 	amountCents  int
 	attemptCount int
+	// createdAt dates the row so we can tell whether an attempt is still
+	// covered by Stripe's idempotency-key retention. See
+	// payoutIdempotencyGuardAfter.
+	createdAt time.Time
+}
+
+// payoutGuardResult is what the pre-transfer idempotency guard decided.
+type payoutGuardResult int
+
+const (
+	// payoutGuardProceed: the attempt is safe to make.
+	payoutGuardProceed payoutGuardResult = iota
+	// payoutGuardAlreadyPaid: Stripe already has this transfer and the row has
+	// been reconciled to completed. Moving money again would double-pay.
+	payoutGuardAlreadyPaid
+	// payoutGuardUnknown: we couldn't determine whether money already moved.
+	// Skip the attempt rather than risk a double transfer.
+	payoutGuardUnknown
+)
+
+// guardPayoutIdempotency decides whether it is safe to (re-)fire a payout whose
+// Stripe idempotency key may have aged out of Stripe's retention window.
+//
+// Inside the window the key does the work and we proceed untouched — this is a
+// no-op for the overwhelming majority of attempts. Past it we ask Stripe
+// whether a transfer for this order already exists: if one does, an attempt
+// that "failed" earlier actually succeeded (the response was lost, not the
+// transfer) and replaying it now would credit the courier twice, so we settle
+// the row to completed instead.
+func (d *Dispatcher) guardPayoutIdempotency(ctx context.Context, p pendingPayout) payoutGuardResult {
+	if p.createdAt.IsZero() || time.Since(p.createdAt) < payoutIdempotencyGuardAfter {
+		return payoutGuardProceed
+	}
+
+	transferID, err := d.stripe.FindCourierTransfer(p.orderID)
+	if err != nil {
+		slog.Error("payout-sweep: cannot verify whether transfer already landed; skipping attempt",
+			slog.String("payout_id", p.id),
+			slog.String("order_id", p.orderID),
+			slog.String("error", err.Error()))
+		return payoutGuardUnknown
+	}
+	if transferID == "" {
+		return payoutGuardProceed
+	}
+
+	slog.Warn("payout-sweep: transfer already exists at Stripe past the idempotency window; reconciling row to completed instead of re-transferring",
+		slog.String("payout_id", p.id),
+		slog.String("order_id", p.orderID),
+		slog.String("courier_id", p.courierID),
+		slog.String("stripe_transfer_id", transferID))
+	if _, err := d.db.Exec(ctx, `
+		UPDATE courier_payout_queue
+		   SET status = 'completed',
+		       completed_at = NOW(),
+		       last_error = '',
+		       updated_at = NOW()
+		 WHERE id = $1 AND status IN ('pending','processing')`, p.id); err != nil {
+		// The transfer is real either way; leaving the row unsettled just means
+		// another tick re-runs this same check and reaches the same conclusion.
+		slog.Error("payout-sweep: reconcile of already-transferred row failed",
+			slog.String("payout_id", p.id),
+			slog.String("error", err.Error()))
+	}
+	return payoutGuardAlreadyPaid
 }
 
 // sweepCourierPayouts processes rows in courier_payout_queue that are due
@@ -1306,9 +1443,11 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		// reaper below never runs in Temporal mode (it's past the early return).
 		// Re-Starting such a row is safe: ReservePayout reclaims 'processing', and
 		// StripeTransfer re-runs under the SAME stable idempotency key so Stripe
-		// dedupes the re-transfer rather than paying twice.
+		// dedupes the re-transfer rather than paying twice — but only while Stripe
+		// still retains that key, and this re-Start repeats every tick with no
+		// bound. guardPayoutIdempotency below covers the rows that outlive it.
 		rows, err := d.db.Query(ctx, `
-			SELECT id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count
+			SELECT id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count, created_at
 			  FROM courier_payout_queue
 			 WHERE stripe_connect_id IS NOT NULL
 			   AND (
@@ -1329,7 +1468,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		for rows.Next() {
 			var p pendingPayout
 			if err := rows.Scan(&p.id, &p.orderID, &p.courierID,
-				&p.connectID, &p.amountCents, &p.attemptCount); err != nil {
+				&p.connectID, &p.amountCents, &p.attemptCount, &p.createdAt); err != nil {
 				slog.Error("payout-sweep: scan failed",
 					slog.String("error", err.Error()))
 				continue
@@ -1344,6 +1483,14 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		}
 
 		for _, p := range due {
+			// A stuck 'processing' row is re-Started every tick, forever — the
+			// stable idempotency key stops that becoming a second transfer only
+			// while Stripe still remembers the key. Once the row outlives that
+			// retention, ask Stripe directly before handing the workflow a
+			// mandate to move money again.
+			if g := d.guardPayoutIdempotency(ctx, p); g != payoutGuardProceed {
+				continue
+			}
 			if err := d.payoutStarter.Start(ctx, payout.PayoutInput{
 				OrderID:         p.orderID,
 				CourierID:       p.courierID,
@@ -1366,7 +1513,10 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 	// have been 'processing' longer than payoutProcessingTimeout back to
 	// 'pending' so the next claim retries them. The Stripe idempotency key
 	// (the row id) prevents a double charge if the original transfer actually
-	// went through before the crash.
+	// went through before the crash. Note this reset does NOT bump
+	// attempt_count, so a row that keeps crashing mid-transfer is re-attempted
+	// without bound — guardPayoutIdempotency in tryPayout is what stops that
+	// from outliving the key's retention and paying twice.
 	if ct, err := d.db.Exec(ctx, `
 		UPDATE courier_payout_queue
 		   SET status = 'pending',
@@ -1401,7 +1551,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 		    LIMIT $1
 		    FOR UPDATE SKIP LOCKED
 		 )
-		 RETURNING id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count`,
+		 RETURNING id, order_id, courier_id, stripe_connect_id, amount_cents, attempt_count, created_at`,
 		payoutBatchLimit)
 	if err != nil {
 		slog.Error("payout-sweep: claim queue failed",
@@ -1413,7 +1563,7 @@ func (d *Dispatcher) sweepCourierPayouts(ctx context.Context) {
 	for rows.Next() {
 		var p pendingPayout
 		if err := rows.Scan(&p.id, &p.orderID, &p.courierID,
-			&p.connectID, &p.amountCents, &p.attemptCount); err != nil {
+			&p.connectID, &p.amountCents, &p.attemptCount, &p.createdAt); err != nil {
 			slog.Error("payout-sweep: scan failed",
 				slog.String("error", err.Error()))
 			continue
@@ -1448,12 +1598,35 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 	// following it would have made the two paths disagree and CREATED the
 	// double-pay it warned about. Any change here must change both paths together.
 	//
-	// Caveat that IS still open: the retry backoff (5m/15m/1h/6h/24h over
-	// maxPayoutAttempts) puts the final attempt past t+31h, and Stripe drops
-	// idempotency keys after 24h — so a transfer that succeeded but returned an
-	// error can still be replayed as a second transfer by a late attempt. Cap
-	// cumulative retry time under 24h, or reconcile against Stripe's transfer list
-	// before the last attempt.
+	// The key only dedupes for as long as Stripe retains it (24h). That used to
+	// be violated outright: the old 5m/15m/1h/6h/24h backoff put the last of
+	// maxPayoutAttempts at t+31h20m, so a transfer that succeeded but lost its
+	// HTTP response was replayed as a real second transfer. Two things close it
+	// now — the backoff schedule spans 13h20m (payoutRetryHorizon), and any
+	// attempt on a row older than payoutIdempotencyGuardAfter reconciles against
+	// Stripe's transfer list first, which also covers the reaper's unbounded
+	// re-attempts of a crash-looping row.
+	switch d.guardPayoutIdempotency(ctx, p) {
+	case payoutGuardAlreadyPaid:
+		// Row already settled to completed by the guard; nothing left to do.
+		return
+	case payoutGuardUnknown:
+		// Release the claim so a later tick retries the lookup. Deliberately
+		// does NOT bump attempt_count: a failed reconcile is not a failed payout.
+		if _, err := d.db.Exec(ctx, `
+			UPDATE courier_payout_queue
+			   SET status = 'pending',
+			       next_retry_at = NOW() + make_interval(secs => $2),
+			       updated_at = NOW()
+			 WHERE id = $1 AND status = 'processing'`,
+			p.id, payoutReconcileRetrySecs); err != nil {
+			slog.Error("payout-sweep: failed to release claim after reconcile error",
+				slog.String("payout_id", p.id),
+				slog.String("error", err.Error()))
+		}
+		return
+	}
+
 	err := d.stripe.TransferToCourier(p.connectID, p.amountCents, p.orderID, p.id)
 	if err == nil {
 		ct, uerr := d.db.Exec(ctx, `
@@ -1547,8 +1720,17 @@ func (d *Dispatcher) tryPayout(ctx context.Context, p pendingPayout) {
 
 // payoutBackoffSecs is the retry schedule in seconds keyed by the upcoming
 // attempt number. Rough shape: a quick second try (5 min), then a slower
-// climb through the hour/day range so a persistent Stripe issue doesn't
-// hammer their API or burn through attempts too fast.
+// climb through the hour range so a persistent Stripe issue doesn't hammer
+// their API or burn through attempts too fast.
+//
+// HARD CONSTRAINT: every attempt reuses ONE Stripe idempotency key (the queue
+// row id), and Stripe forgets a key after payments.IdempotencyRetention (24h).
+// So the whole run — the sum of these backoffs across maxPayoutAttempts — must
+// stay inside that window, or a late attempt replaying the key after Stripe
+// dropped it creates a SECOND real transfer. This schedule spans 13h20m; the
+// final 6h step (was 24h, which alone blew the window and pushed the last
+// attempt to t+31h20m) is what keeps it there. TestPayoutRetryHorizon locks
+// the invariant in — do not lengthen these without re-reading that test.
 func payoutBackoffSecs(upcomingAttempt int) int {
 	switch upcomingAttempt {
 	case 1:
@@ -1560,6 +1742,17 @@ func payoutBackoffSecs(upcomingAttempt int) int {
 	case 4:
 		return 21600 // 6 hours
 	default:
-		return 86400 // 24 hours
+		return 21600 // 6 hours
 	}
+}
+
+// payoutRetryHorizon is how long a full retry run takes: the sum of every
+// backoff between the first attempt and the last one maxPayoutAttempts allows.
+// Must stay under payoutIdempotencyGuardAfter.
+func payoutRetryHorizon() time.Duration {
+	var total time.Duration
+	for attempt := 1; attempt < maxPayoutAttempts; attempt++ {
+		total += time.Duration(payoutBackoffSecs(attempt)) * time.Second
+	}
+	return total
 }

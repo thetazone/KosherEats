@@ -203,8 +203,13 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not reset password")
 		return
 	}
+	// SECURITY: bumping token_epoch in the SAME write revokes every access and
+	// refresh token issued before this reset. Without it the reset only rotates
+	// the password: refresh tokens are stateless, 7-day and self-renewing, so an
+	// attacker holding a leaked one keeps full account access indefinitely
+	// straight through the remediation the victim just performed.
 	if _, err := h.db.Pool.Exec(r.Context(),
-		`UPDATE users SET password_hash = $1, reset_code_hash = NULL, reset_code_expires_at = NULL, reset_code_attempts = 0, updated_at = NOW() WHERE id = $2`,
+		`UPDATE users SET password_hash = $1, reset_code_hash = NULL, reset_code_expires_at = NULL, reset_code_attempts = 0, token_epoch = token_epoch + 1, updated_at = NOW() WHERE id = $2`,
 		string(newHash), userID,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not reset password")

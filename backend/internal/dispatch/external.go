@@ -11,12 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
+	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/koshereats/backend/internal/doordash"
 	"github.com/koshereats/backend/internal/notify"
+	"github.com/koshereats/backend/internal/phone"
 	"github.com/koshereats/backend/internal/shipday"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
@@ -73,14 +75,50 @@ const (
 // Dispatch itself needs a database pool, which is exactly why the dropoff half
 // of the check went missing for so long. Pickup is reported first only because
 // a seller can self-serve that fix; both are hard blockers.
+//
+// "Missing" is judged on the NORMALIZED value, not on TrimSpace: every provider
+// client sends phone.ToE164(phone) (uberdirect, doordash and shipday all
+// normalize at their edge), so a value with no digits at all — "N/A", "none",
+// "(   ) -", a lone "+" — reaches the provider as an empty string and draws the
+// same 400 on create that an absent number does. A TrimSpace-only check called
+// those present, so the order sailed past this fail-fast guard and burned a
+// real quote AND a real create before failing; a seller typing a placeholder
+// into Settings is all it takes. Judging by ToE164 keeps this check aligned
+// with the value the provider actually receives.
 func missingRequiredPhone(restPhone, customerPhone string) string {
-	if strings.TrimSpace(restPhone) == "" {
+	if phone.ToE164(restPhone) == "" {
 		return phonePickup
 	}
-	if strings.TrimSpace(customerPhone) == "" {
+	if phone.ToE164(customerPhone) == "" {
 		return phoneDropoff
 	}
 	return phonePresent
+}
+
+// quoteBatchError aggregates the per-provider failures from a quote round in
+// which NO provider produced a quote.
+//
+// It deliberately does NOT implement Unwrap. errors.As over an errors.Join
+// stops at the FIRST matching error in tree order, so classifying a mixed batch
+// through the join is order-dependent and wrong — see
+// TestIsPermanentProviderError_JoinIsUnsafeForMixedBatches, which pins exactly
+// that hazard. Dispatch already computes the batch's permanence correctly, per
+// error ("permanent only when EVERY provider rejected with a validation 4xx"),
+// so the verdict is carried explicitly here instead of being re-derived by
+// whoever inspects the returned error.
+//
+// Without this the internal bookkeeping and the returned error disagreed: a
+// batch of one 400 plus one 503 counted a single transient attempt (correct)
+// yet answered IsPermanent() == true, so EscalateToUber told the seller their
+// order was permanently undeliverable (422) during a provider outage a retry
+// seconds later would have survived.
+type quoteBatchError struct {
+	permanent bool
+	causes    error
+}
+
+func (e *quoteBatchError) Error() string {
+	return "all providers failed to quote: " + e.causes.Error()
 }
 
 // isPermanentProviderError reports whether the provider rejected the request
@@ -98,6 +136,11 @@ func missingRequiredPhone(restPhone, customerPhone string) string {
 //
 // Account-level failures still stop looping via the attempts cap.
 func isPermanentProviderError(err error) bool {
+	// A quote batch carries its own verdict, already computed per-error.
+	var qb *quoteBatchError
+	if errors.As(err, &qb) {
+		return qb.permanent
+	}
 	var ue *uberdirect.APIError
 	if errors.As(err, &ue) {
 		return permanentStatus(ue.StatusCode)
@@ -123,11 +166,20 @@ func permanentStatus(code int) bool {
 
 // truncate bounds an untrusted provider error string before it goes into an
 // operator email — provider bodies are unbounded and can echo customer PII.
+//
+// n is a BYTE bound (it exists to cap email size), but the cut is walked back
+// to a rune boundary: provider bodies echo customer names and addresses, which
+// outside ASCII are multi-byte, and a plain s[:n] splits one — putting invalid
+// UTF-8 into the identifier a human has to read to reconcile a billed delivery.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…(truncated)"
+	cut := s[:n]
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return cut + "…(truncated)"
 }
 
 // Input is everything Dispatch needs about an order. Callers build it from
@@ -357,7 +409,23 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 	}
 	if e.doordash != nil && e.doordash.Enabled() {
 		q, qerr := e.doordash.GetQuote(ctx, doordash.CreateDeliveryRequest{
-			ExternalDeliveryID: in.OrderID + "_quote",
+			// Unique per request, never derived from the order id. DoorDash files
+			// a quote under its external_delivery_id and answers 409
+			// duplicate_delivery_id when one is reused, which this auction can
+			// only read as "doordash failed". A per-order constant therefore
+			// dropped DoorDash from every dispatch attempt after the first — and
+			// an order gets up to maxExternalDispatchAttempts of them, plus one
+			// per seller escalation and one per cancel-and-re-dispatch. The
+			// consumer was already charged the checkout-time cheapest quote, so
+			// losing the cheapest bidder on the retry costs KosherEats the
+			// difference; with DoorDash as the only provider every retry quoted
+			// nothing, burned an attempt, and retired the order to the internal
+			// pool. delivery_quote.go mints a fresh id for the identical reason —
+			// see TestDispatch_DoorDashQuoteIDIsUniquePerAttempt.
+			//
+			// This is a price check, never a delivery: the create call below
+			// sends in.OrderID, and nothing joins on the quote id.
+			ExternalDeliveryID: "quote_" + uuid.NewString(),
 			PickupAddress:      in.RestAddress,
 			PickupBusinessName: in.RestaurantName,
 			PickupPhone:        in.RestPhone,
@@ -395,12 +463,6 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		// log it. Permanent only when every provider that tried was rejected
 		// with a validation 4xx — one transient failure means a retry could
 		// still win.
-		ferr := fmt.Errorf("all providers failed to quote: %w", errors.Join(quoteErrs...))
-		if len(quoteErrs) == 0 {
-			ferr = fmt.Errorf("no external provider enabled")
-		}
-		slog.Error("external-dispatch: all providers failed",
-			slog.String("order_id", in.OrderID), slog.String("error", ferr.Error()))
 		permanent := len(quoteErrs) > 0
 		for _, qe := range quoteErrs {
 			if !isPermanentProviderError(qe) {
@@ -408,6 +470,12 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 				break
 			}
 		}
+		var ferr error = &quoteBatchError{permanent: permanent, causes: errors.Join(quoteErrs...)}
+		if len(quoteErrs) == 0 {
+			ferr = fmt.Errorf("no external provider enabled")
+		}
+		slog.Error("external-dispatch: all providers failed",
+			slog.String("order_id", in.OrderID), slog.String("error", ferr.Error()))
 		fail(permanent, ferr)
 		return "", "", 0, ferr
 	}
@@ -527,15 +595,52 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 	// tryAutoAssign / ClaimOrder), so the sentinel can't be stolen between claim
 	// and create. If RowsAffected is still 0, a real provider delivery exists but
 	// we couldn't record it — surface a loud error to reconcile, never drop it.
-	tag2, uerr := e.db.Exec(ctx, `
+	//
+	// context.Background(), not the caller's ctx, for the same reason fail()
+	// uses it — and more urgently. By this line the courier is bought and
+	// BILLED, so this write is the only thing that ties the delivery to the
+	// order. On the caller's ctx an ordinary cancellation (a seller
+	// backgrounding the app mid-tap, an expiring sweep-tick deadline) failed the
+	// write and returned early, leaving external_provider stuck on
+	// 'dispatching' with no delivery id and no attempt counted — precisely the
+	// row scheduler.reapStaleDispatchClaims recycles, so ten minutes later the
+	// claim was released and the next sweep bought a SECOND paid courier for
+	// food already in flight. See
+	// TestDispatch_PersistSurvivesCallerCancellation.
+	tag2, uerr := e.db.Exec(context.Background(), `
 		UPDATE orders
 		   SET external_delivery_id = $1, external_provider = $2, external_tracking_url = $3,
 		       provider_fee_cents = $5, updated_at = NOW()
 		 WHERE id = $4 AND external_provider = 'dispatching'`,
 		deliveryID, best.provider, trackingURL, in.OrderID, fee)
 	if uerr != nil {
-		slog.Error("external-dispatch: db update failed",
-			slog.String("order_id", in.OrderID), slog.String("error", uerr.Error()))
+		slog.Error("external-dispatch: ORPHANED PAID DELIVERY — persist failed after create; manual reconcile needed",
+			slog.String("order_id", in.OrderID),
+			slog.String("provider", best.provider),
+			slog.String("delivery_id", deliveryID),
+			slog.String("error", uerr.Error()))
+		// Same consequences as the lost-sentinel branch below, so the same alert:
+		// a billed courier no order row references. This branch is in fact worse,
+		// because the sentinel is left standing and the reaper will hand the order
+		// back to the sweep — so a human has to see it. It used to log and return
+		// silently, which is how a double-buy could happen with nothing to trace
+		// it by.
+		go e.alerter.Alert(
+			"URGENT: paid courier delivery is orphaned — manual reconciliation required",
+			fmt.Sprintf(
+				"A %s delivery (%s) was created and billed for order %s at %q, but the order row could not be "+
+					"updated to reference it (the persist statement failed: %s).\n\n"+
+					"Consequences until reconciled: the customer sees no tracking, the order will not advance on "+
+					"provider webhooks, and the order is still holding the 'dispatching' claim — once the stale-claim "+
+					"reaper releases it (10 minutes), auto-dispatch will buy a SECOND delivery for this same order.\n\n"+
+					"Do this now:\n"+
+					"  1. Open the %s dashboard and find delivery %s.\n"+
+					"  2. Cancel it if the order is not genuinely in flight.\n"+
+					"  3. Otherwise set external_provider/external_delivery_id on order %s by hand so the "+
+					"webhooks bind, the customer gets tracking, and the reaper stops seeing a dead claim.",
+				best.provider, deliveryID, in.OrderID, in.RestaurantName, truncate(uerr.Error(), 200),
+				best.provider, deliveryID, in.OrderID),
+		)
 		return best.provider, deliveryID, fee, uerr
 	}
 	if tag2.RowsAffected() == 0 {
