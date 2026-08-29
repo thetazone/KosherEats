@@ -252,6 +252,17 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 			deliveryFee = fee
 		}
 	}
+	// Freeze the marketplace markup baked into the delivery fee we are about to
+	// record. The seller's self-delivery payout is delivery_fee minus this
+	// markup; deriving it at DELIVERY time from live config re-splits every
+	// order still in flight whenever the markup config moves (KE keeps the
+	// difference, the seller is short by the delta). Stamped here, in the same
+	// request that fixes delivery_fee, so the two can never disagree later.
+	// NULL for pickup — there is no delivery fee to split.
+	var deliveryMarkupArg interface{}
+	if fulfillmentType != "pickup" {
+		deliveryMarkupArg = h.deliveryMarkupCents(subtotal)
+	}
 	serviceFee := 0
 	// Apply the deal discount before tax so the recorded total agrees with
 	// the Stripe charge that CreatePaymentIntent computed using the same
@@ -313,8 +324,8 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(r.Context(),
 		`INSERT INTO orders (user_id, restaurant_id, status, subtotal, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, scheduled_for, fulfillment_type,
-		 delivery_mode, applied_deal_id, discount_amount, discount_cents)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18)
+		 delivery_mode, applied_deal_id, discount_amount, discount_cents, delivery_markup_cents)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18, $19)
 		 ON CONFLICT (stripe_payment_id) WHERE stripe_payment_id != '' DO NOTHING
 		 RETURNING id, user_id, restaurant_id, status, subtotal, discount_cents, delivery_fee, service_fee, tax, total,
 		 delivery_address, delivery_lat, delivery_lng, stripe_payment_id, courier_tip, est_delivery_time,
@@ -323,7 +334,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		subtotal, deliveryFee, serviceFee, tax, total,
 		req.DeliveryAddress, req.DeliveryLat, req.DeliveryLng, req.PaymentIntentID, tip, req.ScheduledFor,
 		fulfillmentType, restaurantDeliveryMode,
-		dealIDArg, discount,
+		dealIDArg, discount, deliveryMarkupArg,
 	).Scan(&order.ID, &order.UserID, &order.RestaurantID, &order.Status,
 		&order.Subtotal, &order.Discount, &order.DeliveryFee, &order.ServiceFee, &order.Tax, &order.Total,
 		&order.DeliveryAddress, &order.DeliveryLat, &order.DeliveryLng,
@@ -788,11 +799,27 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	// + refunding it here would leave the platform paying for a delivery on a
 	// refunded order, with no provider cancel. Block the customer cancel once a
 	// provider owns it (it's out for delivery).
+	//
+	// external_provider IS NULL covers the window BEFORE that id exists.
+	// dispatch.Dispatch claims the order by flipping external_provider to
+	// 'dispatching' and only writes external_delivery_id after the paid
+	// CreateDelivery returns, so for the whole provider round trip the row reads
+	// (dispatching, NULL) — which the id check alone lets through. A cancel
+	// landing there refunded the customer while Dispatch went on to buy a
+	// courier and persist it (that persist is scoped to
+	// external_provider = 'dispatching', which the cancel does not clear):
+	// refunded customer, billed courier, food collected. This is the
+	// consumer-cancel half of the same race the claim CAS's status predicate
+	// closed for seller self-pickup; cancel is legal from 'accepted', which the
+	// claim CAS accepts, so the guard has to live here too. A failed dispatch
+	// releases the sentinel, which reopens the cancel window — see
+	// TestIntegration_ConsumerCancelReopensAfterAFailedDispatchReleasesTheClaim.
 	var paymentID string
 	err = tx.QueryRow(r.Context(),
 		`SELECT COALESCE(stripe_payment_id, '') FROM orders
 		 WHERE id = $1 AND user_id = $2 AND status IN ($3, $4, $5)
 		   AND external_delivery_id IS NULL
+		   AND external_provider IS NULL
 		 FOR UPDATE`,
 		id, user["user_id"], models.OrderPending, models.OrderAccepted, models.OrderScheduled,
 	).Scan(&paymentID)
@@ -1663,12 +1690,14 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 
 	var deliveryMode string
 	var deliveryFee, courierTip, subtotal int
+	var stampedMarkup *int
 	err = tx.QueryRow(r.Context(),
-		`SELECT COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'), o.delivery_fee, COALESCE(o.courier_tip, 0), o.subtotal FROM orders o
+		`SELECT COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'), o.delivery_fee, COALESCE(o.courier_tip, 0), o.subtotal,
+		        o.delivery_markup_cents FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
 		  WHERE o.id = $1 AND rest.owner_id = $2 AND o.status = 'picked_up'
 		  FOR UPDATE OF o`,
-		id, user["user_id"]).Scan(&deliveryMode, &deliveryFee, &courierTip, &subtotal)
+		id, user["user_id"]).Scan(&deliveryMode, &deliveryFee, &courierTip, &subtotal, &stampedMarkup)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "order not found or not picked up")
 		return
@@ -1680,15 +1709,27 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Self-delivery: the restaurant keeps 100% of its own delivery fee — the
 	// customer-paid delivery_fee minus the KosherEats marketplace fee (which KE
-	// keeps) — PLUS 100% of the courier tip. The marketplace fee is recomputed
-	// from the locked item subtotal with the same tier function used at quote
-	// time, so it matches exactly what the consumer was charged. The seller
-	// performed the delivery, so the tip is theirs ("100% of the tip goes to your
-	// courier"). Folded into the status CAS below so a replayed deliver can't
-	// double-count; the CASE guard keys off who ACTUALLY delivered (courier_id /
-	// external_delivery_id), not delivery_mode, so an order escalated to a
-	// courier/provider pays 0 here.
-	restaurantFee := deliveryFee - h.deliveryMarkupCents(subtotal)
+	// keeps) — PLUS 100% of the courier tip. The seller performed the delivery,
+	// so the tip is theirs ("100% of the tip goes to your courier"). Folded into
+	// the status CAS below so a replayed deliver can't double-count; the CASE
+	// guard keys off who ACTUALLY delivered (courier_id / external_delivery_id),
+	// not delivery_mode, so an order escalated to a courier/provider pays 0 here.
+	//
+	// The marketplace fee comes from delivery_markup_cents, frozen on the row at
+	// checkout, NOT from live config: delivery_fee is a historical charge, so
+	// re-deriving its split from today's tiers would silently re-split every
+	// order still in flight whenever the markup config changes — KE pocketing
+	// the difference and short-paying the seller by the delta. Pre-058 rows have
+	// no stamp and can only fall back to the live tiers.
+	//
+	// NOTE: the in-house courier payout (DeliverOrder, courier_orders.go) does
+	// NOT apply this subtraction — it pays the full consumer-facing fee. That
+	// divergence is a known open finding, pinned by courier_payout_test.go.
+	markup := h.deliveryMarkupCents(subtotal)
+	if stampedMarkup != nil {
+		markup = *stampedMarkup
+	}
+	restaurantFee := deliveryFee - markup
 	if restaurantFee < 0 {
 		restaurantFee = 0
 	}

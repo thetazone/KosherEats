@@ -169,8 +169,18 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		// Only notify when WE actually flipped it to picked_up — same rule as
+		// DASHER_DROPPED_OFF below. A 0-row match means the status guard or the
+		// provider scoping rejected this event, and the consumer lookup that
+		// follows is NOT provider-scoped: without this break, a DoorDash-
+		// authenticated event naming an order out with Uber or Shipday still
+		// pushed "your driver just picked up your food" to that order's consumer
+		// (the exact cross-provider leak the scoped SELECT in DASHER_CONFIRMED
+		// guards against), and a late/duplicate pickup double-pushed. Still
+		// commit the claim so the event is recorded.
 		if tag.RowsAffected() == 0 {
 			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
+			break
 		}
 
 		var consumerID string
@@ -186,8 +196,14 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		now := time.Now()
 		// Accept any pre-delivered external-dispatched state (a dropped pickup
 		// webhook would otherwise strand the order); mirrors the Uber webhook.
+		// COALESCE picked_up_at: a delivery that completes without its pickup
+		// event (webhook outage, late registration) must still leave a plausible
+		// pickup timestamp — courier-time analytics divide by it and the
+		// order-detail screens render it. Matches the Shipday handler and the
+		// scheduler's status reconciler.
 		tag, err := tx.Exec(ctx,
-			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
+			`UPDATE orders SET status = 'delivered', delivered_at = $1,
+			        picked_up_at = COALESCE(picked_up_at, $1), updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
 			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
 			now, orderID)
@@ -228,19 +244,32 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		// order escalated to DoorDash while still preparing must get its dead
 		// linkage cleared here too, or it can never re-arm (the event dedupes,
 		// the claim CAS requires NULL linkage). Same fix as the Shipday handler.
-		if _, err := tx.Exec(ctx,
+		tag, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
 			  WHERE id = $1 AND status IN ('accepted', 'preparing', 'ready', 'picked_up')
-			    AND external_provider = 'doordash_drive'`, orderID); err != nil {
+			    AND external_provider = 'doordash_drive'`, orderID)
+		if err != nil {
 			slog.Error("doordash webhook: cancel cleanup failed",
 				slog.String("order_id", orderID),
 				slog.String("error", err.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		// This was the one mutating branch across all three provider webhooks
+		// with no 0-row diagnostic, and it is the branch where silence costs the
+		// most: the event is already claimed in the idempotency ledger, so it
+		// never reprocesses. If the scoping dropped a legitimate cancel — our
+		// stored external_provider isn't the string this handler expects — the
+		// order stays welded to a dead delivery forever (the dispatch claim CAS
+		// needs NULL linkage to re-arm) with nothing in the logs to say so.
+		// logProviderScopeMiss separates that from the benign late/duplicate
+		// cancel on an already-terminal order.
+		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
 		}
 	}
 

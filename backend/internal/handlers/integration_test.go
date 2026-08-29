@@ -68,11 +68,18 @@ type testEnv struct {
 // harness is the process-wide shared environment, built once in TestMain.
 var harness *testEnv
 
-func TestMain(m *testing.M) {
-	dbURL := os.Getenv("TEST_DATABASE_URL")
-	if dbURL == "" {
-		dbURL = defaultTestDatabaseURL
+// testDatabaseURL is the one place the suite resolves its Postgres DSN, so a
+// test that needs its own pool (see webhook_push_scope_test.go) connects to the
+// same database the harness migrated.
+func testDatabaseURL() string {
+	if url := os.Getenv("TEST_DATABASE_URL"); url != "" {
+		return url
 	}
+	return defaultTestDatabaseURL
+}
+
+func TestMain(m *testing.M) {
+	dbURL := testDatabaseURL()
 
 	// If the target database doesn't exist yet, create it by connecting to the
 	// maintenance `postgres` database on the same server. This keeps the suite
@@ -93,6 +100,11 @@ func TestMain(m *testing.M) {
 	ctx := context.Background()
 	if err := db.RunMigrations(ctx, migrationsDir()); err != nil {
 		fmt.Fprintf(os.Stderr, "integration harness: run migrations: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := resetFixtures(ctx, db.Pool, dbURL); err != nil {
+		fmt.Fprintf(os.Stderr, "integration harness: reset fixtures: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -124,6 +136,55 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+// resetFixtures empties the catalog and identity tables so every run starts
+// from a known-empty database.
+//
+// Without it the suite rots as it ages. seed() unconditionally INSERTs three
+// restaurants and an owner on EVERY run and removes none of the last run's, and
+// the per-test helpers that mint their own restaurants (newSellerEnv,
+// seedPreviewRestaurant) leak whenever a run is interrupted or a t.Cleanup
+// doesn't fire. The rows accumulate forever — this database had grown to 628
+// restaurants, of which 63 were abandoned preview listings.
+//
+// That is not merely untidy: the restaurant feed is LIMIT-capped (50, or 400
+// with include_previews) and ordered by rating, so once the leaked catalog
+// exceeds the cap a freshly-seeded fixture can sort outside the page.
+// TestIntegration_PreviewListings — which asserts its preview restaurant
+// appears in the preview-aware feed — had degraded into a coin flip, failing
+// about half of runs on a long-lived database while passing on a fresh one.
+// A test whose outcome depends on how many times the suite has been run before
+// cannot be trusted either way, so the fix is to remove the accumulation.
+//
+// TRUNCATE ... CASCADE from these two roots reaches every table that references
+// them (orders, carts, menus, courier profiles, payout queues, …), which is
+// exactly the intent: nothing in this database is meant to outlive a run.
+func resetFixtures(ctx context.Context, pool *pgxpool.Pool, dbURL string) error {
+	// Refuse to truncate anything that isn't obviously a throwaway test
+	// database. TEST_DATABASE_URL is operator-supplied, and this statement is
+	// unrecoverable — a name guard is cheap next to pointing it at real data.
+	cfg, err := pgx.ParseConfig(dbURL)
+	if err != nil {
+		return fmt.Errorf("parse url: %w", err)
+	}
+	if !strings.Contains(strings.ToLower(cfg.Database), "test") {
+		return fmt.Errorf("refusing to reset database %q: the name does not contain \"test\", "+
+			"so this may not be a throwaway database", cfg.Database)
+	}
+
+	if _, err := pool.Exec(ctx,
+		`TRUNCATE users, restaurants RESTART IDENTITY CASCADE`); err != nil {
+		return fmt.Errorf("truncate fixtures: %w", err)
+	}
+	// Not FK-linked to either root, so CASCADE doesn't reach them, and both are
+	// keyed by natural values that a later run can collide with.
+	for _, tbl := range []string{"email_otp", "external_webhook_events", "stripe_webhook_events"} {
+		if _, err := pool.Exec(ctx, `TRUNCATE `+pgx.Identifier{tbl}.Sanitize()); err != nil {
+			return fmt.Errorf("truncate %s: %w", tbl, err)
+		}
+	}
+	return nil
 }
 
 // ensureDatabaseExists creates the target database if it is missing. It parses
@@ -221,6 +282,13 @@ func buildRouter(h *Handler) http.Handler {
 	r.Route("/api/v1/payments", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
 		r.With(h.RequireVerifiedMiddleware).Post("/intent", h.CreatePaymentIntent)
+	})
+
+	// Same shape as production (cmd/api/main.go): authenticated, no
+	// verification gate — the checkout screen quotes before it charges.
+	r.Route("/api/v1/delivery-quote", func(r chi.Router) {
+		r.Use(h.AuthMiddleware)
+		r.Post("/", h.DeliveryQuote)
 	})
 
 	r.Route("/api/v1/user", func(r chi.Router) {

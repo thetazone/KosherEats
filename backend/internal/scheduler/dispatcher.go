@@ -472,6 +472,15 @@ func (d *Dispatcher) reapStaleDispatchClaims(ctx context.Context) {
 		   -- only a crashed/dead claim is ever this old. A shorter window risked
 		   -- resetting a still-in-flight dispatch and orphaning a paid delivery.
 		   AND updated_at < NOW() - INTERVAL '10 minutes'`)
+	// This predicate cannot tell a claim taken BEFORE the paid CreateDelivery
+	// (safe to recycle) from one stranded AFTER it (recycling buys a SECOND
+	// courier for food already in flight). Dispatch closes the common cause —
+	// its persist now runs on a detached context and pages an operator if the
+	// write still fails — but a database refusing writes can leave a post-create
+	// claim that matches here exactly. The statement above is copied verbatim
+	// into dispatch.reapStaleDispatchClaimsSQL, where
+	// TestDispatch_PersistFailureStrandsClaimAndLetsTheReaperDoubleBuy pins that
+	// residual end to end; keep the two in sync.
 	if err != nil {
 		slog.Error("reap-dispatch-claims: failed", slog.String("error", err.Error()))
 		return

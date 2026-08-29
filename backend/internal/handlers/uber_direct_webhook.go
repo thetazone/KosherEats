@@ -170,9 +170,14 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			// Scoped to THIS provider: without it, an Uber-authenticated webhook
 			// naming an order dispatched to DoorDash would push "your courier is on
 			// the way" to the wrong consumer. See the provider-scoping note below.
+			// Also scoped to THIS delivery, for the reason spelled out on the
+			// 'canceled' branch: Uber mints a fresh delivery_id per dispatch, so
+			// after a re-dispatch a late event for the superseded delivery would
+			// otherwise announce a courier the order is no longer out with.
 			`SELECT user_id, restaurant_id FROM orders
-			  WHERE id = $1 AND external_provider = 'uber_direct'`,
-			externalID).Scan(&consumerID, &restaurantID)
+			  WHERE id = $1 AND external_provider = 'uber_direct'
+			    AND ($2 = '' OR external_delivery_id = $2)`,
+			externalID, payload.DeliveryID).Scan(&consumerID, &restaurantID)
 		if err != nil {
 			// 'pickup' only drives a notification (no state mutation); a lookup miss
 			// is non-recoverable context, so record the event and skip the push
@@ -189,11 +194,21 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "pickup_complete":
+		// Delivery-id scoped for the same reason the 'canceled' branch is (Uber
+		// mints a fresh delivery_id per dispatch): after a cancel-and-re-dispatch
+		// a late 'pickup_complete' for the superseded delivery is not a replay —
+		// its body differs, so the idempotency ledger passes it — and with
+		// provider-only scoping it flipped an order that is out with the LIVE
+		// delivery to picked_up and pushed "your driver picked up your food"
+		// before that courier had been anywhere. The $3 = '' escape hatch keeps a
+		// payload variant that omits delivery_id behaving exactly as before
+		// rather than stranding the order; it is logged via the 0-row diagnostic.
 		tag, err := tx.Exec(ctx,
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready')
-			    AND external_provider = 'uber_direct' AND external_delivery_id IS NOT NULL`,
-			time.Now(), externalID)
+			    AND external_provider = 'uber_direct' AND external_delivery_id IS NOT NULL
+			    AND ($3 = '' OR external_delivery_id = $3)`,
+			time.Now(), externalID, payload.DeliveryID)
 		if err != nil {
 			// State mutation failed — fail closed so Uber retries (the rolled-back
 			// claim lets the retry reprocess) rather than stranding the order.
@@ -203,8 +218,17 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		// Only notify when WE actually flipped it to picked_up — same rule as
+		// 'delivered' below. A 0-row match means the status guard or the provider
+		// scoping rejected this event, and the consumer lookup that follows is NOT
+		// provider-scoped: without this break, an Uber-authenticated event naming
+		// an order out with DoorDash or Shipday still pushed "your driver just
+		// picked up your food" to that order's consumer (the exact cross-provider
+		// leak the scoped SELECT in 'pickup' guards against), and a late/duplicate
+		// pickup double-pushed. Still commit the claim so the event is recorded.
 		if tag.RowsAffected() == 0 {
 			logProviderScopeMiss(ctx, tx, "uber", "pickup_complete", externalID, "uber_direct")
+			break
 		}
 
 		var consumerID string
@@ -222,11 +246,26 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 		// if the pickup_complete webhook was dropped/out-of-order the order is still
 		// 'ready', and keying only on 'picked_up' would strand it permanently. A
 		// 'delivered' event is authoritative.
+		// COALESCE picked_up_at for the same reason this branch accepts a
+		// pre-pickup status at all: when the pickup event never arrived, the
+		// order must still land with a plausible pickup timestamp. Courier-time
+		// analytics divide by it and the order-detail screens render it, so a
+		// delivered order with a NULL pickup is a hole in both. Matches the
+		// Shipday handler and the scheduler's Uber status reconciler, which
+		// already COALESCE here.
+		// Delivery-id scoped like 'pickup_complete' and 'canceled' above. This is
+		// the branch where a stale event costs the most: 'delivered' is terminal,
+		// so a late one for a superseded delivery closed out an order whose LIVE
+		// courier still had the food, stamped delivered_at with the wrong time,
+		// and pushed "your order was delivered" to the consumer — after which the
+		// real delivery's own event is a 0-row no-op and nothing corrects it.
 		tag, err := tx.Exec(ctx,
-			`UPDATE orders SET status = 'delivered', delivered_at = $1, updated_at = $1
+			`UPDATE orders SET status = 'delivered', delivered_at = $1,
+			        picked_up_at = COALESCE(picked_up_at, $1), updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
-			    AND external_provider = 'uber_direct' AND external_delivery_id IS NOT NULL`,
-			now, externalID)
+			    AND external_provider = 'uber_direct' AND external_delivery_id IS NOT NULL
+			    AND ($3 = '' OR external_delivery_id = $3)`,
+			now, externalID, payload.DeliveryID)
 		if err != nil {
 			slog.Error("uber webhook: delivered update failed",
 				slog.String("order_id", externalID),
@@ -259,12 +298,27 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			slog.String("order_id", externalID),
 			slog.String("delivery_id", payload.DeliveryID))
 
-		// external_provider scoping is LOAD-BEARING here, not defensive: this
-		// statement clears the provider linkage and resets picked_up -> ready, which
-		// re-arms auto-dispatch. Unscoped, a cancel naming an order that is out with
+		// Scoping here is LOAD-BEARING, not defensive: this statement clears the
+		// provider linkage and resets picked_up -> ready, which re-arms
+		// auto-dispatch. Two things must both match.
+		//
+		// external_provider: unscoped, a cancel naming an order that is out with
 		// the OTHER provider would clear that order's linkage and the next sweep
-		// would buy a SECOND paid delivery for a delivery already in flight.
-		if _, err := tx.Exec(ctx,
+		// would buy a SECOND paid delivery for one already in flight.
+		//
+		// external_delivery_id: Uber mints a FRESH delivery_id on every dispatch,
+		// so after a cancel-and-re-dispatch the order is out with delivery #2
+		// while a late 'canceled' for delivery #1 can still arrive. That event is
+		// not a replay (different body → the idempotency ledger passes it), so
+		// with provider-only scoping it un-dispatched the LIVE delivery and the
+		// next sweep bought a second paid courier. Matching the webhook's own
+		// delivery id makes the stale event a no-op. Mirrors the Shipday handler,
+		// which scopes on order.id for exactly this reason.
+		//
+		// The empty-id escape hatch keeps a payload variant that omits delivery_id
+		// behaving as it does today (provider-scoped) rather than silently
+		// stranding the order; it is logged below via the 0-row diagnostic.
+		tag, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
 			        external_tracking_url = NULL,
@@ -275,14 +329,27 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			        -- the linkage and is picked up by the next sweep as before.
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
-			  WHERE id = $1 AND status IN ('ready', 'picked_up')
-			    AND external_provider = 'uber_direct'`,
-			externalID); err != nil {
+			  WHERE id = $1
+			    -- 'accepted'/'preparing' match the dispatch claim CAS: an order
+			    -- escalated to Uber while the kitchen was still cooking must get
+			    -- its dead linkage cleared too, or it can never re-arm (the event
+			    -- is already deduped in the ledger, so it never reprocesses, and
+			    -- the claim CAS requires NULL linkage). Without them such an order
+			    -- stayed welded to a cancelled delivery forever — paid for and
+			    -- undeliverable. Same fix the DoorDash and Shipday handlers carry.
+			    AND status IN ('accepted', 'preparing', 'ready', 'picked_up')
+			    AND external_provider = 'uber_direct'
+			    AND ($2 = '' OR external_delivery_id = $2)`,
+			externalID, payload.DeliveryID)
+		if err != nil {
 			slog.Error("uber webhook: cancel cleanup failed",
 				slog.String("order_id", externalID),
 				slog.String("error", err.Error()))
 			w.WriteHeader(http.StatusInternalServerError)
 			return
+		}
+		if tag.RowsAffected() == 0 {
+			logProviderScopeMiss(ctx, tx, "uber", "canceled", externalID, "uber_direct")
 		}
 	}
 
