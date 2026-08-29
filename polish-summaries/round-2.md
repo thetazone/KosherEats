@@ -1,26 +1,18 @@
 # KosherEats Polish — Round 2
-**Max severity found:** 8
+**Max severity found:** 7
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[8/10] [ke_tests_backend] Persist after a paid create runs on the caller's context and fails silently, letting the stale-claim reaper buy a second courier** — FIXED
-  In ExternalDispatcher.Dispatch, the final statement that records the provider delivery id runs on the caller's ctx, and its error branch only logged b
-  > Whole backend suite is green. Here's where things stood and what I changed.
+- **[7/10] [ke_bugs_backend] Transient Stripe error silently disarms all four CreateOrder money guards** — FIXED
+  CreateOrder read four PaymentIntent stamps via four separate paymentintent.Get calls, and every call site was written as `err == nil && ok && mismatch
+  > The fix for this issue was already fully present in the working tree when I started (uncommitted, alongside other change
 
-**Already in the working tree** (`backend/i
+- **[6/10] [ke_bugs_backend] CreateOrder ran discarded live courier quotes inside the open order transaction** — FIXED
+  CreateOrder called quoteDeliveryFee (up to three provider HTTP quotes, each with a 30s client timeout) on every delivery order and then unconditionall
+  > The fix is already present in the working tree — `backend/internal/handlers/orders.go` (lines 243–298) already gates `qu
 
-- **[6/10] [ke_tests_backend] Checkout quoted DoorDash under a hardcoded external_delivery_id, silently removing it from the consumer-facing auction** — FIXED
-  quoteDeliveryFee sent the literal constant "quote_check" as DoorDash's external_delivery_id on every checkout quote. DoorDash Drive records a quote un
-  > The fix is in place and verified.
-
-**`backend/internal/handlers/delivery_quote.go`** — `quoteDeliveryFee` no longer send
-
-- **[5/10] [ke_tests_backend] Self-delivery seller payout re-derives a historical charge from live markup config** — FIXED
-  SellerDeliverOrder credits the restaurant with `deliveryFee - h.deliveryMarkupCents(subtotal)`, where deliveryFee is frozen on the order row at checko
-  > Fixed. The self-delivery payout no longer re-derives a historical charge from live config.
-
-**What changed**
-
-1. **`inte
+- **[5/10] [ke_bugs_backend] A rejected AddToCart destroyed the customer's existing cart** — FIXED
+  AddToCart clears every cart_items row and re-points carts.restaurant_id when the restaurant changes, and that transaction was COMMITTED (cart.go:175) 
+  > Fixed and verified. The two files named in the issue (`backend/internal/handlers/cart.go`, `backend/internal/handlers/in

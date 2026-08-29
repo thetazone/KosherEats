@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -245,6 +246,57 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
+	// Refuse the delete while the account still has a live order. The orders step
+	// below anonymizes with `SET user_id = NULL` and has no status filter, so a
+	// paid, non-terminal order (pending/accepted/preparing/ready/picked_up, plus a
+	// scheduled one that hasn't been promoted yet) would be cut loose from its
+	// customer while its PaymentIntent stays captured: the stale-rejection sweep
+	// could no longer auto-reject + refund it, and auto-dispatch / mark-ready /
+	// seller escalation all resolve the consumer through orders.user_id, so a
+	// cooked order would become undeliverable. Money is on the line either way, so
+	// the order has to reach a terminal state (delivered/completed/cancelled/
+	// rejected — cancelling refunds) before the account can go.
+	var liveOrders int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM orders
+		 WHERE user_id = $1
+		   AND status NOT IN ('delivered', 'completed', 'cancelled', 'rejected')`,
+		uid).Scan(&liveOrders); err != nil {
+		slog.Error("DeleteAccount step failed",
+			slog.String("user_id", uid), slog.String("step", "check live orders"),
+			slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to delete account")
+		return
+	}
+	if liveOrders > 0 {
+		writeError(w, http.StatusConflict,
+			"you have an order still in progress — cancel it or wait for it to be delivered before deleting your account")
+		return
+	}
+
+	// Freeze any courier payouts still owed to this account before the user row
+	// goes away. The FK is ON DELETE SET NULL (migration 060), so the queue rows
+	// themselves survive the delete — same anonymize-don't-delete rule the orders
+	// step below applies. But an unpaid row must not stay claimable by the payout
+	// sweep once the courier and their Stripe Connect account are gone, so park
+	// pending/processing rows in failed_permanent, where the admin failed-payout
+	// view surfaces them for manual reconciliation.
+	frozen, err := tx.Exec(ctx, `
+		UPDATE courier_payout_queue
+		   SET status = 'failed_permanent',
+		       last_error = 'courier deleted their account with this payout outstanding; reconcile manually',
+		       updated_at = NOW()
+		 WHERE courier_id = $1
+		   AND status IN ('pending', 'processing')`, uid)
+	if err != nil {
+		slog.Error("DeleteAccount step failed",
+			slog.String("user_id", uid), slog.String("step", "freeze courier payouts"),
+			slog.String("error", err.Error()))
+		writeError(w, http.StatusInternalServerError, "failed to delete account")
+		return
+	}
+	outstandingPayouts := frozen.RowsAffected()
+
 	// Delete related data in dependency order. Each step is checked so a failure
 	// short-circuits with the real root-cause logged, rather than only surfacing
 	// at the final DELETE/Commit with the underlying error lost.
@@ -282,6 +334,19 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete account")
 		return
+	}
+
+	// Money still owed to a courier who just walked away needs a human, not
+	// only a row in a table nobody is watching.
+	if outstandingPayouts > 0 {
+		slog.Warn("DeleteAccount: courier deleted their account with outstanding payouts",
+			slog.String("user_id", uid), slog.Int64("payout_rows", outstandingPayouts))
+		h.alertAdmin("Courier deleted their account with outstanding payouts",
+			fmt.Sprintf("Courier %s deleted their account while %d payout queue row(s) were still unpaid.\n\n"+
+				"Those rows were moved to failed_permanent so the sweep stops retrying them; the courier's\n"+
+				"user row (and any Stripe Connect account link) is gone, so settle them off-platform.\n\n"+
+				"Query: SELECT * FROM courier_payout_queue WHERE courier_id IS NULL AND status = 'failed_permanent';\n",
+				uid, outstandingPayouts))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})

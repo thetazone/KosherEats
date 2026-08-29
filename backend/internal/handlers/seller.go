@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -455,6 +456,33 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		req.KosherCertification = &normalized
 	}
 
+	// The kosher columns are the platform's core trust claim: the consumer
+	// apps render the badge (glatt / cholov yisroel / pas yisroel, agency,
+	// certificate) straight off this row. Without this snapshot an already
+	// approved seller could upgrade their own claim with a plain PUT and no
+	// human would ever see it — the row updates, approval_status stays
+	// 'approved', and the new badge is live instantly.
+	//
+	// We deliberately do NOT re-pend or de-list the restaurant: pulling a
+	// live restaurant off the marketplace mid-service on an edit is a
+	// business/policy call, not a correctness fix. Instead we capture the
+	// before-state here and email the admin the diff after the write, so the
+	// change is reviewable (and reversible) rather than silent.
+	var kosherBefore *kosherAttrs
+	if req.KosherCertification != nil || req.CertifyingAgency != nil ||
+		req.IsCholovYisroel != nil || req.IsPasYisroel != nil ||
+		req.IsGlattKosher != nil || req.KosherCertificateURL != nil {
+		snap, err := h.loadKosherAttrs(r.Context(), restID)
+		if err != nil {
+			// Fail closed, like the delivery-mode guard above: writing a new
+			// kosher claim we can't diff would reintroduce exactly the silent
+			// upgrade this guard exists to surface.
+			writeError(w, http.StatusInternalServerError, "failed to validate kosher certification")
+			return
+		}
+		kosherBefore = snap
+	}
+
 	// Guard: a seller can't open a restaurant for orders before the platform
 	// admin has approved it. We let them toggle the flag in their UI for
 	// convenience while editing, but the actual marketplace gate is the
@@ -519,6 +547,15 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Kosher details on an approved (i.e. consumer-visible) restaurant changed
+	// without any admin re-review. Best-effort alert so the certificate gets
+	// re-checked; a mail failure must never fail the seller's save.
+	if kosherBefore != nil && kosherBefore.approvalStatus == "approved" {
+		if changes := kosherBefore.diff(&req); len(changes) > 0 {
+			h.alertKosherChange(restID, kosherBefore.name, changes)
+		}
+	}
+
 	// Return the full, post-update Restaurant so the iOS client can swap
 	// its in-memory model in one call (avoids a second GET round-trip and
 	// keeps the seller UI and DB in lockstep).
@@ -543,6 +580,76 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, rest)
+}
+
+// kosherAttrs is the pre-update snapshot of the columns backing a restaurant's
+// kosher badge, plus the approval state that decides whether changing them
+// needs a human to look again.
+type kosherAttrs struct {
+	name           string
+	approvalStatus string
+	certification  string
+	agency         string
+	cholovYisroel  bool
+	pasYisroel     bool
+	glatt          bool
+	certificateURL string
+}
+
+// loadKosherAttrs reads the current kosher columns for restID. certifying_agency
+// is nullable, hence the COALESCE.
+func (h *Handler) loadKosherAttrs(ctx context.Context, restID string) (*kosherAttrs, error) {
+	var a kosherAttrs
+	err := h.db.Pool.QueryRow(ctx,
+		`SELECT name, approval_status, kosher_certification, COALESCE(certifying_agency, ''),
+		        is_cholov_yisroel, is_pas_yisroel, is_glatt_kosher, kosher_certificate_url
+		   FROM restaurants WHERE id = $1`, restID,
+	).Scan(&a.name, &a.approvalStatus, &a.certification, &a.agency,
+		&a.cholovYisroel, &a.pasYisroel, &a.glatt, &a.certificateURL)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+// diff returns one "field: old -> new" line per kosher column the request
+// actually changes. Fields the client left nil, or set to the value already on
+// the row, produce nothing — a seller re-saving an unrelated section shouldn't
+// page the admin.
+func (a *kosherAttrs) diff(req *UpdateRestaurantRequest) []string {
+	var changes []string
+	addStr := func(label, old string, next *string) {
+		if next != nil && *next != old {
+			changes = append(changes, fmt.Sprintf("%s: %q -> %q", label, old, *next))
+		}
+	}
+	addBool := func(label string, old bool, next *bool) {
+		if next != nil && *next != old {
+			changes = append(changes, fmt.Sprintf("%s: %t -> %t", label, old, *next))
+		}
+	}
+	addStr("kosher_certification", a.certification, req.KosherCertification)
+	addStr("certifying_agency", a.agency, req.CertifyingAgency)
+	addBool("is_cholov_yisroel", a.cholovYisroel, req.IsCholovYisroel)
+	addBool("is_pas_yisroel", a.pasYisroel, req.IsPasYisroel)
+	addBool("is_glatt_kosher", a.glatt, req.IsGlattKosher)
+	addStr("kosher_certificate_url", a.certificateURL, req.KosherCertificateURL)
+	return changes
+}
+
+// alertKosherChange emails the admin that a live restaurant's kosher claim was
+// edited post-approval. The approval magic links can't be reused here (the
+// decision endpoint only accepts 'pending' rows), so this is a plain
+// notification pointing the admin at the dashboard.
+func (h *Handler) alertKosherChange(restID, name string, changes []string) {
+	h.alertAdmin(
+		fmt.Sprintf("Kosher details changed on approved restaurant: %s", name),
+		fmt.Sprintf(`%s (restaurant %s) is approved and live on the marketplace, and its seller just changed its kosher certification details:
+
+%s
+
+The restaurant was NOT taken offline and consumers already see the updated badge. Re-check the certificate and, if the new claim isn't backed, correct or reject it from the admin dashboard.
+`, name, restID, strings.Join(changes, "\n")))
 }
 
 func (h *Handler) GetSellerMenu(w http.ResponseWriter, r *http.Request) {

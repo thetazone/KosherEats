@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/koshereats/backend/internal/ctxkeys"
 	"github.com/koshereats/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
@@ -174,7 +177,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		h.clearEmailOTP(r.Context(), req.Email, emailOTPPurposeSignup)
 	}
 
-	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
+	token, refreshToken, err := h.generateTokens(r.Context(), user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -306,7 +309,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
+	token, refreshToken, err := h.generateTokens(r.Context(), user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -354,18 +357,29 @@ func (h *Handler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Re-fetch the current role + vertical from DB so demotions/bans take
-	// effect immediately on the next refresh, rather than living in the
-	// token claim until it expires.
+	// Re-fetch the current role + vertical + token epoch from DB so
+	// demotions/bans take effect immediately on the next refresh, rather than
+	// living in the token claim until it expires.
 	var currentRole, currentVertical string
+	var currentEpoch int64
 	if err := h.db.Pool.QueryRow(r.Context(),
-		`SELECT role, vertical FROM users WHERE id = $1`, userID,
-	).Scan(&currentRole, &currentVertical); err != nil {
-		writeError(w, http.StatusUnauthorized, "user not found")
+		`SELECT role, vertical, token_epoch FROM users WHERE id = $1`, userID,
+	).Scan(&currentRole, &currentVertical, &currentEpoch); err != nil {
+		writeAuthLookupError(w, err, "user not found")
 		return
 	}
 
-	newToken, newRefresh, err := h.generateTokens(userID, currentRole, currentVertical)
+	// SECURITY: this is what stops a leaked refresh token from renewing itself
+	// forever. Refresh tokens are stateless and each refresh mints a fresh
+	// 7-day one, so without an epoch check a stolen token outlives the very
+	// remediation meant to kill it — resetting the password bumps token_epoch,
+	// stranding every token minted before it.
+	if claimEpoch(*claims) != currentEpoch {
+		writeError(w, http.StatusUnauthorized, "refresh token revoked")
+		return
+	}
+
+	newToken, newRefresh, err := h.generateTokens(r.Context(), userID, currentRole, currentVertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return
@@ -426,6 +440,24 @@ func (h *Handler) AuthMiddleware(next http.Handler) http.Handler {
 			vertical = "kosher"
 		}
 
+		// Revocation check. Access tokens are short-lived but not free — a
+		// password reset must lock an attacker out NOW, not up to 15 minutes
+		// later, so the epoch is verified per request. Costs one primary-key
+		// lookup on top of the queries the handler already runs, and fails
+		// closed if the user row is gone.
+		currentEpoch, err := h.currentTokenEpoch(r.Context(), userID)
+		if err != nil {
+			// A DB blip here must NOT read as a revoked session: this check runs
+			// on every authenticated request, so collapsing it into 401 signs
+			// out the entire fleet at once. See writeAuthLookupError.
+			writeAuthLookupError(w, err, "token revoked")
+			return
+		}
+		if claimEpoch(*claims) != currentEpoch {
+			writeError(w, http.StatusUnauthorized, "token revoked")
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), userContextKey, map[string]string{
 			"user_id":  userID,
 			"role":     role,
@@ -481,6 +513,27 @@ func (h *Handler) OptionalAuthMiddleware(next http.Handler) http.Handler {
 			vertical = "kosher"
 		}
 
+		// Same revocation check as AuthMiddleware, but a revoked token here
+		// downgrades the request to guest rather than failing it — that's this
+		// middleware's contract. A transient DB error is NOT a revocation
+		// though: silently serving a signed-in user as a guest hides their
+		// addresses/cart/pricing with no signal that anything went wrong, so a
+		// blip gets a retryable 503 instead. Only a genuinely missing row (or a
+		// real epoch mismatch) downgrades.
+		currentEpoch, err := h.currentTokenEpoch(r.Context(), userID)
+		if err != nil {
+			if !isMissingUserErr(err) {
+				writeError(w, http.StatusServiceUnavailable, "temporarily unavailable, please retry")
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if claimEpoch(*claims) != currentEpoch {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), userContextKey, map[string]string{
 			"user_id":  userID,
 			"role":     role,
@@ -513,14 +566,87 @@ func getUserFromContext(r *http.Request) (map[string]string, error) {
 	return userData, nil
 }
 
-func (h *Handler) generateTokens(userID, role, vertical string) (string, string, error) {
+// writeAuthLookupError renders a failed identity lookup performed during
+// authentication. A genuinely missing user row (deleted account still holding a
+// live token) is a real auth failure and stays 401. Any OTHER error is a
+// transient DB problem (connection drop, pool exhaustion — this Fly PG has a
+// history of it) and must be a retryable 503, NOT a 401: the client reads 401
+// as an expired session and logs the user out. Because the epoch check runs on
+// every authenticated request and /auth/refresh does its own lookup, collapsing
+// the two cases signs out consumer/seller/courier/admin fleet-wide over a blip
+// that should have been retried. Mirrors RequireVerifiedMiddleware's rule.
+func writeAuthLookupError(w http.ResponseWriter, err error, notFoundMessage string) {
+	if isMissingUserErr(err) {
+		writeError(w, http.StatusUnauthorized, notFoundMessage)
+		return
+	}
+	writeError(w, http.StatusServiceUnavailable, "temporarily unavailable, please retry")
+}
+
+// isMissingUserErr reports whether an identity lookup failed because the user
+// cannot exist, as opposed to because the database was momentarily unreachable.
+// 22P02 = invalid_text_representation: the id in the token isn't a UUID
+// Postgres will accept, so it can never match a row — that's a bad token, not a
+// sick database, and must fail permanently rather than retry against a 503.
+func isMissingUserErr(err error) bool {
+	if errors.Is(err, pgx.ErrNoRows) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "22P02"
+}
+
+// currentTokenEpoch reads the user's live session generation. Every password
+// reset bumps it (migration 059), which is what makes tokens minted before the
+// reset stop validating. Returns an error for an unknown / malformed user id so
+// callers fail closed.
+func (h *Handler) currentTokenEpoch(ctx context.Context, userID string) (int64, error) {
+	var epoch int64
+	if err := h.db.Pool.QueryRow(ctx,
+		`SELECT token_epoch FROM users WHERE id = $1`, userID,
+	).Scan(&epoch); err != nil {
+		return 0, err
+	}
+	return epoch, nil
+}
+
+// claimEpoch extracts the "epoch" claim. Tokens issued before migration 059
+// carry no such claim and read as 0 — the same value the column defaults to —
+// so sessions that predate this change keep working until their account resets
+// its password. jwt.MapClaims decodes JSON numbers as float64 by default, but
+// accept json.Number too in case a parser is configured with UseJSONNumber.
+func claimEpoch(claims jwt.MapClaims) int64 {
+	switch v := claims["epoch"].(type) {
+	case float64:
+		return int64(v)
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil {
+			return -1 // unparseable: never matches a real epoch
+		}
+		return n
+	default:
+		return 0
+	}
+}
+
+// generateTokens mints an access + refresh pair. It needs a context because it
+// reads the user's current token_epoch and stamps it into both tokens; every
+// mint path must carry the live value or the token it hands out would be
+// rejected on first use.
+func (h *Handler) generateTokens(ctx context.Context, userID, role, vertical string) (string, string, error) {
 	if vertical == "" {
 		vertical = "kosher"
+	}
+	epoch, err := h.currentTokenEpoch(ctx, userID)
+	if err != nil {
+		return "", "", fmt.Errorf("read token epoch: %w", err)
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":      userID,
 		"role":     role,
 		"vertical": vertical,
+		"epoch":    epoch,
 		"exp":      time.Now().Add(15 * time.Minute).Unix(),
 		"iat":      time.Now().Unix(),
 	})
@@ -534,6 +660,7 @@ func (h *Handler) generateTokens(userID, role, vertical string) (string, string,
 		"sub":      userID,
 		"role":     role,
 		"vertical": vertical,
+		"epoch":    epoch,
 		"typ":      "refresh",
 		"exp":      time.Now().Add(7 * 24 * time.Hour).Unix(),
 		"iat":      time.Now().Unix(),

@@ -75,7 +75,7 @@ func newCourierEnv(t *testing.T, onboarded bool) *courierEnv {
 		t.Fatalf("seed courier profile: %v", err)
 	}
 
-	token, _, err := h.generateTokens(courierID, "courier", "kosher")
+	token, _, err := h.generateTokens(ctx, courierID, "courier", "kosher")
 	if err != nil {
 		t.Fatalf("mint courier token: %v", err)
 	}

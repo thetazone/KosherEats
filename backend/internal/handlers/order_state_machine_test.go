@@ -77,7 +77,7 @@ func newSellerEnv(t *testing.T) *sellerEnv {
 	if err != nil {
 		t.Fatalf("seed restaurant: %v", err)
 	}
-	token, _, err := h.generateTokens(ownerID, "seller", "kosher")
+	token, _, err := h.generateTokens(ctx, ownerID, "seller", "kosher")
 	if err != nil {
 		t.Fatalf("mint seller token: %v", err)
 	}

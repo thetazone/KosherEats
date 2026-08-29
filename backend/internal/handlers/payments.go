@@ -268,7 +268,10 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	if isPickup {
 		deliveryAddrToStamp = ""
 	}
-	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp)
+	// cartRestID, not a client-supplied id: the whole bundle was priced against
+	// the cart's restaurant, and CreateOrder re-derives the same value from the
+	// cart, so stamping it binds the pickup end of the quoted route.
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp, cartRestID)
 	if err != nil {
 		// Surface the real Stripe error to the logs so future "failed to
 		// create payment" reports take seconds, not an hour, to diagnose.

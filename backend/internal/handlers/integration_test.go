@@ -254,6 +254,7 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Post("/api/v1/auth/register", h.Register)
 	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/refresh", h.RefreshToken)
 	r.Post("/api/v1/auth/phone/start", h.StartPhoneLogin)
 	r.Post("/api/v1/auth/phone/verify", h.VerifyPhoneLogin)
 	r.Post("/api/v1/auth/password/forgot", h.ForgotPassword)
@@ -302,6 +303,7 @@ func buildRouter(h *Handler) http.Handler {
 
 	r.Route("/api/v1/cart", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
+		r.Get("/", h.GetCart)
 		r.Post("/items", h.AddToCart)
 	})
 
@@ -795,6 +797,56 @@ func TestIntegration_AddToCartRejectsCrossRestaurantItem(t *testing.T) {
 	})
 	if ok.Code != http.StatusOK {
 		t.Fatalf("matching add: status %d (want 200), body %s", ok.Code, ok.Body.String())
+	}
+}
+
+// (5b) A rejected add must not take the customer's existing cart down with it.
+//
+// Switching restaurants wipes every line and re-points carts.restaurant_id, and
+// that wipe used to be COMMITTED before the menu item was validated — so an add
+// that then failed (item just marked unavailable, deleted, or naming an item
+// that isn't on the restaurant it claims) destroyed a full cart from the OTHER
+// restaurant and answered 400. The customer lost their order and was told only
+// "menu item not found".
+func TestIntegration_AddToCartFailureLeavesTheExistingCartIntact(t *testing.T) {
+	harness.resetVolatile(t)
+	token, _ := harness.registerUser(t, "cart-keep")
+
+	// A real cart at approvedRestID.
+	harness.addToCart(t, token, harness.approvedRestID, harness.menuItemID)
+
+	// Now try to switch to otherRestID with an item that does NOT live there
+	// (menuItemID belongs to approvedRestID), which is the same 400 path a
+	// sold-out item takes.
+	bad := harness.do(http.MethodPost, "/api/v1/cart/items", token, AddToCartRequest{
+		MenuItemID:   harness.menuItemID,
+		RestaurantID: harness.otherRestID,
+		Quantity:     1,
+	})
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("bad add: status %d (want 400), body %s", bad.Code, bad.Body.String())
+	}
+
+	cart := harness.do(http.MethodGet, "/api/v1/cart/", token, nil)
+	if cart.Code != http.StatusOK {
+		t.Fatalf("get cart: status %d, body %s", cart.Code, cart.Body.String())
+	}
+	var got struct {
+		RestaurantID string `json:"restaurant_id"`
+		Items        []struct {
+			MenuItemID string `json:"menu_item_id"`
+			Quantity   int    `json:"quantity"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(cart.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode cart: %v (body %s)", err, cart.Body.String())
+	}
+	if got.RestaurantID != harness.approvedRestID {
+		t.Errorf("cart was re-pointed to %q by a failed add, want %q",
+			got.RestaurantID, harness.approvedRestID)
+	}
+	if len(got.Items) != 1 || got.Items[0].MenuItemID != harness.menuItemID {
+		t.Fatalf("failed add emptied the cart: %+v", got.Items)
 	}
 }
 

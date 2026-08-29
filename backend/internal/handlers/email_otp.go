@@ -332,12 +332,9 @@ func (h *Handler) RequireVerifiedMiddleware(next http.Handler) http.Handler {
 			// (connection drop, pool exhaustion — this Fly PG has a history of
 			// it) and must be a retryable 503, NOT a 401: the client reads 401
 			// as an expired session and logs the user out mid-checkout over a
-			// blip that should have been retried.
-			if errors.Is(err, pgx.ErrNoRows) {
-				writeError(w, http.StatusUnauthorized, "unauthorized")
-			} else {
-				writeError(w, http.StatusServiceUnavailable, "temporarily unavailable, please retry")
-			}
+			// blip that should have been retried. Shared with the token-epoch
+			// revocation check in auth.go so both obey one rule.
+			writeAuthLookupError(w, err, "unauthorized")
 			return
 		}
 		if !emailVerified || !phoneVerified {

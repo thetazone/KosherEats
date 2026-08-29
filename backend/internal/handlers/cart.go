@@ -124,9 +124,38 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the item BEFORE touching the cart. Switching restaurants wipes
+	// every existing line, and that wipe used to be committed before this lookup
+	// ran — so adding an item that had just been marked unavailable (or deleted)
+	// destroyed the customer's whole in-progress cart from the OLD restaurant and
+	// answered 400 "menu item not found", leaving them with an empty cart they
+	// never asked to clear.
+	var basePrice int
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT price FROM menu_items WHERE id = $1 AND restaurant_id = $2 AND is_available = true`,
+		req.MenuItemID, req.RestaurantID,
+	).Scan(&basePrice); err != nil {
+		writeError(w, http.StatusBadRequest, "menu item not found")
+		return
+	}
+
+	// Validate + snapshot selected modifiers. We re-fetch from the DB using
+	// the supplied ids so we're using server-side truth for names + prices,
+	// never trusting client-side values. Also before the cart write, for the
+	// same reason as the price lookup above.
+	selected, modifierDelta, err := h.snapshotModifiers(r, req.MenuItemID, req.ModifierIDs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	unitPrice := basePrice + modifierDelta
+	selectedJSON, _ := json.Marshal(selected)
+
 	// Get or create cart — if switching restaurants, clear existing cart.
 	// Use a transaction with SELECT FOR UPDATE to prevent TOCTOU races when
-	// concurrent requests from different restaurants interleave here.
+	// concurrent requests from different restaurants interleave here. The item
+	// insert rides the SAME transaction so a failed add can never leave the cart
+	// wiped and re-pointed with nothing in it.
 	tx, err := h.db.Pool.Begin(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to begin transaction")
@@ -172,48 +201,26 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err = tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to commit cart transaction")
-		return
-	}
-
-	// Load base item price.
-	var basePrice int
-	err = h.db.Pool.QueryRow(r.Context(),
-		`SELECT price FROM menu_items WHERE id = $1 AND restaurant_id = $2 AND is_available = true`,
-		req.MenuItemID, req.RestaurantID,
-	).Scan(&basePrice)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "menu item not found")
-		return
-	}
-
-	// Validate + snapshot selected modifiers. We re-fetch from the DB using
-	// the supplied ids so we're using server-side truth for names + prices,
-	// never trusting client-side values.
-	selected, modifierDelta, err := h.snapshotModifiers(r, req.MenuItemID, req.ModifierIDs)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	unitPrice := basePrice + modifierDelta
-
-	selectedJSON, _ := json.Marshal(selected)
-
 	// Atomic upsert: if the same menu item with the same modifiers already
 	// exists in the cart, increment the quantity instead of adding a duplicate
 	// row. Using INSERT ... ON CONFLICT eliminates the race condition that
-	// existed with the previous SELECT-then-INSERT/UPDATE pattern.
-	_, err = h.db.Pool.Exec(r.Context(),
+	// existed with the previous SELECT-then-INSERT/UPDATE pattern. LEAST caps the
+	// accumulated line at the same 99 the request-level check enforces, which the
+	// bare `quantity + excluded.quantity` silently blew past on repeat adds.
+	if _, err = tx.Exec(r.Context(),
 		`INSERT INTO cart_items (cart_id, menu_item_id, quantity, notes, unit_price, selected_modifiers)
 		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (cart_id, menu_item_id, selected_modifiers)
-		 DO UPDATE SET quantity = cart_items.quantity + excluded.quantity,
+		 DO UPDATE SET quantity = LEAST(cart_items.quantity + excluded.quantity, 99),
 		     notes = COALESCE(NULLIF(excluded.notes, ''), cart_items.notes)`,
-		cartID, req.MenuItemID, req.Quantity, req.Notes, unitPrice, selectedJSON)
-
-	if err != nil {
+		cartID, req.MenuItemID, req.Quantity, req.Notes, unitPrice, selectedJSON,
+	); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to add item to cart")
+		return
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to commit cart transaction")
 		return
 	}
 

@@ -5,22 +5,20 @@
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[8/10] [ke_tests_backend] Uber cancel webhook can un-dispatch the live delivery, buying a second paid courier** — FIXED
-  In internal/handlers/uber_direct_webhook.go the `canceled` branch scoped its UPDATE only by `external_provider = 'uber_direct'`, never by the webhook'
-  > Whole backend builds and every package passes.
+- **[8/10] [ke_bugs_backend] PaymentIntent is not bound to the restaurant — free long-haul delivery** — FIXED
+  CreateOrder binds the charge to payer, amount, fulfillment type, delivery fee and the DROPOFF address, but never to the restaurant: it derives the res
+  > The fix is complete and verified. Summary of what's in place across the four files:
 
-## Summary
+**`backend/internal/payments/stripe
 
-The fix was already staged in the working tree; I verified i
+- **[7/10] [ke_bugs_backend] Uber cancel reconciler silently strands orders escalated before 'ready'** — FIXED
+  reconcileUberDeliveryStatus's uberDeliveryCanceled branch matched status IN ('ready','picked_up'), while the same switch's picked-up and delivered bra
+  > The fix is in place in `backend/internal/scheduler/dispatcher.go` and verified.
 
-- **[7/10] [ke_tests_backend] Uber cancel webhook welded accepted/preparing orders to a dead delivery forever** — FIXED
-  The `canceled` branch in internal/handlers/uber_direct_webhook.go guarded on `status IN ('ready','picked_up')`. Both the DoorDash and Shipday handlers
-  > The fix was already present in the working tree, and I verified it is correct and genuinely pinned rather than taking it
+**What was wrong:** `sweepExternalDeliv
 
-- **[6/10] [ke_tests_backend] All-providers-failed error contradicted its own permanence verdict, misreporting outages as unfixable to sellers** — FIXED
-  internal/dispatch/external.go computed the permanence of an all-quotes-failed batch correctly and per-error (`permanent only when EVERY provider retur
-  > Done. The fix is in place and verified.
+- **[7/10] [ke_bugs_backend] Approved restaurant can rewrite its kosher certification with no admin re-review** — FIXED
+  UpdateRestaurant (seller.go:477-515) COALESCE-updates kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel, is_glatt_kosher and 
+  > Fixed in `backend/internal/handlers/seller.go` — build, vet, gofmt, and test compilation are clean.
 
-## What the bug was
-
-`Dispatch` computed the batch verdict correctly per-error 
+**What I chose and 

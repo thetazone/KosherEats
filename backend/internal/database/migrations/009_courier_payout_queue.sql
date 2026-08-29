@@ -19,7 +19,10 @@ CREATE TABLE courier_payout_queue (
     -- One queue row per delivered order. UNIQUE so re-enqueuing is a no-op
     -- if the handler somehow retries (ON CONFLICT DO NOTHING in the INSERT).
     order_id UUID UNIQUE NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    courier_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- ON DELETE SET NULL (not CASCADE): a deleted courier account must not take
+    -- the record of money owed to them with it. See migration 060, which
+    -- retrofits this onto databases created before the fix.
+    courier_id UUID REFERENCES users(id) ON DELETE SET NULL,
 
     -- Snapshotted at enqueue time. If the courier later updates their
     -- Stripe Connect account, in-flight payouts still target the account

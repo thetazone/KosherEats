@@ -160,12 +160,33 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read every stamp this handler needs off the PaymentIntent in ONE Stripe
+	// call. Each guard below used to fetch the intent again (four round trips,
+	// each inside this open transaction while it holds the cart row locked), and
+	// each treated a transport error as "skip this check" — so a single slow or
+	// rate-limited Stripe response silently disabled the fulfillment-type,
+	// destination and restaurant guards at once, and made the delivery fee fall
+	// back to a fresh live quote that is guaranteed to disagree with the charged
+	// amount (see the fee block below). Fail closed instead: the card is already
+	// charged, so answering 503 lets the client retry onto the same PaymentIntent
+	// (the replay short-circuit above converges) while the orphan-payment sweep
+	// refunds it if the customer walks away.
+	stamps, serr := h.stripe.ReadCheckoutStamps(req.PaymentIntentID)
+	if serr != nil {
+		slog.Error("CreateOrder: could not read payment intent stamps — refusing rather than skipping the money guards",
+			slog.String("payment_intent_id", req.PaymentIntentID),
+			slog.String("user_id", user["user_id"]),
+			slog.String("error", serr.Error()))
+		writeError(w, http.StatusServiceUnavailable, "could not verify your payment — please try again")
+		return
+	}
+
 	// SECURITY: the order's fulfillment_type must match the one the PaymentIntent
 	// was priced for. Otherwise a client mints a pickup PI (delivery_fee = 0, tip
 	// forced 0) and redeems it on a delivery order — and because CreateOrder
-	// reuses the stamped delivery_fee (StampedDeliveryFee), the delivery ships for
-	// free. ok=false means a legacy PI with no stamp — skip the check for compat.
-	if stamped, ok, ferr := h.stripe.StampedFulfillmentType(req.PaymentIntentID); ferr == nil && ok && stamped != fulfillmentType {
+	// reuses the stamped delivery_fee, the delivery ships for free. OK=false means
+	// a legacy PI with no stamp — skip the check for compat.
+	if stamps.FulfillmentOK && stamps.FulfillmentType != fulfillmentType {
 		writeError(w, http.StatusBadRequest, "payment was created for a different fulfillment type")
 		return
 	}
@@ -175,15 +196,34 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	// client quotes a cheap fee against a nearby address, then redeems the same PI
 	// on a distant-address order. CreateOrder reuses the stamped (cheap) fee
 	// verbatim, so the dispatch ships far for the near price and the platform eats
-	// the delta (external provider) or under-pays its own courier. ok=false means
+	// the delta (external provider) or under-pays its own courier. OK=false means
 	// a pickup/pre-stamp/flat-rate-fallback PI with no stamp — skip for compat.
 	// Same shape as the fulfillment-type guard above.
-	if fulfillmentType == "delivery" {
-		if stamped, ok, aerr := h.stripe.StampedDeliveryAddrHash(req.PaymentIntentID); aerr == nil && ok &&
-			stamped != payments.DeliveryAddrHash(req.DeliveryAddress) {
-			writeError(w, http.StatusBadRequest, "payment was created for a different delivery address")
-			return
-		}
+	if fulfillmentType == "delivery" && stamps.DeliveryAddrOK &&
+		stamps.DeliveryAddrHash != payments.DeliveryAddrHash(req.DeliveryAddress) {
+		writeError(w, http.StatusBadRequest, "payment was created for a different delivery address")
+		return
+	}
+
+	// SECURITY: the order's restaurant must be the one the PaymentIntent was
+	// priced for. Everything else about the charge was already bound — payer,
+	// amount, fulfillment type, delivery fee, dropoff address — but the PICKUP
+	// end was not, and the delivery fee scales with the distance between the two.
+	// A client could quote against a nearby restaurant, switch the cart to a
+	// distant one (AddToCart re-points the cart on a restaurant switch) with the
+	// same item subtotal, and redeem the same PI: every term of the total is
+	// unchanged, so the amount-match guard passes, CreateOrder reuses the stamped
+	// cheap fee, and dispatch pays the real long-haul price. Same shape as the
+	// fulfillment-type and destination guards — OK=false means a pre-stamp PI or
+	// stub mode, so skip for compat.
+	if stamps.RestaurantOK && stamps.RestaurantID != cart.RestaurantID {
+		slog.Warn("CreateOrder: payment intent was priced for a different restaurant",
+			slog.String("payment_intent_id", req.PaymentIntentID),
+			slog.String("user_id", user["user_id"]),
+			slog.String("stamped_restaurant_id", stamps.RestaurantID),
+			slog.String("cart_restaurant_id", cart.RestaurantID))
+		writeError(w, http.StatusBadRequest, "payment was created for a different restaurant")
+		return
 	}
 
 	var restName, restAddress, restPhone string
@@ -201,7 +241,15 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deliveryFee := 0
-	if fulfillmentType != "pickup" {
+	// Only re-quote when the PaymentIntent carries NO stamped fee (dev stub mode
+	// or a pre-stamp PI). The stamp is what the card was actually charged
+	// against, so with one present every quote below is computed and then
+	// discarded — up to three courier HTTP calls with 30s client timeouts, run
+	// inside this open transaction while it holds the cart row locked, on a
+	// server whose WriteTimeout is 15s. One slow provider was therefore enough to
+	// blow the response deadline on an already-charged checkout and leave a
+	// charged-but-no-order until the 20-minute orphan sweep refunded it.
+	if fulfillmentType != "pickup" && !stamps.DeliveryFeeOK {
 		if restAddress != "" {
 			// Best-effort dropoff contact, matching dispatch's payload.
 			//
@@ -235,22 +283,18 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 			deliveryFee = deliveryFeeFallbackCents
 		}
 	}
-	// Reuse the delivery fee the PaymentIntent was actually charged against,
-	// rather than the fresh quote computed just above. quoteDeliveryFee hits a
-	// live courier API whose price drifts second-to-second, so re-quoting here
-	// would routinely disagree with what CreatePaymentIntent charged by a few
-	// cents (or, when the PI fell back to the flat rate, by dollars) and fail
-	// the amount-match guard below — charging the customer but rejecting the
-	// order. The stamp is authoritative and tamper-proof (set server-side at PI
-	// creation). Falls back to the quote above for stub mode / pre-stamp PIs.
-	if h.stripe != nil {
-		if fee, ok, err := h.stripe.StampedDeliveryFee(req.PaymentIntentID); err != nil {
-			slog.Warn("CreateOrder: could not read stamped delivery fee, using live quote",
-				slog.String("payment_intent_id", req.PaymentIntentID),
-				slog.String("error", err.Error()))
-		} else if ok {
-			deliveryFee = fee
-		}
+	// Use the delivery fee the PaymentIntent was actually charged against, rather
+	// than a fresh quote. quoteDeliveryFee hits a live courier API whose price
+	// drifts second-to-second, so re-quoting here would routinely disagree with
+	// what CreatePaymentIntent charged by a few cents (or, when the PI fell back
+	// to the flat rate, by dollars) and fail the amount-match guard below —
+	// charging the customer but rejecting the order. The stamp is authoritative
+	// and tamper-proof (set server-side at PI creation). Applied for pickup too:
+	// a pickup PI stamps 0, which is what a pickup order records anyway.
+	// A failure to READ the stamp can no longer silently drop us onto the live
+	// quote — ReadCheckoutStamps already failed the request above.
+	if stamps.DeliveryFeeOK {
+		deliveryFee = stamps.DeliveryFeeCents
 	}
 	// Freeze the marketplace markup baked into the delivery fee we are about to
 	// record. The seller's self-delivery payout is delivery_fee minus this
@@ -1374,6 +1418,11 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 	// context.Background(): the HTTP response is already sent, so r.Context() is
 	// dead. Using it here would let a client disconnect abort the query that
 	// DECIDES whether to dispatch, silently skipping the courier entirely.
+	//
+	// LEFT JOIN users for the same reason: o.user_id is NULL once the consumer
+	// deletes their account, and an INNER JOIN returned no row at all — so this
+	// bailed out at the ErrNoRows warning below and the order was never routed to
+	// anyone. The customer name/phone just come back '' via their COALESCEs.
 	if err := h.db.Pool.QueryRow(context.Background(),
 		`SELECT rest.name,
 		        COALESCE(rest.street || ', ' || rest.city || ', ' || rest.state || ' ' || rest.zip_code, ''),
@@ -1384,7 +1433,7 @@ func (h *Handler) MarkOrderReady(w http.ResponseWriter, r *http.Request) {
 		        o.delivery_fee, o.subtotal, COALESCE(o.courier_tip, 0)
 		   FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
-		   JOIN users u ON u.id = o.user_id
+		   LEFT JOIN users u ON u.id = o.user_id
 		  WHERE o.id = $1`, orderID,
 	).Scan(&restaurantName, &restAddress, &restPhone, &deliveryMode,
 		&deliveryAddress, &customerName, &customerPhone,
@@ -1610,6 +1659,9 @@ func (h *Handler) EscalateToUber(w http.ResponseWriter, r *http.Request) {
 	// Eligibility + dispatch inputs in one ownership-scoped query. The one-way
 	// lock (courier_id IS NULL AND external_delivery_id IS NULL) filters here AND
 	// is re-asserted atomically inside Dispatch's claim, so no row lock is needed.
+	// users is LEFT JOINed: an order anonymized by DeleteAccount has user_id NULL,
+	// and an INNER JOIN made it permanently "not eligible" — the seller had no way
+	// to get a paid, cooked order out the door.
 	var in dispatch.Input
 	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT o.id, rest.name,
@@ -1620,7 +1672,7 @@ func (h *Handler) EscalateToUber(w http.ResponseWriter, r *http.Request) {
 		        o.subtotal, COALESCE(o.courier_tip, 0)
 		   FROM orders o
 		   JOIN restaurants rest ON o.restaurant_id = rest.id
-		   JOIN users u ON u.id = o.user_id
+		   LEFT JOIN users u ON u.id = o.user_id
 		  WHERE o.id = $1 AND rest.owner_id = $2
 		    AND o.fulfillment_type = 'delivery'
 		    AND o.status IN ('accepted','preparing','ready')

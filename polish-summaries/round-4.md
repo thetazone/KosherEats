@@ -1,22 +1,28 @@
 # KosherEats Polish — Round 4
-**Max severity found:** 7
+**Max severity found:** 8
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [ke_tests_backend] Dispatch reuses a constant DoorDash quote id, dropping DoorDash from every retry** — FIXED
-  internal/dispatch/external.go quoted DoorDash with ExternalDeliveryID = in.OrderID + "_quote", a per-order constant. DoorDash files a quote under that
-  > ## Done — verified, plus one stale-comment correction
+- **[8/10] [ke_bugs_backend] StartPhoneChange resets the phone-OTP lockout for any phone number** — FIXED
+  phone_otp_starts is keyed by phone alone (migration 013) and shared by every OTP flow. StartPhoneLogin (phone_auth.go:66-72) deliberately refuses to s
+  > Both fixes applied, backend builds and vets clean, test packages compile.
 
-**The fix was already applied in the uncommitted working tree** w
+**`backend/internal/handlers/phone_auth.go`**
 
-- **[7/10] [ke_tests_backend] Courier payout hands the courier KosherEats' own marketplace markup** — FIXED
-  internal/handlers/courier_orders.go:434 computes payout := deliveryFee + tip, where orders.delivery_fee is the CONSUMER-facing fee — the courier cost 
-  > Done. All changes stayed under `backend/`.
+- **[7/10] [ke_bugs_backend] DeleteAccount nulls orders.user_id on live paid orders, permanently breaking the auto-reject refund** — FIXED
+  DeleteAccount runs `UPDATE orders SET user_id = NULL WHERE user_id = $1` (user.go:284) with no status filter, so it anonymizes orders in pending/accep
+  > All green. Here's what I changed.
 
-**What was already in the tree** (from the same work stream): `orders.go` st
+## Root cause fix — `backend/internal/handlers/user.go`
 
-- **[6/10] [ke_tests_backend] Uber webhook lifecycle branches lack the delivery-id scope its cancel branch has** — FIXED
-  internal/handlers/uber_direct_webhook.go scoped the 'pickup', 'pickup_complete' and 'delivered' branches to external_provider = 'uber_direct' AND exte
-  > Done — the fix and its test were already present in the working tree; I verified them end to end rather than rewriting t
+`DeleteAccount` now refuses 
+
+- **[6/10] [ke_bugs_backend] Token-epoch revocation check turns any transient DB error into a 401 logout for every user** — FIXED
+  The new (uncommitted) revocation check calls currentTokenEpoch on every authenticated request and collapses all failure modes into one branch: `if err
+  > Done. The fix is in `backend/internal/handlers/auth.go` + `email_otp.go`.
+
+**What changed**
+
+1. **Shared classifier** (`

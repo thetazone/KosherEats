@@ -164,6 +164,12 @@ func main() {
 	// emailCheckLimiter. The matching verify endpoints ride the normal limiters
 	// and are additionally protected by the per-code attempt lockout + TTL.
 	emailOtpLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(3.0/60), 3, 30*time.Minute)
+	// Authenticated phone-change "send a code" endpoint dispatches a real SMS to
+	// a caller-supplied number, so it's an SMS-bombing / toll-fraud vector on the
+	// lenient per-user apiLimiter alone. Give the SEND its own strict per-IP
+	// counter (3 per ~5 min). Distinct max/window from the email limiters =>
+	// independent Redis + in-memory counters.
+	phoneOtpLimiter := kemiddleware.NewRedisRateLimiter(redisClient, rate.Limit(3.0/300), 3, 30*time.Minute)
 
 	h := handlers.New(db, cfg)
 
@@ -478,8 +484,10 @@ func main() {
 		r.Put("/profile", h.UpdateProfile)
 		// Verified phone-change flow (UpdateProfile no longer writes phone):
 		// start sends an OTP to the new number, verify sets it on the account.
-		// Also the "add phone" step of the social/email onboarding flows.
-		r.Post("/phone/change/start", h.StartPhoneChange)
+		// Also the "add phone" step of the social/email onboarding flows. Start is
+		// strict per-IP (phoneOtpLimiter) on top of the per-user limiter to bound
+		// SMS sends to attacker-supplied numbers.
+		r.With(phoneOtpLimiter.PerIP).Post("/phone/change/start", h.StartPhoneChange)
 		r.Post("/phone/change/verify", h.VerifyPhoneChange)
 		// Verified add-email flow — the "attach a real, verified inbox" step of
 		// the phone-first and Apple onboarding flows. Start is strict per-IP

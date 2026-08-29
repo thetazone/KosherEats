@@ -52,6 +52,7 @@ type fakePI struct {
 	fulfillment string // "" = unstamped (legacy PI)
 	deliveryFee *int   // nil = unstamped
 	addrHash    string // "" = unstamped
+	restaurant  string // "" = unstamped
 	refunded    bool
 }
 
@@ -68,6 +69,9 @@ func (p fakePI) json(id string) string {
 	}
 	if p.addrHash != "" {
 		meta["delivery_addr_hash"] = p.addrHash
+	}
+	if p.restaurant != "" {
+		meta["restaurant_id"] = p.restaurant
 	}
 	status := p.status
 	if status == "" {
@@ -91,9 +95,12 @@ func (p fakePI) json(id string) string {
 
 // fakeStripe serves the two endpoints CreateOrder can reach.
 type fakeStripe struct {
-	mu      sync.Mutex
-	intents map[string]fakePI
-	refunds []string
+	mu sync.Mutex
+	// failStatus makes a PaymentIntent read answer this HTTP status instead of
+	// the intent — how a Stripe outage, rate limit or timeout presents.
+	failStatus map[string]int
+	intents    map[string]fakePI
+	refunds    []string
 }
 
 func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +117,14 @@ func (f *fakeStripe) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if id, ok := strings.CutPrefix(r.URL.Path, "/v1/payment_intents/"); ok && id != "" {
 		f.mu.Lock()
+		status := f.failStatus[id]
 		pi, known := f.intents[id]
 		f.mu.Unlock()
+		if status != 0 {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":{"type":"api_error","message":"stripe is having a moment"}}`))
+			return
+		}
 		if !known {
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","message":"No such payment_intent"}}`))
@@ -136,7 +149,7 @@ func (f *fakeStripe) refundCount() int {
 // (and stripe-go's package globals) afterwards.
 func installFakeStripe(t *testing.T) *fakeStripe {
 	t.Helper()
-	fake := &fakeStripe{intents: map[string]fakePI{}}
+	fake := &fakeStripe{intents: map[string]fakePI{}, failStatus: map[string]int{}}
 	srv := httptest.NewServer(fake)
 	t.Cleanup(srv.Close)
 
@@ -546,5 +559,121 @@ func TestIntegration_CreateOrderReplayIsIdempotentInLiveMode(t *testing.T) {
 	}
 	if fake.refundCount() != 0 {
 		t.Errorf("a replay issued %d refunds, want 0", fake.refundCount())
+	}
+}
+
+// ---- the restaurant stamp -------------------------------------------------
+
+// The delivery fee scales with the distance between the two ENDS of the route,
+// and only the dropoff end was bound. The pickup end is the restaurant, which
+// CreateOrder derives from carts.restaurant_id at order time — so a client could
+// price a PaymentIntent against a nearby restaurant, then switch the cart to a
+// distant one (AddToCart re-points the cart on a restaurant switch) and redeem
+// the same PI on it.
+//
+// The amount-match guard does not catch this, and this test is built so that it
+// demonstrably cannot: both seeded restaurants carry an identically-priced item,
+// so the item subtotal, the tax derived from it, the tip and the stamped
+// delivery fee are all byte-identical between the two carts. Every term of the
+// total is unchanged; only the pickup point moves. Without the restaurant stamp
+// the order is created and dispatch pays the real long-haul price against the
+// cheap quoted fee.
+func TestIntegration_CreateOrderRejectsAnIntentPricedForADifferentRestaurant(t *testing.T) {
+	fee := 599
+	cases := []struct {
+		name       string
+		cartRest   func() string
+		cartItem   func() string
+		wantStatus int
+	}{
+		{
+			name:       "the restaurant the intent was priced for",
+			cartRest:   func() string { return harness.approvedRestID },
+			cartItem:   func() string { return harness.menuItemID },
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "a different restaurant with an identically-priced cart",
+			cartRest:   func() string { return harness.otherRestID },
+			cartItem:   func() string { return harness.otherItemID },
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := installFakeStripe(t)
+			// Build the environment by hand rather than via newMoneyGuardEnv so the
+			// cart can point at the swapped restaurant.
+			harness.resetVolatile(t)
+			token, userID := harness.registerUser(t, "pi-rest")
+			harness.addToCart(t, token, tc.cartRest(), tc.cartItem())
+			piID := fmt.Sprintf("pi_guard_rest_%d", time.Now().UnixNano())
+
+			fake.intents[piID] = fakePI{
+				amount:      seededItemPrice + fee + moneyGuardTax,
+				userID:      userID,
+				fulfillment: "delivery",
+				deliveryFee: &fee,
+				addrHash:    payments.DeliveryAddrHash("2 Oak St, Brooklyn, NY 11218"),
+				// Priced for the approved restaurant in BOTH cases — that is the
+				// point: only the cart moves.
+				restaurant: harness.approvedRestID,
+			}
+
+			rec := harness.do(http.MethodPost, "/api/v1/orders/", token, map[string]any{
+				"payment_intent_id": piID,
+				"fulfillment_type":  "delivery",
+				"delivery_address":  "2 Oak St, Brooklyn, NY 11218",
+			})
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if tc.wantStatus != http.StatusCreated {
+				if n := orderCountForPI(t, piID); n != 0 {
+					t.Errorf("%d orders created for a refused PI, want 0", n)
+				}
+			}
+		})
+	}
+}
+
+// ---- reading the stamps is one call, and it fails CLOSED ------------------
+
+// Every money guard in CreateOrder keys off metadata on the PaymentIntent. When
+// each guard fetched the intent for itself, a transient Stripe failure made all
+// of them answer "no stamp" — the fulfillment-type, destination and restaurant
+// checks were skipped, and the delivery fee fell back to a fresh live courier
+// quote that cannot match the charged amount. So a Stripe blip both disarmed the
+// anti-fraud guards AND guaranteed the amount-match rejection that follows.
+//
+// The read is now a single call whose failure refuses the request outright: no
+// order, and a retryable 503 rather than a 402 that tells the customer their
+// (successful) payment was declined.
+func TestIntegration_CreateOrderFailsClosedWhenTheStampReadIsUnavailable(t *testing.T) {
+	fake := installFakeStripe(t)
+	e := newMoneyGuardEnv(t, "pi-stampfail")
+
+	// The intent exists and would verify fine — only the READ is broken.
+	fake.intents[e.piID] = fakePI{
+		amount:      seededItemPrice + moneyGuardTax,
+		userID:      e.userID,
+		fulfillment: "pickup",
+	}
+	fake.failStatus[e.piID] = http.StatusInternalServerError
+
+	rec := e.createOrder(t, map[string]any{"fulfillment_type": "pickup"})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503 (body %s)", rec.Code, rec.Body.String())
+	}
+	if n := orderCountForPI(t, e.piID); n != 0 {
+		t.Errorf("%d orders created while the guards could not be evaluated, want 0", n)
+	}
+
+	// Recovery: once Stripe answers again the very same request succeeds, so the
+	// 503 really is "retry", not a dead end for an already-charged customer.
+	delete(fake.failStatus, e.piID)
+	retry := e.createOrder(t, map[string]any{"fulfillment_type": "pickup"})
+	if retry.Code != http.StatusCreated {
+		t.Fatalf("retry after recovery: status %d, want 201 (body %s)", retry.Code, retry.Body.String())
 	}
 }

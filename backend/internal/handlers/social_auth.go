@@ -259,7 +259,7 @@ func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	token, refreshToken, err := h.generateTokens(user.ID, string(user.Role), user.Vertical)
+	token, refreshToken, err := h.generateTokens(r.Context(), user.ID, string(user.Role), user.Vertical)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to generate tokens")
 		return

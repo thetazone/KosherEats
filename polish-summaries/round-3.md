@@ -5,20 +5,25 @@
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [ke_tests_backend] A partial refund permanently kills the courier's payout** — FIXED
-  StripeWebhook's `charge.refunded` branch set `haltPayoutOrderID = orderID` for ANY refund, then flipped the courier_payout_queue row to `failed_perman
-  > The fix was already present in the working tree; I verified it end to end rather than duplicating it.
+- **[7/10] [ke_bugs_backend] Payout retry schedule outruns Stripe's 24h idempotency window, double-paying couriers** — FIXED
+  In backend/internal/scheduler/dispatcher.go, payoutBackoffSecs (line 1584) returns 5m/15m/1h/6h/24h and maxPayoutAttempts is 6 (line 128), so a failin
+  > Fixed. Both halves of the hazard are closed, in `backend/` only.
 
-**What's in place
+**`backend/internal/payments/stripe.go`**
+- Added `Ide
 
-- **[6/10] [ke_tests_backend] Pickup webhooks push to the consumer on a zero-row (cross-provider) match** — FIXED
-  In `uber_direct_webhook.go` (`pickup_complete`) and `doordash_webhook.go` (`DASHER_PICKED_UP`), the 0-row branch called `logProviderScopeMiss` and the
-  > The fix was already present in the working tree; I verified it rather than re-applying it.
+- **[7/10] [ke_bugs_backend] Password reset does not invalidate existing sessions; refresh tokens are self-renewing and unrevocable** — FIXED
+  There is no session store, token epoch, jti, or denylist anywhere in the backend (grep for token_version|revoked|jti|sessions across internal/ returns
+  > Fixed. All changes are under `backend/`.
 
-**What's in place**
+## What was wrong
 
-- `back
+`ResetPassword` rewrote `password_hash` and nothing else. R
 
-- **[5/10] [ke_tests_backend] The quote endpoint advertises a $5.99 delivery that checkout then refuses with a 503** — FIXED
-  When every courier provider fails to quote, `quoteDeliveryFee` returns the `flat_rate` sentinel with the $5.99 fallback. `DeliveryQuote` (delivery_quo
-  > Fixed. The consumer no longer has to reach the payment step to find out delivery was never available — the quote itself 
+- **[5/10] [ke_bugs_backend] Deleting a courier account cascade-deletes their outstanding payout queue rows** — FIXED
+  backend/internal/database/migrations/009_courier_payout_queue.sql:23 declares courier_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, and no 
+  > Fixed. The cascade is gone and the financial record now outlives the courier's user row.
+
+## Changes
+
+**`backend/interna

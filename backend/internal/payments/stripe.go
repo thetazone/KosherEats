@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -53,7 +54,7 @@ const (
 
 // deliveryFeeMetaKey is the PaymentIntent metadata key under which we record the
 // delivery fee the charge total was computed against. CreateOrder reads it back
-// (StampedDeliveryFee) so the order it records is priced against the same fee
+// (ReadCheckoutStamps) so the order it records is priced against the same fee
 // that was charged — never a fresh, slightly-different live courier quote.
 const deliveryFeeMetaKey = "delivery_fee"
 
@@ -74,6 +75,22 @@ const fulfillmentMetaKey = "fulfillment_type"
 // this stamp — the exact analogue of fulfillmentMetaKey. We store a hash, not the
 // raw address, to keep PII out of Stripe metadata.
 const deliveryAddrMetaKey = "delivery_addr_hash"
+
+// restaurantMetaKey records which restaurant the PaymentIntent was priced for.
+//
+// Everything else about the charge is bound: the amount, the payer
+// (Metadata["user_id"]), the fulfillment type, the delivery fee, and the
+// DROPOFF address. The PICKUP end was not — CreateOrder derives the restaurant
+// from carts.restaurant_id at order time, and nothing checks it against the
+// cart the PaymentIntent was priced from. The delivery fee scales with the
+// distance between the two ends, so an unbound pickup point is the mirror image
+// of the deliveryAddrMetaKey hole: quote from a nearby restaurant, then move the
+// cart to a distant one (AddToCart re-points the cart on a restaurant switch)
+// and redeem the same PI. CreateOrder reuses the stamped (cheap) fee verbatim,
+// so the platform eats the real distance cost on dispatch. The amount-match
+// guard does not catch it — the attacker only has to rebuild a cart with the
+// same item subtotal, and every other term (tax, tip, stamped fee) is unchanged.
+const restaurantMetaKey = "restaurant_id"
 
 // DeliveryAddrHash normalizes a free-text delivery address (lowercase, trimmed,
 // internal whitespace collapsed) and returns a stable hex SHA-256 fingerprint of
@@ -243,71 +260,6 @@ func (c *Client) VerifyPaymentSucceeded(paymentIntentID, userID string, expected
 	return verifyPI(pi, userID, expectedAmountCents)
 }
 
-// StampedDeliveryFee returns the delivery fee (in cents) that the given
-// PaymentIntent was created against, read from the metadata CreatePaymentSheet
-// stamps. ok is false when the PI predates this stamp (older in-flight
-// checkouts) or in dev stub mode — callers then fall back to re-quoting. This
-// is what lets CreateOrder price the order against the exact fee that was
-// charged, instead of a fresh live courier quote that drifts by a few cents and
-// trips the amount-match guard.
-func (c *Client) StampedDeliveryFee(paymentIntentID string) (cents int, ok bool, err error) {
-	if !c.enabled || paymentIntentID == "" {
-		return 0, false, nil
-	}
-	pi, err := paymentintent.Get(paymentIntentID, nil)
-	if err != nil {
-		return 0, false, fmt.Errorf("retrieve payment intent: %w", err)
-	}
-	raw, present := pi.Metadata[deliveryFeeMetaKey]
-	if !present {
-		return 0, false, nil
-	}
-	v, convErr := strconv.Atoi(raw)
-	if convErr != nil {
-		return 0, false, nil
-	}
-	return v, true, nil
-}
-
-// StampedFulfillmentType returns the fulfillment_type the PaymentIntent was
-// priced for. ok is false when the PI predates this stamp (older in-flight
-// checkouts) or in dev stub mode — callers then skip the match check.
-func (c *Client) StampedFulfillmentType(paymentIntentID string) (value string, ok bool, err error) {
-	if !c.enabled || paymentIntentID == "" {
-		return "", false, nil
-	}
-	pi, err := paymentintent.Get(paymentIntentID, nil)
-	if err != nil {
-		return "", false, fmt.Errorf("retrieve payment intent: %w", err)
-	}
-	raw, present := pi.Metadata[fulfillmentMetaKey]
-	if !present || raw == "" {
-		return "", false, nil
-	}
-	return raw, true, nil
-}
-
-// StampedDeliveryAddrHash returns the delivery-address fingerprint the
-// PaymentIntent's fee was quoted against (see deliveryAddrMetaKey). ok is false
-// when the PI predates this stamp, was a pickup (no address stamped), or in dev
-// stub mode — callers then skip the destination-match check. Compare the return
-// value against payments.DeliveryAddrHash(orderAddress) to detect a swapped
-// delivery destination.
-func (c *Client) StampedDeliveryAddrHash(paymentIntentID string) (hash string, ok bool, err error) {
-	if !c.enabled || paymentIntentID == "" {
-		return "", false, nil
-	}
-	pi, err := paymentintent.Get(paymentIntentID, nil)
-	if err != nil {
-		return "", false, fmt.Errorf("retrieve payment intent: %w", err)
-	}
-	raw, present := pi.Metadata[deliveryAddrMetaKey]
-	if !present || raw == "" {
-		return "", false, nil
-	}
-	return raw, true, nil
-}
-
 // verifyPI is the pure verification core shared by VerifyPaymentSucceeded. It
 // takes an already-retrieved PaymentIntent (with latest_charge expanded) and
 // asserts it succeeded, matches the expected amount, isn't refunded, and — most
@@ -448,6 +400,60 @@ func (c *Client) ListOrphanCandidates(olderThan, youngerThan time.Duration) ([]O
 	return out, nil
 }
 
+// IdempotencyRetention is how long Stripe honors a previously-seen idempotency
+// key. After this, the key is forgotten: replaying a request with it is NOT
+// deduped, it creates a brand new object. Anything that retries a money-moving
+// call under a stable key must therefore either finish its whole retry run
+// inside this window, or reconcile against Stripe (see FindCourierTransfer)
+// before an attempt that could land outside it.
+const IdempotencyRetention = 24 * time.Hour
+
+// courierTransferGroup is the transfer_group stamped on every courier payout
+// transfer. It is derived only from the order id, and courier payouts are the
+// only thing that writes it — so it doubles as the lookup key that lets us ask
+// Stripe "has this order's payout already moved?" (see FindCourierTransfer).
+func courierTransferGroup(orderID string) string { return "order_" + orderID }
+
+// FindCourierTransfer reports whether a courier payout transfer for `orderID`
+// already exists at Stripe, returning its transfer id ("" when none does).
+//
+// This is the escape hatch for retries that may fall outside
+// IdempotencyRetention: the idempotency key can no longer be trusted to dedupe
+// them, so the caller asks Stripe directly instead of transferring blind. A
+// non-nil error means "unknown" — callers must NOT transfer on error.
+//
+// Fully-reversed transfers are ignored: a reversal is a deliberate unwind of
+// the payout, so the order legitimately still owes the courier.
+//
+// In dev stub mode (no Stripe key) this returns "" — nothing ever moved, so
+// there is nothing to reconcile against.
+func (c *Client) FindCourierTransfer(orderID string) (string, error) {
+	if !c.enabled {
+		return "", nil
+	}
+	if orderID == "" {
+		return "", fmt.Errorf("find courier transfer: empty order id")
+	}
+
+	params := &stripe.TransferListParams{
+		TransferGroup: stripe.String(courierTransferGroup(orderID)),
+	}
+	params.Limit = stripe.Int64(100)
+
+	it := transfer.List(params)
+	for it.Next() {
+		t := it.Transfer()
+		if t.Reversed {
+			continue
+		}
+		return t.ID, nil
+	}
+	if err := it.Err(); err != nil {
+		return "", fmt.Errorf("list transfers for order %s: %w", orderID, err)
+	}
+	return "", nil
+}
+
 // TransferToCourier sends `amountCents` to the courier's Connect account.
 // Called when an order is marked delivered. In prod this is a Stripe Transfer
 // which debits the platform balance and credits the connected account. In
@@ -456,6 +462,8 @@ func (c *Client) ListOrphanCandidates(olderThan, youngerThan time.Duration) ([]O
 // idempotencyKey should be a stable unique identifier (e.g. the payout queue
 // row's id) so that retries after a partial failure don't double-send money.
 // Pass empty string to skip idempotency (not recommended for production).
+// The key only dedupes for IdempotencyRetention — a caller whose retries can
+// outlive that must gate them on FindCourierTransfer.
 func (c *Client) TransferToCourier(accountID string, amountCents int, orderID string, idempotencyKey string) error {
 	if !c.enabled {
 		log.Printf("[stripe stub] transfer $%d.%02d -> %s for order %s",
@@ -471,7 +479,7 @@ func (c *Client) TransferToCourier(accountID string, amountCents int, orderID st
 		Amount:        stripe.Int64(int64(amountCents)),
 		Currency:      stripe.String(string(stripe.CurrencyUSD)),
 		Destination:   stripe.String(accountID),
-		TransferGroup: stripe.String("order_" + orderID),
+		TransferGroup: stripe.String(courierTransferGroup(orderID)),
 	}
 	if idempotencyKey != "" {
 		params.IdempotencyKey = stripe.String(idempotencyKey)
@@ -563,7 +571,7 @@ func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, us
 // In dev stub mode (no STRIPE_SECRET_KEY), returns fake values. The iOS app
 // detects the stub prefix and skips actually presenting PaymentSheet, which
 // keeps local dev functional without real Stripe keys.
-func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType, deliveryAddr string) (*PaymentSheetBundle, error) {
+func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType, deliveryAddr, restaurantID string) (*PaymentSheetBundle, error) {
 	if !c.enabled {
 		return &PaymentSheetBundle{
 			PaymentIntentSecret: "pi_stub_" + fakeID() + "_secret_stub",
@@ -602,7 +610,7 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 		"user_id":       userID,
 		orphanMarkerKey: orphanMarkerValue,
 		// Stamp the delivery fee that this charge total was computed
-		// against. CreateOrder reuses it (see StampedDeliveryFee) instead
+		// against. CreateOrder reuses it (see ReadCheckoutStamps) instead
 		// of re-quoting the courier API, which would return a slightly
 		// different live quote and fail the amount-match guard. This is
 		// what binds the recorded order total to the charged amount.
@@ -613,6 +621,11 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 	// closes the "quote near, deliver far" gap — see deliveryAddrMetaKey.
 	if h := DeliveryAddrHash(deliveryAddr); h != "" {
 		piMetadata[deliveryAddrMetaKey] = h
+	}
+	// Bind the pickup end too — the other half of the same distance. See
+	// restaurantMetaKey.
+	if restaurantID != "" {
+		piMetadata[restaurantMetaKey] = restaurantID
 	}
 	pi, err := paymentintent.New(&stripe.PaymentIntentParams{
 		Amount:             stripe.Int64(int64(amountCents)),
@@ -741,4 +754,96 @@ func fakeID() string {
 		b[i] = charset[int(b[i])%len(charset)]
 	}
 	return string(b)
+}
+
+// CheckoutStamps is everything CreateOrder reads back off a checkout
+// PaymentIntent, gathered in ONE API call.
+//
+// The four Stamped* readers above each did their own paymentintent.Get, so a
+// single CreateOrder made four sequential Stripe round trips (plus a fifth for
+// VerifyPaymentSucceeded) while holding the order transaction — and its cart row
+// lock — open. Worse, each reader answered (zero, false, err) on a transport
+// blip and every call site treats "err" as "skip this check": one slow Stripe
+// response silently disabled the fulfillment-type, destination and restaurant
+// guards, and made the fee fall back to a fresh live quote that is guaranteed to
+// disagree with the charged amount (see CreateOrder). Reading everything once
+// means the guards either all apply or the caller can fail closed on a single
+// error.
+//
+// Enabled is false in dev stub mode, on a nil client, or for an empty
+// PaymentIntent id — the same "no stamps, skip the checks" state the individual
+// readers signalled with ok=false.
+type CheckoutStamps struct {
+	Enabled bool
+
+	FulfillmentType string
+	FulfillmentOK   bool
+
+	DeliveryAddrHash string
+	DeliveryAddrOK   bool
+
+	RestaurantID string
+	RestaurantOK bool
+
+	DeliveryFeeCents int
+	DeliveryFeeOK    bool
+}
+
+// ReadCheckoutStamps retrieves the PaymentIntent once and decodes every stamp
+// CreateOrder needs. A non-nil error means we could not read the intent for a
+// reason a retry might fix; callers must fail closed rather than proceeding with
+// unguarded values.
+//
+// A PERMANENT rejection (Stripe says the id doesn't exist or is malformed) is
+// deliberately NOT an error: nothing about that id can ever satisfy
+// VerifyPaymentSucceeded either, so the caller should carry on and let that
+// check produce the accurate "payment not confirmed" answer instead of a
+// retryable 503.
+func (c *Client) ReadCheckoutStamps(paymentIntentID string) (CheckoutStamps, error) {
+	if c == nil || !c.enabled || paymentIntentID == "" {
+		return CheckoutStamps{}, nil
+	}
+	pi, err := paymentintent.Get(paymentIntentID, nil)
+	if err != nil {
+		if isPermanentStripeReadError(err) {
+			return CheckoutStamps{}, nil
+		}
+		return CheckoutStamps{}, fmt.Errorf("retrieve payment intent: %w", err)
+	}
+	s := CheckoutStamps{Enabled: true}
+	if v := pi.Metadata[fulfillmentMetaKey]; v != "" {
+		s.FulfillmentType, s.FulfillmentOK = v, true
+	}
+	if v := pi.Metadata[deliveryAddrMetaKey]; v != "" {
+		s.DeliveryAddrHash, s.DeliveryAddrOK = v, true
+	}
+	if v := pi.Metadata[restaurantMetaKey]; v != "" {
+		s.RestaurantID, s.RestaurantOK = v, true
+	}
+	// Unlike the string stamps an empty value is meaningless here, so key off
+	// presence and a successful parse.
+	if v, present := pi.Metadata[deliveryFeeMetaKey]; present {
+		if n, cerr := strconv.Atoi(v); cerr == nil {
+			s.DeliveryFeeCents, s.DeliveryFeeOK = n, true
+		}
+	}
+	return s, nil
+}
+
+// isPermanentStripeReadError reports whether a failed Stripe read can never
+// succeed on retry — an invalid_request_error such as "No such payment_intent",
+// i.e. a 4xx about the id we asked for rather than about our connection.
+// 429 is excluded: a rate limit is the transient case that most needs to fail
+// closed, since silently answering "no stamps" there would skip the money
+// guards exactly when traffic is heaviest.
+func isPermanentStripeReadError(err error) bool {
+	var se *stripe.Error
+	if !errors.As(err, &se) {
+		return false
+	}
+	if se.HTTPStatusCode == http.StatusTooManyRequests {
+		return false
+	}
+	return se.Type == stripe.ErrorTypeInvalidRequest ||
+		(se.HTTPStatusCode >= 400 && se.HTTPStatusCode < 500)
 }

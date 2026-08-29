@@ -39,6 +39,12 @@ type device struct {
 // No platform filter — we send to both iOS and Android devices owned by the
 // same user.
 func (n *Notifier) tokensForUser(ctx context.Context, userID string, app App) []device {
+	// An anonymized order (consumer deleted their account) carries no user id, so
+	// callers legitimately pass "". There is nobody to push to, and querying with
+	// it would just fail the uuid cast and log an error on every sweep tick.
+	if userID == "" {
+		return nil
+	}
 	rows, err := n.db.Query(ctx,
 		`SELECT token, platform FROM device_tokens WHERE user_id = $1 AND app = $2`,
 		userID, string(app))
