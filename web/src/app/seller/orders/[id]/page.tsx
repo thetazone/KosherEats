@@ -385,7 +385,7 @@ export default function SellerOrderDetailPage() {
             </>
           ) : (
             <>
-              <p className="text-red-400 mb-4">{error}</p>
+              <p className="text-danger-400 mb-4">{error}</p>
               <button onClick={() => load()} className="btn-secondary">
                 Try again
               </button>
@@ -463,14 +463,14 @@ export default function SellerOrderDetailPage() {
       {toast && (
         <div
           role="alert"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 max-w-[calc(100vw-2rem)] px-4 py-3 rounded-xl border border-red-500/40 bg-dark-900 shadow-lg shadow-black/40 text-sm text-red-300"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 max-w-[calc(100vw-2rem)] px-4 py-3 rounded-xl border border-danger-500/40 bg-dark-900 shadow-lg shadow-black/40 text-sm text-danger-300"
         >
           <OctagonX className="w-4 h-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0">{toast}</span>
           <button
             onClick={() => setToast(null)}
             aria-label="Dismiss error"
-            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -533,7 +533,7 @@ function ActionsCard({
           <button
             onClick={() => onAction("reject")}
             disabled={acting}
-            className={`${btn} bg-red-500/15 text-red-400 hover:bg-red-500/25`}
+            className={`${btn} bg-danger-500/15 text-danger-400 hover:bg-danger-500/25`}
           >
             {busy === "reject" ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -559,7 +559,7 @@ function ActionsCard({
           <button
             onClick={() => onAction("accept")}
             disabled={acting}
-            className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+            className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
           >
             {busy === "accept" ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -571,7 +571,7 @@ function ActionsCard({
           <button
             onClick={() => setConfirmingReject(true)}
             disabled={acting}
-            className={`${btn} bg-red-500/15 text-red-400 hover:bg-red-500/25`}
+            className={`${btn} bg-danger-500/15 text-danger-400 hover:bg-danger-500/25`}
           >
             <X className="w-4 h-4" aria-hidden="true" />
             Reject order
@@ -602,7 +602,7 @@ function ActionsCard({
         <button
           onClick={() => onAction("ready")}
           disabled={acting}
-          className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+          className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
         >
           {busy === "ready" ? (
             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -620,7 +620,7 @@ function ActionsCard({
           <button
             onClick={() => onAction("complete")}
             disabled={acting}
-            className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+            className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
           >
             {busy === "complete" ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -667,7 +667,7 @@ function ActionsCard({
           <button
             onClick={() => onAction("deliver")}
             disabled={acting}
-            className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+            className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
           >
             {busy === "deliver" ? (
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -699,9 +699,9 @@ function ActionsCard({
         <StatusHint
           icon={
             order.status === "cancelled" || order.status === "rejected" ? (
-              <OctagonX className="w-4 h-4 text-red-400" aria-hidden="true" />
+              <OctagonX className="w-4 h-4 text-danger-400" aria-hidden="true" />
             ) : (
-              <Check className="w-4 h-4 text-green-400" aria-hidden="true" />
+              <Check className="w-4 h-4 text-success-400" aria-hidden="true" />
             )
           }
           text={ORDER_STATUS_META[order.status]?.sellerLabel ?? order.status}
@@ -750,7 +750,7 @@ function PendingCountdown({ since }: { since: string }) {
   return (
     <div
       className={`flex items-center justify-center gap-1.5 text-xs font-semibold tabular-nums ${
-        expired || urgent ? "text-red-400" : "text-amber-400"
+        expired || urgent ? "text-danger-400" : "text-warning-400"
       }`}
     >
       {expired ? (
@@ -801,7 +801,7 @@ function RoutingCard({
         aria-pressed={selected}
         className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
           selected
-            ? "bg-green-500 text-white"
+            ? "bg-success-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700 disabled:opacity-50"
         }`}
       >
@@ -909,7 +909,7 @@ function CourierCard({
         <div className="min-w-0 flex-1">
           <div className="font-semibold truncate">{courier.first_name}</div>
           <div className="flex items-center gap-1 text-xs text-dark-400 mt-0.5">
-            <Star className="w-3 h-3 text-amber-400 fill-amber-400" aria-hidden="true" />
+            <Star className="w-3 h-3 text-warning-400 fill-warning-400" aria-hidden="true" />
             {courier.rating.toFixed(1)}
             <span aria-hidden="true">•</span>
             {courier.total_deliveries} deliveries
@@ -1086,7 +1086,7 @@ function PaymentCard({ order }: { order: SellerOrder }) {
       <div className="space-y-2">
         {row("Subtotal", order.subtotal)}
         {order.discount > 0 && (
-          <div className="flex items-center justify-between text-sm text-green-400">
+          <div className="flex items-center justify-between text-sm text-success-400">
             <span>Savings</span>
             <span>-{formatCents(order.discount)}</span>
           </div>
@@ -1192,11 +1192,11 @@ function TimelineCard({ order }: { order: SellerOrder }) {
               <span
                 className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
                   row.state === "done"
-                    ? "bg-green-500/20 text-green-400"
+                    ? "bg-success-500/20 text-success-400"
                     : row.state === "current"
                       ? "bg-brand-500/25 text-brand-400 ring-2 ring-brand-500/40"
                       : row.state === "dead"
-                        ? "bg-red-500/20 text-red-400"
+                        ? "bg-danger-500/20 text-danger-400"
                         : "bg-dark-800 text-dark-600"
                 }`}
               >
@@ -1211,7 +1211,7 @@ function TimelineCard({ order }: { order: SellerOrder }) {
               {i < rows.length - 1 && (
                 <span
                   className={`w-px flex-1 min-h-[1.25rem] ${
-                    row.state === "done" ? "bg-green-500/30" : "bg-dark-800"
+                    row.state === "done" ? "bg-success-500/30" : "bg-dark-800"
                   }`}
                   aria-hidden="true"
                 />
@@ -1224,7 +1224,7 @@ function TimelineCard({ order }: { order: SellerOrder }) {
                   row.state === "todo"
                     ? "text-dark-500"
                     : row.state === "dead"
-                      ? "text-red-400"
+                      ? "text-danger-400"
                       : row.state === "current"
                         ? "text-brand-400"
                         : ""

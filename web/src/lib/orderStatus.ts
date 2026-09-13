@@ -21,8 +21,13 @@ export interface OrderStatusMeta {
 
 // Pills use the rubric's semantic aliases (danger/warning/success/info/
 // transit) rather than raw Tailwind hues — same pixels, greppable intent.
-// TODO(rubric): `scheduled` and `pending` still use raw sky-*/amber-*; the
-// Ember palette has no alias for either, so picking one is a design call.
+// `pending` uses warning-* — main's 37569c45 already established amber-* ->
+// warning-* (admin/restaurants: bg-amber-500/20 text-amber-300 ->
+// bg-warning-500/20 text-warning-300), and warning-* IS Tailwind yellow, so
+// this is a deliberate (small) hue shift onto the existing token rather than a
+// new one. See docs/RUBRIC_SWEEP_REPORT_web-ordering.md.
+// TODO(rubric): no Ember alias for sky — `scheduled` is the only raw hue left
+// in this map. Picking a token for it is a design call, not a sweep call.
 export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
   scheduled: {
     label: "Scheduled",
@@ -32,7 +37,7 @@ export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
   pending: {
     label: "Pending",
     sellerLabel: "New order",
-    pill: "bg-amber-500/15 text-amber-300",
+    pill: "bg-warning-500/15 text-warning-300",
   },
   accepted: {
     label: "Accepted",

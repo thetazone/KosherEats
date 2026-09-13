@@ -53,7 +53,7 @@ export default function SellerLoginPage() {
 
         {/* Error */}
         {error && (
-          <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 mb-6 text-sm">
+          <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-6 text-sm">
             {error}
           </div>
         )}

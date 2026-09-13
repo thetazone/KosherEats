@@ -267,7 +267,7 @@ export default function SellerOrdersPage() {
             </>
           ) : (
             <>
-              <p className="text-red-400 mb-4">{error}</p>
+              <p className="text-danger-400 mb-4">{error}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -287,11 +287,11 @@ export default function SellerOrdersPage() {
 
       {/* Transient poll failure — keep the last good list on screen. */}
       {error && (
-        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm">
+        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-warning-500/30 bg-warning-500/10 text-warning-300 text-sm">
           <span>Reconnecting… showing last loaded orders.</span>
           <button
             onClick={load}
-            className="text-xs px-3 min-h-[44px] -my-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition-colors shrink-0"
+            className="text-xs px-3 min-h-[44px] -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -339,7 +339,7 @@ export default function SellerOrdersPage() {
           loading more may reveal more rows for the current tab. */}
       {hasMore && (
         <div className="mt-6 text-center">
-          {loadMoreError && <p className="text-sm text-red-400 mb-3">{loadMoreError}</p>}
+          {loadMoreError && <p className="text-sm text-danger-400 mb-3">{loadMoreError}</p>}
           <button
             onClick={loadMore}
             disabled={loadingMore}
@@ -365,14 +365,14 @@ function OrderRow({ order, isNew }: { order: SellerOrder; isNew: boolean }) {
     <Link
       href={`/seller/orders/${order.id}`}
       className={`card flex items-center gap-4 p-4 hover:bg-dark-800 transition-colors ${
-        isNew ? "border-amber-500/60" : ""
+        isNew ? "border-warning-500/60" : ""
       }`}
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-semibold">Order #{order.id.slice(0, 8)}</span>
           {isNew && (
-            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded-md">
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide bg-warning-500/15 text-warning-300 px-1.5 py-0.5 rounded-md">
               New
             </span>
           )}
@@ -447,7 +447,7 @@ function WaitingTimer({ since }: { since: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1 text-xs font-semibold tabular-nums ${
-        overdue ? "text-red-400" : "text-dark-500"
+        overdue ? "text-danger-400" : "text-dark-500"
       }`}
     >
       <Clock className="w-3 h-3" aria-hidden="true" />

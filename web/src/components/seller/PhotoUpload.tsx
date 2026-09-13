@@ -102,13 +102,13 @@ export function PhotoUpload({
             onChange("");
             setUploadError(null);
           }}
-          className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-red-400 hover:text-red-300 transition-colors mt-1"
+          className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />
           Remove photo
         </button>
       )}
-      {uploadError && <p className="text-xs text-red-400 mt-2">{uploadError}</p>}
+      {uploadError && <p className="text-xs text-danger-400 mt-2">{uploadError}</p>}
     </div>
   );
 }

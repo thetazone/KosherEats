@@ -216,7 +216,7 @@ export default function SellerMenuPage() {
             </>
           ) : (
             <>
-              <p className="text-red-400 mb-4">{error}</p>
+              <p className="text-danger-400 mb-4">{error}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -244,12 +244,12 @@ export default function SellerMenuPage() {
       </div>
 
       {actionError && (
-        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -391,7 +391,7 @@ function CategorySection({
           <button
             onClick={onDeleteCategory}
             aria-label={`Delete category ${category.name}`}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
           >
             <Trash2 className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -423,9 +423,9 @@ function CategorySection({
 // ── Item row ─────────────────────────────────────────────────
 
 function kosherBadge(item: SellerMenuItem): { label: string; className: string } | null {
-  if (item.is_meat) return { label: "Meat", className: "bg-red-500/15 text-red-400" };
-  if (item.is_dairy) return { label: "Dairy", className: "bg-blue-500/15 text-blue-400" };
-  if (item.is_pareve) return { label: "Pareve", className: "bg-green-500/15 text-green-400" };
+  if (item.is_meat) return { label: "Meat", className: "bg-meat-500/15 text-meat-400" };
+  if (item.is_dairy) return { label: "Dairy", className: "bg-dairy-500/15 text-dairy-400" };
+  if (item.is_pareve) return { label: "Pareve", className: "bg-pareve-500/15 text-pareve-400" };
   return null;
 }
 
@@ -474,7 +474,7 @@ function MenuItemRow({
             </span>
           )}
           {!item.is_available && (
-            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-warning-500/15 text-warning-400">
               Paused
             </span>
           )}
@@ -498,7 +498,7 @@ function MenuItemRow({
       >
         <span
           className={`relative block w-10 h-6 rounded-full transition-colors ${
-            item.is_available ? "bg-green-500" : "bg-dark-700"
+            item.is_available ? "bg-success-500" : "bg-dark-700"
           }`}
         >
           <span
@@ -521,7 +521,7 @@ function MenuItemRow({
         <button
           onClick={onDelete}
           aria-label={`Delete ${item.name}`}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
         >
           <Trash2 className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -576,7 +576,7 @@ function ConfirmDeleteDialog({
           <button
             onClick={onConfirm}
             disabled={busy}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-danger-500 hover:bg-danger-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Deleting…" : "Delete"}

@@ -112,7 +112,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
     <div className="h-11 rounded-xl bg-dark-800 animate-pulse" aria-hidden="true" />
   ) : restaurantsError ? (
     <div className="text-sm">
-      <p className="text-red-400 mb-1.5">{restaurantsError}</p>
+      <p className="text-danger-400 mb-1.5">{restaurantsError}</p>
       <button
         onClick={loadRestaurants}
         className="inline-flex items-center min-h-[44px] -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"

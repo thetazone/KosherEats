@@ -40,9 +40,9 @@ function dealStatus(deal: SellerDeal): DealStatus {
 }
 
 const STATUS_BADGE: Record<DealStatus, { label: string; className: string }> = {
-  active: { label: "Active", className: "bg-green-500/15 text-green-400" },
-  scheduled: { label: "Scheduled", className: "bg-blue-500/15 text-blue-400" },
-  expired: { label: "Expired", className: "bg-amber-500/15 text-amber-400" },
+  active: { label: "Active", className: "bg-success-500/15 text-success-400" },
+  scheduled: { label: "Scheduled", className: "bg-info-500/15 text-info-400" },
+  expired: { label: "Expired", className: "bg-warning-500/15 text-warning-400" },
   deactivated: { label: "Deactivated", className: "bg-dark-700 text-dark-400" },
 };
 
@@ -151,7 +151,7 @@ export default function SellerDealsPage() {
             </>
           ) : (
             <>
-              <p className="text-red-400 mb-4">{error}</p>
+              <p className="text-danger-400 mb-4">{error}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -179,12 +179,12 @@ export default function SellerDealsPage() {
       </div>
 
       {actionError && (
-        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
+            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -276,7 +276,7 @@ function DealCard({ deal, onDeactivate }: { deal: SellerDeal; onDeactivate: () =
       {status === "active" || status === "scheduled" ? (
         <button
           onClick={onDeactivate}
-          className="text-xs font-semibold text-red-400 hover:text-red-300 px-2 min-h-[44px] -my-1.5 rounded-lg hover:bg-red-500/10 transition-colors shrink-0"
+          className="text-xs font-semibold text-danger-400 hover:text-danger-300 px-2 min-h-[44px] -my-1.5 rounded-lg hover:bg-danger-500/10 transition-colors shrink-0"
         >
           Deactivate
         </button>
@@ -611,7 +611,7 @@ function CreateDealModal({
           {formError && (
             <div
               role="alert"
-              className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm"
+              className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm"
             >
               {formError}
             </div>
@@ -681,7 +681,7 @@ function ConfirmDeactivateDialog({
           <button
             onClick={onConfirm}
             disabled={busy}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-danger-500 hover:bg-danger-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Deactivating…" : "Deactivate"}

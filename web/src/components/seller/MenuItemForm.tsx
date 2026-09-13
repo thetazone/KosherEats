@@ -26,12 +26,16 @@ import type {
 type KosherType = "meat" | "dairy" | "pareve";
 
 const KOSHER_OPTIONS: { value: KosherType; label: string; selectedClass: string }[] = [
-  { value: "meat", label: "Meat", selectedClass: "bg-red-500/15 border-red-500 text-red-400" },
-  { value: "dairy", label: "Dairy", selectedClass: "bg-blue-500/15 border-blue-500 text-blue-400" },
+  { value: "meat", label: "Meat", selectedClass: "bg-meat-500/15 border-meat-500 text-meat-400" },
+  {
+    value: "dairy",
+    label: "Dairy",
+    selectedClass: "bg-dairy-500/15 border-dairy-500 text-dairy-400",
+  },
   {
     value: "pareve",
     label: "Pareve",
-    selectedClass: "bg-green-500/15 border-green-500 text-green-400",
+    selectedClass: "bg-pareve-500/15 border-pareve-500 text-pareve-400",
   },
 ];
 
@@ -236,13 +240,13 @@ export function MenuItemForm({
                   setImageUrl("");
                   setUploadError(null);
                 }}
-                className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-red-400 hover:text-red-300 transition-colors mt-1"
+                className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
                 Remove photo
               </button>
             )}
-            {uploadError && <p className="text-xs text-red-400 mt-2">{uploadError}</p>}
+            {uploadError && <p className="text-xs text-danger-400 mt-2">{uploadError}</p>}
           </div>
 
           {/* Name */}
@@ -303,7 +307,7 @@ export function MenuItemForm({
                 />
               </div>
               {priceInvalid && (
-                <p className="text-xs text-red-400 mt-1.5">Enter a price like 12.50</p>
+                <p className="text-xs text-danger-400 mt-1.5">Enter a price like 12.50</p>
               )}
             </div>
             <div>
@@ -370,7 +374,7 @@ export function MenuItemForm({
           </div>
 
           {saveError && (
-            <div className="px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+            <div className="px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
               {saveError}
             </div>
           )}

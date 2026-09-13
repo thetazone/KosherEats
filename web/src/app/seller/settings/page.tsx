@@ -333,7 +333,7 @@ export default function SellerSettingsPage() {
             </>
           ) : (
             <>
-              <p className="text-red-400 mb-4">{error || "Couldn't load your restaurant settings."}</p>
+              <p className="text-danger-400 mb-4">{error || "Couldn't load your restaurant settings."}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -559,7 +559,7 @@ export default function SellerSettingsPage() {
         {saveError && (
           <div
             role="alert"
-            className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm"
+            className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm"
           >
             {saveError}
           </div>
@@ -567,7 +567,7 @@ export default function SellerSettingsPage() {
         {saved && (
           <div
             role="status"
-            className="flex items-center gap-2 bg-green-500/10 border border-green-500/30 text-green-400 rounded-xl px-4 py-3 text-sm"
+            className="flex items-center gap-2 bg-success-500/10 border border-success-500/30 text-success-400 rounded-xl px-4 py-3 text-sm"
           >
             <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
             Settings saved

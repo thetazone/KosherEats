@@ -95,7 +95,7 @@ export function ActiveOrderCard({
 
   return (
     <div
-      className={`card p-5 ${order.status === "pending" ? "border-amber-500/40" : ""}`}
+      className={`card p-5 ${order.status === "pending" ? "border-warning-500/40" : ""}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -148,6 +148,9 @@ export function ActiveOrderCard({
       )}
 
       {order.status === "scheduled" && order.scheduled_for && (
+        // TODO(rubric): no Ember alias for sky — this matches the `scheduled`
+        // pill in lib/orderStatus.ts, so both move together once the palette
+        // gains a token for it. Picking one is a design call, not a sweep call.
         <div className="flex items-center gap-1.5 mt-3 text-xs text-sky-300">
           <Clock className="w-3.5 h-3.5" aria-hidden="true" />
           Scheduled for{" "}
@@ -213,7 +216,7 @@ function QuickActions({
             <button
               onClick={() => onAction(order, "reject")}
               disabled={acting}
-              className={`${btn} bg-red-500/15 text-red-400 hover:bg-red-500/25`}
+              className={`${btn} bg-danger-500/15 text-danger-400 hover:bg-danger-500/25`}
             >
               {icon("reject", <OctagonX className="w-4 h-4" aria-hidden="true" />)}
               Confirm reject &amp; refund
@@ -233,7 +236,7 @@ function QuickActions({
           <button
             onClick={() => onAction(order, "accept")}
             disabled={acting}
-            className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+            className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
           >
             {icon("accept", <Check className="w-4 h-4" aria-hidden="true" />)}
             Accept
@@ -241,7 +244,7 @@ function QuickActions({
           <button
             onClick={() => setConfirmingReject(true)}
             disabled={acting}
-            className={`${btn} bg-red-500/15 text-red-400 hover:bg-red-500/25`}
+            className={`${btn} bg-danger-500/15 text-danger-400 hover:bg-danger-500/25`}
           >
             <X className="w-4 h-4" aria-hidden="true" />
             Reject
@@ -269,7 +272,7 @@ function QuickActions({
           <button
             onClick={() => onAction(order, "ready")}
             disabled={acting}
-            className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+            className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
           >
             {icon("ready", <ChefHat className="w-4 h-4" aria-hidden="true" />)}
             {readyLabel(order)}
@@ -286,7 +289,7 @@ function QuickActions({
             <button
               onClick={() => onAction(order, "complete")}
               disabled={acting}
-              className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+              className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
             >
               {icon("complete", <Check className="w-4 h-4" aria-hidden="true" />)}
               Customer picked up
@@ -328,7 +331,7 @@ function QuickActions({
             <button
               onClick={() => onAction(order, "deliver")}
               disabled={acting}
-              className={`${btn} bg-green-500/15 text-green-400 hover:bg-green-500/25`}
+              className={`${btn} bg-success-500/15 text-success-400 hover:bg-success-500/25`}
             >
               {icon("deliver", <Check className="w-4 h-4" aria-hidden="true" />)}
               Mark delivered
@@ -391,7 +394,7 @@ function PendingCountdown({ placedAt }: { placedAt: number }) {
   return (
     <div
       className={`flex items-center gap-1.5 mt-3 text-xs font-semibold ${
-        expired || urgent ? "text-red-400" : "text-amber-400"
+        expired || urgent ? "text-danger-400" : "text-warning-400"
       }`}
     >
       {expired ? (
