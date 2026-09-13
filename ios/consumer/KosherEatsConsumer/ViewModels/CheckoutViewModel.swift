@@ -1,6 +1,14 @@
 import Foundation
 import PassKit
 import StripeApplePay
+// `StripeAPI.defaultPublishableKey` is an unannotated `public static var` in
+// StripeCore, i.e. shared mutable state the SDK has not audited for
+// concurrency. We can't annotate a vendored dependency, and both writes below
+// happen from this @MainActor type, so a `@preconcurrency` import is the
+// sanctioned way to say "this module predates strict concurrency" rather than
+// bolting `nonisolated(unsafe)` onto our own code. Drop it when Stripe ships
+// a concurrency-audited StripeCore.
+@preconcurrency import StripeCore
 import StripePaymentSheet
 import SwiftUI
 import UIKit

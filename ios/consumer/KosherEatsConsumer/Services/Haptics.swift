@@ -6,6 +6,16 @@ import UIKit
 /// want a "reduce motion / haptics" toggle. Respects the system "Reduce
 /// Motion" accessibility setting — when enabled, all haptics are silently
 /// skipped so sensitive users aren't surprised by unexpected vibrations.
+///
+/// The whole surface is `@MainActor` because everything it touches already is:
+/// `UIAccessibility.isReduceMotionEnabled` and every `UIFeedbackGenerator`
+/// subclass are main-actor isolated in the UIKit SDK, and a feedback generator
+/// must be prepared and fired on the main thread anyway. Annotating the enum
+/// (rather than silencing each call) keeps that requirement visible to callers
+/// — all of which are SwiftUI views or @MainActor view models today, so no call
+/// site needs a hop. A genuinely off-main caller must now hop explicitly, which
+/// is the correct thing for it to do.
+@MainActor
 enum Haptics {
     /// Returns `true` when haptics should be suppressed (the user has
     /// enabled Reduce Motion in system accessibility settings).

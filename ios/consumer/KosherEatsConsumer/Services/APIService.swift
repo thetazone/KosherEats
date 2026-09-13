@@ -48,13 +48,19 @@ class APIService: ObservableObject {
     // ISO8601DateFormatter is not Sendable, so wrap each instance in a
     // lock-protected box to avoid a data-race if the custom dateDecodingStrategy
     // closure is ever invoked off the main actor.
-    private static let iso8601Fractional: LockedFormatter = {
+    //
+    // `nonisolated` because these are immutable `let`s of an already-Sendable
+    // type (LockedFormatter below serialises every access behind an NSLock).
+    // Without it they inherit the class's @MainActor isolation, and the
+    // `dateDecodingStrategy` closure — which is @Sendable and may genuinely run
+    // off the main actor — can't reference them.
+    private nonisolated static let iso8601Fractional: LockedFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return LockedFormatter(formatter)
     }()
 
-    private static let iso8601Plain: LockedFormatter = {
+    private nonisolated static let iso8601Plain: LockedFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return LockedFormatter(formatter)

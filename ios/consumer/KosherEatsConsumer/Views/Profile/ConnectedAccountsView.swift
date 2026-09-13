@@ -326,6 +326,11 @@ class ConnectedAccountsViewModel: ObservableObject {
 
         GIDSignIn.sharedInstance.signIn(withPresenting: rootVC) { [weak self] result, error in
             guard let self else { return }
+            // `GIDSignInResult` isn't Sendable, so capturing `result` in the
+            // main-actor Task below sent a task-isolated value across an
+            // isolation boundary. Project out the single field we actually
+            // need — a String — and let only that cross.
+            let idToken = result?.user.idToken?.tokenString
             Task { @MainActor in
                 if let error {
                     let nsError = error as NSError
@@ -337,7 +342,7 @@ class ConnectedAccountsViewModel: ObservableObject {
                     self.loadingProvider = nil
                     return
                 }
-                guard let idToken = result?.user.idToken?.tokenString else {
+                guard let idToken else {
                     self.errorMessage = "Google sign-in failed."
                     self.loadingProvider = nil
                     return

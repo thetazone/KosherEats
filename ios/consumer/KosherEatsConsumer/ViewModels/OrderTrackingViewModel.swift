@@ -20,7 +20,19 @@ final class OrderTrackingViewModel: ObservableObject {
     /// NotificationCenter observer reference so we can unhook on stop().
     /// Without this, every push triggers an immediate refresh — meant — but
     /// stale VMs (deinit'd tracking screens) would keep firing fetches.
-    private var pushObserver: NSObjectProtocol?
+    private var pushObserver: ObserverToken?
+
+    /// NotificationCenter's block-observer handle is typed `any NSObjectProtocol`,
+    /// which isn't Sendable — so a `deinit` (always nonisolated, even on a
+    /// @MainActor class) can't read a stored property of that type under Swift 6.
+    /// The handle is an opaque token that `removeObserver` accepts from any
+    /// thread, so boxing it in an explicitly-Sendable holder is safe and lets
+    /// `deinit` unregister directly instead of hopping to the main actor (a hop
+    /// would have to capture `self` while it's being torn down).
+    /// Mirrors `LocationManager.ObserverToken`.
+    private struct ObserverToken: @unchecked Sendable {
+        let value: any NSObjectProtocol
+    }
 
     init(orderID: String) {
         self.orderID = orderID
@@ -50,7 +62,7 @@ final class OrderTrackingViewModel: ObservableObject {
     /// VM's order — other concurrent orders trigger their own VMs' fetches.
     private func observePushEvents() {
         if pushObserver != nil { return }
-        pushObserver = NotificationCenter.default.addObserver(
+        pushObserver = ObserverToken(value: NotificationCenter.default.addObserver(
             forName: .orderStatusUpdated,
             object: nil,
             queue: .main
@@ -61,7 +73,7 @@ final class OrderTrackingViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 await self?.refresh()
             }
-        }
+        })
     }
 
     func refresh() async {
@@ -101,7 +113,7 @@ final class OrderTrackingViewModel: ObservableObject {
         locationStreamTask?.cancel()
         locationStreamTask = nil
         if let pushObserver {
-            NotificationCenter.default.removeObserver(pushObserver)
+            NotificationCenter.default.removeObserver(pushObserver.value)
             self.pushObserver = nil
         }
     }
@@ -203,6 +215,6 @@ final class OrderTrackingViewModel: ObservableObject {
     deinit {
         pollTask?.cancel()
         locationStreamTask?.cancel()
-        if let pushObserver { NotificationCenter.default.removeObserver(pushObserver) }
+        if let pushObserver { NotificationCenter.default.removeObserver(pushObserver.value) }
     }
 }
