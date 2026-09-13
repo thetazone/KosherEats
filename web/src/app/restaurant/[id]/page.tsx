@@ -605,7 +605,7 @@ function RestaurantPageInner() {
             {hasRealCertificatePhoto(rest.kosher_certificate_url) ? (
               <button
                 onClick={() => setCertificateOpen(true)}
-                className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-[44px] rounded-xl transition-colors"
+                className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-11 rounded-xl transition-colors"
                 aria-label={`View kosher certificate for ${rest.name}`}
               >
                 <FileText className="w-4 h-4" aria-hidden="true" />
@@ -614,7 +614,7 @@ function RestaurantPageInner() {
             ) : (
               // No certificate photo uploaded yet — reassuring fallback in
               // place of the viewer button, never a broken image.
-              <div className="flex items-center gap-2 text-sm text-dark-300 bg-dark-800 rounded-xl px-3 py-2.5 min-h-[44px] w-full sm:w-auto sm:inline-flex">
+              <div className="flex items-center gap-2 text-sm text-dark-300 bg-dark-800 rounded-xl px-3 py-2.5 min-h-11 w-full sm:w-auto sm:inline-flex">
                 <FileText className="w-4 h-4 text-dark-400 flex-shrink-0" aria-hidden="true" />
                 <span>Certificate on file with KosherEats</span>
               </div>
@@ -656,7 +656,7 @@ function RestaurantPageInner() {
                     <button
                       key={cat.id}
                       onClick={() => selectCategory(cat.id)}
-                      className={`px-4 py-2 min-h-[44px] rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                      className={`px-4 py-2 min-h-11 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                         activeCategory === cat.id
                           ? "bg-brand-500 text-white"
                           : "bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -737,7 +737,7 @@ function RestaurantPageInner() {
                                 <button
                                   onClick={() => openItem(item)}
                                   disabled={!item.is_available}
-                                  className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-colors"
+                                  className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 min-h-11 rounded-xl text-sm font-medium transition-colors"
                                 >
                                   {!item.is_available ? "Unavailable" : "Add"}
                                 </button>

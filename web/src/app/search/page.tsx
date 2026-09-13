@@ -351,7 +351,7 @@ function SearchPageInner() {
               sortTouched.current = true;
               setSortBy(e.target.value as SortBy);
             }}
-            className="input py-2 text-base min-h-[44px]"
+            className="input py-2 text-base min-h-11"
             aria-label="Sort results"
           >
             {coords && <option value="distance">Nearest First</option>}

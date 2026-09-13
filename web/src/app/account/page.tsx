@@ -190,7 +190,7 @@ function EmailChangeFlow({
             <button
               type="submit"
               disabled={busy || !isEmailShaped}
-              className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {busy ? "Sending…" : "Send code"}
@@ -198,7 +198,7 @@ function EmailChangeFlow({
             <button
               type="button"
               onClick={onCancel}
-              className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center"
+              className="btn-secondary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center"
             >
               Cancel
             </button>
@@ -231,7 +231,7 @@ function EmailChangeFlow({
               type="button"
               onClick={() => void sendCode(true)}
               disabled={busy || cooldown > 0}
-              className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
             </button>
@@ -242,7 +242,7 @@ function EmailChangeFlow({
                 setInfo("");
                 setStep("entry");
               }}
-              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors"
+              className="inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors"
             >
               Use a different email
             </button>
@@ -387,7 +387,7 @@ function PhoneChangeFlow({
             <button
               type="submit"
               disabled={busy || digits.length < 7}
-              className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
               {busy ? "Sending…" : "Send code"}
@@ -395,7 +395,7 @@ function PhoneChangeFlow({
             <button
               type="button"
               onClick={onCancel}
-              className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center"
+              className="btn-secondary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center"
             >
               Cancel
             </button>
@@ -440,7 +440,7 @@ function PhoneChangeFlow({
               type="button"
               onClick={() => void sendCode(true)}
               disabled={busy || cooldown > 0}
-              className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
             </button>
@@ -451,7 +451,7 @@ function PhoneChangeFlow({
                 setInfo("");
                 setStep("entry");
               }}
-              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white transition-colors"
+              className="inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors"
             >
               Use a different number
             </button>
@@ -495,7 +495,7 @@ function PrefToggle({
         aria-label={label}
         disabled={disabled}
         onClick={onToggle}
-        className="shrink-0 -m-2 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+        className="shrink-0 -m-2 p-2 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <span
           className={`relative block w-11 h-6 rounded-full transition-colors ${
@@ -735,7 +735,7 @@ export default function AccountPage() {
     // min-h + negative vertical margin: 44px hit area without growing the row
     <Link
       href="/account/verify"
-      className="inline-flex items-center min-h-[44px] -my-3 gap-1 text-xs text-warning-500 hover:text-warning-400 transition-colors"
+      className="inline-flex items-center min-h-11 -my-3 gap-1 text-xs text-warning-500 hover:text-warning-400 transition-colors"
     >
       <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
       Verify now
@@ -830,7 +830,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={savingName || !firstName.trim() || !lastName.trim()}
-                      className="btn-primary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn-primary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {savingName && (
                         <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -840,7 +840,7 @@ export default function AccountPage() {
                     <button
                       type="button"
                       onClick={() => setEditingName(false)}
-                      className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center"
+                      className="btn-secondary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center"
                     >
                       Cancel
                     </button>
@@ -857,7 +857,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={startEditName}
-                    className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors"
+                    className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors"
                   >
                     Edit
                   </button>
@@ -882,7 +882,7 @@ export default function AccountPage() {
                     onClick={() =>
                       setContactFlow(contactFlow === "email" ? "none" : "email")
                     }
-                    className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
                   >
                     {contactFlow === "email" ? "Close" : displayEmail ? "Change" : "Add"}
                   </button>
@@ -917,7 +917,7 @@ export default function AccountPage() {
                     onClick={() =>
                       setContactFlow(contactFlow === "phone" ? "none" : "phone")
                     }
-                    className="inline-flex items-center min-h-[44px] text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 text-sm font-medium transition-colors shrink-0"
                   >
                     {contactFlow === "phone" ? "Close" : profile.phone ? "Change" : "Add"}
                   </button>
@@ -978,7 +978,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={() => token && loadPrefs(token)}
-                    className="inline-flex items-center min-h-[44px] text-danger-300 hover:text-white font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-11 text-danger-300 hover:text-white font-medium transition-colors shrink-0"
                   >
                     Retry
                   </button>
@@ -1026,7 +1026,7 @@ export default function AccountPage() {
                   <button
                     type="button"
                     onClick={() => token && loadProviders(token)}
-                    className="inline-flex items-center min-h-[44px] text-danger-300 hover:text-white font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-11 text-danger-300 hover:text-white font-medium transition-colors shrink-0"
                   >
                     Retry
                   </button>
@@ -1069,7 +1069,7 @@ export default function AccountPage() {
                                 type="button"
                                 onClick={() => void unlinkProvider(p.provider)}
                                 disabled={unlinking}
-                                className="inline-flex items-center min-h-[44px] text-danger-400 hover:text-danger-300 text-sm font-medium transition-colors disabled:opacity-50"
+                                className="inline-flex items-center min-h-11 text-danger-400 hover:text-danger-300 text-sm font-medium transition-colors disabled:opacity-50"
                               >
                                 {unlinking ? "Removing…" : "Confirm"}
                               </button>
@@ -1080,7 +1080,7 @@ export default function AccountPage() {
                                   setUnlinkError("");
                                 }}
                                 disabled={unlinking}
-                                className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-white text-sm transition-colors disabled:opacity-50"
+                                className="inline-flex items-center min-h-11 text-dark-400 hover:text-white text-sm transition-colors disabled:opacity-50"
                               >
                                 Cancel
                               </button>
@@ -1092,7 +1092,7 @@ export default function AccountPage() {
                                 setPendingUnlink(p.provider);
                                 setUnlinkError("");
                               }}
-                              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-danger-400 text-sm font-medium transition-colors shrink-0"
+                              className="inline-flex items-center min-h-11 text-dark-400 hover:text-danger-400 text-sm font-medium transition-colors shrink-0"
                             >
                               Unlink
                             </button>
@@ -1167,7 +1167,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={deleting || deleteText !== DELETE_CONFIRM_WORD}
-                      className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 min-h-[44px] rounded-xl transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 min-h-11 rounded-xl transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {deleting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                       {deleting ? "Deleting…" : "Permanently delete my account"}
@@ -1180,7 +1180,7 @@ export default function AccountPage() {
                         setDeleteError("");
                       }}
                       disabled={deleting}
-                      className="btn-secondary text-sm py-2 px-4 min-h-[44px] inline-flex items-center justify-center disabled:opacity-50"
+                      className="btn-secondary text-sm py-2 px-4 min-h-11 inline-flex items-center justify-center disabled:opacity-50"
                     >
                       Cancel
                     </button>
@@ -1190,7 +1190,7 @@ export default function AccountPage() {
                 <button
                   type="button"
                   onClick={() => setDeleteOpen(true)}
-                  className="inline-flex items-center min-h-[44px] text-danger-400 hover:text-danger-300 text-sm font-medium transition-colors"
+                  className="inline-flex items-center min-h-11 text-danger-400 hover:text-danger-300 text-sm font-medium transition-colors"
                 >
                   Delete my account…
                 </button>

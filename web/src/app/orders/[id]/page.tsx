@@ -252,7 +252,7 @@ function Timeline({ order }: { order: Order }) {
                 {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
               </div>
               {!last && (
-                <div className={`w-0.5 flex-1 min-h-[20px] ${done ? "bg-brand-500" : "bg-dark-700"}`} />
+                <div className={`w-0.5 flex-1 min-h-5 ${done ? "bg-brand-500" : "bg-dark-700"}`} />
               )}
             </div>
             <div className={last ? "pb-1" : "pb-6"}>
@@ -558,7 +558,7 @@ export default function OrderTrackingPage() {
       >
         <Link
           href="/orders"
-          className="inline-flex items-center min-h-[44px] gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-2"
+          className="inline-flex items-center min-h-11 gap-1.5 text-sm text-dark-400 hover:text-white transition-colors mb-2"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Orders
@@ -641,7 +641,7 @@ export default function OrderTrackingPage() {
                     href={trackingUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn-primary inline-flex items-center justify-center gap-2 py-2 px-4 text-sm min-h-[44px] mt-3"
+                    className="btn-primary inline-flex items-center justify-center gap-2 py-2 px-4 text-sm min-h-11 mt-3"
                   >
                     Track delivery
                     <ExternalLink className="w-4 h-4" />
@@ -763,7 +763,7 @@ export default function OrderTrackingPage() {
                 </div>
                 <button
                   onClick={() => setShowRating(true)}
-                  className="btn-primary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center whitespace-nowrap flex-shrink-0"
+                  className="btn-primary py-2 px-4 text-sm min-h-11 inline-flex items-center justify-center whitespace-nowrap flex-shrink-0"
                 >
                   Rate courier
                 </button>
@@ -884,7 +884,7 @@ export default function OrderTrackingPage() {
             {!confirmingCancel ? (
               <button
                 onClick={() => setConfirmingCancel(true)}
-                className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center"
+                className="btn-secondary py-2 px-4 text-sm min-h-11 inline-flex items-center justify-center"
               >
                 Cancel Order
               </button>
@@ -897,7 +897,7 @@ export default function OrderTrackingPage() {
                   <button
                     onClick={() => void cancelOrder()}
                     disabled={cancelling}
-                    className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-[44px] transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-11 transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {cancelling && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {cancelling ? "Cancelling…" : "Yes, cancel order"}
@@ -905,7 +905,7 @@ export default function OrderTrackingPage() {
                   <button
                     onClick={() => setConfirmingCancel(false)}
                     disabled={cancelling}
-                    className="btn-secondary py-2 px-4 text-sm min-h-[44px] inline-flex items-center justify-center disabled:opacity-50"
+                    className="btn-secondary py-2 px-4 text-sm min-h-11 inline-flex items-center justify-center disabled:opacity-50"
                   >
                     Keep order
                   </button>
