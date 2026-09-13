@@ -93,7 +93,7 @@ export function CourierRatingModal({
             onClick={onClose}
             disabled={submitting}
             aria-label="Close rating dialog"
-            className="min-w-11 min-h-11 -m-2 flex items-center justify-center rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors disabled:opacity-50"
+            className="focus-ring min-w-11 min-h-11 -m-2 flex items-center justify-center rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -120,7 +120,7 @@ export function CourierRatingModal({
                 onMouseEnter={() => setHovered(i)}
                 onMouseLeave={() => setHovered(null)}
                 disabled={submitting}
-                className="p-1 transition-transform hover:scale-110 disabled:opacity-50"
+                className="focus-ring p-1 transition-transform hover:scale-110 disabled:opacity-50"
               >
                 <Star
                   className={`w-9 h-9 transition-colors ${
@@ -145,7 +145,7 @@ export function CourierRatingModal({
           {comment.length > 400 && (
             <p
               className={`text-xs mt-1 ${
-                comment.length >= MAX_COMMENT_LENGTH ? "text-danger-400" : "text-dark-500"
+                comment.length >= MAX_COMMENT_LENGTH ? "text-danger-400" : "text-dark-400"
               }`}
             >
               {MAX_COMMENT_LENGTH - comment.length} characters remaining

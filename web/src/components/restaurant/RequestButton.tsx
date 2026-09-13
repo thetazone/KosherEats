@@ -87,7 +87,7 @@ export function RequestButton({
       disabled={busy}
       aria-pressed={requested}
       aria-label={requested ? "Retract restaurant request" : "Request this restaurant"}
-      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition-colors disabled:opacity-50 ${
+      className={`focus-ring inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold border transition-colors disabled:opacity-50 ${
         requested
           ? "bg-brand-500/20 text-brand-400 border-brand-500"
           : "bg-dark-800/90 text-dark-300 border-dark-700 hover:border-brand-500 hover:text-brand-400"

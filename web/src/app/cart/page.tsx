@@ -375,7 +375,7 @@ export default function CartPage() {
             {/* Items */}
             <div className="flex-1 space-y-4">
               {mutationError && (
-                <div className="card p-3 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
+                <div role="alert" className="alert-danger">
                   {mutationError}
                 </div>
               )}
@@ -414,7 +414,7 @@ export default function CartPage() {
                           onClick={() => mutateQuantity(item.id, -1)}
                           disabled={isPending}
                           aria-label={item.quantity === 1 ? "Remove item" : "Decrease quantity"}
-                          className="w-11 h-11 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                          className="focus-ring w-11 h-11 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                         >
                           {item.quantity === 1 ? (
                             <Trash2 className="w-4 h-4" aria-hidden="true" />
@@ -433,7 +433,7 @@ export default function CartPage() {
                           onClick={() => mutateQuantity(item.id, 1)}
                           disabled={isPending}
                           aria-label="Increase quantity"
-                          className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                          className="focus-ring w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                         >
                           +
                         </button>

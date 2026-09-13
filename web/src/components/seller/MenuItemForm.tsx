@@ -183,7 +183,7 @@ export function MenuItemForm({
             onClick={onClose}
             disabled={saving}
             aria-label="Close"
-            className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors disabled:opacity-50"
+            className="focus-ring w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors disabled:opacity-50"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -208,7 +208,7 @@ export function MenuItemForm({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className={`relative w-full aspect-video rounded-xl border overflow-hidden transition-colors ${
+              className={`focus-ring relative w-full aspect-video rounded-xl border overflow-hidden transition-colors ${
                 imageUrl
                   ? "border-dark-700"
                   : "border-dashed border-dark-600 bg-dark-800/60 hover:border-brand-500"
@@ -240,13 +240,13 @@ export function MenuItemForm({
                   setImageUrl("");
                   setUploadError(null);
                 }}
-                className="flex items-center gap-1.5 min-h-11 text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
+                className="focus-ring flex items-center gap-1.5 min-h-11 text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
                 Remove photo
               </button>
             )}
-            {uploadError && <p className="text-xs text-danger-400 mt-2">{uploadError}</p>}
+            {uploadError && <p role="alert" className="text-xs text-danger-400 mt-2">{uploadError}</p>}
           </div>
 
           {/* Name */}
@@ -269,7 +269,7 @@ export function MenuItemForm({
           {/* Description */}
           <div>
             <label htmlFor="menu-item-description" className="block text-sm text-dark-300 mb-1.5">
-              Description <span className="text-dark-500">(optional)</span>
+              Description <span className="text-dark-400">(optional)</span>
             </label>
             <textarea
               id="menu-item-description"
@@ -342,7 +342,7 @@ export function MenuItemForm({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => setKosher(opt.value)}
-                    className={`py-2.5 px-3 min-h-11 rounded-xl border text-sm font-semibold transition-colors ${
+                    className={`focus-ring py-2.5 px-3 min-h-11 rounded-xl border text-sm font-semibold transition-colors ${
                       selected
                         ? opt.selectedClass
                         : "border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -358,7 +358,7 @@ export function MenuItemForm({
           {/* Option groups (S18) — needs a saved item id to attach groups to */}
           <div>
             <span className="block text-sm text-dark-300 mb-1.5">
-              Option groups <span className="text-dark-500">(optional)</span>
+              Option groups <span className="text-dark-400">(optional)</span>
             </span>
             {item ? (
               <ModifierGroupsEditor
@@ -367,14 +367,14 @@ export function MenuItemForm({
                 onChange={handleModifierGroupsChange}
               />
             ) : (
-              <p className="text-xs text-dark-500">
+              <p className="text-xs text-dark-400">
                 Save the item first, then edit it to add options like Size, Sauce, or Extras.
               </p>
             )}
           </div>
 
           {saveError && (
-            <div className="px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
+            <div role="alert" className="alert-danger">
               {saveError}
             </div>
           )}

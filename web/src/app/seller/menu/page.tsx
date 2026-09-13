@@ -19,6 +19,7 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
+import { DietaryBadge, dietaryKind } from "@/components/restaurant/DietaryBadge";
 import { MenuItemForm } from "@/components/seller/MenuItemForm";
 import { formatCents, isUnauthorized, sellerApi } from "@/lib/sellerApi";
 import type { SellerMenuCategory, SellerMenuItem, SellerModifierGroup } from "@/types/seller";
@@ -220,7 +221,7 @@ export default function SellerMenuPage() {
             </>
           ) : (
             <>
-              <p className="text-danger-400 mb-4">{error}</p>
+              <p role="alert" className="text-danger-400 mb-4">{error}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -240,7 +241,7 @@ export default function SellerMenuPage() {
             setAddingCategory(true);
             setActionError(null);
           }}
-          className="flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+          className="focus-ring flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           New category
@@ -248,12 +249,12 @@ export default function SellerMenuPage() {
       </div>
 
       {actionError && (
-        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
+        <div role="alert" className="alert-danger flex items-center justify-between gap-4 mb-4">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="focus-ring min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -380,14 +381,14 @@ function CategorySection({
       <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-dark-800">
         <div className="flex items-baseline gap-2.5 min-w-0">
           <h2 className="text-base font-bold truncate">{category.name}</h2>
-          <span className="text-xs text-dark-500 shrink-0">
+          <span className="text-xs text-dark-400 shrink-0">
             {items.length} {items.length === 1 ? "item" : "items"}
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={onAddItem}
-            className="flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 px-2 rounded-lg transition-colors"
+            className="focus-ring flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 px-2 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             Add item
@@ -395,7 +396,7 @@ function CategorySection({
           <button
             onClick={onDeleteCategory}
             aria-label={`Delete category ${category.name}`}
-            className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
+            className="focus-ring min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
           >
             <Trash2 className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -403,7 +404,7 @@ function CategorySection({
       </div>
 
       {items.length === 0 ? (
-        <div className="px-5 py-6 text-sm text-dark-500 text-center">
+        <div className="px-5 py-6 text-sm text-dark-400 text-center">
           No items in this category yet.
         </div>
       ) : (
@@ -426,13 +427,6 @@ function CategorySection({
 
 // ── Item row ─────────────────────────────────────────────────
 
-function kosherBadge(item: SellerMenuItem): { label: string; className: string } | null {
-  if (item.is_meat) return { label: "Meat", className: "bg-meat-500/15 text-meat-400" };
-  if (item.is_dairy) return { label: "Dairy", className: "bg-dairy-500/15 text-dairy-400" };
-  if (item.is_pareve) return { label: "Pareve", className: "bg-pareve-500/15 text-pareve-400" };
-  return null;
-}
-
 function MenuItemRow({
   item,
   toggling,
@@ -446,7 +440,7 @@ function MenuItemRow({
   onDelete: () => void;
   onToggle: () => void;
 }) {
-  const badge = kosherBadge(item);
+  const dietary = dietaryKind(item);
 
   return (
     <li className="flex items-center gap-4 px-5 py-4">
@@ -470,18 +464,9 @@ function MenuItemRow({
       <div className={`flex-1 min-w-0 ${item.is_available ? "" : "opacity-50"}`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold truncate">{item.name}</span>
-          {badge && (
-            // TODO(rubric): 11px is off Tailwind's type scale (text-xs is
-            // 12px); the "Paused" pill just below uses the same size. Both
-            // were left alone by the M2 sweep — snapping them is a design call.
-            <span
-              className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${badge.className}`}
-            >
-              {badge.label}
-            </span>
-          )}
+          {dietary && <DietaryBadge kind={dietary} />}
           {!item.is_available && (
-            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-warning-500/15 text-warning-400">
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-warning-500/15 text-warning-400">
               Paused
             </span>
           )}
@@ -501,7 +486,7 @@ function MenuItemRow({
         aria-label={item.is_available ? `Pause ${item.name}` : `Make ${item.name} available`}
         disabled={toggling}
         onClick={onToggle}
-        className="shrink-0 -m-1 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-wait"
+        className="focus-ring shrink-0 -m-1 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-wait"
       >
         <span
           className={`relative block w-10 h-6 rounded-full transition-colors ${
@@ -521,14 +506,14 @@ function MenuItemRow({
         <button
           onClick={onEdit}
           aria-label={`Edit ${item.name}`}
-          className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+          className="focus-ring min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
         >
           <Pencil className="w-4 h-4" aria-hidden="true" />
         </button>
         <button
           onClick={onDelete}
           aria-label={`Delete ${item.name}`}
-          className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
+          className="focus-ring min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
         >
           <Trash2 className="w-4 h-4" aria-hidden="true" />
         </button>
@@ -583,7 +568,7 @@ function ConfirmDeleteDialog({
           <button
             onClick={onConfirm}
             disabled={busy}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-danger-500 hover:bg-danger-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-danger flex-1 flex items-center justify-center gap-2 py-2.5"
           >
             {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Deleting…" : "Delete"}

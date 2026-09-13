@@ -246,7 +246,7 @@ function AuthFlow() {
             setCode("");
             goToStep("email");
           }}
-          className="flex items-center gap-1.5 text-dark-400 hover:text-white text-sm mb-6 transition-colors"
+          className="focus-ring flex items-center gap-1.5 text-dark-400 hover:text-white text-sm mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Use a different email
@@ -267,7 +267,7 @@ function AuthFlow() {
         <div
           role="alert"
           aria-live="assertive"
-          className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-6 text-sm"
+          className="alert-danger mb-6"
         >
           {error}
         </div>
@@ -341,7 +341,7 @@ function AuthFlow() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
+                className="focus-ring absolute right-4 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -397,7 +397,7 @@ function AuthFlow() {
               <button
                 type="button"
                 onClick={handleResendCode}
-                className="text-brand-400 hover:text-brand-500 transition-colors"
+                className="focus-ring text-brand-400 hover:text-brand-500 transition-colors"
               >
                 Resend code
               </button>
@@ -461,7 +461,7 @@ function AuthFlow() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
+                className="focus-ring absolute right-4 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -503,7 +503,7 @@ function AuthFlow() {
         />
       )}
 
-      <p className="text-center text-dark-500 text-sm mt-8">
+      <p className="text-center text-dark-400 text-sm mt-8">
         By continuing, you agree to KosherEats&apos;{" "}
         <Link href="/terms" className="text-brand-400 hover:text-brand-500 transition-colors">
           Terms of Service
@@ -519,7 +519,7 @@ function AuthFlow() {
           dashboard login. Mirrors the "Looking to order food?" link on
           /seller/login so neither role gets stranded on the wrong page. */}
       {step === "email" && (
-        <p className="text-center text-dark-500 text-sm mt-4 border-t border-dark-800 pt-6">
+        <p className="text-center text-dark-400 text-sm mt-4 border-t border-dark-800 pt-6">
           Own a restaurant?{" "}
           <Link
             href="/seller/login"

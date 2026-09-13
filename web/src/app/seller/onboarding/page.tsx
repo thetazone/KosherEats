@@ -272,7 +272,7 @@ export default function SellerOnboardingPage() {
       {error && (
         <div
           role="alert"
-          className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-5 text-sm"
+          className="alert-danger mb-5"
         >
           {error}
         </div>
@@ -319,7 +319,7 @@ export default function SellerOnboardingPage() {
           />
           <div>
             <label htmlFor="ob-description" className="block text-sm text-dark-300 mb-1.5">
-              Description <span className="text-dark-500">(optional)</span>
+              Description <span className="text-dark-400">(optional)</span>
             </label>
             <textarea
               id="ob-description"
@@ -386,7 +386,7 @@ export default function SellerOnboardingPage() {
               setLongitude(String(r.lng));
             }}
           />
-          <p className="text-xs text-dark-500">
+          <p className="text-xs text-dark-400">
             Used for distance-based listings and delivery estimates. Fill in the address above,
             then find your coordinates — don&apos;t leave these at (0, 0).
           </p>
@@ -406,7 +406,7 @@ export default function SellerOnboardingPage() {
                   role="radio"
                   aria-checked={certification === cert}
                   onClick={() => setCertification(cert)}
-                  className={`px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`focus-ring px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                     certification === cert
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -493,7 +493,7 @@ export default function SellerOnboardingPage() {
             </div>
           </ReviewCard>
 
-          <p className="text-xs text-dark-500">
+          <p className="text-xs text-dark-400">
             By submitting, your restaurant enters review. It stays hidden from customers until
             the KosherEats team approves your kosher certification.
           </p>
@@ -555,7 +555,7 @@ function StepHeader({
               onClick={() => done && onJump(idx)}
               disabled={!done}
               aria-current={active ? "step" : undefined}
-              className={`w-full text-left ${done ? "cursor-pointer" : "cursor-default"}`}
+              className={`focus-ring w-full text-left ${done ? "cursor-pointer" : "cursor-default"}`}
             >
               <div
                 className={`h-1 rounded-full mb-1.5 ${
@@ -564,7 +564,7 @@ function StepHeader({
               />
               <span
                 className={`text-xs font-medium ${
-                  active ? "text-brand-400" : done ? "text-dark-300" : "text-dark-500"
+                  active ? "text-brand-400" : done ? "text-dark-300" : "text-dark-400"
                 }`}
               >
                 {label}
@@ -627,7 +627,7 @@ function Field({
         placeholder={placeholder}
         className="input w-full"
       />
-      {hint && <p className="text-xs text-dark-500 mt-1.5">{hint}</p>}
+      {hint && <p className="text-xs text-dark-400 mt-1.5">{hint}</p>}
     </div>
   );
 }
@@ -647,7 +647,7 @@ function ToggleRow({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 hover:border-dark-600 transition-colors"
+      className="focus-ring flex items-center justify-between w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 hover:border-dark-600 transition-colors"
     >
       <span className="text-sm font-medium">{label}</span>
       <span
@@ -684,7 +684,7 @@ function ReviewCard({
         <button
           type="button"
           onClick={onEdit}
-          className="flex items-center gap-1.5 min-h-11 -my-2.5 text-xs font-medium text-brand-500 hover:text-brand-400 transition-colors"
+          className="focus-ring flex items-center gap-1.5 min-h-11 -my-2.5 text-xs font-medium text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Pencil className="w-3.5 h-3.5" />
           Edit

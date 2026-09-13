@@ -770,7 +770,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
             type="button"
             onClick={() => setFulfillment("delivery")}
             aria-pressed={isDelivery}
-            className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
+            className={`focus-ring flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
               isDelivery ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
             }`}
           >
@@ -780,7 +780,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
             type="button"
             onClick={() => setFulfillment("pickup")}
             aria-pressed={!isDelivery}
-            className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
+            className={`focus-ring flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
               !isDelivery ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
             }`}
           >
@@ -795,7 +795,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
               Delivery address
             </label>
             {addressesLoading ? (
-              <div className="text-sm text-dark-500">Loading addresses…</div>
+              <div className="text-sm text-dark-400">Loading addresses…</div>
             ) : addresses.length === 0 ? (
               !showAddressForm && (
                 <div className="text-sm text-dark-400">
@@ -819,7 +819,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
 
             {/* Route quote (POST /delivery-quote): provider + ETA */}
             {addresses.length > 0 && (
-              <p className="text-xs text-dark-500 mt-1.5" aria-live="polite">
+              <p className="text-xs text-dark-400 mt-1.5" aria-live="polite">
                 {quoteLoading
                   ? "Getting delivery estimate…"
                   : quote
@@ -883,10 +883,10 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                     setAddrForm((f) => ({ ...f, lat: String(r.lat), lng: String(r.lng) }))
                   }
                 />
-                <p className="text-xs text-dark-500">
+                <p className="text-xs text-dark-400">
                   Used for delivery routing and to estimate your delivery fee.
                 </p>
-                {addressError && <div className="text-sm text-danger-400">{addressError}</div>}
+                {addressError && <div role="alert" className="alert-danger">{addressError}</div>}
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
@@ -914,7 +914,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
               <button
                 type="button"
                 onClick={() => setShowAddressForm(true)}
-                className="mt-1 inline-flex items-center min-h-11 text-sm text-brand-400 underline"
+                className="focus-ring mt-1 inline-flex items-center min-h-11 text-sm text-brand-400 underline"
               >
                 + Add delivery address
               </button>
@@ -940,7 +940,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                 setScheduleError(null);
               }}
               aria-pressed={timing === "asap"}
-              className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
+              className={`focus-ring flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
                 timing === "asap" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
               }`}
             >
@@ -955,7 +955,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                 setScheduleError(scheduledAt ? scheduleProblemFor(scheduledAt) : null);
               }}
               aria-pressed={timing === "scheduled"}
-              className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
+              className={`focus-ring flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
                 timing === "scheduled" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
               }`}
             >
@@ -985,7 +985,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                   {scheduleError}
                 </p>
               ) : (
-                <p className="text-xs text-dark-500 mt-1">
+                <p className="text-xs text-dark-400 mt-1">
                   At least 45 minutes from now, up to 7 days ahead.
                 </p>
               )}
@@ -1024,7 +1024,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                       onClick={() => selectDeal(applied ? null : d.id)}
                       disabled={blocked}
                       aria-pressed={applied}
-                      className={`shrink-0 rounded-lg px-3 py-1.5 min-h-11 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`focus-ring shrink-0 rounded-lg px-3 py-1.5 min-h-11 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         applied
                           ? "bg-dark-700 text-dark-200 hover:bg-dark-600"
                           : "bg-brand-500 text-white hover:bg-brand-600"
@@ -1036,7 +1036,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                 );
               })}
             </div>
-            {dealError && <div className="mt-1 text-xs text-danger-400">{dealError}</div>}
+            {dealError && <div role="alert" className="mt-1 text-xs text-danger-400">{dealError}</div>}
           </div>
         )}
 
@@ -1055,7 +1055,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                     type="button"
                     onClick={() => selectTip(p.key)}
                     aria-pressed={selected}
-                    className={`rounded-lg py-1.5 px-0.5 min-h-11 text-xs font-semibold transition-colors ${
+                    className={`focus-ring rounded-lg py-1.5 px-0.5 min-h-11 text-xs font-semibold transition-colors ${
                       selected
                         ? "bg-brand-500 text-white"
                         : "bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -1063,10 +1063,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                   >
                     <span className="block">{p.label}</span>
                     {presetCents !== null && (
-                      // TODO(rubric): 10px is off Tailwind's type scale
-                      // (text-xs is 12px). Left as-is by the M2 sweep —
-                      // snapping it is a design call.
-                      <span className={`block text-[10px] font-normal ${selected ? "text-white/80" : "text-dark-500"}`}>
+                      <span className={`block text-xs font-normal ${selected ? "text-white/80" : "text-dark-400"}`}>
                         {formatUSD(presetCents)}
                       </span>
                     )}
@@ -1084,7 +1081,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                 onChange={(e) => updateCustomTip(e.target.value)}
               />
             )}
-            {tipError && <div className="mt-1 text-xs text-danger-400">{tipError}</div>}
+            {tipError && <div role="alert" className="mt-1 text-xs text-danger-400">{tipError}</div>}
           </div>
         )}
 
@@ -1126,7 +1123,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
             <span>Total</span>
             <span className="text-brand-400">
               {previewPending || !intent ? (
-                <span className="text-dark-500 font-normal">Updating…</span>
+                <span className="text-dark-400 font-normal">Updating…</span>
               ) : (
                 formatUSD(intent.total)
               )}
@@ -1141,7 +1138,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
         )}
 
         {previewError && (
-          <div className="mt-4 text-sm text-danger-400">
+          <div role="alert" className="alert-danger mt-4">
             {previewError}{" "}
             <button
               type="button"
@@ -1149,7 +1146,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                 setPreviewPending(true);
                 void refreshIntent();
               }}
-              className="text-brand-400 underline"
+              className="focus-ring text-brand-400 underline"
             >
               Retry
             </button>
@@ -1157,7 +1154,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
         )}
 
         {checkoutError && (
-          <div className="mt-4 text-sm text-danger-400">{checkoutError}</div>
+          <div role="alert" className="alert-danger mt-4">{checkoutError}</div>
         )}
 
         <button
@@ -1206,7 +1203,7 @@ export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onP
                   if (!paymentBusy) setCheckoutOpen(false);
                 }}
                 disabled={paymentBusy}
-                className="w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dark-400"
+                className="focus-ring w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-dark-400"
                 aria-label={paymentBusy ? "Processing payment — checkout can't be closed" : "Close checkout"}
               >
                 <X className="w-5 h-5" aria-hidden="true" />
@@ -1329,7 +1326,7 @@ function CheckoutForm({
     <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 md:px-6 space-y-4">
         <PaymentElement />
-        {localError && <div className="text-sm text-danger-400">{localError}</div>}
+        {localError && <div role="alert" className="alert-danger">{localError}</div>}
       </div>
       <div className="border-t border-dark-800 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:px-6 md:pb-4">
         <button
@@ -1340,7 +1337,7 @@ function CheckoutForm({
           {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
           {submitting ? "Processing…" : `Pay ${formatUSD(total)}`}
         </button>
-        <p className="text-xs text-dark-500 text-center mt-3">
+        <p className="text-xs text-dark-400 text-center mt-3">
           Saved cards aren&apos;t offered on the web yet — enter your card above. Cards you
           save are used in the KosherEats app.
         </p>

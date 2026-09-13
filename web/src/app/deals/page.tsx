@@ -137,7 +137,7 @@ function DealListCard({ deal, miles }: { deal: Deal; miles: number | null }) {
         {deal.description && (
           <p className="text-dark-400 text-sm mt-2 line-clamp-2">{deal.description}</p>
         )}
-        <div className="text-xs text-dark-500 mt-2">
+        <div className="text-xs text-dark-400 mt-2">
           {deal.menu_item_name && <span>On {deal.menu_item_name}</span>}
           {deal.menu_item_name && deal.min_order_amount != null && deal.min_order_amount > 0 && (
             <span> · </span>

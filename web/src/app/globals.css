@@ -9,12 +9,47 @@
 }
 
 @layer components {
+  /* Keyboard focus ring — the single source of truth. Brand-orange, offset
+     off the dark canvas so it reads on both brand-500 and dark-800 fills.
+     :focus-visible only, so mouse/touch taps don't paint it. Composed into
+     .btn-primary, .btn-secondary and .chip below; apply directly to one-off
+     controls (steppers, segmented toggles) that don't use those recipes. */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-950;
+  }
+
   .btn-primary {
-    @apply bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 px-6 rounded-xl transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply focus-ring bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 px-6 rounded-xl transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply bg-dark-800 hover:bg-dark-700 text-white font-semibold py-3 px-6 rounded-xl border border-dark-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply focus-ring bg-dark-800 hover:bg-dark-700 text-white font-semibold py-3 px-6 rounded-xl border border-dark-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Destructive action (cancel order, delete account/item). Same shape as
+     .btn-primary so callers can layer the same size overrides. */
+  .btn-danger {
+    @apply focus-ring bg-danger-600 hover:bg-danger-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Pill chip (cuisine filters, menu category tabs). min-h-11 = 44px touch
+     target. Toggle with `chip-active`; pair with aria-pressed. */
+  .chip {
+    @apply focus-ring px-4 py-2 min-h-11 rounded-full text-sm font-medium whitespace-nowrap transition-colors bg-dark-800 text-dark-300 hover:bg-dark-700;
+  }
+
+  /* hover:bg-brand-500 is deliberate — without it .chip:hover (higher
+     specificity) would repaint an active chip dark on hover. */
+  .chip-active {
+    @apply bg-brand-500 text-white hover:bg-brand-500;
+  }
+
+  /* Seller order-state action (Accept / Reject / Preparing / Ready /
+     Complete). Shared by ActiveOrderCard and seller/orders/[id]; callers
+     layer width/padding (flex-1 py-2.5 vs w-full py-3) and the tinted
+     bg/text pair per state. */
+  .btn-state {
+    @apply focus-ring flex items-center justify-center gap-2 min-h-11 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .card {
@@ -26,6 +61,13 @@
        Safari auto-zoom the page on focus. Keep it explicit — form elements
        otherwise inherit the surrounding font size. */
     @apply bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 text-base text-white placeholder-dark-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-colors;
+  }
+
+  /* Error banner — the one danger surface for fetch/mutation failures. Always
+     pair with role="alert" so the failure is announced; layout (mb-*, flex
+     for a dismiss/retry control) is layered on by the caller. */
+  .alert-danger {
+    @apply bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm;
   }
 }
 

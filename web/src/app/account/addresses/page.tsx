@@ -231,7 +231,7 @@ export default function AddressesPage() {
         ) : (
           <div className="space-y-4">
             {actionError && (
-              <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
+              <div role="alert" className="alert-danger">
                 {actionError}
               </div>
             )}
@@ -240,7 +240,7 @@ export default function AddressesPage() {
               <form onSubmit={saveAddress} className="card p-5 space-y-3">
                 <h2 className="font-bold">New address</h2>
                 {formError && (
-                  <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
+                  <div role="alert" className="alert-danger">
                     {formError}
                   </div>
                 )}
@@ -367,7 +367,7 @@ export default function AddressesPage() {
                     />
                   </div>
                 </div>
-                <p className="text-xs text-dark-500">
+                <p className="text-xs text-dark-400">
                   Coordinates power delivery routing and the delivery-fee quote. You can copy them
                   from your maps app.
                 </p>
@@ -434,7 +434,7 @@ export default function AddressesPage() {
                           type="button"
                           onClick={() => void setDefault(a.id)}
                           disabled={busyId !== null}
-                          className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 font-medium transition-colors disabled:opacity-50"
+                          className="focus-ring inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 font-medium transition-colors disabled:opacity-50"
                         >
                           {busyId === a.id ? "Saving…" : "Set default"}
                         </button>
@@ -445,7 +445,7 @@ export default function AddressesPage() {
                             type="button"
                             onClick={() => void deleteAddress(a.id)}
                             disabled={busyId !== null}
-                            className="inline-flex items-center min-h-11 text-danger-400 hover:text-danger-300 font-medium transition-colors disabled:opacity-50"
+                            className="focus-ring inline-flex items-center min-h-11 text-danger-400 hover:text-danger-300 font-medium transition-colors disabled:opacity-50"
                           >
                             {busyId === a.id ? "Deleting…" : "Confirm"}
                           </button>
@@ -453,7 +453,7 @@ export default function AddressesPage() {
                             type="button"
                             onClick={() => setPendingDelete(null)}
                             disabled={busyId !== null}
-                            className="inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors disabled:opacity-50"
+                            className="focus-ring inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors disabled:opacity-50"
                           >
                             Cancel
                           </button>
@@ -466,7 +466,7 @@ export default function AddressesPage() {
                             setActionError(null);
                           }}
                           disabled={busyId !== null}
-                          className="inline-flex items-center min-h-11 text-dark-400 hover:text-danger-400 font-medium transition-colors disabled:opacity-50"
+                          className="focus-ring inline-flex items-center min-h-11 text-dark-400 hover:text-danger-400 font-medium transition-colors disabled:opacity-50"
                         >
                           Delete
                         </button>

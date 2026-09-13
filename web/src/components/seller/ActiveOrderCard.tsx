@@ -128,7 +128,7 @@ export function ActiveOrderCard({
           </div>
         ))}
         {items.length > 3 && (
-          <div className="text-xs text-dark-500">+{items.length - 3} more items</div>
+          <div className="text-xs text-dark-400">+{items.length - 3} more items</div>
         )}
       </div>
 
@@ -148,10 +148,9 @@ export function ActiveOrderCard({
       )}
 
       {order.status === "scheduled" && order.scheduled_for && (
-        // TODO(rubric): no Ember alias for sky — this matches the `scheduled`
-        // pill in lib/orderStatus.ts, so both move together once the palette
-        // gains a token for it. Picking one is a design call, not a sweep call.
-        <div className="flex items-center gap-1.5 mt-3 text-xs text-sky-300">
+        // Neutral to match the `scheduled` pill in lib/orderStatus.ts — a
+        // dormant state, not a call to action.
+        <div className="flex items-center gap-1.5 mt-3 text-xs text-dark-300">
           <Clock className="w-3.5 h-3.5" aria-hidden="true" />
           Scheduled for{" "}
           {new Date(order.scheduled_for).toLocaleString([], {
@@ -198,7 +197,7 @@ function QuickActions({
 }) {
   // min-h-11 keeps every status action a full-size touch target at 375px.
   const btn =
-    "flex-1 flex items-center justify-center gap-2 py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    "btn-state flex-1 py-2.5 px-3";
 
   /** The pressed button's icon swaps to a spinner while its PATCH runs. */
   const icon = (action: OrderQuickAction, idle: React.ReactNode) =>

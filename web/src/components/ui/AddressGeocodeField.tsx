@@ -185,7 +185,7 @@ export function AddressGeocodeField({
           type="button"
           onClick={() => setManualOpen((o) => !o)}
           aria-expanded={manualOpen}
-          className="inline-flex items-center gap-1 min-h-11 text-sm text-dark-400 hover:text-white transition-colors"
+          className="focus-ring inline-flex items-center gap-1 min-h-11 text-sm text-dark-400 hover:text-white transition-colors"
         >
           <ChevronDown
             className={`w-4 h-4 transition-transform ${manualOpen ? "rotate-180" : ""}`}

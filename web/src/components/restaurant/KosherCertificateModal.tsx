@@ -73,7 +73,7 @@ export function KosherCertificateModal({
             onClick={() => setZoomIndex((i) => Math.max(i - 1, 0))}
             disabled={!canZoomOut}
             aria-label="Zoom out"
-            className="w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 flex items-center justify-center transition-colors"
+            className="focus-ring w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 flex items-center justify-center transition-colors"
           >
             <ZoomOut className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -81,14 +81,14 @@ export function KosherCertificateModal({
             onClick={() => setZoomIndex((i) => Math.min(i + 1, ZOOM_LEVELS.length - 1))}
             disabled={!canZoomIn}
             aria-label="Zoom in"
-            className="w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 flex items-center justify-center transition-colors"
+            className="focus-ring w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 disabled:opacity-40 disabled:hover:bg-dark-800 flex items-center justify-center transition-colors"
           >
             <ZoomIn className="w-5 h-5" aria-hidden="true" />
           </button>
           <button
             onClick={onClose}
             aria-label="Close certificate view"
-            className="w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 flex items-center justify-center transition-colors"
+            className="focus-ring w-11 h-11 rounded-xl bg-dark-800 hover:bg-dark-700 flex items-center justify-center transition-colors"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>

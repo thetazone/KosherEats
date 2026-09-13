@@ -26,13 +26,15 @@ export interface OrderStatusMeta {
 // mapping is established. Note warning-* aliases Tailwind yellow, not amber —
 // a deliberate (small) hue shift onto an existing token rather than a new one.
 // See docs/RUBRIC_SWEEP_REPORT_web-ordering.md.
-// TODO(rubric): no Ember alias for sky — `scheduled` is the only raw hue left
-// in this map. Picking a token for it is a design call, not a sweep call.
+// `scheduled` sits on the neutral dark-* ramp: it's a dormant, informational
+// state (nothing for the kitchen to do until it flips to `pending`), so it
+// gets the same quiet treatment as StatusHint on seller/orders/[id] rather
+// than a fifth competing hue — info-* stays reserved for `accepted`.
 export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
   scheduled: {
     label: "Scheduled",
     sellerLabel: "Scheduled",
-    pill: "bg-sky-500/15 text-sky-300",
+    pill: "bg-dark-800 text-dark-300",
   },
   pending: {
     label: "Pending",

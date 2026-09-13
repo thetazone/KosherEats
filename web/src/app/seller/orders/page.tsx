@@ -292,7 +292,7 @@ export default function SellerOrdersPage() {
     <div>
       <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Orders</h1>
-        <span className="text-xs text-dark-500">Refreshes every 15s</span>
+        <span className="text-xs text-dark-400">Refreshes every 15s</span>
       </div>
 
       {/* Transient poll failure — keep the last good list on screen. */}
@@ -301,7 +301,7 @@ export default function SellerOrdersPage() {
           <span>Reconnecting… showing last loaded orders.</span>
           <button
             onClick={load}
-            className="text-xs px-3 min-h-11 -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
+            className="focus-ring text-xs px-3 min-h-11 -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -317,7 +317,7 @@ export default function SellerOrdersPage() {
               key={tab.key}
               onClick={() => setFilter(tab.key)}
               aria-pressed={selected}
-              className={`px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
+              className={`focus-ring px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                 selected
                   ? "bg-brand-500 text-white"
                   : "bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white"
@@ -459,7 +459,7 @@ function WaitingTimer({ since }: { since: string }) {
   return (
     <span
       className={`inline-flex items-center gap-1 text-xs font-semibold tabular-nums ${
-        overdue ? "text-danger-400" : "text-dark-500"
+        overdue ? "text-danger-400" : "text-dark-400"
       }`}
     >
       <Clock className="w-3 h-3" aria-hidden="true" />

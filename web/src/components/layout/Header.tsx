@@ -173,7 +173,7 @@ export function Header() {
               </Link>
               <button
                 onClick={handleSignOut}
-                className="text-dark-300 hover:text-white transition-colors text-sm font-medium"
+                className="focus-ring text-dark-300 hover:text-white transition-colors text-sm font-medium"
               >
                 Sign out
               </button>
@@ -191,7 +191,7 @@ export function Header() {
           aria-label={isMenuOpen ? "Close menu" : "Open menu"}
           aria-expanded={isMenuOpen}
           aria-controls="mobile-menu"
-          className="md:hidden -mr-2 w-11 h-11 flex items-center justify-center text-dark-300"
+          className="focus-ring md:hidden -mr-2 w-11 h-11 flex items-center justify-center text-dark-300"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
           {isMenuOpen ? (

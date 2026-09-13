@@ -251,10 +251,10 @@ function Timeline({ order }: { order: Order }) {
               )}
             </div>
             <div className={last ? "pb-1" : "pb-6"}>
-              <p className={`font-semibold leading-9 ${done || active ? "text-white" : "text-dark-500"}`}>
+              <p className={`font-semibold leading-9 ${done || active ? "text-white" : "text-dark-400"}`}>
                 {step.label}
                 {step.at && (done || active) && (
-                  <span className="ml-2 text-xs font-normal text-dark-500">
+                  <span className="ml-2 text-xs font-normal text-dark-400">
                     {step.key === "scheduled" ? formatDateTime(step.at) : formatTime(step.at)}
                   </span>
                 )}
@@ -574,7 +574,7 @@ export default function OrderTrackingPage() {
               <h1 className="text-2xl font-extrabold">{statusHeadline(order)}</h1>
               <p className="text-dark-400 mt-1">{statusSubtext(order)}</p>
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                <p className="text-dark-500 text-sm">
+                <p className="text-dark-400 text-sm">
                   {order.restaurant_name} · {formatDateTime(order.created_at)}
                 </p>
                 {/* Certification chip repeats on the confirmation/tracking
@@ -690,11 +690,11 @@ export default function OrderTrackingPage() {
                   <Star className="w-3.5 h-3.5 text-warning-400 fill-warning-400" />
                   {courier.rating.toFixed(1)}
                   {courier.total_deliveries > 0 && (
-                    <span className="text-dark-500">· {courier.total_deliveries} deliveries</span>
+                    <span className="text-dark-400">· {courier.total_deliveries} deliveries</span>
                   )}
                 </p>
                 {(courier.vehicle_color || courier.vehicle_make || courier.vehicle_model || courier.license_plate) && (
-                  <p className="text-xs text-dark-500 truncate">
+                  <p className="text-xs text-dark-400 truncate">
                     {[courier.vehicle_color, courier.vehicle_make, courier.vehicle_model]
                       .filter(Boolean)
                       .join(" ")}
@@ -734,7 +734,7 @@ export default function OrderTrackingPage() {
                     : `${courier.first_name} is on the move`}
                 </span>
                 {updatedAgoSec != null && (
-                  <span className="text-dark-500 text-xs ml-auto">
+                  <span className="text-dark-400 text-xs ml-auto">
                     {updatedAgoSec < 10 ? "updated just now" : `updated ${updatedAgoSec}s ago`}
                   </span>
                 )}
@@ -789,7 +789,7 @@ export default function OrderTrackingPage() {
           <div className="flex items-start gap-3">
             <MapPin className="w-5 h-5 text-brand-400 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-dark-500">{pickup ? "Pickup from" : "Delivering to"}</p>
+              <p className="text-xs text-dark-400">{pickup ? "Pickup from" : "Delivering to"}</p>
               <p className="text-white">{pickup ? order.restaurant_name : order.delivery_address}</p>
               {pickup && order.delivery_address && (
                 <p className="text-dark-400 text-sm">{order.delivery_address}</p>
@@ -808,7 +808,7 @@ export default function OrderTrackingPage() {
         {/* Delivery proof photo */}
         {order.status === "delivered" && order.delivery_proof_url && (
           <div className="card p-5 mb-4">
-            <p className="text-xs text-dark-500 mb-2">Delivery photo</p>
+            <p className="text-xs text-dark-400 mb-2">Delivery photo</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={order.delivery_proof_url}
@@ -868,7 +868,7 @@ export default function OrderTrackingPage() {
         </div>
 
         {actionError && (
-          <div className="card p-3 mb-4 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
+          <div role="alert" className="alert-danger mb-4">
             {actionError}
           </div>
         )}
@@ -892,7 +892,7 @@ export default function OrderTrackingPage() {
                   <button
                     onClick={() => void cancelOrder()}
                     disabled={cancelling}
-                    className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-11 transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-danger py-2 px-4 text-sm min-h-11 inline-flex items-center justify-center gap-2"
                   >
                     {cancelling && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {cancelling ? "Cancelling…" : "Yes, cancel order"}

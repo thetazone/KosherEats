@@ -74,7 +74,7 @@ export function PhotoUpload({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
-        className={`relative w-full ${aspectClass} rounded-xl border overflow-hidden transition-colors ${
+        className={`focus-ring relative w-full ${aspectClass} rounded-xl border overflow-hidden transition-colors ${
           value
             ? "border-dark-700"
             : "border-dashed border-dark-600 bg-dark-800/60 hover:border-brand-500"
@@ -102,7 +102,7 @@ export function PhotoUpload({
             onChange("");
             setUploadError(null);
           }}
-          className="flex items-center gap-1.5 min-h-11 text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
+          className="focus-ring flex items-center gap-1.5 min-h-11 text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
         >
           <X className="w-3.5 h-3.5" aria-hidden="true" />
           Remove photo

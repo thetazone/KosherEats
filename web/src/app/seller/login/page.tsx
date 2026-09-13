@@ -60,7 +60,7 @@ export default function SellerLoginPage() {
 
         {/* Error */}
         {error && (
-          <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-6 text-sm">
+          <div role="alert" className="alert-danger mb-6">
             {error}
           </div>
         )}
@@ -110,7 +110,7 @@ export default function SellerLoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-dark-500 text-sm mt-8">
+        <p className="text-center text-dark-400 text-sm mt-8">
           Looking to order food?{" "}
           <Link href="/" className="text-brand-500 hover:text-brand-400 transition-colors">
             Go to KosherEats

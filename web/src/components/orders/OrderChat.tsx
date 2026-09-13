@@ -220,7 +220,7 @@ export function OrderChat({
           <div className="text-center py-6">
             <MessageCircle className="w-8 h-8 text-dark-600 mx-auto mb-2" aria-hidden="true" />
             <p className="font-semibold text-sm text-dark-300">No messages yet</p>
-            <p className="text-dark-500 text-xs mt-1">
+            <p className="text-dark-400 text-xs mt-1">
               Send a note to your driver or the restaurant.
             </p>
           </div>
@@ -242,9 +242,7 @@ export function OrderChat({
                   >
                     {decodeEntities(m.text)}
                   </div>
-                  {/* TODO(rubric): 11px is off Tailwind's type scale (text-xs
-                      is 12px). Left as-is by the M2 sweep — a design call. */}
-                  <p className="text-[11px] text-dark-500 mt-0.5">{formatTime(m.created_at)}</p>
+                  <p className="text-xs text-dark-400 mt-0.5">{formatTime(m.created_at)}</p>
                 </div>
               </div>
             );

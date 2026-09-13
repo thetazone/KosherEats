@@ -335,7 +335,7 @@ export default function SellerSettingsPage() {
             </>
           ) : (
             <>
-              <p className="text-danger-400 mb-4">{error || "Couldn't load your restaurant settings."}</p>
+              <p role="alert" className="text-danger-400 mb-4">{error || "Couldn't load your restaurant settings."}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -424,7 +424,7 @@ export default function SellerSettingsPage() {
               setLngField(String(r.lng));
             }}
           />
-          <p className="text-xs text-dark-500">
+          <p className="text-xs text-dark-400">
             Coordinates drive distance-based listings and delivery estimates. They&apos;re saved
             with your other changes when you hit Save.
           </p>
@@ -448,7 +448,7 @@ export default function SellerSettingsPage() {
                   role="radio"
                   aria-checked={deliveryMode === opt.value}
                   onClick={() => setDeliveryMode(opt.value)}
-                  className={`py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`focus-ring py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                     deliveryMode === opt.value
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -459,12 +459,12 @@ export default function SellerSettingsPage() {
               ))}
             </div>
             {deliveryMode === "platform" && (
-              <p className="text-xs text-dark-500 mt-2">
+              <p className="text-xs text-dark-400 mt-2">
                 Currently: KosherEats couriers — pick a method above to change.
               </p>
             )}
           </div>
-          <p className="text-xs text-dark-500">
+          <p className="text-xs text-dark-400">
             The delivery fee below is your self-delivery fee — what you charge and keep when you
             deliver an order yourself.
           </p>
@@ -519,7 +519,7 @@ export default function SellerSettingsPage() {
                   role="radio"
                   aria-checked={certification === cert}
                   onClick={() => setCertification(cert)}
-                  className={`px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`focus-ring px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                     certification === cert
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -561,7 +561,7 @@ export default function SellerSettingsPage() {
         {saveError && (
           <div
             role="alert"
-            className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm"
+            className="alert-danger"
           >
             {saveError}
           </div>
@@ -639,7 +639,7 @@ function Field({
         placeholder={placeholder}
         className="input w-full"
       />
-      {hint && <p className="text-xs text-dark-500 mt-1.5">{hint}</p>}
+      {hint && <p className="text-xs text-dark-400 mt-1.5">{hint}</p>}
     </div>
   );
 }
@@ -659,7 +659,7 @@ function ToggleRow({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex items-center justify-between w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 hover:border-dark-600 transition-colors"
+      className="focus-ring flex items-center justify-between w-full px-4 py-3 rounded-xl bg-dark-800 border border-dark-700 hover:border-dark-600 transition-colors"
     >
       <span className="text-sm font-medium">{label}</span>
       <span

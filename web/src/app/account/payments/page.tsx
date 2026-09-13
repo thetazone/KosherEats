@@ -90,7 +90,7 @@ function AddCardForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement />
-      {localError && <div className="text-sm text-danger-400">{localError}</div>}
+      {localError && <div role="alert" className="alert-danger">{localError}</div>}
       <div className="flex gap-2">
         <button
           type="submit"
@@ -306,7 +306,7 @@ export default function PaymentMethodsPage() {
                   </div>
                 </div>
                 {openError && (
-                  <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-3 text-sm">
+                  <div role="alert" className="alert-danger mb-3">
                     {openError}
                   </div>
                 )}
@@ -326,7 +326,7 @@ export default function PaymentMethodsPage() {
               </div>
             )}
 
-            <p className="text-xs text-dark-500 text-center flex items-center justify-center gap-1.5 px-6">
+            <p className="text-xs text-dark-400 text-center flex items-center justify-center gap-1.5 px-6">
               <Lock className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
               Payments are processed securely by Stripe. KosherEats never sees your full card
               number.

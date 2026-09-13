@@ -153,7 +153,7 @@ export default function SellerDealsPage() {
             </>
           ) : (
             <>
-              <p className="text-danger-400 mb-4">{error}</p>
+              <p role="alert" className="text-danger-400 mb-4">{error}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -173,7 +173,7 @@ export default function SellerDealsPage() {
             setShowCreate(true);
             setActionError(null);
           }}
-          className="flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+          className="focus-ring flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           New deal
@@ -181,12 +181,12 @@ export default function SellerDealsPage() {
       </div>
 
       {actionError && (
-        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
+        <div role="alert" className="alert-danger flex items-center justify-between gap-4 mb-4">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="focus-ring min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -264,7 +264,7 @@ function DealCard({ deal, onDeactivate }: { deal: SellerDeal; onDeactivate: () =
         {deal.description && (
           <p className="text-xs text-dark-400 mt-0.5 line-clamp-1">{deal.description}</p>
         )}
-        <p className="text-xs text-dark-500 mt-1.5">
+        <p className="text-xs text-dark-400 mt-1.5">
           {(deal.min_order_amount ?? 0) > 0 && (
             <>
               Min order {formatCents(deal.min_order_amount ?? 0)}
@@ -280,7 +280,7 @@ function DealCard({ deal, onDeactivate }: { deal: SellerDeal; onDeactivate: () =
       {status === "active" || status === "scheduled" ? (
         <button
           onClick={onDeactivate}
-          className="text-xs font-semibold text-danger-400 hover:text-danger-300 px-2 min-h-11 -my-1.5 rounded-lg hover:bg-danger-500/10 transition-colors shrink-0"
+          className="focus-ring text-xs font-semibold text-danger-400 hover:text-danger-300 px-2 min-h-11 -my-1.5 rounded-lg hover:bg-danger-500/10 transition-colors shrink-0"
         >
           Deactivate
         </button>
@@ -454,7 +454,7 @@ function CreateDealModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+            className="focus-ring w-11 h-11 -mr-2 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -479,7 +479,7 @@ function CreateDealModal({
 
           <div>
             <label htmlFor="deal-description" className="block text-sm text-dark-300 mb-1.5">
-              Description <span className="text-dark-500">(optional)</span>
+              Description <span className="text-dark-400">(optional)</span>
             </label>
             <textarea
               id="deal-description"
@@ -510,7 +510,7 @@ function CreateDealModal({
                     setDiscountType(t.value);
                     setDiscountValue("");
                   }}
-                  className={`py-2 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
+                  className={`focus-ring py-2 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                     discountType === t.value
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -521,7 +521,7 @@ function CreateDealModal({
               ))}
             </div>
             {discountType === "bogo" ? (
-              <p className="text-xs text-dark-500">
+              <p className="text-xs text-dark-400">
                 Buy one, get one free — the cheapest item in the cart is free when the order has
                 at least 2 items.
               </p>
@@ -545,7 +545,7 @@ function CreateDealModal({
 
           <div>
             <label htmlFor="deal-min-order" className="block text-sm text-dark-300 mb-1.5">
-              Minimum order ($) <span className="text-dark-500">(optional)</span>
+              Minimum order ($) <span className="text-dark-400">(optional)</span>
             </label>
             <input
               id="deal-min-order"
@@ -556,7 +556,7 @@ function CreateDealModal({
               placeholder="e.g. 20.00"
               className="input w-full"
             />
-            <p className="text-xs text-dark-500 mt-1.5">
+            <p className="text-xs text-dark-400 mt-1.5">
               The deal only applies to orders at or above this subtotal.
             </p>
           </div>
@@ -573,7 +573,7 @@ function CreateDealModal({
               onChange={(e) => setExpiresAt(e.target.value)}
               className="input w-full"
             />
-            <p className="text-xs text-dark-500 mt-1.5">
+            <p className="text-xs text-dark-400 mt-1.5">
               When this deal stops being available to customers.
             </p>
           </div>
@@ -581,7 +581,7 @@ function CreateDealModal({
           {/* Optional menu-item link */}
           <div>
             <label htmlFor="deal-item" className="block text-sm text-dark-300 mb-1.5">
-              Linked menu item <span className="text-dark-500">(optional)</span>
+              Linked menu item <span className="text-dark-400">(optional)</span>
             </label>
             <select
               id="deal-item"
@@ -597,7 +597,7 @@ function CreateDealModal({
                 </option>
               ))}
             </select>
-            <p className="text-xs text-dark-500 mt-1.5">
+            <p className="text-xs text-dark-400 mt-1.5">
               {menuLoaded && menuItems.length === 0
                 ? "No menu items yet — the deal will be a general one."
                 : "Linking an item shows it on the deal; its photo is used if you don't add one."}
@@ -616,7 +616,7 @@ function CreateDealModal({
           {formError && (
             <div
               role="alert"
-              className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm"
+              className="alert-danger"
             >
               {formError}
             </div>
@@ -686,7 +686,7 @@ function ConfirmDeactivateDialog({
           <button
             onClick={onConfirm}
             disabled={busy}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-6 rounded-xl font-semibold bg-danger-500 hover:bg-danger-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-danger flex-1 flex items-center justify-center gap-2 py-2.5"
           >
             {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {busy ? "Deactivating…" : "Deactivate"}

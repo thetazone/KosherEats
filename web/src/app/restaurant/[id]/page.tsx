@@ -2,6 +2,7 @@
 
 import { isCartLockedByPendingOrder, savePreselectedDeal } from "@/components/checkout/checkoutShared";
 import { Header } from "@/components/layout/Header";
+import { DietaryBadge } from "@/components/restaurant/DietaryBadge";
 import { KosherBadge } from "@/components/restaurant/KosherBadge";
 import { KosherCertificateModal } from "@/components/restaurant/KosherCertificateModal";
 import { MenuItemModal, type MenuItemSelection } from "@/components/restaurant/MenuItemModal";
@@ -27,6 +28,7 @@ import {
   Tag,
   type LucideIcon,
 } from "lucide-react";
+import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -45,14 +47,6 @@ interface LocalCartItem {
 
 function cartLineKey(menuItemId: string, modifierIds: string[]): string {
   return `${menuItemId}|${[...modifierIds].sort().join(",")}`;
-}
-
-function DietaryBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${color}`}>
-      {label}
-    </span>
-  );
 }
 
 // KashrusChip mirrors the iOS KashrusInfoChip: icon + bold title over a muted
@@ -122,7 +116,7 @@ function DealCard({ deal, selected = false }: { deal: Deal; selected?: boolean }
       {deal.description && (
         <p className="text-dark-400 text-sm line-clamp-2 mb-2">{deal.description}</p>
       )}
-      <div className="text-xs text-dark-500">
+      <div className="text-xs text-dark-400">
         {deal.menu_item_name && <span>On {deal.menu_item_name} · </span>}
         <span>
           Ends{" "}
@@ -492,6 +486,16 @@ function RestaurantPageInner() {
             isPreview || isClosed ? "opacity-60" : ""
           }`}
         >
+          {(rest.cover_image_url || rest.image_url) && (
+            <Image
+              src={(rest.cover_image_url || rest.image_url) as string}
+              alt=""
+              fill
+              sizes="100vw"
+              priority
+              className="object-cover"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-dark-950 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 max-w-7xl mx-auto">
             <div className="flex flex-wrap items-center gap-3 mb-2">
@@ -632,7 +636,7 @@ function RestaurantPageInner() {
             {hasRealCertificatePhoto(rest.kosher_certificate_url) ? (
               <button
                 onClick={() => setCertificateOpen(true)}
-                className="w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-11 rounded-xl transition-colors"
+                className="focus-ring w-full sm:w-auto sm:px-6 flex items-center justify-center gap-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 font-semibold text-sm py-2.5 min-h-11 rounded-xl transition-colors"
                 aria-label={`View kosher certificate for ${rest.name}`}
               >
                 <FileText className="w-4 h-4" aria-hidden="true" />
@@ -678,16 +682,15 @@ function RestaurantPageInner() {
             <div className="flex-1">
               {/* Category Tabs */}
               <div className="sticky top-16 bg-dark-950 z-30 py-4 border-b border-dark-800 mb-6">
-                <div className="flex gap-3 overflow-x-auto">
+                {/* py-1 -my-1: overflow-x-auto also clips vertically, so give
+                    the focus ring room without shifting layout. */}
+                <div className="flex gap-3 overflow-x-auto py-1 -my-1">
                   {menu.map((cat) => (
                     <button
                       key={cat.id}
                       onClick={() => selectCategory(cat.id)}
-                      className={`px-4 py-2 min-h-11 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                        activeCategory === cat.id
-                          ? "bg-brand-500 text-white"
-                          : "bg-dark-800 text-dark-300 hover:bg-dark-700"
-                      }`}
+                      aria-pressed={activeCategory === cat.id}
+                      className={`chip ${activeCategory === cat.id ? "chip-active" : ""}`}
                     >
                       {cat.name}
                     </button>
@@ -721,17 +724,28 @@ function RestaurantPageInner() {
                             key={item.id}
                             className="card p-4 flex justify-between items-start gap-4 hover:border-dark-600 transition-colors"
                           >
-                            <div className="flex-1">
+                            {item.image_url && (
+                              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-dark-800 shrink-0">
+                                <Image
+                                  src={item.image_url}
+                                  alt=""
+                                  fill
+                                  sizes="96px"
+                                  className="object-cover"
+                                />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-2 mb-1">
                                 <h3 className="font-semibold">{item.name}</h3>
                                 {item.is_meat && (
-                                  <DietaryBadge label="Meat" color="bg-meat-900/40 text-meat-400" />
+                                  <DietaryBadge kind="meat" />
                                 )}
                                 {item.is_dairy && (
-                                  <DietaryBadge label="Dairy" color="bg-dairy-900/40 text-dairy-400" />
+                                  <DietaryBadge kind="dairy" />
                                 )}
                                 {item.is_pareve && (
-                                  <DietaryBadge label="Pareve" color="bg-pareve-900/40 text-pareve-400" />
+                                  <DietaryBadge kind="pareve" />
                                 )}
                               </div>
                               <p className="text-dark-400 text-sm mb-2">
@@ -755,7 +769,7 @@ function RestaurantPageInner() {
                                     onClick={() => openItem(item)}
                                     disabled={!item.is_available || isClosed}
                                     aria-label={`Add another ${item.name}`}
-                                    className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                                    className="focus-ring w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
                                   >
                                     +
                                   </button>
@@ -764,7 +778,7 @@ function RestaurantPageInner() {
                                 <button
                                   onClick={() => openItem(item)}
                                   disabled={!item.is_available || isClosed}
-                                  className="bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 min-h-11 rounded-xl text-sm font-medium transition-colors"
+                                  className="focus-ring bg-dark-800 hover:bg-dark-700 border border-dark-700 hover:border-brand-500 disabled:opacity-50 disabled:hover:border-dark-700 text-white px-4 py-2 min-h-11 rounded-xl text-sm font-medium transition-colors"
                                 >
                                   {!item.is_available ? "Unavailable" : isClosed ? "Closed" : "Add"}
                                 </button>

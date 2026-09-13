@@ -355,7 +355,7 @@ export default function SellerOrderDetailPage() {
         )}
       </div>
       {order && (
-        <p className="text-xs text-dark-500 mt-1.5">Placed {formatWhen(order.created_at)}</p>
+        <p className="text-xs text-dark-400 mt-1.5">Placed {formatWhen(order.created_at)}</p>
       )}
     </div>
   );
@@ -482,7 +482,7 @@ export default function SellerOrderDetailPage() {
           <button
             onClick={() => setToast(null)}
             aria-label="Dismiss error"
-            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="focus-ring min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -514,7 +514,7 @@ function ActionsCard({
   const acting = busy !== null;
   // min-h-11 keeps every status action a full-size touch target at 375px.
   const btn =
-    "w-full flex items-center justify-center gap-2 py-3 px-4 min-h-11 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    "btn-state w-full py-3 px-4";
 
   let body: React.ReactNode;
   switch (order.status) {
@@ -811,7 +811,7 @@ function RoutingCard({
         onClick={() => onSetMode(value)}
         disabled={acting || selected}
         aria-pressed={selected}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 min-h-11 rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
+        className={`focus-ring flex-1 flex items-center justify-center gap-1.5 py-2 px-3 min-h-11 rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
           selected
             ? "bg-success-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700 disabled:opacity-50"
@@ -834,7 +834,7 @@ function RoutingCard({
       {mode === "platform" && (
         // TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
         // Left as-is by the M2 sweep — snapping it is a design call.
-        <p className="text-[11px] text-dark-500 mt-2">
+        <p className="text-[11px] text-dark-400 mt-2">
           Currently: KosherEats couriers — pick a method above to change.
         </p>
       )}
@@ -853,7 +853,7 @@ function RoutingCard({
               <button
                 onClick={onEscalate}
                 disabled={acting}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="focus-ring w-full flex items-center justify-center gap-2 py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy === "escalate" ? (
                   <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -865,7 +865,7 @@ function RoutingCard({
               <button
                 onClick={() => setConfirmingEscalate(false)}
                 disabled={acting}
-                className="w-full py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold bg-dark-800 text-dark-300 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="focus-ring w-full py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold bg-dark-800 text-dark-300 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Keep self-delivery
               </button>
@@ -875,14 +875,14 @@ function RoutingCard({
               <button
                 onClick={() => setConfirmingEscalate(true)}
                 disabled={acting}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold bg-dark-800 text-dark-200 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="focus-ring w-full flex items-center justify-center gap-2 py-2.5 px-3 min-h-11 rounded-xl text-sm font-semibold bg-dark-800 text-dark-200 hover:bg-dark-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Truck className="w-4 h-4" aria-hidden="true" />
                 Hand off to Uber Direct
               </button>
               {/* TODO(rubric): 11px is off Tailwind's type scale (text-xs is
                   12px). Left as-is by the M2 sweep — a design call. */}
-              <p className="text-[11px] text-dark-500 mt-2">
+              <p className="text-[11px] text-dark-400 mt-2">
                 No driver available? Dispatch an Uber Direct courier for this order.
               </p>
             </>
@@ -931,7 +931,7 @@ function CourierCard({
             {courier.total_deliveries} deliveries
           </div>
           {vehicleSummary(courier) && (
-            <div className="text-xs text-dark-500 mt-0.5 truncate">{vehicleSummary(courier)}</div>
+            <div className="text-xs text-dark-400 mt-0.5 truncate">{vehicleSummary(courier)}</div>
           )}
         </div>
         {href && (
@@ -974,7 +974,7 @@ function PartnerCard({ order }: { order: SellerOrder }) {
       {order.external_delivery_id && (
         // TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
         // Left as-is by the M2 sweep — snapping it is a design call.
-        <p className="text-[11px] text-dark-500 mt-2.5 break-all">
+        <p className="text-[11px] text-dark-400 mt-2.5 break-all">
           Delivery ID: {order.external_delivery_id}
         </p>
       )}
@@ -1073,7 +1073,7 @@ function ItemsCard({ order }: { order: SellerOrder }) {
                   </div>
                 )}
                 {item.notes && (
-                  <div className="text-xs text-dark-500 italic mt-0.5">{item.notes}</div>
+                  <div className="text-xs text-dark-400 italic mt-0.5">{item.notes}</div>
                 )}
               </div>
               {/* Per-unit price already includes modifier deltas. */}
@@ -1251,7 +1251,7 @@ function TimelineCard({ order }: { order: SellerOrder }) {
                 {row.label}
               </div>
               {row.time && (
-                <div className="text-xs text-dark-500 mt-0.5">{formatWhen(row.time)}</div>
+                <div className="text-xs text-dark-400 mt-0.5">{formatWhen(row.time)}</div>
               )}
             </div>
           </li>

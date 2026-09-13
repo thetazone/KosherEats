@@ -1,24 +1,24 @@
 # KosherEats Polish — Round 1
-**Max severity found:** 7
+**Max severity found:** 5
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [web] fetchAPI drops the HTTP status; 10 duplicated substring `isUnauthorized` helpers miss real 401 bodies, breaking sign-out routing and the charged-but-no-order recovery path** — FIXED
-  `fetchAPI` (web/src/lib/api.ts:155) and `sellerFetch` (web/src/lib/sellerApi.ts:210) throw `new Error(body.error)`, discarding `res.status` and the pa
-  > Done. All changes are under `web/`; `tsc --noEmit` and eslint are clean on every touched file (no web test suite exists)
+- **[5/10] [ke_uiux_web] No focus-visible styling anywhere in web/ — buttons, chips, and btn-primary links fall back to the browser's blue UA ring** — FIXED
+  `grep -rn focus-visible web/src` returns 0 matches. `.input` gets an orange focus:ring-brand-500, but `.btn-primary`, `.btn-secondary`, every pill chi
+  > Done. All five files are within `web/`; nothing outside it was touched. Changes are uncommitted on `feat/web-hunt-202609
 
-- **[5/10] [web] Silent refresh never reaches page state, so after 15 min every consumer request becomes 401 → POST /auth/refresh → replay, indefinitely** — FIXED
-  `fetchAPI` takes the access token as an explicit `token` option and, on a 401, runs the single-flight refresh, writes the new token to localStorage, a
-  > Both clean. 
+- **[5/10] [ke_uiux_web] text-dark-500 helper copy fails AA contrast — 97 uses, ~40 of them at text-xs/text-sm** — FIXED
+  #737373 measures 3.8:1 on dark-900 cards, 3.2:1 on dark-800 surfaces, and 4.2:1 on the dark-950 body — all under WCAG AA 4.5:1 — and the rubric explic
+  > Done. `tsc` clean, ESLint clean.
 
-## Summary
+## What changed
 
-**Root cause:** every consumer page reads `localStorage.token` once on mount and holds it in R
+Swapped `text-dark-500` → `text-dark-400` on **49 informational text 
 
-- **[4/10] [web] Open/closed toggle and delivery-mode selector can be reverted by an in-flight 15 s poll (no request-sequence bump on mutation)** — FIXED
-  `SellerDashboardPage.load()` (seller/page.tsx:78-100) guards stale poll responses with `requestSeq`, and `runOrderAction` relies on the follow-up `voi
-  > Type check passes clean.
+- **[4/10] [ke_uiux_web] Error banner hand-rolled ~28 times in 5 recipes; only 9 of 86 danger messages have role="alert"** — FIXED
+  Five distinct error-banner recipes coexist: `bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3` (×17 across auth, auth/fo
+  > Done. `tsc`, `next lint`, and `next build` all pass, and both new classes are present in the compiled CSS.
 
-Fixed both mutations in `web/src/app/seller/page.tsx`: `toggleOpen` and `setDeliveryMode` now 
+## What chan

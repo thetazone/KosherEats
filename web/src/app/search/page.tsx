@@ -319,16 +319,15 @@ function SearchPageInner() {
 
         {/* Cuisine chips — horizontally scrollable; a tap refetches with
             ?cuisine= server-side, "All" clears it. */}
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+        {/* pt-1 -mt-1: overflow-x-auto also clips vertically, so give the
+            focus ring (2px offset + 2px ring) room without shifting layout. */}
+        <div className="flex gap-2 overflow-x-auto pt-1 -mt-1 pb-2 mb-4">
           {CUISINES.map((cuisine) => (
             <button
               key={cuisine}
               onClick={() => setSelectedCuisine(cuisine)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                selectedCuisine === cuisine
-                  ? "bg-brand-500 text-white"
-                  : "bg-dark-800 text-dark-300 hover:bg-dark-700"
-              }`}
+              aria-pressed={selectedCuisine === cuisine}
+              className={`chip ${selectedCuisine === cuisine ? "chip-active" : ""}`}
             >
               {cuisine}
             </button>

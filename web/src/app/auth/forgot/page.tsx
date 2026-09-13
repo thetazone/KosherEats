@@ -134,7 +134,7 @@ function ForgotPasswordFlow() {
             setCode("");
             setStep("email");
           }}
-          className="flex items-center gap-1.5 text-dark-400 hover:text-white text-sm mb-6 transition-colors"
+          className="focus-ring flex items-center gap-1.5 text-dark-400 hover:text-white text-sm mb-6 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Use a different email
@@ -148,7 +148,7 @@ function ForgotPasswordFlow() {
         </div>
       )}
       {error && (
-        <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-6 text-sm">
+        <div role="alert" className="alert-danger mb-6">
           {error}
         </div>
       )}
@@ -220,7 +220,7 @@ function ForgotPasswordFlow() {
               <button
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
+                className="focus-ring absolute right-4 top-1/2 -translate-y-1/2 text-dark-400 hover:text-white transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -243,7 +243,7 @@ function ForgotPasswordFlow() {
               <button
                 type="button"
                 onClick={handleResendCode}
-                className="text-brand-400 hover:text-brand-500 transition-colors"
+                className="focus-ring text-brand-400 hover:text-brand-500 transition-colors"
               >
                 Resend code
               </button>

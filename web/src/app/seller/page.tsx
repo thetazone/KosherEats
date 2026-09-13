@@ -240,7 +240,7 @@ export default function SellerDashboardPage() {
             </>
           ) : (
             <>
-              <p className="text-danger-400 mb-4">{error}</p>
+              <p role="alert" className="text-danger-400 mb-4">{error}</p>
               <button onClick={load} className="btn-secondary">
                 Try again
               </button>
@@ -258,7 +258,7 @@ export default function SellerDashboardPage() {
     <div>
       <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <span className="text-xs text-dark-500">Refreshes every 15s</span>
+        <span className="text-xs text-dark-400">Refreshes every 15s</span>
       </div>
 
       {/* Transient poll failure — keep the last good data on screen. */}
@@ -267,7 +267,7 @@ export default function SellerDashboardPage() {
           <span>Reconnecting… showing last loaded data.</span>
           <button
             onClick={load}
-            className="text-xs px-3 min-h-11 -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
+            className="focus-ring text-xs px-3 min-h-11 -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -276,12 +276,12 @@ export default function SellerDashboardPage() {
 
       {/* Mutation failures (toggle / delivery mode / quick actions). */}
       {actionError && (
-        <div className="flex items-center justify-between gap-4 mb-4 px-4 py-2.5 rounded-xl border border-danger-500/30 bg-danger-500/10 text-danger-300 text-sm">
+        <div role="alert" className="alert-danger flex items-center justify-between gap-4 mb-4">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="focus-ring min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -309,7 +309,7 @@ export default function SellerDashboardPage() {
               aria-label={isOpen ? "Close restaurant for orders" : "Open restaurant for orders"}
               disabled={!isApproved || toggling}
               onClick={toggleOpen}
-              className="shrink-0 -m-2 p-2 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="focus-ring shrink-0 -m-2 p-2 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span
                 className={`relative block w-12 h-7 rounded-full transition-colors ${
@@ -325,7 +325,7 @@ export default function SellerDashboardPage() {
             </button>
           </div>
           {!isApproved && (
-            <p className="text-xs text-dark-500 mt-3">
+            <p className="text-xs text-dark-400 mt-3">
               We&apos;ll email you once the KosherEats team reviews your application. You can
               build your menu and settings while you wait.
             </p>
@@ -487,7 +487,7 @@ function DeliveryModeTile({
         }}
         disabled={saving}
         aria-pressed={selected}
-        className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 min-h-11 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`focus-ring w-full flex items-center justify-center gap-1.5 py-2 px-3 min-h-11 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
           selected
             ? "bg-success-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700"
@@ -512,7 +512,7 @@ function DeliveryModeTile({
       {mode === "platform" && (
         // TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
         // Left as-is by the M2 sweep — snapping it is a design call.
-        <p className="text-[11px] text-dark-500 mt-2">
+        <p className="text-[11px] text-dark-400 mt-2">
           Currently: KosherEats couriers — pick a method above to change.
         </p>
       )}

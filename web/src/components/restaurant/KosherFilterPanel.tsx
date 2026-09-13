@@ -153,6 +153,9 @@ export function KosherFilterPanel({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<KosherFilters>(filters);
+  // Below md the panel is a full-height bottom sheet (true modal, page
+  // behind must be excluded from a11y tree); at md+ it's an inline card.
+  const [isSheet, setIsSheet] = useState(false);
 
   // Below md: the panel is a full-height bottom sheet, so lock body scroll
   // while it's up (and only there — on md+ it's an inline card and the page
@@ -167,6 +170,7 @@ export function KosherFilterPanel({
     const mq = window.matchMedia("(max-width: 767px)");
     const previousOverflow = document.body.style.overflow;
     const applyLock = () => {
+      setIsSheet(mq.matches);
       document.body.style.overflow = mq.matches ? "hidden" : previousOverflow;
     };
     applyLock();
@@ -218,7 +222,7 @@ export function KosherFilterPanel({
       <button
         onClick={toggleOpen}
         aria-expanded={open}
-        className={`flex items-center gap-2 px-4 py-2 min-h-11 rounded-full text-sm font-medium transition-colors border ${
+        className={`focus-ring flex items-center gap-2 px-4 py-2 min-h-11 rounded-full text-sm font-medium transition-colors border ${
           appliedCount > 0
             ? "bg-brand-500/20 text-brand-400 border-brand-500"
             : "bg-dark-800 text-dark-300 border-dark-700 hover:bg-dark-700"
@@ -244,16 +248,19 @@ export function KosherFilterPanel({
           onClick={() => setOpen(false)}
         >
           <div
+            role="dialog"
+            aria-modal={isSheet}
+            aria-labelledby="kosher-filters-heading"
             className="card flex flex-col h-full min-h-0 rounded-none border-x-0 border-b-0 md:h-auto md:rounded-2xl md:border md:border-dark-800"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sheet header — mobile only; md+ keeps the old headerless card. */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-dark-800 md:hidden">
-              <h2 className="font-bold text-lg">Kosher Filters</h2>
+              <h2 id="kosher-filters-heading" className="font-bold text-lg">Kosher Filters</h2>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="Close filters"
-                className="w-11 h-11 -mr-2 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 flex items-center justify-center transition-colors"
+                className="focus-ring w-11 h-11 -mr-2 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 flex items-center justify-center transition-colors"
               >
                 <X className="w-5 h-5" aria-hidden="true" />
               </button>
@@ -274,7 +281,7 @@ export function KosherFilterPanel({
                       onClick={() => toggleCertification(cert)}
                       aria-pressed={selected}
                       aria-label={`${cert} certification`}
-                      className={`flex items-center gap-2 px-3 py-3 min-h-11 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                      className={`focus-ring flex items-center gap-2 px-3 py-3 min-h-11 rounded-xl text-sm font-semibold border-2 transition-colors ${
                         selected
                           ? "bg-dark-800 border-brand-500 text-white"
                           : "bg-dark-800 border-transparent text-dark-300 hover:bg-dark-700"
@@ -311,7 +318,7 @@ export function KosherFilterPanel({
                       role="switch"
                       aria-checked={on}
                       aria-label={title}
-                      className="w-full flex items-center justify-between gap-4 bg-dark-800 hover:bg-dark-700 rounded-xl px-4 py-3 text-left transition-colors"
+                      className="focus-ring w-full flex items-center justify-between gap-4 bg-dark-800 hover:bg-dark-700 rounded-xl px-4 py-3 text-left transition-colors"
                     >
                       <span>
                         <span className="block font-semibold">{title}</span>

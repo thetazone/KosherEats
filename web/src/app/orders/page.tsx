@@ -372,7 +372,7 @@ export default function OrdersPage() {
           <div className="flex bg-dark-800 rounded-xl p-1 max-w-xs flex-1">
             <button
               onClick={() => setFilter("active")}
-              className={`flex-1 py-2 min-h-11 rounded-lg text-sm font-medium transition-colors ${
+              className={`focus-ring flex-1 py-2 min-h-11 rounded-lg text-sm font-medium transition-colors ${
                 filter === "active"
                   ? "bg-brand-500 text-white"
                   : "text-dark-400 hover:text-white"
@@ -382,7 +382,7 @@ export default function OrdersPage() {
             </button>
             <button
               onClick={() => setFilter("past")}
-              className={`flex-1 py-2 min-h-11 rounded-lg text-sm font-medium transition-colors ${
+              className={`focus-ring flex-1 py-2 min-h-11 rounded-lg text-sm font-medium transition-colors ${
                 filter === "past"
                   ? "bg-brand-500 text-white"
                   : "text-dark-400 hover:text-white"
@@ -402,7 +402,7 @@ export default function OrdersPage() {
         </div>
 
         {actionError && (
-          <div className="card p-3 mb-4 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
+          <div role="alert" className="alert-danger mb-4">
             {actionError}
           </div>
         )}
@@ -469,7 +469,7 @@ export default function OrdersPage() {
                             kosher trust story continues after the sale. */}
                         <RestaurantCertChip restaurantId={order.restaurant_id} />
                       </div>
-                      <p className="text-dark-500 text-sm">
+                      <p className="text-dark-400 text-sm">
                         {new Date(order.created_at).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
@@ -488,7 +488,7 @@ export default function OrdersPage() {
                     <div className="mb-4">
                       {/* Labels sit on the stops they mark (see activeProgressPercent);
                           the outer two anchor to the track edges so they can't clip. */}
-                      <div className="relative h-4 text-xs text-dark-500">
+                      <div className="relative h-4 text-xs text-dark-400">
                         <span className="absolute left-0">Order placed</span>
                         <span className="absolute left-1/2 -translate-x-1/2">Preparing</span>
                         <span className="absolute left-3/4 -translate-x-1/2">Ready</span>
@@ -574,7 +574,7 @@ export default function OrdersPage() {
                         <span>Total</span>
                         <span className="text-brand-400">{formatUSD(order.total)}</span>
                       </div>
-                      <p className="text-dark-500 text-xs pt-1">
+                      <p className="text-dark-400 text-xs pt-1">
                         {pickup
                           ? `Pickup from ${order.restaurant_name}`
                           : `Delivered to ${order.delivery_address}`}
@@ -599,7 +599,7 @@ export default function OrdersPage() {
                         <button
                           onClick={() => cancelOrder(order.id)}
                           disabled={isCancelling}
-                          className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-11 inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="btn-danger py-2 px-4 text-sm min-h-11 inline-flex items-center justify-center gap-2"
                         >
                           {isCancelling && (
                             <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
@@ -618,7 +618,7 @@ export default function OrdersPage() {
                     {isActive && canCancel && !isConfirmingCancel && (
                       <button
                         onClick={() => setConfirmingCancelId(order.id)}
-                        className="border border-danger-800 text-danger-400 hover:bg-danger-900/30 font-semibold py-2 px-4 rounded-xl text-sm min-h-11 inline-flex items-center justify-center transition-colors"
+                        className="focus-ring border border-danger-800 text-danger-400 hover:bg-danger-900/30 font-semibold py-2 px-4 rounded-xl text-sm min-h-11 inline-flex items-center justify-center transition-colors"
                       >
                         Cancel Order
                       </button>

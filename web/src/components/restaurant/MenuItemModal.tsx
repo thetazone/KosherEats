@@ -1,8 +1,10 @@
 "use client";
 
+import { DietaryBadge } from "@/components/restaurant/DietaryBadge";
 import { formatUSD, formatUSDDelta } from "@/lib/format";
 import type { MenuItem, Modifier, ModifierGroup, SelectedModifier } from "@/types";
 import { AlertTriangle, Check, Loader2, Minus, Plus, X } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 // MenuItemSelection is what the modal hands back on Add: the raw ids the
@@ -45,14 +47,6 @@ function seedDefaults(groups: ModifierGroup[]): Record<string, string[]> {
     if (defaults.length > 0) initial[group.id] = defaults;
   }
   return initial;
-}
-
-function DietaryBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${color}`}>
-      {label}
-    </span>
-  );
 }
 
 // MenuItemModal is the web port of the iOS AddToCartSheet: modifier groups
@@ -188,20 +182,20 @@ export function MenuItemModal({
                 {formatUSD(item.price)}
               </span>
               {item.is_meat && (
-                <DietaryBadge label="Meat" color="bg-meat-900/40 text-meat-400" />
+                <DietaryBadge kind="meat" />
               )}
               {item.is_dairy && (
-                <DietaryBadge label="Dairy" color="bg-dairy-900/40 text-dairy-400" />
+                <DietaryBadge kind="dairy" />
               )}
               {item.is_pareve && (
-                <DietaryBadge label="Pareve" color="bg-pareve-900/40 text-pareve-400" />
+                <DietaryBadge kind="pareve" />
               )}
             </div>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center"
+            className="focus-ring w-11 h-11 -mr-2 -mt-1 rounded-xl text-dark-400 hover:text-white hover:bg-dark-800 transition-colors flex-shrink-0 flex items-center justify-center"
           >
             <X className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -209,6 +203,17 @@ export function MenuItemModal({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+          {item.image_url && (
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-dark-800">
+              <Image
+                src={item.image_url}
+                alt=""
+                fill
+                sizes="(max-width: 640px) 100vw, 512px"
+                className="object-cover"
+              />
+            </div>
+          )}
           {item.description && (
             <p className="text-dark-400 text-sm">{item.description}</p>
           )}
@@ -260,7 +265,7 @@ export function MenuItemModal({
                         aria-checked={isSelected}
                         onClick={() => toggleModifier(group, mod)}
                         disabled={!mod.is_available}
-                        className="w-full flex items-center gap-3 px-4 py-3 min-h-11 text-left hover:bg-dark-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                        className="focus-ring w-full flex items-center gap-3 px-4 py-3 min-h-11 text-left hover:bg-dark-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
                       >
                         {singleSelect ? (
                           <span
@@ -342,7 +347,7 @@ export function MenuItemModal({
                 onClick={() => setQuantity((q) => Math.max(q - 1, 1))}
                 disabled={quantity <= 1}
                 aria-label="Decrease quantity"
-                className="w-11 h-11 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                className="focus-ring w-11 h-11 rounded-full bg-dark-700 hover:bg-dark-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
               >
                 <Minus className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -356,7 +361,7 @@ export function MenuItemModal({
                 onClick={() => setQuantity((q) => Math.min(q + 1, MAX_QUANTITY))}
                 disabled={quantity >= MAX_QUANTITY}
                 aria-label="Increase quantity"
-                className="w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
+                className="focus-ring w-11 h-11 rounded-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 flex items-center justify-center text-white transition-colors"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
               </button>

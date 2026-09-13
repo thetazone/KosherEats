@@ -386,7 +386,7 @@ export default function Home() {
                           </div>
                           <div>
                             <div className="text-sm font-medium">{name}</div>
-                            <div className="text-dark-500 text-xs">25-40 min</div>
+                            <div className="text-dark-400 text-xs">25-40 min</div>
                           </div>
                           <Star className="w-3 h-3 text-brand-400 ml-auto" />
                         </div>
@@ -574,7 +574,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
-          <div className="border-t border-dark-800 mt-8 pt-8 text-center text-dark-500 text-sm">
+          <div className="border-t border-dark-800 mt-8 pt-8 text-center text-dark-400 text-sm">
             &copy; {new Date().getFullYear()} KosherEats. All rights reserved.
           </div>
         </div>

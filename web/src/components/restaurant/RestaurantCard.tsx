@@ -83,7 +83,7 @@ export function RestaurantCard({
                   ? `Remove ${restaurant.name} from favorites`
                   : `Add ${restaurant.name} to favorites`
               }
-              className="absolute top-3 right-3 z-30 bg-dark-900/70 hover:bg-dark-900/90 rounded-full w-11 h-11 flex items-center justify-center transition-colors"
+              className="focus-ring absolute top-3 right-3 z-30 bg-dark-900/70 hover:bg-dark-900/90 rounded-full w-11 h-11 flex items-center justify-center transition-colors"
             >
               <Heart
                 className={`w-5 h-5 transition-colors ${
@@ -113,7 +113,7 @@ export function RestaurantCard({
                 <div className="flex items-center gap-1">
                   <Star className="w-4 h-4 text-brand-400 fill-brand-400" aria-hidden="true" />
                   <span className="text-sm font-medium">{restaurant.rating}</span>
-                  <span className="text-dark-500 text-sm">
+                  <span className="text-dark-400 text-sm">
                     ({restaurant.review_count})
                   </span>
                 </div>

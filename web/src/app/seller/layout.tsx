@@ -129,7 +129,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       <p className="text-danger-400 mb-1.5">{restaurantsError}</p>
       <button
         onClick={loadRestaurants}
-        className="inline-flex items-center min-h-11 -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"
+        className="focus-ring inline-flex items-center min-h-11 -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"
       >
         Try again
       </button>
@@ -195,14 +195,14 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
             <span className="text-brand-500">Kosher</span>
             <span className="text-white">Eats</span>
           </Link>
-          <div className="text-xs text-dark-500 mt-0.5 mb-4">Seller dashboard</div>
+          <div className="text-xs text-dark-400 mt-0.5 mb-4">Seller dashboard</div>
           {picker}
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">{nav}</nav>
         <div className="p-4 border-t border-dark-800">
           <button
             onClick={signOut}
-            className="flex items-center gap-3 w-full px-3 py-2.5 min-h-11 rounded-xl text-sm font-medium text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+            className="focus-ring flex items-center gap-3 w-full px-3 py-2.5 min-h-11 rounded-xl text-sm font-medium text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             Sign out
@@ -221,7 +221,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
           <button
             onClick={signOut}
             aria-label="Sign out"
-            className="min-w-11 min-h-11 flex items-center justify-center -mr-2 rounded-xl text-dark-400 hover:bg-dark-800 hover:text-white transition-colors shrink-0"
+            className="focus-ring min-w-11 min-h-11 flex items-center justify-center -mr-2 rounded-xl text-dark-400 hover:bg-dark-800 hover:text-white transition-colors shrink-0"
           >
             <LogOut className="w-4 h-4" />
           </button>

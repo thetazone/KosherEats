@@ -285,7 +285,7 @@ export function VerificationGate({
         </div>
       )}
       {error && (
-        <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-4 text-sm">
+        <div role="alert" className="alert-danger mb-4">
           {error}
         </div>
       )}
@@ -349,14 +349,14 @@ export function VerificationGate({
               type="button"
               onClick={() => void sendEmailCode(true)}
               disabled={loading || resendCooldown > 0}
-              className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="focus-ring inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
             </button>
             <button
               type="button"
               onClick={() => goToStep("email-entry")}
-              className="inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors"
+              className="focus-ring inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors"
             >
               Use a different email
             </button>
@@ -402,7 +402,7 @@ export function VerificationGate({
                 required
               />
             </div>
-            <p className="text-xs text-dark-500 mt-1.5">
+            <p className="text-xs text-dark-400 mt-1.5">
               Standard message rates may apply.
             </p>
           </div>
@@ -465,14 +465,14 @@ export function VerificationGate({
               type="button"
               onClick={() => void sendPhoneCode(true)}
               disabled={loading || resendCooldown > 0}
-              className="inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
+              className="focus-ring inline-flex items-center min-h-11 text-brand-400 hover:text-brand-300 disabled:text-dark-500 disabled:cursor-not-allowed transition-colors"
             >
               {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
             </button>
             <button
               type="button"
               onClick={() => goToStep("phone-entry")}
-              className="inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors"
+              className="focus-ring inline-flex items-center min-h-11 text-dark-400 hover:text-white transition-colors"
             >
               Use a different number
             </button>
