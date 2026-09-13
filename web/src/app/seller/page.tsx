@@ -247,7 +247,7 @@ export default function SellerDashboardPage() {
           <span>Reconnecting… showing last loaded data.</span>
           <button
             onClick={load}
-            className="text-xs px-3 min-h-[44px] -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
+            className="text-xs px-3 min-h-11 -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -261,7 +261,7 @@ export default function SellerDashboardPage() {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -289,7 +289,7 @@ export default function SellerDashboardPage() {
               aria-label={isOpen ? "Close restaurant for orders" : "Open restaurant for orders"}
               disabled={!isApproved || toggling}
               onClick={toggleOpen}
-              className="shrink-0 -m-2 p-2 min-w-[44px] min-h-[44px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="shrink-0 -m-2 p-2 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span
                 className={`relative block w-12 h-7 rounded-full transition-colors ${
@@ -467,7 +467,7 @@ function DeliveryModeTile({
         }}
         disabled={saving}
         aria-pressed={selected}
-        className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 min-h-[44px] rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 min-h-11 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
           selected
             ? "bg-success-500 text-white"
             : "bg-dark-800 text-dark-300 hover:bg-dark-700"

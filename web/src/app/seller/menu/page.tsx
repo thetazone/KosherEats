@@ -236,7 +236,7 @@ export default function SellerMenuPage() {
             setAddingCategory(true);
             setActionError(null);
           }}
-          className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+          className="flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           New category
@@ -249,7 +249,7 @@ export default function SellerMenuPage() {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -383,7 +383,7 @@ function CategorySection({
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={onAddItem}
-            className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 px-2 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 px-2 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             Add item
@@ -391,7 +391,7 @@ function CategorySection({
           <button
             onClick={onDeleteCategory}
             aria-label={`Delete category ${category.name}`}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
+            className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
           >
             <Trash2 className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -494,7 +494,7 @@ function MenuItemRow({
         aria-label={item.is_available ? `Pause ${item.name}` : `Make ${item.name} available`}
         disabled={toggling}
         onClick={onToggle}
-        className="shrink-0 -m-1 min-w-[44px] min-h-[44px] flex items-center justify-center disabled:opacity-50 disabled:cursor-wait"
+        className="shrink-0 -m-1 min-w-11 min-h-11 flex items-center justify-center disabled:opacity-50 disabled:cursor-wait"
       >
         <span
           className={`relative block w-10 h-6 rounded-full transition-colors ${
@@ -514,14 +514,14 @@ function MenuItemRow({
         <button
           onClick={onEdit}
           aria-label={`Edit ${item.name}`}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+          className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
         >
           <Pencil className="w-4 h-4" aria-hidden="true" />
         </button>
         <button
           onClick={onDelete}
           aria-label={`Delete ${item.name}`}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
+          className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-dark-400 hover:bg-danger-500/10 hover:text-danger-400 transition-colors"
         >
           <Trash2 className="w-4 h-4" aria-hidden="true" />
         </button>

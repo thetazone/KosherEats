@@ -291,7 +291,7 @@ export default function SellerOrdersPage() {
           <span>Reconnecting… showing last loaded orders.</span>
           <button
             onClick={load}
-            className="text-xs px-3 min-h-[44px] -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
+            className="text-xs px-3 min-h-11 -my-2 rounded-lg bg-warning-500/20 hover:bg-warning-500/30 transition-colors shrink-0"
           >
             Retry
           </button>
@@ -307,7 +307,7 @@ export default function SellerOrdersPage() {
               key={tab.key}
               onClick={() => setFilter(tab.key)}
               aria-pressed={selected}
-              className={`px-4 py-2 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
+              className={`px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                 selected
                   ? "bg-brand-500 text-white"
                   : "bg-dark-800 text-dark-300 hover:bg-dark-700 hover:text-white"

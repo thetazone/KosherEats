@@ -346,7 +346,7 @@ export default function SellerOnboardingPage() {
             kind="restaurant/logo"
             value={logoUrl}
             onChange={setLogoUrl}
-            aspectClass="aspect-square max-w-[10rem]"
+            aspectClass="aspect-square max-w-40"
             track={trackUpload}
           />
         </section>
@@ -406,7 +406,7 @@ export default function SellerOnboardingPage() {
                   role="radio"
                   aria-checked={certification === cert}
                   onClick={() => setCertification(cert)}
-                  className={`px-4 py-2 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
+                  className={`px-4 py-2 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                     certification === cert
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
@@ -684,7 +684,7 @@ function ReviewCard({
         <button
           type="button"
           onClick={onEdit}
-          className="flex items-center gap-1.5 min-h-[44px] -my-2.5 text-xs font-medium text-brand-500 hover:text-brand-400 transition-colors"
+          className="flex items-center gap-1.5 min-h-11 -my-2.5 text-xs font-medium text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Pencil className="w-3.5 h-3.5" />
           Edit

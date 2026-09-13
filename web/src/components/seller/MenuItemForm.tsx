@@ -240,7 +240,7 @@ export function MenuItemForm({
                   setImageUrl("");
                   setUploadError(null);
                 }}
-                className="flex items-center gap-1.5 min-h-[44px] text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
+                className="flex items-center gap-1.5 min-h-11 text-xs font-medium text-danger-400 hover:text-danger-300 transition-colors mt-1"
               >
                 <X className="w-3.5 h-3.5" aria-hidden="true" />
                 Remove photo
@@ -342,7 +342,7 @@ export function MenuItemForm({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => setKosher(opt.value)}
-                    className={`py-2.5 px-3 min-h-[44px] rounded-xl border text-sm font-semibold transition-colors ${
+                    className={`py-2.5 px-3 min-h-11 rounded-xl border text-sm font-semibold transition-colors ${
                       selected
                         ? opt.selectedClass
                         : "border-dark-700 bg-dark-800 text-dark-300 hover:bg-dark-700"

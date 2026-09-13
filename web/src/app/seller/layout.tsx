@@ -115,7 +115,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       <p className="text-danger-400 mb-1.5">{restaurantsError}</p>
       <button
         onClick={loadRestaurants}
-        className="inline-flex items-center min-h-[44px] -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"
+        className="inline-flex items-center min-h-11 -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"
       >
         Try again
       </button>
@@ -125,7 +125,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       <p className="text-dark-400 mb-1.5">No restaurants yet</p>
       <Link
         href="/seller/onboarding"
-        className="inline-flex items-center min-h-[44px] -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"
+        className="inline-flex items-center min-h-11 -my-2 text-brand-500 hover:text-brand-400 font-medium transition-colors"
       >
         Set up your restaurant
       </Link>
@@ -142,7 +142,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       value={activeId ?? ""}
       onChange={(e) => selectRestaurant(e.target.value)}
       aria-label="Restaurant"
-      className="input w-full py-2.5 min-h-[44px] cursor-pointer"
+      className="input w-full py-2.5 min-h-11 cursor-pointer"
     >
       {restaurants.map((r) => (
         <option key={r.id} value={r.id}>
@@ -160,7 +160,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       <Link
         key={item.href}
         href={item.href}
-        className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
+        className={`flex items-center gap-3 px-3 py-2.5 min-h-11 rounded-xl text-sm font-medium transition-colors whitespace-nowrap ${
           active
             ? "bg-brand-500/15 text-brand-400"
             : "text-dark-400 hover:bg-dark-800 hover:text-white"
@@ -188,7 +188,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
         <div className="p-4 border-t border-dark-800">
           <button
             onClick={signOut}
-            className="flex items-center gap-3 w-full px-3 py-2.5 min-h-[44px] rounded-xl text-sm font-medium text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 min-h-11 rounded-xl text-sm font-medium text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
           >
             <LogOut className="w-4 h-4 shrink-0" />
             Sign out
@@ -203,11 +203,11 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
             <span className="text-brand-500">Kosher</span>
             <span className="text-white">Eats</span>
           </Link>
-          <div className="flex-1 min-w-0 max-w-[14rem]">{picker}</div>
+          <div className="flex-1 min-w-0 max-w-56">{picker}</div>
           <button
             onClick={signOut}
             aria-label="Sign out"
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2 rounded-xl text-dark-400 hover:bg-dark-800 hover:text-white transition-colors shrink-0"
+            className="min-w-11 min-h-11 flex items-center justify-center -mr-2 rounded-xl text-dark-400 hover:bg-dark-800 hover:text-white transition-colors shrink-0"
           >
             <LogOut className="w-4 h-4" />
           </button>

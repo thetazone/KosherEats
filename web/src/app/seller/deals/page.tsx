@@ -171,7 +171,7 @@ export default function SellerDealsPage() {
             setShowCreate(true);
             setActionError(null);
           }}
-          className="flex items-center gap-1.5 min-h-[44px] text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
+          className="flex items-center gap-1.5 min-h-11 text-sm font-semibold text-brand-500 hover:text-brand-400 transition-colors"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
           New deal
@@ -184,7 +184,7 @@ export default function SellerDealsPage() {
           <button
             onClick={() => setActionError(null)}
             aria-label="Dismiss error"
-            className="min-w-[44px] min-h-[44px] -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
+            className="min-w-11 min-h-11 -my-2 -mr-3 flex items-center justify-center rounded-lg hover:bg-danger-500/20 transition-colors shrink-0"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -276,7 +276,7 @@ function DealCard({ deal, onDeactivate }: { deal: SellerDeal; onDeactivate: () =
       {status === "active" || status === "scheduled" ? (
         <button
           onClick={onDeactivate}
-          className="text-xs font-semibold text-danger-400 hover:text-danger-300 px-2 min-h-[44px] -my-1.5 rounded-lg hover:bg-danger-500/10 transition-colors shrink-0"
+          className="text-xs font-semibold text-danger-400 hover:text-danger-300 px-2 min-h-11 -my-1.5 rounded-lg hover:bg-danger-500/10 transition-colors shrink-0"
         >
           Deactivate
         </button>
@@ -505,7 +505,7 @@ function CreateDealModal({
                     setDiscountType(t.value);
                     setDiscountValue("");
                   }}
-                  className={`py-2 px-3 min-h-[44px] rounded-xl text-sm font-semibold transition-colors ${
+                  className={`py-2 px-3 min-h-11 rounded-xl text-sm font-semibold transition-colors ${
                     discountType === t.value
                       ? "bg-brand-500 text-white"
                       : "bg-dark-800 text-dark-300 border border-dark-700 hover:bg-dark-700 hover:text-white"
