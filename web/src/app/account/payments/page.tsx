@@ -91,7 +91,7 @@ function AddCardForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement />
-      {localError && <div className="text-sm text-red-400">{localError}</div>}
+      {localError && <div className="text-sm text-danger-400">{localError}</div>}
       <div className="flex gap-2">
         <button
           type="submit"
@@ -304,7 +304,7 @@ export default function PaymentMethodsPage() {
                   </div>
                 </div>
                 {openError && (
-                  <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 mb-3 text-sm">
+                  <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-3 text-sm">
                     {openError}
                   </div>
                 )}

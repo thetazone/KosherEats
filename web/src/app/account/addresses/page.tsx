@@ -236,7 +236,7 @@ export default function AddressesPage() {
         ) : (
           <div className="space-y-4">
             {actionError && (
-              <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
+              <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
                 {actionError}
               </div>
             )}
@@ -245,7 +245,7 @@ export default function AddressesPage() {
               <form onSubmit={saveAddress} className="card p-5 space-y-3">
                 <h2 className="font-bold">New address</h2>
                 {formError && (
-                  <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
+                  <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
                     {formError}
                   </div>
                 )}
@@ -450,7 +450,7 @@ export default function AddressesPage() {
                             type="button"
                             onClick={() => void deleteAddress(a.id)}
                             disabled={busyId !== null}
-                            className="inline-flex items-center min-h-[44px] text-red-400 hover:text-red-300 font-medium transition-colors disabled:opacity-50"
+                            className="inline-flex items-center min-h-[44px] text-danger-400 hover:text-danger-300 font-medium transition-colors disabled:opacity-50"
                           >
                             {busyId === a.id ? "Deleting…" : "Confirm"}
                           </button>
@@ -471,7 +471,7 @@ export default function AddressesPage() {
                             setActionError(null);
                           }}
                           disabled={busyId !== null}
-                          className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-red-400 font-medium transition-colors disabled:opacity-50"
+                          className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-danger-400 font-medium transition-colors disabled:opacity-50"
                         >
                           Delete
                         </button>

@@ -539,7 +539,7 @@ export default function OrdersPage() {
                           tax + tip == total) — mirrors the /orders/[id]
                           receipt. */}
                       {(order.discount ?? 0) > 0 && (
-                        <div className="flex justify-between text-green-400">
+                        <div className="flex justify-between text-success-400">
                           <span>Discount</span>
                           <span>-{formatUSD(order.discount ?? 0)}</span>
                         </div>

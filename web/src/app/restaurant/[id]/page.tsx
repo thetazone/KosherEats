@@ -565,7 +565,7 @@ function RestaurantPageInner() {
               {rest.is_glatt_kosher && (
                 <KashrusChip
                   icon={CheckCircle2}
-                  iconColor="text-green-400"
+                  iconColor="text-success-400"
                   title="Glatt"
                   subtitle="Kosher"
                 />
@@ -573,7 +573,7 @@ function RestaurantPageInner() {
               {rest.is_cholov_yisroel && (
                 <KashrusChip
                   icon={Droplets}
-                  iconColor="text-blue-400"
+                  iconColor="text-info-400"
                   title="Cholov"
                   subtitle="Yisroel"
                 />
@@ -581,7 +581,7 @@ function RestaurantPageInner() {
               {rest.is_pas_yisroel && (
                 <KashrusChip
                   icon={Cake}
-                  iconColor="text-amber-400"
+                  iconColor="text-warning-400"
                   title="Pas"
                   subtitle="Yisroel"
                 />
@@ -698,13 +698,13 @@ function RestaurantPageInner() {
                               <div className="flex flex-wrap items-center gap-2 mb-1">
                                 <h3 className="font-semibold">{item.name}</h3>
                                 {item.is_meat && (
-                                  <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
+                                  <DietaryBadge label="Meat" color="bg-meat-900/40 text-meat-400" />
                                 )}
                                 {item.is_dairy && (
-                                  <DietaryBadge label="Dairy" color="bg-blue-900/40 text-blue-400" />
+                                  <DietaryBadge label="Dairy" color="bg-dairy-900/40 text-dairy-400" />
                                 )}
                                 {item.is_pareve && (
-                                  <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
+                                  <DietaryBadge label="Pareve" color="bg-pareve-900/40 text-pareve-400" />
                                 )}
                               </div>
                               <p className="text-dark-400 text-sm mb-2">

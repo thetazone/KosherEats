@@ -110,7 +110,7 @@ function DealListCard({ deal, miles }: { deal: Deal; miles: number | null }) {
           </span>
         )}
         {remaining && (
-          <span className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-dark-900/80 text-amber-400 text-xs font-medium px-2 py-1 rounded-lg">
+          <span className="absolute top-3 right-3 z-20 flex items-center gap-1 bg-dark-900/80 text-warning-400 text-xs font-medium px-2 py-1 rounded-lg">
             <Clock className="w-3 h-3" aria-hidden="true" />
             {remaining}
           </span>

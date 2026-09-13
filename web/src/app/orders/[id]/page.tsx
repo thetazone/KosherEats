@@ -566,7 +566,7 @@ export default function OrderTrackingPage() {
 
         {/* Stale-data banner: background refresh failing, showing last known state */}
         {stale && (
-          <div className="card p-3 mb-4 border border-yellow-800 bg-yellow-900/20 text-yellow-300 text-sm flex items-center gap-2">
+          <div className="card p-3 mb-4 border border-warning-800 bg-warning-900/20 text-warning-300 text-sm flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             Unable to update — showing last known status
           </div>
@@ -603,14 +603,14 @@ export default function OrderTrackingPage() {
 
         {/* Terminal failure banner (cancelled / rejected) replaces the stepper */}
         {failed ? (
-          <div className="card p-6 mb-4 border border-red-800 bg-red-900/20">
+          <div className="card p-6 mb-4 border border-danger-800 bg-danger-900/20">
             <div className="flex items-center gap-3">
-              <Ban className="w-6 h-6 text-red-400 flex-shrink-0" />
+              <Ban className="w-6 h-6 text-danger-400 flex-shrink-0" />
               <div>
-                <h2 className="font-bold text-red-300">
+                <h2 className="font-bold text-danger-300">
                   {order.status === "cancelled" ? "Order cancelled" : "Order rejected"}
                 </h2>
-                <p className="text-red-300/80 text-sm">{statusSubtext(order)}</p>
+                <p className="text-danger-300/80 text-sm">{statusSubtext(order)}</p>
               </div>
             </div>
           </div>
@@ -692,7 +692,7 @@ export default function OrderTrackingPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-bold">{courier.first_name}</p>
                 <p className="text-sm text-dark-400 flex items-center gap-1">
-                  <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+                  <Star className="w-3.5 h-3.5 text-warning-400 fill-warning-400" />
                   {courier.rating.toFixed(1)}
                   {courier.total_deliveries > 0 && (
                     <span className="text-dark-500">· {courier.total_deliveries} deliveries</span>
@@ -723,8 +723,8 @@ export default function OrderTrackingPage() {
               <div className="mt-4 pt-4 border-t border-dark-800 flex items-center gap-2 text-sm">
                 {liveLocation && (
                   <span className="relative flex h-2.5 w-2.5" aria-hidden>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success-400 opacity-60" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success-500" />
                   </span>
                 )}
                 <span className="text-dark-300">
@@ -777,7 +777,7 @@ export default function OrderTrackingPage() {
                       key={i}
                       className={`w-5 h-5 ${
                         i <= (order.courier_rating ?? 0)
-                          ? "text-yellow-400 fill-yellow-400"
+                          ? "text-warning-400 fill-warning-400"
                           : "text-dark-600"
                       }`}
                       aria-hidden="true"
@@ -840,7 +840,7 @@ export default function OrderTrackingPage() {
               <span>{formatUSD(order.subtotal)}</span>
             </div>
             {(order.discount ?? 0) > 0 && (
-              <div className="flex justify-between text-green-400">
+              <div className="flex justify-between text-success-400">
                 <span>Discount</span>
                 <span>-{formatUSD(order.discount ?? 0)}</span>
               </div>
@@ -873,7 +873,7 @@ export default function OrderTrackingPage() {
         </div>
 
         {actionError && (
-          <div className="card p-3 mb-4 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+          <div className="card p-3 mb-4 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
             {actionError}
           </div>
         )}
@@ -897,7 +897,7 @@ export default function OrderTrackingPage() {
                   <button
                     onClick={() => void cancelOrder()}
                     disabled={cancelling}
-                    className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-[44px] transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 rounded-xl text-sm min-h-[44px] transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {cancelling && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     {cancelling ? "Cancelling…" : "Yes, cancel order"}

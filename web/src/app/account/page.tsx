@@ -154,7 +154,7 @@ function EmailChangeFlow({
         </div>
       )}
       {error && (
-        <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
+        <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
           {error}
         </div>
       )}
@@ -336,7 +336,7 @@ function PhoneChangeFlow({
         </div>
       )}
       {error && (
-        <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
+        <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
           {error}
         </div>
       )}
@@ -421,7 +421,7 @@ function PhoneChangeFlow({
             onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
             aria-label="Verification code"
             className={`input w-full text-center text-xl font-semibold tracking-[0.5em] ${
-              error ? "border-red-800 focus:border-red-500 focus:ring-red-500" : ""
+              error ? "border-danger-800 focus:border-danger-500 focus:ring-danger-500" : ""
             }`}
             placeholder="••••"
             autoFocus
@@ -735,7 +735,7 @@ export default function AccountPage() {
     // min-h + negative vertical margin: 44px hit area without growing the row
     <Link
       href="/account/verify"
-      className="inline-flex items-center min-h-[44px] -my-3 gap-1 text-xs text-yellow-500 hover:text-yellow-400 transition-colors"
+      className="inline-flex items-center min-h-[44px] -my-3 gap-1 text-xs text-warning-500 hover:text-warning-400 transition-colors"
     >
       <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
       Verify now
@@ -785,7 +785,7 @@ export default function AccountPage() {
               {editingName ? (
                 <form onSubmit={saveName} className="space-y-3 mb-6">
                   {nameError && (
-                    <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
+                    <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
                       {nameError}
                     </div>
                   )}
@@ -973,12 +973,12 @@ export default function AccountPage() {
             <section className="card p-6">
               <h2 className="text-lg font-bold mb-2">Notifications</h2>
               {prefsError && (
-                <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 mb-3 text-sm flex items-center justify-between gap-3">
+                <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-3 text-sm flex items-center justify-between gap-3">
                   <span>{prefsError}</span>
                   <button
                     type="button"
                     onClick={() => token && loadPrefs(token)}
-                    className="inline-flex items-center min-h-[44px] text-red-300 hover:text-white font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-[44px] text-danger-300 hover:text-white font-medium transition-colors shrink-0"
                   >
                     Retry
                   </button>
@@ -1021,19 +1021,19 @@ export default function AccountPage() {
             <section className="card p-6">
               <h2 className="text-lg font-bold mb-2">Sign-in methods</h2>
               {providersError && (
-                <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 mb-3 text-sm flex items-center justify-between gap-3">
+                <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-3 text-sm flex items-center justify-between gap-3">
                   <span>{providersError}</span>
                   <button
                     type="button"
                     onClick={() => token && loadProviders(token)}
-                    className="inline-flex items-center min-h-[44px] text-red-300 hover:text-white font-medium transition-colors shrink-0"
+                    className="inline-flex items-center min-h-[44px] text-danger-300 hover:text-white font-medium transition-colors shrink-0"
                   >
                     Retry
                   </button>
                 </div>
               )}
               {unlinkError && (
-                <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 mb-3 text-sm">
+                <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-3 text-sm">
                   {unlinkError}
                 </div>
               )}
@@ -1069,7 +1069,7 @@ export default function AccountPage() {
                                 type="button"
                                 onClick={() => void unlinkProvider(p.provider)}
                                 disabled={unlinking}
-                                className="inline-flex items-center min-h-[44px] text-red-400 hover:text-red-300 text-sm font-medium transition-colors disabled:opacity-50"
+                                className="inline-flex items-center min-h-[44px] text-danger-400 hover:text-danger-300 text-sm font-medium transition-colors disabled:opacity-50"
                               >
                                 {unlinking ? "Removing…" : "Confirm"}
                               </button>
@@ -1092,7 +1092,7 @@ export default function AccountPage() {
                                 setPendingUnlink(p.provider);
                                 setUnlinkError("");
                               }}
-                              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-red-400 text-sm font-medium transition-colors shrink-0"
+                              className="inline-flex items-center min-h-[44px] text-dark-400 hover:text-danger-400 text-sm font-medium transition-colors shrink-0"
                             >
                               Unlink
                             </button>
@@ -1128,10 +1128,10 @@ export default function AccountPage() {
             </section>
 
             {/* ---- Danger zone ---- */}
-            <section className="card p-6 border-red-900/50">
+            <section className="card p-6 border-danger-900/50">
               <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="w-4 h-4 text-red-400" aria-hidden="true" />
-                <h2 className="text-lg font-bold text-red-400">Delete account</h2>
+                <AlertTriangle className="w-4 h-4 text-danger-400" aria-hidden="true" />
+                <h2 className="text-lg font-bold text-danger-400">Delete account</h2>
               </div>
               <p className="text-sm text-dark-400 mb-4">
                 This will permanently delete your account and all associated data. This action
@@ -1140,7 +1140,7 @@ export default function AccountPage() {
               {deleteOpen ? (
                 <form onSubmit={deleteAccount} className="space-y-3">
                   {deleteError && (
-                    <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 text-sm">
+                    <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 text-sm">
                       {deleteError}
                     </div>
                   )}
@@ -1167,7 +1167,7 @@ export default function AccountPage() {
                     <button
                       type="submit"
                       disabled={deleting || deleteText !== DELETE_CONFIRM_WORD}
-                      className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 min-h-[44px] rounded-xl transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-danger-600 hover:bg-danger-700 text-white font-semibold py-2 px-4 min-h-[44px] rounded-xl transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {deleting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                       {deleting ? "Deleting…" : "Permanently delete my account"}
@@ -1190,7 +1190,7 @@ export default function AccountPage() {
                 <button
                   type="button"
                   onClick={() => setDeleteOpen(true)}
-                  className="inline-flex items-center min-h-[44px] text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
+                  className="inline-flex items-center min-h-[44px] text-danger-400 hover:text-danger-300 text-sm font-medium transition-colors"
                 >
                   Delete my account…
                 </button>
