@@ -23,6 +23,7 @@ import {
   Store,
 } from "lucide-react";
 import { PhotoUpload } from "@/components/seller/PhotoUpload";
+import { AddressGeocodeField } from "@/components/ui/AddressGeocodeField";
 import { sellerApi, sellerAuth } from "@/lib/sellerApi";
 import type {
   CreateRestaurantRequest,
@@ -102,9 +103,12 @@ export default function SellerOnboardingPage() {
     return null;
   }
 
-  // Manual lat/lng with the same guards as admin/restaurants/new — no geocoding
-  // API key is wired up, and a (0,0) "Null Island" default buries the
-  // restaurant in distance-sorted listings.
+  // Coordinates come from the /api/geocode Census lookup (AddressGeocodeField
+  // fills the same latitude/longitude strings) or from its manual-entry
+  // fallback. Same guards as admin/restaurants/new — a (0,0) "Null Island"
+  // value buries the restaurant in distance-sorted listings. Both coordinates
+  // are required here, so the POST payload always carries the full lat+lng
+  // pair (the seller-latlng-api backend rejects half pairs).
   function validateAddress(): string | null {
     if (!street.trim() || !city.trim() || !stateField.trim() || !zip.trim()) {
       return "Full address (street, city, state, zip) is required.";
@@ -112,7 +116,7 @@ export default function SellerOnboardingPage() {
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return "Latitude and longitude are required and must be valid numbers.";
+      return 'Coordinates are required — use "Find coordinates from address" or enter them manually.';
     }
     if (lat < -90 || lat > 90) return "Latitude must be between -90 and 90.";
     if (lng < -180 || lng > 180) return "Longitude must be between -180 and 180.";
@@ -219,6 +223,13 @@ export default function SellerOnboardingPage() {
       setSubmitting(false);
     }
   }
+
+  // One-line geocoder query composed from the address step's own fields (the
+  // step intentionally has no separate address search box). Street is required
+  // for a meaningful Census match, so a blank street disables lookup.
+  const geocodeQuery = street.trim()
+    ? [street.trim(), city.trim(), stateField.trim(), zip.trim()].filter(Boolean).join(", ")
+    : "";
 
   // ── Pending-approval result state ──
   if (created) {
@@ -357,31 +368,27 @@ export default function SellerOnboardingPage() {
             <Field id="ob-state" label="State" value={stateField} onChange={setStateField} placeholder="NY" required />
             <Field id="ob-zip" label="Zip" value={zip} onChange={setZip} placeholder="11229" required />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field
-              id="ob-lat"
-              label="Latitude"
-              value={latitude}
-              onChange={setLatitude}
-              type="number"
-              inputMode="decimal"
-              placeholder="40.7128"
-              required
-            />
-            <Field
-              id="ob-lng"
-              label="Longitude"
-              value={longitude}
-              onChange={setLongitude}
-              type="number"
-              inputMode="decimal"
-              placeholder="-74.0060"
-              required
-            />
-          </div>
+          {/* Composed mode: the lookup query comes from the street/city/state/
+              zip fields above — on success it fills the same latitude/longitude
+              strings validateAddress parseFloat-validates and submit() sends as
+              top-level lat/lng numbers. Manual entry stays available in the
+              component's collapsible fallback section. */}
+          <AddressGeocodeField
+            query={geocodeQuery}
+            showQueryInput={false}
+            buttonLabel="Find coordinates from address"
+            lat={latitude}
+            lng={longitude}
+            onLatChange={setLatitude}
+            onLngChange={setLongitude}
+            onResolved={(r) => {
+              setLatitude(String(r.lat));
+              setLongitude(String(r.lng));
+            }}
+          />
           <p className="text-xs text-dark-500">
-            Used for distance-based listings and delivery estimates. Right-click your storefront
-            in Google Maps to copy the exact coordinates — don&apos;t leave these at (0, 0).
+            Used for distance-based listings and delivery estimates. Fill in the address above,
+            then find your coordinates — don&apos;t leave these at (0, 0).
           </p>
         </section>
       )}

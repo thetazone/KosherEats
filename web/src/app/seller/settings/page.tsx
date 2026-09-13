@@ -9,6 +9,11 @@
 // integer cents. The Kosher Certification section edits agency + flags and
 // shows the current certificate with a presign-upload replace flow that
 // persists kosher_certificate_url on Save.
+//
+// The Address section carries an "Update coordinates from address" geocode
+// action (AddressGeocodeField in composed mode): resolved lat/lng fill the
+// coordinate strings and persist on Save as an optional BOTH-or-NEITHER pair
+// in the PUT body (the seller-latlng-api backend rejects half pairs).
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -21,6 +26,7 @@ import {
   Store,
 } from "lucide-react";
 import { PhotoUpload } from "@/components/seller/PhotoUpload";
+import { AddressGeocodeField } from "@/components/ui/AddressGeocodeField";
 import { centsToDollars, parseCents, sellerApi } from "@/lib/sellerApi";
 import type {
   DeliveryMode,
@@ -59,6 +65,10 @@ export default function SellerSettingsPage() {
   const [city, setCity] = useState("");
   const [stateField, setStateField] = useState("");
   const [zip, setZip] = useState("");
+  // Coordinate strings — filled by the geocode action or manual entry, parsed
+  // into an optional both-or-neither lat/lng pair at Save time.
+  const [latField, setLatField] = useState("");
+  const [lngField, setLngField] = useState("");
   const [deliveryFee, setDeliveryFee] = useState("");
   const [minOrder, setMinOrder] = useState("");
   const [estMin, setEstMin] = useState("");
@@ -96,6 +106,11 @@ export default function SellerSettingsPage() {
     setCity(r.city);
     setStateField(r.state);
     setZip(r.zip_code);
+    // Never surface a (0,0) null-island placeholder as if it were a real
+    // stored coordinate — blank fields keep the "send neither" path natural.
+    const hasRealCoords = !(r.lat === 0 && r.lng === 0);
+    setLatField(hasRealCoords ? String(r.lat) : "");
+    setLngField(hasRealCoords ? String(r.lng) : "");
     setDeliveryFee(centsToDollars(r.delivery_fee));
     setMinOrder(centsToDollars(r.min_order));
     setEstMin(String(r.est_delivery_min));
@@ -165,6 +180,39 @@ export default function SellerSettingsPage() {
       return { problem: "Enter a valid minimum order in dollars, e.g. 15.00." };
     }
 
+    // Coordinates are an optional BOTH-or-NEITHER pair — the seller-latlng-api
+    // backend rejects half pairs, so a lone value is a validation error and
+    // two blanks mean "omit the pair, keep the stored coordinates". Range +
+    // null-island guards mirror AddressGeocodeField's inline manual checks.
+    const latStr = latField.trim();
+    const lngStr = lngField.trim();
+    let coords: { lat: number; lng: number } | null = null;
+    if (latStr || lngStr) {
+      if (!latStr || !lngStr) {
+        return {
+          problem:
+            "Enter both latitude and longitude, or clear both to keep the current coordinates.",
+        };
+      }
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return { problem: "Latitude and longitude must be valid numbers." };
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return {
+          problem: "Latitude must be between -90 and 90, longitude between -180 and 180.",
+        };
+      }
+      if (lat === 0 && lng === 0) {
+        return {
+          problem:
+            'Coordinates can\'t be (0, 0). Use "Update coordinates from address" or enter real values.',
+        };
+      }
+      coords = { lat, lng };
+    }
+
     const parsedMin = Number(estMin.trim());
     const parsedMax = Number(estMax.trim());
     if (!Number.isInteger(parsedMin) || parsedMin <= 0) {
@@ -205,6 +253,11 @@ export default function SellerSettingsPage() {
     // overwrite the real certificate with "" (the column is NOT NULL, so
     // only omission keeps it intact).
     if (certUrl) body.kosher_certificate_url = certUrl;
+    // Both-or-neither: the pair goes on together or not at all.
+    if (coords) {
+      body.lat = coords.lat;
+      body.lng = coords.lng;
+    }
     return { body };
   }
 
@@ -238,6 +291,13 @@ export default function SellerSettingsPage() {
       setSaving(false);
     }
   }
+
+  // One-line geocoder query composed from the address fields (the section
+  // intentionally has no separate address search box). Street is required for
+  // a meaningful Census match, so a blank street disables lookup.
+  const geocodeQuery = street.trim()
+    ? [street.trim(), city.trim(), stateField.trim(), zip.trim()].filter(Boolean).join(", ")
+    : "";
 
   // ── Render ─────────────────────────────────────────────────
 
@@ -344,6 +404,28 @@ export default function SellerSettingsPage() {
             <Field id="st-state" label="State" value={stateField} onChange={setStateField} placeholder="NY" />
             <Field id="st-zip" label="ZIP code" value={zip} onChange={setZip} required />
           </div>
+          {/* Composed mode: the lookup query comes from the street/city/state/
+              zip fields above — on success it fills the same lat/lng strings
+              validate() parses into the PUT body. Manual entry stays available
+              in the component's collapsible fallback. Coordinates persist on
+              Save (both-or-neither pair; blank both keeps the stored values). */}
+          <AddressGeocodeField
+            query={geocodeQuery}
+            showQueryInput={false}
+            buttonLabel="Update coordinates from address"
+            lat={latField}
+            lng={lngField}
+            onLatChange={setLatField}
+            onLngChange={setLngField}
+            onResolved={(r) => {
+              setLatField(String(r.lat));
+              setLngField(String(r.lng));
+            }}
+          />
+          <p className="text-xs text-dark-500">
+            Coordinates drive distance-based listings and delivery estimates. They&apos;re saved
+            with your other changes when you hit Save.
+          </p>
         </section>
 
         {/* ── Delivery ── */}

@@ -233,6 +233,8 @@ export const sellerApi = {
   restaurants: {
     /** Every restaurant owned by this seller — feeds the layout's picker. */
     list: () => sellerFetch<SellerRestaurant[]>("/seller/restaurants"),
+    /** body.lat/lng are an optional geocoded pair — send BOTH or NEITHER
+     *  (the seller-latlng-api backend rejects half pairs). */
     create: (body: CreateRestaurantRequest) =>
       sellerFetch<SellerRestaurant>("/seller/restaurants", {
         method: "POST",
@@ -240,6 +242,8 @@ export const sellerApi = {
       }),
     /** The active restaurant (resolved via ?restaurant_id= injection). */
     get: () => sellerFetch<SellerRestaurant>("/seller/restaurant"),
+    /** Partial payloads OK (pointer fields + COALESCE server-side). Same
+     *  both-or-neither rule for the optional lat/lng pair as create. */
     update: (body: UpdateRestaurantRequest) =>
       sellerFetch<SellerRestaurant>("/seller/restaurant", {
         method: "PUT",

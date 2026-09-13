@@ -112,9 +112,10 @@ export interface CreateRestaurantRequest {
   state?: string;
   zip_code?: string;
   /**
-   * Collected + null-island-validated client-side and sent forward-compatibly.
-   * The backend currently ignores these (defaults new restaurants to NYC
-   * center until geocoding lands) — unknown JSON fields are tolerated.
+   * Resolved via /api/geocode (AddressGeocodeField) or manual entry and
+   * null-island-validated client-side. Requires the seller-latlng-api backend
+   * deploy: it accepts an OPTIONAL lat+lng pair — send BOTH or NEITHER (half
+   * pairs are rejected).
    */
   lat?: number;
   lng?: number;
@@ -138,6 +139,13 @@ export interface UpdateRestaurantRequest {
   city?: string;
   state?: string;
   zip_code?: string;
+  /**
+   * Optional coordinate pair — send BOTH or NEITHER (the seller-latlng-api
+   * backend rejects half pairs). Omitting both leaves the stored coordinates
+   * untouched (pointer fields + COALESCE server-side).
+   */
+  lat?: number;
+  lng?: number;
   cuisine_type?: string[];
   delivery_fee?: number; // cents
   min_order?: number; // cents
