@@ -5,14 +5,25 @@
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [ke_bugs_backend] DoorDash 409 duplicate_delivery_id on create is never reconciled — a lost create response ends in a double delivery** — FIXED
-  dispatch.Dispatch sends a DoorDash external_delivery_id that is deliberately stable across every retry of one dispatch cycle ("<order>-g<n>"). DoorDas
-  > This fix is already fully applied in the working tree on `feat/web-hunt-20260913` (uncommitted) — nothing further needed
+- **[7/10] [ke_bugs_backend] Payout retry schedule outruns Stripe's 24h idempotency window, double-paying couriers** — FIXED
+  In backend/internal/scheduler/dispatcher.go, payoutBackoffSecs (line 1584) returns 5m/15m/1h/6h/24h and maxPayoutAttempts is 6 (line 128), so a failin
+  > Fixed. Both halves of the hazard are closed, in `backend/` only.
 
-- **[5/10] [ke_bugs_backend] DoorDash webhook branches not scoped to the webhook's own delivery id — stale events for a superseded delivery move/un-dispatch the live one** — FIXED
-  The 2026-06-25 backlog (docs/bug-backlog-2026-06-25.md:118-119) prescribed delivery-id matching for BOTH the Uber and DoorDash cancel branches; Uber (
-  > Done — the fix is complete and verified. All the work was already sitting in the working tree on `feat/web-hunt-20260913
+**`backend/internal/payments/stripe.go`**
+- Added `Ide
 
-- **[5/10] [ke_bugs_backend] Orphan-payment sweep vs. late CreateOrder race can refund a fulfilled order** — FIXED
-  scheduler.sweepOrphanPayments refunds a succeeded checkout PaymentIntent that has no order after orphanPaymentGrace (20 min). Its two steps — `SELECT 
-  > The fix for this issue was already applied in the working tree on `feat/web-hunt-20260913` (uncommitted); I verified it 
+- **[7/10] [ke_bugs_backend] Password reset does not invalidate existing sessions; refresh tokens are self-renewing and unrevocable** — FIXED
+  There is no session store, token epoch, jti, or denylist anywhere in the backend (grep for token_version|revoked|jti|sessions across internal/ returns
+  > Fixed. All changes are under `backend/`.
+
+## What was wrong
+
+`ResetPassword` rewrote `password_hash` and nothing else. R
+
+- **[5/10] [ke_bugs_backend] Deleting a courier account cascade-deletes their outstanding payout queue rows** — FIXED
+  backend/internal/database/migrations/009_courier_payout_queue.sql:23 declares courier_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, and no 
+  > Fixed. The cascade is gone and the financial record now outlives the courier's user row.
+
+## Changes
+
+**`backend/interna

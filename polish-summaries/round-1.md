@@ -1,20 +1,24 @@
 # KosherEats Polish — Round 1
-**Max severity found:** 7
+**Max severity found:** 8
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [ke_bugs_backend] DeleteAccount strands paid orders when a courier or seller deletes their account** — FIXED
-  The live-order guard only counted orders where orders.user_id = the caller, so a courier holding a claimed/picked_up delivery, or a seller whose resta
-  > Done — the fix was already present in the working tree, and I verified it end-to-end rather than re-applying it.
+- **[8/10] [ke_bugs_backend] PaymentIntent is not bound to the restaurant — free long-haul delivery** — FIXED
+  CreateOrder binds the charge to payer, amount, fulfillment type, delivery fee and the DROPOFF address, but never to the restaurant: it derives the res
+  > The fix is complete and verified. Summary of what's in place across the four files:
 
-## Wha
+**`backend/internal/payments/stripe
 
-- **[7/10] [ke_bugs_backend] Uber Direct CreateDelivery sends no idempotency_key — a retry after a lost response buys a second paid courier** — FIXED
-  A transport error, client-side timeout, or 5xx on the Uber create is classified transient and retried by the sweep or by the seller's next 'Dispatch t
-  > The fix described in the issue is already fully applied in the working tree (uncommitted, on `feat/web-hunt-20260913`) —
+- **[7/10] [ke_bugs_backend] Uber cancel reconciler silently strands orders escalated before 'ready'** — FIXED
+  reconcileUberDeliveryStatus's uberDeliveryCanceled branch matched status IN ('ready','picked_up'), while the same switch's picked-up and delivered bra
+  > The fix is in place in `backend/internal/scheduler/dispatcher.go` and verified.
 
-- **[5/10] [ke_bugs_backend] CreateOrder re-adjudicates the deal after the card is charged → charged-but-no-order on an expiring or deactivated promo** — FIXED
-  CreatePaymentIntent validates the deal and charges the discounted total; CreateOrder then re-ran resolveDealDiscount, which re-checks is_active and ex
-  > The fix was already applied in the working tree on `feat/web-hunt-20260913` (uncommitted); I verified it's complete and 
+**What was wrong:** `sweepExternalDeliv
+
+- **[7/10] [ke_bugs_backend] Approved restaurant can rewrite its kosher certification with no admin re-review** — FIXED
+  UpdateRestaurant (seller.go:477-515) COALESCE-updates kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel, is_glatt_kosher and 
+  > Fixed in `backend/internal/handlers/seller.go` — build, vet, gofmt, and test compilation are clean.
+
+**What I chose and 

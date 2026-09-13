@@ -1,24 +1,28 @@
 # KosherEats Polish — Round 4
-**Max severity found:** 7
+**Max severity found:** 8
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [web] Stale PaymentIntent window lets Place Order charge a PI priced against the previous address/tip/deal** — FIXED
-  In CheckoutPanel.tsx the debounced re-quote effect (lines 359-369) sets previewPending(true) and schedules refreshIntent() 450ms later, but intentGen 
-  > Both fixes are in `web/src/components/checkout/CheckoutPanel.tsx`; `tsc --noEmit` and `eslint` on the file are clean.
+- **[8/10] [ke_bugs_backend] StartPhoneChange resets the phone-OTP lockout for any phone number** — FIXED
+  phone_otp_starts is keyed by phone alone (migration 013) and shared by every OTP flow. StartPhoneLogin (phone_auth.go:66-72) deliberately refuses to s
+  > Both fixes applied, backend builds and vets clean, test packages compile.
 
-*
+**`backend/internal/handlers/phone_auth.go`**
 
-- **[6/10] [web] Sign-out deletes the captured-charge PendingOrder recovery record, reopening the double-pay path** — FIXED
-  The uncommitted diff adds clearPendingOrder() to Header.tsx handleSignOut (line 87) and account/page.tsx signOut (line 703) to stop a shared device ha
-  > Done. `tsc` and `eslint` both pass clean.
+- **[7/10] [ke_bugs_backend] DeleteAccount nulls orders.user_id on live paid orders, permanently breaking the auto-reject refund** — FIXED
+  DeleteAccount runs `UPDATE orders SET user_id = NULL WHERE user_id = $1` (user.go:284) with no status filter, so it anonymizes orders in pending/accep
+  > All green. Here's what I changed.
 
-## What changed (all under `web/`)
+## Root cause fix — `backend/internal/handlers/user.go`
 
-**`web/src/components/layout/Header.tsx`*
+`DeleteAccount` now refuses 
 
-- **[4/10] [web] Server cart can be mutated from other pages while a captured charge is still in recovery, making recovery unconvergeable** — FIXED
-  cart/page.tsx hides the item steppers and CheckoutPanel while recovering is true, but restaurant/[id]/page.tsx addToCart (334-395) and orders/page.tsx
-  > Typecheck and lint both pass (exit 0). The diff stat includes pre-existing uncommitted edits on this branch; my change i
+- **[6/10] [ke_bugs_backend] Token-epoch revocation check turns any transient DB error into a 401 logout for every user** — FIXED
+  The new (uncommitted) revocation check calls currentTokenEpoch on every authenticated request and collapses all failure modes into one branch: `if err
+  > Done. The fix is in `backend/internal/handlers/auth.go` + `email_otp.go`.
+
+**What changed**
+
+1. **Shared classifier** (`

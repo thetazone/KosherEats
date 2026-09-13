@@ -1,20 +1,18 @@
 # KosherEats Polish — Round 2
-**Max severity found:** 6
+**Max severity found:** 7
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[6/10] [ke_bugs_backend] Closed restaurants accept charges server-side — charged, then auto-rejected + refunded 10 minutes later** — FIXED
-  The seller dashboard 'closed' toggle (restaurants.is_open) is never read at pay time: restaurantOrderable deliberately excludes it, CreatePaymentInten
-  > ## Verified: fix is complete and green
+- **[7/10] [ke_bugs_backend] Transient Stripe error silently disarms all four CreateOrder money guards** — FIXED
+  CreateOrder read four PaymentIntent stamps via four separate paymentintent.Get calls, and every call site was written as `err == nil && ok && mismatch
+  > The fix for this issue was already fully present in the working tree when I started (uncommitted, alongside other change
 
-The fix described in the issue was already applied in the working tree (uncommit
+- **[6/10] [ke_bugs_backend] CreateOrder ran discarded live courier quotes inside the open order transaction** — FIXED
+  CreateOrder called quoteDeliveryFee (up to three provider HTTP quotes, each with a 30s client timeout) on every delivery order and then unconditionall
+  > The fix is already present in the working tree — `backend/internal/handlers/orders.go` (lines 243–298) already gates `qu
 
-- **[5/10] [ke_bugs_backend] DoorDash re-dispatch after a cancel is a guaranteed 409 — the order burns its attempt budget and leaves the external path** — FIXED
-  dispatch.Dispatch sent DoorDash CreateDelivery with external_delivery_id = the bare order UUID. DoorDash never allows an external_delivery_id to be re
-  > The fix was already applied in the working tree (uncommitted); I verified it rather than re-implementing it. Everything 
-
-- **[4/10] [ke_bugs_backend] Restaurant minimum order is decorative — rendered to every consumer, editable by sellers, enforced nowhere** — FIXED
-  restaurants.min_order is a seller setting ('Minimum order ($)' in seller settings on web/iOS) and every consumer client renders it ('Min. order: $15' 
-  > The fix was already present, uncommitted, in the working tree on `feat/web-hunt-20260913` — my work here was verifying i
+- **[5/10] [ke_bugs_backend] A rejected AddToCart destroyed the customer's existing cart** — FIXED
+  AddToCart clears every cart_items row and re-points carts.restaurant_id when the restaurant changes, and that transaction was COMMITTED (cart.go:175) 
+  > Fixed and verified. The two files named in the issue (`backend/internal/handlers/cart.go`, `backend/internal/handlers/in
