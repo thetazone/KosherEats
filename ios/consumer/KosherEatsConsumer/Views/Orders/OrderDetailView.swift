@@ -233,7 +233,11 @@ struct OrderDetailView: View {
         case .cancelled, .rejected: return .keError
         case .completed:
             return .keSuccess
-        @unknown default:
+        // `OrderStatus` is declared in this module and carries its own
+        // `.unknown` catch-all (Models.swift) for statuses the backend adds
+        // later, so it has to be matched explicitly — `@unknown default` only
+        // covers cases from *other* modules and left the switch non-exhaustive.
+        case .unknown:
             return .keTextSecondary
         }
     }
