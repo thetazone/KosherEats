@@ -128,11 +128,28 @@ struct SellerOrderDetailView: View {
             if let fresh = vm.orders.first(where: { $0.id == orderID }) {
                 order = fresh
             }
+            // Then keep re-reading the detail while the screen is open. The
+            // VM's 15s list poll can never surface a courier claim or an Uber
+            // dispatch (the list endpoint omits those fields), so without this
+            // the card sat on "Waiting for a courier…" until the seller backed
+            // out and reopened. `.task` cancels on disappear, ending the loop.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                if Task.isCancelled { break }
+                await vm.refreshOrderSilently(id: orderID)
+            }
         }
         .onReceive(vm.$orders) { updated in
             if let fresh = updated.first(where: { $0.id == orderID }) {
                 order = fresh
             }
+        }
+        // Mirror the dashboard's push-driven reload (OrdersViewModel.pushObserver)
+        // at order granularity: a courier claim / pickup / delivery push for THIS
+        // order re-reads the detail immediately instead of waiting for the tick.
+        .onReceive(NotificationCenter.default.publisher(for: .orderStatusUpdated)) { note in
+            guard let id = note.userInfo?[PushEvents.orderIDKey] as? String, id == orderID else { return }
+            Task { await vm.refreshOrderSilently(id: orderID) }
         }
     }
 
@@ -143,7 +160,15 @@ struct SellerOrderDetailView: View {
     /// fall back to a direct fetch instead of blanking `self.order` to nil —
     /// which would drop the user into the "Order data unavailable" empty
     /// state right after a successful action and force a manual Retry.
+    ///
+    /// Fetch-first (not cache-first): a mutation response reflects the row as
+    /// written by the handler, but the backend's routing side effects — the
+    /// Uber Direct dispatch on /ready, the courier broadcast — run fire-and-
+    /// forget AFTER the reply, and the list poll can't backfill them. Reading
+    /// the cached copy here is exactly how the detail screen got stuck on
+    /// "Waiting for a courier to claim this order…" after "Ready for Uber pickup".
     private func syncOrderFromVM() async {
+        await vm.refreshOrderSilently(id: orderID)
         if let fresh = vm.orders.first(where: { $0.id == orderID }) {
             order = fresh
             return
@@ -456,6 +481,10 @@ struct SellerOrderDetailView: View {
                         await vm.markReady(id: order.id)
                         await syncOrderFromVM()
                         isActing = false
+                        // The Uber handoff lands a few seconds after /ready
+                        // returns; poll the detail until external_* shows up
+                        // so the card flips to "Handed to Uber" on its own.
+                        await vm.settleExternalDispatch(id: order.id)
                     }
                 }
                 .disabled(isActing)
@@ -467,7 +496,7 @@ struct SellerOrderDetailView: View {
                 // completed when the customer arrives. Backend's CompleteOrder
                 // handler enforces the same status='ready' guard.
                 pickupReadyCard(order)
-            } else if order.isSelfDelivery && order.courier == nil && (order.externalDeliveryId ?? "").isEmpty {
+            } else if order.isSelfDelivery && order.courier == nil && !order.hasExternalDelivery {
                 // Self-delivery ('restaurant' mode), not handed off: the seller
                 // drives ready -> picked_up -> delivered with its own driver.
                 // (Once escalated to Uber, externalDeliveryId is set and we fall
@@ -511,7 +540,12 @@ struct SellerOrderDetailView: View {
                 Image(systemName: order.status.icon)
                     .font(.title3)
                     .foregroundColor(.keTextSecondary)
-                Text(order.status.displayName)
+                // "Delivered by Uber" when a partner courier completed it — the
+                // seller never saw a KE courier on these, so the bare "Delivered"
+                // left them guessing who actually took it.
+                Text(order.status == .delivered
+                     ? (order.externalDeliveryStatusText ?? order.status.displayName)
+                     : order.status.displayName)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.keTextSecondary)
@@ -630,19 +664,20 @@ struct SellerOrderDetailView: View {
             .padding()
             .background(Color.keCard)
             .cornerRadius(14)
-        } else if let ext = order.externalDeliveryId, !ext.isEmpty {
+        } else if order.hasExternalDelivery {
             // Dispatched to an external partner (Uber Direct / DoorDash): there is
             // no platform courier row, so the generic "waiting for a courier"
             // spinner below would wrongly imply the order is stuck/unclaimed. It's
             // been handed off — a partner courier is en route. This is the common
             // case now that external dispatch is the default delivery path.
+            // Keyed on hasExternalDelivery (id OR provider) so the brief
+            // external_provider='dispatching' claim window doesn't fall through
+            // to the spinner either.
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Image(systemName: order.status == .pickedUp ? "car.fill" : "shippingbox.fill")
                         .foregroundColor(.kePrimary)
-                    Text(order.status == .pickedUp
-                         ? "Out for delivery with \(order.externalProviderName)"
-                         : "Handed to \(order.externalProviderName) — a courier is on the way")
+                    Text(order.externalDeliveryStatusText ?? "Handed to \(order.externalProviderName)")
                         .font(.subheadline.weight(.medium))
                         .foregroundColor(.keTextPrimary)
                 }
@@ -682,9 +717,15 @@ struct SellerOrderDetailView: View {
             .background(Color.keCard)
             .cornerRadius(14)
         } else {
+            // No courier and no provider yet. On an external-mode order this is
+            // the seconds between /ready returning and the Uber dispatch landing
+            // (settleExternalDispatch is polling for it) — say so, rather than
+            // implying a KE courier needs to claim it.
             HStack(spacing: 10) {
                 ProgressView().tint(.kePrimary)
-                Text("Waiting for a courier to claim this order…")
+                Text(order.deliveryMode == "external"
+                     ? "Requesting a courier from Uber…"
+                     : "Waiting for a courier to claim this order…")
                     .font(.subheadline)
                     .foregroundColor(.keTextSecondary)
             }

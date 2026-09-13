@@ -430,6 +430,44 @@ class OrdersViewModel: ObservableObject {
         }
     }
 
+    /// Silent, race-safe single-order refresh for observational use: the detail
+    /// screen's periodic tick, its push observer, and the post-action sync. Unlike
+    /// `fetchOrder(id:)` it never sets `errorMessage` (which the detail view binds
+    /// to an "Action failed" alert — wrong for a background refresh), and it skips
+    /// any order with a mutation in flight so a fetch that started before the tap
+    /// can't stomp the optimistic copy.
+    ///
+    /// Why this exists: the mutation responses (`/ready` etc.) come back BEFORE the
+    /// backend's fire-and-forget routing runs — the Uber Direct dispatch on
+    /// mark-ready happens in a goroutine after the HTTP reply — and the seller list
+    /// endpoint never carries `courier` / `external_*`. So the only way the detail
+    /// screen learns that "Ready for Uber pickup" actually handed the order to Uber
+    /// is to re-read `/seller/orders/{id}` after the fact.
+    func refreshOrderSilently(id: String) async {
+        guard !inFlightOrderIDs.contains(id) else { return }
+        guard let fetched = try? await APIService.shared.getOrder(id: id) else { return }
+        guard !inFlightOrderIDs.contains(id) else { return }
+        updateOrder(fetched)
+    }
+
+    /// After "Ready for Uber pickup" on an external-mode delivery order, re-read
+    /// the detail a few times over ~10s until the provider's dispatch lands
+    /// (`external_provider` / `external_delivery_id` populated). Bails as soon
+    /// as the order is no longer in the ready-but-undispatched state, so it's a
+    /// no-op for pickup / self-delivery / platform-fleet orders.
+    func settleExternalDispatch(id: String) async {
+        for delayMs: UInt64 in [1_500, 2_000, 3_000, 4_000] {
+            guard let current = orders.first(where: { $0.id == id }),
+                  current.deliveryMode == "external",
+                  !current.isPickup,
+                  current.status == .ready,
+                  !current.hasExternalDelivery else { return }
+            try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            if Task.isCancelled { return }
+            await refreshOrderSilently(id: id)
+        }
+    }
+
     private func updateOrder(_ updated: Order) {
         if let idx = orders.firstIndex(where: { $0.id == updated.id }) {
             orders[idx] = updated

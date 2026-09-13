@@ -300,12 +300,25 @@ type Order struct {
 	ExternalDeliveryID  *string `json:"external_delivery_id,omitempty"`
 	ExternalProvider    *string `json:"external_provider,omitempty"`
 	ExternalTrackingURL *string `json:"external_tracking_url,omitempty"`
+	// Latest courier position reported by the external provider (Uber Direct
+	// event.courier_update). Always present on the consumer/seller order
+	// payload — null until the provider has sent a fix — so clients can draw
+	// the courier pin on their own map instead of only deep-linking out.
+	ExternalCourierLocation *ExternalCourierLocation `json:"external_courier_location"`
 
 	// Delivery mode for this order (platform | external | restaurant). Defaults
 	// from the restaurant, but can be overridden per order before courier handoff.
 	DeliveryMode string `json:"delivery_mode,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ExternalCourierLocation is the last position an external delivery provider
+// reported for the courier carrying an order.
+type ExternalCourierLocation struct {
+	Lat       float64   `json:"lat"`
+	Lng       float64   `json:"lng"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 

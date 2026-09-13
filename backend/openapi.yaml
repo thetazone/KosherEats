@@ -193,6 +193,12 @@ paths:
     post:
       tags: [auth]
       summary: Verify phone-OTP code and return a JWT
+      description: |
+        Checks the code (brute-force lockout applies), then signs in the user
+        owning this (phone, role, vertical). Consumers and couriers with no
+        matching account are auto-created. Sellers are NOT: a seller role with
+        no matching account returns 404 — seller accounts are created via
+        email/Apple/Google registration, and phone OTP only signs them in.
       security: []
       requestBody:
         required: true
@@ -203,10 +209,26 @@ paths:
               properties:
                 phone: { type: string }
                 code: { type: string }
+                role: { $ref: "#/components/schemas/UserRole" }
+                vertical: { type: string }
+                first_name: { type: string, description: Used only when auto-creating a consumer/courier }
+                last_name: { type: string }
+                email: { type: string, description: Optional; synthesized when absent on auto-create }
               required: [phone, code]
       responses:
         "200": { $ref: "#/components/responses/AuthTokenResponse" }
         "401": { $ref: "#/components/responses/Error" }
+        "404":
+          description: Code verified, but no seller account is registered to this number (role=seller only)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "No seller account is registered to this number. Sign in with the email, Apple, or Google account you used to register, or contact support."
+        "429": { $ref: "#/components/responses/Error" }
 
   /api/v1/auth/password/forgot:
     post:
@@ -2180,7 +2202,22 @@ components:
         external_delivery_id: { type: string, nullable: true }
         external_provider: { type: string, nullable: true }
         external_tracking_url: { type: string, nullable: true }
+        external_courier_location:
+          description: >-
+            Latest courier position reported by the external provider (Uber
+            Direct event.courier_update). Null until the provider has sent a
+            fix or once the order is no longer out with that provider.
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/ExternalCourierLocation" }]
         created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ExternalCourierLocation:
+      type: object
+      required: [lat, lng, updated_at]
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
         updated_at: { type: string, format: date-time }
 
     OrderItem:

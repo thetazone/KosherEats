@@ -576,10 +576,22 @@ class AuthViewModel @Inject constructor(
                     PushBootstrap.registerCurrentToken(apiService)
                     loadRestaurant()
                 } else {
+                    // The backend's {"error": "..."} body is written to be shown
+                    // in-app — notably the 404 "No seller account is registered to
+                    // this number…" when the code verified but no seller owns the
+                    // phone. Prefer it; fall back to per-status copy.
+                    val serverMsg = try {
+                        response.errorBody()?.string()?.let {
+                            com.squareup.moshi.Moshi.Builder().build()
+                                .adapter(Map::class.java)
+                                .fromJson(it)?.get("error") as? String
+                        }?.takeIf { it.isNotBlank() }
+                    } catch (e: Exception) { if (e is CancellationException) throw e; null }
                     val msg = when (response.code()) {
                         401 -> "Invalid or expired code"
                         429 -> "Too many failed attempts — try again in 10 minutes"
-                        else -> "Verification failed"
+                        404 -> serverMsg ?: "No seller account is registered to this number."
+                        else -> serverMsg ?: "Verification failed"
                     }
                     _state.value = _state.value.copy(phoneIsVerifying = false, error = msg)
                 }

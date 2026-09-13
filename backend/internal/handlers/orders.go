@@ -728,6 +728,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
 			       o.courier_payout, o.courier_tip,
 			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url,
+			       o.external_courier_lat, o.external_courier_lng, o.external_courier_updated_at,
 			       COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
 			       o.created_at, o.updated_at,
 			       cu.first_name, cu.phone, cu.avatar_url,
@@ -752,6 +753,7 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			       o.courier_id, o.claimed_at, o.picked_up_at, o.delivered_at,
 			       o.courier_payout, o.courier_tip,
 			       o.fulfillment_type, o.external_delivery_id, o.external_provider, o.external_tracking_url,
+			       o.external_courier_lat, o.external_courier_lng, o.external_courier_updated_at,
 			       COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
 			       o.created_at, o.updated_at,
 			       cu.first_name, cu.phone, cu.avatar_url,
@@ -779,6 +781,8 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 		cLat, cLng                              *float64
 		ratingStars                             *int
 		consumerFirst, consumerPhone            *string
+		extLat, extLng                          *float64
+		extAt                                   *time.Time
 	)
 
 	err := h.db.Pool.QueryRow(r.Context(), query, orderID, scopeValue).Scan(
@@ -788,7 +792,8 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 		&o.StripePaymentID, &o.EstDeliveryTime, &o.ScheduledFor,
 		&courierID, &o.ClaimedAt, &o.PickedUpAt, &o.DeliveredAt,
 		&o.CourierPayout, &o.CourierTip,
-		&o.FulfillmentType, &o.ExternalDeliveryID, &o.ExternalProvider, &o.ExternalTrackingURL, &o.DeliveryMode,
+		&o.FulfillmentType, &o.ExternalDeliveryID, &o.ExternalProvider, &o.ExternalTrackingURL,
+		&extLat, &extLng, &extAt, &o.DeliveryMode,
 		&o.CreatedAt, &o.UpdatedAt,
 		&cFirst, &cPhone, &cAvatar,
 		&cVehType, &cMake, &cModel, &cColor, &cPlate, &cRating, &cTotal,
@@ -816,6 +821,14 @@ func (h *Handler) loadOrderWithCourier(r *http.Request, orderID, scope, scopeVal
 			TotalDeliveries: intOr(cTotal, 0),
 			Lat:             floatOr(cLat, 0),
 			Lng:             floatOr(cLng, 0),
+		}
+	}
+	// Only surface the external courier fix while the order is still out with
+	// a provider: the cancel path clears the linkage but leaves the last fix
+	// in place, and a pin from a dead delivery must not outlive it.
+	if extLat != nil && extLng != nil && extAt != nil && o.ExternalDeliveryID != nil {
+		o.ExternalCourierLocation = &models.ExternalCourierLocation{
+			Lat: *extLat, Lng: *extLng, UpdatedAt: *extAt,
 		}
 	}
 	o.CourierRating = ratingStars

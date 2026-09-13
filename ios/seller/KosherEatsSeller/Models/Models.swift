@@ -585,12 +585,38 @@ struct Order: Codable, Identifiable {
     /// True when the restaurant self-delivers — the seller drives the order
     /// ready→picked_up→delivered itself (no platform courier, no provider).
     var isSelfDelivery: Bool { deliveryMode == "restaurant" }
+    /// True once an external provider (Uber Direct / DoorDash / Shipday) owns
+    /// the delivery. Checks `externalProvider` as well as `externalDeliveryId`:
+    /// dispatch.Dispatch claims the order by writing external_provider =
+    /// 'dispatching' BEFORE the provider returns the paid delivery id, so an
+    /// id-only check briefly (and wrongly) reads "no provider yet" and drops
+    /// the seller back into the "waiting for a courier to claim" branch.
+    var hasExternalDelivery: Bool {
+        !(externalDeliveryId ?? "").isEmpty || !(externalProvider ?? "").isEmpty
+    }
+
     /// Human label for the external delivery provider on the partner-status card.
     var externalProviderName: String {
         switch externalProvider {
         case "uber_direct": return "Uber"
         case "doordash_drive": return "DoorDash"
-        default: return "a delivery partner"
+        case "shipday": return "Shipday"
+        default: return "delivery partner"
+        }
+    }
+
+    /// Single source of truth for partner-owned delivery copy, keyed by status.
+    /// Shared by the detail screen's courier card and its terminal status pill
+    /// so the two never drift. nil when no external provider owns the order.
+    var externalDeliveryStatusText: String? {
+        guard hasExternalDelivery else { return nil }
+        switch status {
+        case .pickedUp:
+            return "Out for delivery with \(externalProviderName)"
+        case .delivered, .completed:
+            return "Delivered by \(externalProviderName)"
+        default:
+            return "Handed to \(externalProviderName) — a courier is on the way"
         }
     }
 

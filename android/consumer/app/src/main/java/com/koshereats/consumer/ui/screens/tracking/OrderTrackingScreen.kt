@@ -166,10 +166,15 @@ fun OrderTrackingScreen(
                 }
             }
         } else {
-            // External delivery (Uber Direct / DoorDash) has no platform courier
-            // and no live location stream, so the frozen map / "finding a courier"
-            // UI is replaced by a simple provider card.
+            // External delivery (Uber Direct / DoorDash) has no platform courier.
+            // Once the provider starts reporting the courier's position (Uber
+            // Direct courier_update, polled via GET /orders/{id}) we draw it on
+            // our own map above the provider card; until then — and for providers
+            // that never report one — the card stands in for the frozen map.
             if (order.isExternalDelivery) {
+                if (order.externalCourierLocation?.isPlausible == true) {
+                    TrackingMap(order = order, modifier = Modifier.fillMaxWidth().height(300.dp))
+                }
                 ExternalDeliveryCard(
                     provider = order.externalProvider,
                     status = order.status,
@@ -235,7 +240,7 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
         val lat = c.lat
         val lng = c.lng
         if (lat != null && lng != null) LatLng(lat, lng) else null
-    }
+    } ?: order.externalCourierLocation?.takeIf { it.isPlausible }?.let { LatLng(it.lat, it.lng) }
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(delivery ?: restaurant ?: LatLng(0.0, 0.0), 14f)
@@ -484,10 +489,10 @@ private fun CourierCard(
 }
 
 /**
- * Card shown in place of the live map for orders fulfilled by a third-party
- * delivery provider (Uber Direct / DoorDash Drive). These have no platform
- * courier and no live location stream, so the map / "finding a courier" UI
- * would sit frozen forever; instead we link out to the provider's tracker.
+ * Provider card for orders fulfilled by a third-party delivery provider (Uber
+ * Direct / DoorDash Drive). These have no platform courier, so we link out to
+ * the provider's tracker; the card sits below our own map once the provider
+ * reports the courier's position and stands in for it before.
  */
 @Composable
 private fun ExternalDeliveryCard(provider: String?, status: OrderStatus, trackingUrl: String?) {

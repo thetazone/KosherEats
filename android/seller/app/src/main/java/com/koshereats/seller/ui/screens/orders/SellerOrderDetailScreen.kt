@@ -490,9 +490,13 @@ fun SellerOrderDetailScreen(
                     isSelfDelivery = order.isSelfDelivery,
                     // A courier is attached or the order was handed to an external
                     // provider — the order is no longer seller-drivable.
-                    isExternallyDispatched = order.courier != null ||
-                        !order.externalDeliveryId.isNullOrEmpty(),
+                    isExternallyDispatched = order.courier != null || order.hasExternalDelivery,
                     hasCourier = order.courier != null,
+                    // Provider-aware copy ("Handed to Uber — …") once Uber/DoorDash owns it.
+                    partnerStatusText = order.externalDeliveryStatusText,
+                    // External-mode order that hasn't been dispatched yet (the seconds
+                    // between /ready returning and the provider claim landing).
+                    isExternalMode = order.deliveryMode == "external",
                     scheduledFor = order.scheduledFor,
                     isUpdating = state.pendingOrderIds.contains(orderId),
                     onAccept = {
@@ -613,6 +617,11 @@ private fun OrderActionButtons(
     // True specifically when a platform/external courier is attached (vs. merely
     // dispatched and awaiting a courier).
     hasCourier: Boolean,
+    // Order.externalDeliveryStatusText — non-null once an external provider owns the
+    // delivery; already phrased for the current status.
+    partnerStatusText: String?,
+    // delivery_mode == "external": the order WILL go to a provider on ready.
+    isExternalMode: Boolean,
     scheduledFor: String?,
     isUpdating: Boolean,
     onAccept: () -> Unit,
@@ -780,10 +789,14 @@ private fun OrderActionButtons(
                         text = if (hasCourier) {
                             "A courier has the order — they'll deliver it shortly."
                         } else {
-                            "Handed to a delivery partner — a driver is on the way."
+                            partnerStatusText ?: "Handed to delivery partner — a courier is on the way"
                         },
                     )
                 } else {
+                    // No courier and no provider yet. On an external-mode order this
+                    // is the window between /ready returning and the Uber dispatch
+                    // landing (the VM's settle poll is watching for it) — say so
+                    // rather than implying a KE courier needs to claim it.
                     Button(
                         onClick = {},
                         enabled = false,
@@ -793,7 +806,10 @@ private fun OrderActionButtons(
                     ) {
                         Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Awaiting Pickup…", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            if (isExternalMode) "Requesting a courier from Uber…" else "Awaiting Pickup…",
+                            fontWeight = FontWeight.SemiBold,
+                        )
                     }
                 }
                 // Courier/provider owns the handoff now, and the delivery method is
@@ -801,7 +817,10 @@ private fun OrderActionButtons(
                 // Parity with iOS.
             }
             OrderStatus.PICKED_UP -> {
-                if (isSelfDelivery) {
+                // partnerStatusText == null guard: a self-delivery order that was
+                // escalated to Uber is partner-owned now — the backend rejects a
+                // seller "delivered", so don't offer the button.
+                if (isSelfDelivery && partnerStatusText == null) {
                     // Restaurant self-delivers: seller drives picked_up→delivered themselves.
                     Button(
                         onClick = onSelfDeliver,
@@ -826,14 +845,18 @@ private fun OrderActionButtons(
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = "Out for Delivery",
+                                text = partnerStatusText ?: "Out for Delivery",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = StatusAccepted,
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "The courier has picked up this order and is en route to the customer.",
+                                text = if (partnerStatusText != null) {
+                                    "The partner courier has picked up this order and is en route to the customer."
+                                } else {
+                                    "The courier has picked up this order and is en route to the customer."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )
@@ -850,7 +873,8 @@ private fun OrderActionButtons(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = when (status) {
-                                OrderStatus.DELIVERED -> "Order Delivered"
+                                // "Delivered by Uber" when a partner courier completed it.
+                                OrderStatus.DELIVERED -> partnerStatusText ?: "Order Delivered"
                                 OrderStatus.COMPLETED -> "Order Complete"
                                 OrderStatus.CANCELLED -> "Order Cancelled"
                                 else -> "Order Rejected"

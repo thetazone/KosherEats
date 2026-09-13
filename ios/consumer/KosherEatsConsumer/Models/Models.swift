@@ -626,6 +626,11 @@ struct Order: Codable, Identifiable {
     var externalProvider: String?
     var externalDeliveryID: String?
     var externalTrackingURL: String?
+    /// Latest courier position reported by the external provider (Uber Direct
+    /// event.courier_update). Nil until the provider has sent a fix; lets the
+    /// tracking screen draw the courier on our own map instead of only
+    /// deep-linking to the provider's tracker.
+    var externalCourierLocation: ExternalCourierLocation?
 
     /// True when this order's delivery is handled by an external network, in
     /// which case there is no platform courier to show or stream.
@@ -688,6 +693,26 @@ struct Order: Codable, Identifiable {
         case externalProvider = "external_provider"
         case externalDeliveryID = "external_delivery_id"
         case externalTrackingURL = "external_tracking_url"
+        case externalCourierLocation = "external_courier_location"
+    }
+}
+
+/// Last position an external delivery provider reported for the courier
+/// carrying an order (`external_courier_location` on the order payload).
+struct ExternalCourierLocation: Codable, Equatable {
+    var lat: Double
+    var lng: Double
+    var updatedAt: Date
+
+    /// Rejects out-of-range and null-island fixes, mirroring the guard the
+    /// platform-courier SSE path applies.
+    var isPlausible: Bool {
+        (-90...90).contains(lat) && (-180...180).contains(lng) && !(lat == 0 && lng == 0)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case lat, lng
+        case updatedAt = "updated_at"
     }
 }
 

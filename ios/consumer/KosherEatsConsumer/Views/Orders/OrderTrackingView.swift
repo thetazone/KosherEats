@@ -31,9 +31,16 @@ struct OrderTrackingView: View {
         VStack(spacing: 0) {
             if let order = vm.order {
                 if order.isExternalDelivery {
-                    // No platform courier and no live location stream for
-                    // third-party deliveries — show a simple "track in their
-                    // app" card instead of the frozen map / "finding a courier".
+                    // No platform courier for third-party deliveries. Once the
+                    // provider starts reporting the courier's position (Uber
+                    // Direct courier_update, polled via GET /orders/{id}) we draw
+                    // it on our own map; until then — and for providers that
+                    // never report one — show the "track in their app" card alone.
+                    if let fix = order.externalCourierLocation, fix.isPlausible {
+                        map(for: order)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 320)
+                    }
                     externalDeliveryCard(for: order)
 
                     statusHeader(for: order)
@@ -178,6 +185,10 @@ struct OrderTrackingView: View {
             Annotation("Courier", coordinate: .init(latitude: c.lat, longitude: c.lng)) {
                 MapPin(symbol: "car.fill", color: .white, background: .black)
             }
+        } else if let fix = order.externalCourierLocation, fix.isPlausible {
+            Annotation("Courier", coordinate: .init(latitude: fix.lat, longitude: fix.lng)) {
+                MapPin(symbol: "car.fill", color: .white, background: .black)
+            }
         }
     }
 
@@ -213,6 +224,8 @@ struct OrderTrackingView: View {
         }
         if let c = order.courier, c.lat != 0, c.lng != 0 {
             coords.append(CLLocationCoordinate2D(latitude: c.lat, longitude: c.lng))
+        } else if let fix = order.externalCourierLocation, fix.isPlausible {
+            coords.append(CLLocationCoordinate2D(latitude: fix.lat, longitude: fix.lng))
         }
         guard let region = Self.boundingRegion(for: coords) else { return }
         cameraPosition = .region(region)
@@ -453,9 +466,10 @@ struct OrderTrackingView: View {
         .cornerRadius(Theme.cornerRadiusMedium)
     }
 
-    /// Stand-in for the live map when delivery is handled by a third-party
-    /// network (Uber Direct / DoorDash Drive): there is no platform courier or
-    /// location stream, so we surface a "track in their app" card instead.
+    /// Provider card for deliveries handled by a third-party network (Uber
+    /// Direct / DoorDash Drive): there is no platform courier, so we surface a
+    /// "track in their app" link. Sits below our own map once the provider
+    /// starts reporting the courier's position, and stands in for it before.
     private func externalDeliveryCard(for order: Order) -> some View {
         let trackingURL = (order.externalTrackingURL?.isEmpty == false)
             ? URL(string: order.externalTrackingURL!)

@@ -30,6 +30,11 @@ const (
 // failed_attempts, locked_until) so it survives restarts and works across
 // horizontally scaled instances.
 
+// phoneNoSellerAccountMsg is returned (404) when a phone OTP verifies but no
+// seller account owns that number. Shown verbatim in the seller apps.
+const phoneNoSellerAccountMsg = "No seller account is registered to this number. " +
+	"Sign in with the email, Apple, or Google account you used to register, or contact support."
+
 type PhoneStartRequest struct {
 	Phone string `json:"phone"`
 }
@@ -93,7 +98,9 @@ func (h *Handler) StartPhoneLogin(w http.ResponseWriter, r *http.Request) {
 
 // VerifyPhoneLogin checks the OTP with Twilio, then either:
 //   - Signs in the existing user that owns this (phone, role) pair.
-//   - Creates a brand-new user for this (phone, role) pair if none exists.
+//   - Creates a brand-new user for this (phone, role) pair if none exists —
+//     consumers and couriers only. A seller role with no matching account is
+//     rejected with 404 (phoneNoSellerAccountMsg); sellers register elsewhere.
 //
 // Identifiers are scoped by role (see migration 019), so the same phone can
 // independently belong to a consumer account AND a seller account AND a
@@ -324,8 +331,20 @@ func (h *Handler) VerifyPhoneLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case errors.Is(err, pgx.ErrNoRows) && req.Role == models.RoleSeller:
+		// Sellers are never auto-created by phone OTP. Seller accounts are
+		// minted through the seller app's email/Apple/Google registration (which
+		// starts restaurant onboarding); a phone OTP only SIGNS IN an existing
+		// seller. Without this guard any phone number could mint a fresh seller
+		// row and land in restaurant onboarding. The OTP has already been
+		// verified and consumed above, so this 404 does not leak whether a
+		// number is registered to anyone who hasn't proven control of it.
+		writeError(w, http.StatusNotFound, phoneNoSellerAccountMsg)
+		return
 	case errors.Is(err, pgx.ErrNoRows):
 		// No account exists for this (phone, role, vertical) — create one.
+		// Consumers onboard this way by design; couriers are created here too
+		// and immediately get a pending_info courier_profiles row (below).
 		// A different role or vertical with the same phone is a separate row
 		// and does not conflict here.
 		user, err = h.createPhoneUser(r, phone, vertical, req)

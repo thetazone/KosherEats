@@ -58,6 +58,9 @@ class OrdersViewModel @Inject constructor(
     val state: StateFlow<OrdersState> = _state.asStateFlow()
 
     private var pollingJob: Job? = null
+    // Short post-"ready" poll waiting for the provider dispatch to land (see
+    // scheduleExternalDispatchSettle). At most one per VM; a newer ready tap wins.
+    private var dispatchSettleJob: Job? = null
     private var eventJob: Job? = null
     private val pollMutex = Mutex()
     private val pollerRefCount = java.util.concurrent.atomic.AtomicInteger(0)
@@ -274,8 +277,12 @@ class OrdersViewModel @Inject constructor(
                         val trulyNew = newOrders.filter { it.id !in existingIds }
                         val finalList = (trulyNew + merged)
                             .let { list -> if (filterAtStart != null) list.filter { it.status == filterAtStart } else list }
-                        val updatedSelected = current.selectedOrder?.id
-                            ?.let { id -> finalList.find { it.id == id } }
+                        // The list copy lacks courier / customer / external_* — merge
+                        // it over the open detail rather than replacing it, or a
+                        // poll tick blanks the "Handed to Uber" card mid-view.
+                        val updatedSelected = current.selectedOrder?.let { sel ->
+                            finalList.find { it.id == sel.id }?.mergingDetailFields(sel)
+                        }
                         current.copy(
                             orders = finalList,
                             selectedOrder = updatedSelected ?: current.selectedOrder,
@@ -284,23 +291,15 @@ class OrdersViewModel @Inject constructor(
                         current
                     }
                 }
-                // selectedOrder may belong to an older/deep-linked order absent from the
-                // paginated window. Refresh it directly so the detail screen stays current.
+                // Always re-read the open order's detail on a poll tick (not just when
+                // it's orphaned from the paginated window): the list endpoint never
+                // carries courier / external_* fields, so a courier claim or an Uber
+                // dispatch can ONLY reach the detail screen through this fetch.
+                // Without it the screen sat on "Awaiting Pickup" until the seller
+                // backed out and reopened.
                 val s = _state.value
-                val orphanId = s.selectedOrder?.id
-                    ?.takeIf { id -> s.orders.none { it.id == id } && id !in s.pendingOrderIds }
-                if (orphanId != null) {
-                    runCatching {
-                        val dr = apiService.getOrderDetail(orphanId)
-                        if (dr.isSuccessful) {
-                            dr.body()?.let { updated ->
-                                _state.update { cur ->
-                                    if (cur.selectedOrder?.id == orphanId) cur.copy(selectedOrder = updated) else cur
-                                }
-                            }
-                        }
-                    }
-                }
+                val detailId = s.selectedOrder?.id?.takeIf { id -> id !in s.pendingOrderIds }
+                if (detailId != null) refreshOrderDetailQuietly(detailId)
             }
             succeeded
         } catch (e: Exception) {
@@ -437,6 +436,48 @@ class OrdersViewModel @Inject constructor(
         }
     }
 
+    // Silent single-order re-read for observational use (poll tick, post-action sync,
+    // dispatch settle). Never sets `error` (the detail screen toasts it), and skips /
+    // discards when a mutation for the order is in flight so a fetch that started
+    // before the tap can't stomp the optimistic copy. Parity with iOS
+    // OrdersViewModel.refreshOrderSilently.
+    private suspend fun refreshOrderDetailQuietly(orderId: String) {
+        if (orderId in _state.value.pendingOrderIds) return
+        val restaurantAtStart = NetworkModule.cachedRestaurantId
+        val updated = runCatching { apiService.getOrderDetail(orderId) }
+            .getOrElse { e -> if (e is CancellationException) throw e else null }
+            ?.takeIf { it.isSuccessful }?.body() ?: return
+        if (NetworkModule.cachedRestaurantId != restaurantAtStart) return
+        _state.update { s ->
+            if (orderId in s.pendingOrderIds) return@update s
+            s.copy(
+                orders = s.orders.map { if (it.id == orderId) updated else it },
+                selectedOrder = if (s.selectedOrder?.id == orderId) updated else s.selectedOrder,
+            )
+        }
+    }
+
+    // After "Ready for Uber pickup" on an external-mode delivery order, re-read the
+    // detail a few times over ~10s until the provider dispatch lands (external_provider /
+    // external_delivery_id populated). Bails as soon as the order is no longer in the
+    // ready-but-undispatched state, so it's a no-op for pickup / self-delivery /
+    // platform-fleet orders. Parity with iOS OrdersViewModel.settleExternalDispatch.
+    private fun scheduleExternalDispatchSettle(orderId: String) {
+        dispatchSettleJob?.cancel()
+        dispatchSettleJob = viewModelScope.launch {
+            for (delayMs in DISPATCH_SETTLE_DELAYS) {
+                val current = _state.value.selectedOrder?.takeIf { it.id == orderId } ?: return@launch
+                val stillWaiting = current.deliveryMode == "external" &&
+                    !current.isPickup &&
+                    current.status == OrderStatus.READY &&
+                    !current.hasExternalDelivery
+                if (!stillWaiting) return@launch
+                delay(delayMs)
+                refreshOrderDetailQuietly(orderId)
+            }
+        }
+    }
+
     fun loadOrderDetail(orderId: String) {
         viewModelScope.launch {
             _state.update { it.copy(isLoadingDetail = true, error = null) }
@@ -538,6 +579,13 @@ class OrdersViewModel @Inject constructor(
                         pendingOrderIds = it.pendingOrderIds - orderId,
                         updateSuccess = "Order ${updatedOrder.status.displayName.lowercase()}",
                     ) }
+                    // The PATCH response reflects the row as written by the handler,
+                    // but the backend's routing side effects (Uber Direct dispatch on
+                    // /ready, courier broadcast) run fire-and-forget AFTER the reply.
+                    // Re-read the detail now, and on ready keep watching for the
+                    // provider handoff to land so the card flips on its own.
+                    refreshOrderDetailQuietly(orderId)
+                    if (newStatus == OrderStatus.READY) scheduleExternalDispatchSettle(orderId)
                 } else {
                     _state.update { it.copy(
                         orders = if (snapshotOrderInList != null) it.orders.map { o -> if (o.id == orderId) snapshotOrderInList else o } else it.orders,
@@ -751,6 +799,9 @@ class OrdersViewModel @Inject constructor(
     companion object {
         // Backoff delays for consecutive poll failures: 30s → 1m → 2m → 4m → 5m (cap).
         private val BACKOFF_DELAYS = longArrayOf(30_000, 60_000, 120_000, 240_000, 300_000)
+        // Post-ready dispatch settle: ~10s total, comfortably past a typical Uber Direct
+        // quote+create round-trip.
+        private val DISPATCH_SETTLE_DELAYS = longArrayOf(1_500, 2_000, 3_000, 4_000)
         private const val PAGE_SIZE = 20
     }
 }

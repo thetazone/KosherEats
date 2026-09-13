@@ -449,10 +449,24 @@ data class Order(
     @SerializedName("external_provider") val externalProvider: String? = null,
     @SerializedName("external_delivery_id") val externalDeliveryId: String? = null,
     @SerializedName("external_tracking_url") val externalTrackingUrl: String? = null,
+    /** Latest courier position reported by the external provider (Uber Direct
+     *  event.courier_update); null until the provider has sent a fix. */
+    @SerializedName("external_courier_location") val externalCourierLocation: ExternalCourierLocation? = null,
 ) {
     /** True when delivery is fulfilled by a third-party provider (no platform courier). */
     val isExternalDelivery: Boolean
         get() = !externalDeliveryId.isNullOrBlank() || !externalTrackingUrl.isNullOrBlank()
+}
+
+/** Last position an external delivery provider reported for the courier carrying an order. */
+data class ExternalCourierLocation(
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+    @SerializedName("updated_at") val updatedAt: String? = null,
+) {
+    /** Rejects out-of-range and null-island fixes (mirrors the SSE guard). */
+    val isPlausible: Boolean
+        get() = lat in -90.0..90.0 && lng in -180.0..180.0 && !(lat == 0.0 && lng == 0.0)
 }
 
 data class OrderItem(

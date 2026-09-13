@@ -199,6 +199,14 @@ data class Order(
     // Uber Direct / DoorDash delivery id once dispatched to an external provider
     // (null otherwise). Lets the UI hide "Dispatch to Uber" once a provider owns it.
     @Json(name = "external_delivery_id") val externalDeliveryId: String? = null,
+    // Which provider owns the dispatched delivery ("uber_direct" | "doordash_drive" |
+    // "shipday"). Transiently "dispatching" while the backend's claim is in flight,
+    // i.e. it is set BEFORE externalDeliveryId — so provider-ownership checks must
+    // look at both fields (see hasExternalDelivery).
+    @Json(name = "external_provider") val externalProvider: String? = null,
+    // The provider's customer-facing tracking URL — the only courier visibility we
+    // get on the external path (Uber/DoorDash don't expose courier name/phone).
+    @Json(name = "external_tracking_url") val externalTrackingUrl: String? = null,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "scheduled_for") val scheduledFor: String? = null,
@@ -208,6 +216,48 @@ data class Order(
 ) {
     val isPickup: Boolean get() = fulfillmentType == "pickup"
     val isSelfDelivery: Boolean get() = deliveryMode == "restaurant"
+
+    // True once an external provider owns the delivery (parity with iOS
+    // Order.hasExternalDelivery). Checks the provider as well as the id so the brief
+    // external_provider='dispatching' window doesn't read as "no provider yet".
+    val hasExternalDelivery: Boolean
+        get() = !externalDeliveryId.isNullOrEmpty() || !externalProvider.isNullOrEmpty()
+
+    // Human label for the external provider (parity with iOS Order.externalProviderName).
+    val externalProviderName: String
+        get() = when (externalProvider) {
+            "uber_direct" -> "Uber"
+            "doordash_drive" -> "DoorDash"
+            "shipday" -> "Shipday"
+            else -> "delivery partner"
+        }
+
+    // Single source of truth for partner-owned delivery copy, keyed by status, shared by
+    // the detail screen's READY / PICKED_UP / DELIVERED cards so they never drift.
+    // Null when no external provider owns the order.
+    val externalDeliveryStatusText: String?
+        get() = if (!hasExternalDelivery) null else when (status) {
+            OrderStatus.PICKED_UP -> "Out for delivery with $externalProviderName"
+            OrderStatus.DELIVERED, OrderStatus.COMPLETED -> "Delivered by $externalProviderName"
+            else -> "Handed to $externalProviderName — a courier is on the way"
+        }
+
+    // Builds an order from a freshly-fetched LIST copy while preserving the detail-only
+    // fields the seller is currently viewing. `/seller/orders` omits courier, customer
+    // name/phone, items-on-some-paths and every external_* column (only
+    // `/seller/orders/{id}` hydrates them), so letting a poll's list copy overwrite the
+    // open detail wholesale blanked the courier / "Handed to Uber" card. Status and
+    // money fields come from the fresh copy; detail-only fields fall back to `old`.
+    // Parity with iOS Order.init(merging:preservingFrom:).
+    fun mergingDetailFields(old: Order): Order = copy(
+        items = items.ifEmpty { old.items },
+        courier = courier ?: old.courier,
+        customerName = customerName.ifEmpty { old.customerName },
+        customerPhone = customerPhone.ifEmpty { old.customerPhone },
+        externalDeliveryId = externalDeliveryId ?: old.externalDeliveryId,
+        externalProvider = externalProvider ?: old.externalProvider,
+        externalTrackingUrl = externalTrackingUrl ?: old.externalTrackingUrl,
+    )
 
     // Total quantity across all line items (matches iOS Order.itemCount), as opposed
     // to items.size which is the distinct line-item count.

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/koshereats/backend/internal/broker"
 )
 
 // flexFloat accepts a JSON number OR a quoted numeric string. Uber Direct sends
@@ -38,6 +40,12 @@ type uberWebhookPayload struct {
 	DeliveryID string          `json:"delivery_id"`
 	Status     string          `json:"status"`
 	Data       uberWebhookData `json:"data"`
+	// Created is the event generation timestamp (RFC 3339). courier_update
+	// uses it to drop a fix that arrives after a newer one.
+	Created string `json:"created"`
+	// Location is the courier position event.courier_update carries at the top
+	// level (mirrored at data.courier.location); nil on other event kinds.
+	Location *uberLatLng `json:"location,omitempty"`
 }
 
 type uberWebhookData struct {
@@ -85,6 +93,12 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 	var payload uberWebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		slog.Error("uber direct webhook: bad json", slog.String("error", err.Error()))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if payload.Kind == "event.courier_update" {
+		h.applyUberCourierUpdate(r.Context(), payload)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -364,4 +378,82 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// applyUberCourierUpdate persists the courier position from an
+// event.courier_update webhook onto the order so the consumer apps can draw
+// the courier on their own map. Pure last-write, no state transition, so it
+// skips the idempotency ledger (Uber sends one every few seconds — a ledger
+// row per fix would bloat the table for nothing) and never fails the request:
+// a dropped fix is replaced by the next one, whereas a 5xx makes Uber retry
+// stale positions into the future.
+//
+// Scoping is the same as the lifecycle branches, without the empty-id escape
+// hatch: the fix is applied only when the webhook's delivery_id equals the
+// order's CURRENT external_delivery_id. Uber mints a fresh delivery_id per
+// dispatch, so after a cancel-and-re-dispatch a late courier_update for the
+// superseded delivery would otherwise draw a courier the order is no longer
+// out with. A payload with no delivery_id cannot prove it belongs to the live
+// delivery, so it is dropped rather than applied provider-wide.
+func (h *Handler) applyUberCourierUpdate(ctx context.Context, payload uberWebhookPayload) {
+	loc := payload.Location
+	if payload.Data.Courier != nil && payload.Data.Courier.Location != nil {
+		loc = payload.Data.Courier.Location
+	}
+	if loc == nil || payload.DeliveryID == "" || payload.Data.ExternalID == "" {
+		return
+	}
+	lat, lng := float64(loc.Lat), float64(loc.Lng)
+	// Reject out-of-range and null-island fixes the same way the platform
+	// courier stream does client-side; a bogus (0,0) would fly the pin to the
+	// Gulf of Guinea.
+	if lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat == 0 && lng == 0) {
+		return
+	}
+
+	// Same poison-pill guard as the delivery_status path: orders.id is a uuid
+	// column, so a non-UUID external_id would 22P02 rather than match nothing.
+	parsedID, err := uuid.Parse(payload.Data.ExternalID)
+	if err != nil {
+		slog.Warn("uber courier_update: external_id is not one of our order ids, ignoring",
+			slog.String("external_id", payload.Data.ExternalID),
+			slog.String("delivery_id", payload.DeliveryID))
+		return
+	}
+	orderID := parsedID.String()
+
+	at := time.Now().UTC()
+	if payload.Created != "" {
+		if t, err := time.Parse(time.RFC3339Nano, payload.Created); err == nil {
+			at = t.UTC()
+		}
+	}
+
+	tag, err := h.db.Pool.Exec(ctx,
+		`UPDATE orders
+		    SET external_courier_lat = $1, external_courier_lng = $2, external_courier_updated_at = $3
+		  WHERE id = $4
+		    AND external_provider = 'uber_direct'
+		    AND external_delivery_id = $5
+		    -- Webhook delivery is not ordered; never let an older fix overwrite
+		    -- a newer one.
+		    AND (external_courier_updated_at IS NULL OR external_courier_updated_at <= $3)`,
+		lat, lng, at, orderID, payload.DeliveryID)
+	if err != nil {
+		slog.Error("uber courier_update: update failed",
+			slog.String("order_id", orderID), slog.String("error", err.Error()))
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		slog.Info("uber courier_update ignored: not the order's live delivery",
+			slog.String("order_id", orderID), slog.String("delivery_id", payload.DeliveryID))
+		return
+	}
+
+	// Fan out to any consumer SSE stream on /orders/{id}/location/stream so a
+	// client that keeps the stream open for external deliveries gets the fix
+	// without waiting for its next poll.
+	if h.location != nil {
+		h.location.Publish(broker.LocationEvent{OrderID: orderID, Lat: lat, Lng: lng, At: at})
+	}
 }
