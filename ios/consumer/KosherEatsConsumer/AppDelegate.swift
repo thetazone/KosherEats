@@ -27,11 +27,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     // MARK: - UNUserNotificationCenterDelegate
 
+    // Both witnesses below are `nonisolated`. Conforming to UIApplicationDelegate
+    // (a @MainActor protocol) makes this class main-actor isolated, but
+    // UNUserNotificationCenterDelegate carries no isolation annotation in the
+    // SDK — so an un-annotated witness "crosses into main actor-isolated code"
+    // and can race. Nothing in either body actually needs the main actor
+    // (PushEvents is a nonisolated enum; the one main-actor call, AppRouter,
+    // already hops via `Task { @MainActor in }`), so matching the protocol's
+    // isolation is the honest fix. `@preconcurrency` on the conformance also
+    // clears the warning but reports "has no effect" under the project's
+    // current (minimal) checking level, so it is not used here.
+
     // Foreground: show the banner + sound. iOS 14+ lets us opt into banners.
     // Also fan the order-event userInfo out via NotificationCenter so any
     // open OrderTrackingView refreshes immediately instead of waiting for
     // its 30s poll tick.
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void,
@@ -44,7 +55,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     // fields in their data payload: `type` (new_order, courier_assigned,
     // picked_up, delivered, ...) and `order_id`. We decide which screen to
     // open based on whether the order is still active.
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void,
