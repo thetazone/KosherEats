@@ -34,6 +34,18 @@ import { Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+// The server's courier-unavailable copy tells the customer to choose pickup
+// (backend/internal/handlers/payments.go). On delivery that toggle is right
+// there, but the raw string is opaque — reword it into an actionable message
+// rather than surfacing the server text verbatim.
+function describeCheckoutError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.toLowerCase().includes("temporarily unavailable")) {
+    return "We couldn't line up a courier for this delivery right now. Try pickup, or try again in a few minutes.";
+  }
+  return msg || "Failed to start checkout";
+}
+
 // Server-computed money bundle from POST /payments/intent. Every amount is
 // integer cents and authoritative — the client never recomputes any of them
 // (see backend/internal/handlers/payments.go CreatePaymentIntent).
@@ -174,6 +186,44 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
   // about to capture. Backdrop clicks and Escape never dismiss this modal by
   // design; this flag locks the remaining path, the X button.
   const [paymentBusy, setPaymentBusy] = useState(false);
+
+  // Focus containment for the payment modal. Main's a11y pass added a full
+  // focus trap + Escape-to-close; the Escape half is intentionally dropped
+  // here — this modal must never be dismissed by a stray keypress while a
+  // charge is capturing. Tab cycling and the body scroll lock are kept.
+  const checkoutDialogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!checkoutOpen) return;
+
+    const dialog = checkoutDialogRef.current;
+    dialog?.focus();
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Tab" || !dialog) return;
+      const focusable = dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [checkoutOpen]);
 
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addrForm, setAddrForm] = useState({
@@ -404,7 +454,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
         setDealError(err instanceof Error ? err.message : "This deal can't be applied");
         return;
       }
-      setPreviewError(err instanceof Error ? err.message : "Couldn't update your total");
+      setPreviewError(describeCheckoutError(err) || "Couldn't update your total");
     } finally {
       if (gen === intentGen.current && !requoteFollows) setPreviewPending(false);
     }
@@ -783,7 +833,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 <p className="text-xs text-dark-500">
                   Used for delivery routing and to estimate your delivery fee.
                 </p>
-                {addressError && <div className="text-sm text-red-400">{addressError}</div>}
+                {addressError && <div className="text-sm text-danger-400">{addressError}</div>}
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
@@ -878,7 +928,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 }}
               />
               {scheduleError ? (
-                <p className="text-xs text-red-400 mt-1" role="alert">
+                <p className="text-xs text-danger-400 mt-1" role="alert">
                   {scheduleError}
                 </p>
               ) : (
@@ -933,7 +983,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 );
               })}
             </div>
-            {dealError && <div className="mt-1 text-xs text-red-400">{dealError}</div>}
+            {dealError && <div className="mt-1 text-xs text-danger-400">{dealError}</div>}
           </div>
         )}
 
@@ -978,7 +1028,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 onChange={(e) => updateCustomTip(e.target.value)}
               />
             )}
-            {tipError && <div className="mt-1 text-xs text-red-400">{tipError}</div>}
+            {tipError && <div className="mt-1 text-xs text-danger-400">{tipError}</div>}
           </div>
         )}
 
@@ -1035,7 +1085,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
         )}
 
         {previewError && (
-          <div className="mt-4 text-sm text-red-400">
+          <div className="mt-4 text-sm text-danger-400">
             {previewError}{" "}
             <button
               type="button"
@@ -1051,7 +1101,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
         )}
 
         {checkoutError && (
-          <div className="mt-4 text-sm text-red-400">{checkoutError}</div>
+          <div className="mt-4 text-sm text-danger-400">{checkoutError}</div>
         )}
 
         <button
@@ -1072,7 +1122,9 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
           className="fixed inset-0 z-50 bg-black/70 flex items-stretch md:items-center justify-center md:p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Checkout"
+          aria-labelledby="checkout-dialog-title"
+          ref={checkoutDialogRef}
+          tabIndex={-1}
         >
           {/* Below md: a full-height bottom sheet (h-full against the inset-0
               overlay); at md+ a centered dialog capped at 85vh — same shell as
@@ -1081,7 +1133,9 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
           <div className="card w-full md:max-w-md h-full md:h-auto md:max-h-[85vh] flex flex-col rounded-none md:rounded-2xl">
             <div className="flex items-start justify-between gap-3 px-5 py-4 md:px-6 border-b border-dark-800">
               <div className="min-w-0">
-                <h2 className="text-xl font-bold">Checkout</h2>
+                <h2 id="checkout-dialog-title" className="text-xl font-bold">
+                  Checkout
+                </h2>
                 <p className="text-dark-400 text-sm mt-0.5">
                   Pay {formatUSD(intent.total)} to complete your order.
                 </p>
@@ -1196,7 +1250,7 @@ function CheckoutForm({
     <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 md:px-6 space-y-4">
         <PaymentElement />
-        {localError && <div className="text-sm text-red-400">{localError}</div>}
+        {localError && <div className="text-sm text-danger-400">{localError}</div>}
       </div>
       <div className="border-t border-dark-800 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:px-6 md:pb-4">
         <button

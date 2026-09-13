@@ -187,8 +187,6 @@ export function Header() {
           aria-controls="mobile-menu"
           className="md:hidden -mr-2 w-11 h-11 flex items-center justify-center text-dark-300"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          aria-label={isMenuOpen ? "Close menu" : "Open menu"}
-          aria-expanded={isMenuOpen}
         >
           {isMenuOpen ? (
             <X className="w-6 h-6" aria-hidden="true" />

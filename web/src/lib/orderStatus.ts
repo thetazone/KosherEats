@@ -19,6 +19,10 @@ export interface OrderStatusMeta {
   pill: string;
 }
 
+// Pills use the rubric's semantic aliases (danger/warning/success/info/
+// transit) rather than raw Tailwind hues — same pixels, greppable intent.
+// TODO(rubric): `scheduled` and `pending` still use raw sky-*/amber-*; the
+// Ember palette has no alias for either, so picking one is a design call.
 export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
   scheduled: {
     label: "Scheduled",
@@ -33,12 +37,12 @@ export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
   accepted: {
     label: "Accepted",
     sellerLabel: "Accepted",
-    pill: "bg-blue-500/15 text-blue-300",
+    pill: "bg-info-500/15 text-info-300",
   },
   preparing: {
     label: "Preparing",
     sellerLabel: "Preparing",
-    pill: "bg-yellow-500/15 text-yellow-300",
+    pill: "bg-warning-500/15 text-warning-300",
   },
   ready: {
     label: "Ready",
@@ -48,27 +52,27 @@ export const ORDER_STATUS_META: Record<OrderStatusKey, OrderStatusMeta> = {
   picked_up: {
     label: "On the way",
     sellerLabel: "Out for delivery",
-    pill: "bg-purple-500/15 text-purple-300",
+    pill: "bg-transit-500/15 text-transit-300",
   },
   delivered: {
     label: "Delivered",
     sellerLabel: "Delivered",
-    pill: "bg-green-500/15 text-green-300",
+    pill: "bg-success-500/15 text-success-300",
   },
   completed: {
     label: "Completed",
     sellerLabel: "Completed",
-    pill: "bg-green-500/15 text-green-300",
+    pill: "bg-success-500/15 text-success-300",
   },
   cancelled: {
     label: "Cancelled",
     sellerLabel: "Cancelled",
-    pill: "bg-red-500/15 text-red-300",
+    pill: "bg-danger-500/15 text-danger-300",
   },
   rejected: {
     label: "Rejected",
     sellerLabel: "Rejected",
-    pill: "bg-red-500/15 text-red-300",
+    pill: "bg-danger-500/15 text-danger-300",
   },
 };
 

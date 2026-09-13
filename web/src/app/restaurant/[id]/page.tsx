@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { KosherBadge } from "@/components/restaurant/KosherBadge";
 import { KosherCertificateModal } from "@/components/restaurant/KosherCertificateModal";
 import { MenuItemModal, type MenuItemSelection } from "@/components/restaurant/MenuItemModal";
+import { RequestButton, useRestaurantRequest } from "@/components/restaurant/RequestButton";
 import { cart as cartApi, deals as dealsApi, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import {
@@ -12,6 +13,7 @@ import {
   hasRealCertificatePhoto,
   isPlaceholderCertification,
 } from "@/lib/kosher";
+import { isPreviewListing } from "@/types";
 import type { Cart, Deal, MenuCategory, MenuItem, Restaurant, SelectedModifier } from "@/types";
 import {
   Building2,
@@ -160,6 +162,16 @@ function RestaurantPageInner() {
 
   const [cart, setCart] = useState<LocalCartItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | undefined>(undefined);
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // "Request restaurant" state for preview listings. The hook re-syncs when
+  // the restaurant record finishes loading, and must run on every render —
+  // hence above the loading/error early returns below.
+  const request = useRestaurantRequest(
+    restaurant?.id ?? "",
+    restaurant?.requested_by_me ?? false,
+    restaurant?.request_count ?? 0
+  );
   const [modalItem, setModalItem] = useState<MenuItem | null>(null);
 
   // The restaurant a NON-EMPTY server cart belongs to (null = empty cart or
@@ -448,52 +460,78 @@ function RestaurantPageInner() {
   }
 
   const rest = restaurant;
+  // Preview listing: browsable, never orderable. Grayed like a closed
+  // restaurant, no cart UI anywhere — a Request control takes its place.
+  const isPreview = isPreviewListing(rest);
+
+  function selectCategory(catId: string) {
+    setActiveCategory(catId);
+    categoryRefs.current[catId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return (
     <>
       <Header />
       <main className="flex-1">
         {/* Hero */}
-        <div className="relative h-64 bg-gradient-to-br from-brand-900/60 to-dark-900">
+        <div
+          className={`relative h-64 bg-gradient-to-br from-brand-900/60 to-dark-900 ${
+            isPreview ? "opacity-60" : ""
+          }`}
+        >
           <div className="absolute inset-0 bg-gradient-to-t from-dark-950 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-6 max-w-7xl mx-auto">
-            <div className="mb-2">
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              {isPreview && (
+                <span className="bg-dark-800/90 text-dark-300 text-sm font-bold px-3 py-1 rounded-lg border border-dark-700">
+                  Coming soon
+                </span>
+              )}
               <KosherBadge restaurant={rest} size="regular" />
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold break-words">{rest.name}</h1>
           </div>
         </div>
 
-        {/* pb-36 while the fixed mobile cart bar is showing so it can never
-            cover the last menu item; lg+ has the sidebar instead of the bar. */}
+        {/* pb-36 while a fixed mobile bar is showing (cart, or the preview
+            Request bar) so it can never cover the last menu item; lg+ has the
+            sidebar instead of the bar. */}
         <div
           className={`max-w-7xl mx-auto px-4 py-6 ${
-            cartCount > 0 ? "pb-36 lg:pb-6" : ""
+            isPreview || cartCount > 0 ? "pb-36 lg:pb-6" : ""
           }`}
         >
           {/* Restaurant Info */}
           <div className="flex flex-wrap items-center gap-4 mb-6">
-            <div className="flex items-center gap-1">
-              <Star className="w-5 h-5 text-brand-400 fill-brand-400" aria-hidden="true" />
-              <span className="font-semibold">{rest.rating}</span>
-              <span className="text-dark-400">({rest.review_count} reviews)</span>
-            </div>
-            <span className="text-dark-600">·</span>
+            {!isPreview && (
+              <>
+                <div className="flex items-center gap-1">
+                  <Star className="w-5 h-5 text-brand-400 fill-brand-400" aria-hidden="true" />
+                  <span className="font-semibold">{rest.rating}</span>
+                  <span className="text-dark-400">({rest.review_count} reviews)</span>
+                </div>
+                <span className="text-dark-600">·</span>
+              </>
+            )}
             <span className="text-dark-400">{rest.cuisine_type.join(", ")}</span>
-            <span className="text-dark-600">·</span>
-            <span className="text-dark-400">
-              {rest.est_delivery_min}-{rest.est_delivery_max} min
-            </span>
-            <span className="text-dark-600">·</span>
-            <span className="text-dark-400">
-              {formatUSD(rest.delivery_fee)} delivery
-            </span>
-            {rest.min_order > 0 && (
+            {!isPreview && (
               <>
                 <span className="text-dark-600">·</span>
                 <span className="text-dark-400">
-                  {formatUSD(rest.min_order)} min order
+                  {rest.est_delivery_min}-{rest.est_delivery_max} min
                 </span>
+                <span className="text-dark-600">·</span>
+                <span className="text-dark-400">
+                  {formatUSD(rest.delivery_fee)} delivery
+                </span>
+                {rest.min_order > 0 && (
+                  <>
+                    <span className="text-dark-600">·</span>
+                    <span className="text-dark-400">
+                      {formatUSD(rest.min_order)} min order
+                    </span>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -617,7 +655,7 @@ function RestaurantPageInner() {
                   {menu.map((cat) => (
                     <button
                       key={cat.id}
-                      onClick={() => setActiveCategory(cat.id)}
+                      onClick={() => selectCategory(cat.id)}
                       className={`px-4 py-2 min-h-[44px] rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                         activeCategory === cat.id
                           ? "bg-brand-500 text-white"
@@ -636,7 +674,13 @@ function RestaurantPageInner() {
                 </div>
               ) : (
                 menu.map((category) => (
-                  <div key={category.id} className="mb-8">
+                  <div
+                    key={category.id}
+                    ref={(el) => {
+                      categoryRefs.current[category.id] = el;
+                    }}
+                    className="mb-8"
+                  >
                     <h2 className="text-xl font-bold mb-4">{category.name}</h2>
                     <div className="space-y-3">
                       {(category.items ?? []).map((item) => {
@@ -671,6 +715,7 @@ function RestaurantPageInner() {
                               </span>
                             </div>
 
+                            {!isPreview && (
                             <div className="flex items-center gap-2">
                               {inCartQty > 0 ? (
                                 // 44px stepper button (w-11 h-11) — minimum
@@ -698,6 +743,7 @@ function RestaurantPageInner() {
                                 </button>
                               )}
                             </div>
+                            )}
                           </div>
                         );
                       })}
@@ -707,8 +753,25 @@ function RestaurantPageInner() {
               )}
             </div>
 
-            {/* Cart Sidebar (desktop) */}
+            {/* Sidebar (desktop) — cart for orderable restaurants, the
+                Request control where the cart CTA would be for previews. */}
             <div className="hidden lg:block w-80">
+              {isPreview ? (
+                <div className="sticky top-24 card p-6 text-center">
+                  <h3 className="font-bold text-lg mb-2">Not on KosherEats yet</h3>
+                  <p className="text-dark-400 text-sm mb-5">
+                    Request this restaurant and we&apos;ll work on bringing them on
+                    board. Requests show restaurants how many of you are waiting.
+                  </p>
+                  <RequestButton
+                    requested={request.requested}
+                    count={request.count}
+                    busy={request.busy}
+                    onToggle={request.toggle}
+                    label={request.requested ? "Requested" : "Request restaurant"}
+                  />
+                </div>
+              ) : (
               <div className="sticky top-24 card p-5">
                 <h3 className="font-bold text-lg mb-4">Your Order</h3>
                 {cart.length === 0 ? (
@@ -754,13 +817,29 @@ function RestaurantPageInner() {
                   </>
                 )}
               </div>
+              )}
             </div>
           </div>
         </div>
 
+        {/* Mobile Request Bar — previews only; sits where the cart bar would. */}
+        {isPreview && (
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex items-center justify-between gap-3">
+            <span className="text-dark-300 text-sm">
+              Not on KosherEats yet — request this restaurant
+            </span>
+            <RequestButton
+              requested={request.requested}
+              count={request.count}
+              busy={request.busy}
+              onToggle={request.toggle}
+            />
+          </div>
+        )}
+
         {/* Mobile Cart Bar — safe-area padding keeps the checkout button
             clear of the iOS home indicator. */}
-        {cartCount > 0 && (
+        {cartCount > 0 && !isPreview && (
           <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-dark-900 border-t border-dark-800 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-50">
             <a
               href="/cart"

@@ -49,7 +49,9 @@ export default function CartPage() {
   useEffect(() => {
     const t = typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
     if (!t) {
-      router.replace("/auth");
+      // ?next=/cart so sign-in lands back here — checkout (and any pending-
+      // order recovery) resumes instead of dumping the user on the home page.
+      router.replace("/auth?next=/cart");
       return;
     }
     setToken(t);
@@ -65,7 +67,7 @@ export default function CartPage() {
 
   function handleUnauthorized() {
     window.localStorage.removeItem("token");
-    router.replace("/auth");
+    router.replace("/auth?next=/cart");
   }
 
   // Shared landing for every submit path (fresh checkout, mount recovery,
@@ -281,7 +283,7 @@ export default function CartPage() {
         {(finalizing || finalizeError) && (
           <div
             className={`card p-6 mb-6 border ${
-              finalizeError ? "border-red-800 bg-red-900/20" : "border-brand-700 bg-brand-900/10"
+              finalizeError ? "border-danger-800 bg-danger-900/20" : "border-brand-700 bg-brand-900/10"
             }`}
             role="status"
             aria-live="polite"
@@ -293,14 +295,14 @@ export default function CartPage() {
               <p className="text-dark-200">Finishing your order… please don&apos;t close this tab.</p>
             ) : loadPendingOrder() ? (
               <>
-                <p className="text-red-300 mb-4">{finalizeError}</p>
+                <p className="text-danger-300 mb-4">{finalizeError}</p>
                 <button onClick={retryFinalize} className="btn-primary inline-block">
                   Retry confirming order
                 </button>
               </>
             ) : (
               <>
-                <p className="text-red-300 mb-4">{finalizeError}</p>
+                <p className="text-danger-300 mb-4">{finalizeError}</p>
                 <button onClick={() => setFinalizeError(null)} className="btn-secondary inline-block">
                   Dismiss
                 </button>
@@ -325,7 +327,7 @@ export default function CartPage() {
             {/* Items */}
             <div className="flex-1 space-y-4">
               {mutationError && (
-                <div className="card p-3 border border-red-800 bg-red-900/20 text-red-300 text-sm">
+                <div className="card p-3 border border-danger-800 bg-danger-900/20 text-danger-300 text-sm">
                   {mutationError}
                 </div>
               )}
