@@ -122,7 +122,9 @@ final class RemoteImageLoader: ObservableObject {
 
     // Max pixel dimension for downsampling. The on-screen point size times the
     // screen scale; capped so a giant container doesn't request a giant bitmap.
-    private static let maxPixelSize: CGFloat = 1024
+    // `nonisolated` because it's an immutable CGFloat (trivially Sendable) that
+    // the `Task.detached` downsample below reads from outside the main actor.
+    private nonisolated static let maxPixelSize: CGFloat = 1024
 
     private var currentURL: String?
 
