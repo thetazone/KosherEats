@@ -1,6 +1,6 @@
 # webhunt-20260913 — web-first pre-merge campaign
 
-Branch `feat/web-hunt-20260913` (stacked on `feat/web-ordering-rubric-sweep-m2`). Nothing pushed, nothing deployed. Generated 2026-09-13 12:58.
+Branch `feat/web-hunt-20260913` (stacked on `feat/web-ordering-rubric-sweep-m2`). Nothing pushed, nothing deployed. Generated 2026-09-13 13:56.
 
 ## Phases
 
@@ -8,6 +8,7 @@ Branch `feat/web-hunt-20260913` (stacked on `feat/web-ordering-rubric-sweep-m2`)
 |---|---|---|---|---|---|
 | hunt | `web` | 4 | 12 | GREEN | `eefef7b7` |
 | uiux | `ke_uiux_web` | 3 | 9 | GREEN | `ede30f59` |
+| backend | `ke_bugs_backend` | 3 | 9 | GREEN | `834035e4` |
 
 ## hunt — `web`
 
@@ -124,4 +125,61 @@ Round summaries: `polish-summaries/webhunt-20260913/uiux/`
 Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
   npx update-browserslist-db@latest
   Why you should do it regularly: https://github.com/browserslist/update-db#readme
+```
+
+## backend — `ke_bugs_backend`
+
+Findings across all rounds, severity descending:
+
+| Sev | Round | Finding | Status |
+|---|---|---|---|
+| 7 | 1 | DeleteAccount strands paid orders when a courier or seller deletes their account | FIXED |
+| 7 | 1 | Uber Direct CreateDelivery sends no idempotency_key — a retry after a lost response buys a second paid courier | FIXED |
+| 7 | 3 | DoorDash 409 duplicate_delivery_id on create is never reconciled — a lost create response ends in a double delivery | FIXED |
+| 6 | 2 | Closed restaurants accept charges server-side — charged, then auto-rejected + refunded 10 minutes later | FIXED |
+| 5 | 1 | CreateOrder re-adjudicates the deal after the card is charged → charged-but-no-order on an expiring or deactivated promo | FIXED |
+| 5 | 2 | DoorDash re-dispatch after a cancel is a guaranteed 409 — the order burns its attempt budget and leaves the external path | FIXED |
+| 5 | 3 | DoorDash webhook branches not scoped to the webhook's own delivery id — stale events for a superseded delivery move/un-dispatch the live one | FIXED |
+| 5 | 3 | Orphan-payment sweep vs. late CreateOrder race can refund a fulfilled order | FIXED |
+| 4 | 2 | Restaurant minimum order is decorative — rendered to every consumer, editable by sellers, enforced nowhere | FIXED |
+
+Round summaries: `polish-summaries/webhunt-20260913/backend/`
+
+### Gate (backend)
+
+### build: ok
+```
+
+```
+### vet: ok
+```
+
+```
+### test: ok
+```
+?   	github.com/koshereats/backend/cmd/api	[no test files]
+?   	github.com/koshereats/backend/internal/background	[no test files]
+?   	github.com/koshereats/backend/internal/broker	[no test files]
+ok  	github.com/koshereats/backend/internal/config	(cached)
+?   	github.com/koshereats/backend/internal/ctxkeys	[no test files]
+ok  	github.com/koshereats/backend/internal/database	(cached)
+ok  	github.com/koshereats/backend/internal/dispatch	(cached)
+ok  	github.com/koshereats/backend/internal/doordash	(cached)
+?   	github.com/koshereats/backend/internal/email	[no test files]
+ok  	github.com/koshereats/backend/internal/handlers	9.865s
+ok  	github.com/koshereats/backend/internal/middleware	(cached)
+?   	github.com/koshereats/backend/internal/models	[no test files]
+?   	github.com/koshereats/backend/internal/notify	[no test files]
+?   	github.com/koshereats/backend/internal/observability	[no test files]
+ok  	github.com/koshereats/backend/internal/payments	(cached)
+?   	github.com/koshereats/backend/internal/payout	[no test files]
+ok  	github.com/koshereats/backend/internal/phone	(cached)
+?   	github.com/koshereats/backend/internal/pos	[no test files]
+?   	github.com/koshereats/backend/internal/pos/clover	[no test files]
+?   	github.com/koshereats/backend/internal/redisclient	[no test files]
+ok  	github.com/koshereats/backend/internal/scheduler	(cached)
+ok  	github.com/koshereats/backend/internal/shipday	(cached)
+?   	github.com/koshereats/backend/internal/sms	[no test files]
+?   	github.com/koshereats/backend/internal/storage	[no test files]
+?   	github.com/koshereats/backend/internal/uberdirect	[no test files]
 ```
