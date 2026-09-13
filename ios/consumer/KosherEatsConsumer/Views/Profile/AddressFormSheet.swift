@@ -261,15 +261,29 @@ final class AddressAutocomplete: NSObject, ObservableObject, MKLocalSearchComple
         completer.queryFragment = ""
     }
 
+    // MKLocalSearchCompleterDelegate carries no SDK isolation annotation, so
+    // these arrive `nonisolated` — but the completer is created and configured
+    // on the main actor in `init`, and MapKit delivers its callbacks on that
+    // same thread. `MainActor.assumeIsolated` states that fact instead of
+    // hopping: `[MKLocalSearchCompletion]` isn't Sendable, so handing it to a
+    // `Task { @MainActor in }` was "sending a task-isolated value into a main
+    // actor-isolated closure". Dropping the hop also keeps typeahead results in
+    // delivery order — with a hop, a slow early query could land after a later
+    // one and repaint stale suggestions. Same pattern as LocationManager's
+    // CLLocationManagerDelegate bridge.
+    //
+    // Reads `self.completer`, not the callback's parameter: the parameter is
+    // nonisolated and MKLocalSearchCompleter isn't Sendable, so capturing it in
+    // the main-actor closure "sends" it across an isolation boundary. It is the
+    // same object we already own on the main actor, so we read our own copy.
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        let results = completer.results
-        Task { @MainActor in
-            self.suggestions = results
+        MainActor.assumeIsolated {
+            self.suggestions = self.completer.results
         }
     }
 
     nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        Task { @MainActor in
+        MainActor.assumeIsolated {
             self.suggestions = []
         }
     }
