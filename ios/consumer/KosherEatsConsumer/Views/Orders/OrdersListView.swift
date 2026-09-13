@@ -334,7 +334,11 @@ struct OrderStatusBadge: View {
         case .cancelled, .rejected: return .keError
         case .completed:
             return .keSuccess
-        @unknown default:
+        // `OrderStatus` lives in this same module and carries its own
+        // `.unknown` catch-all for backend-added statuses, so `@unknown
+        // default` (which only covers cases added by *other* modules) left
+        // the switch genuinely non-exhaustive. Match `.unknown` explicitly.
+        case .unknown:
             return .keTextSecondary
         }
     }
