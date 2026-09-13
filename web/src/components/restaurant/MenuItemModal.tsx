@@ -188,13 +188,13 @@ export function MenuItemModal({
                 {formatUSD(item.price)}
               </span>
               {item.is_meat && (
-                <DietaryBadge label="Meat" color="bg-red-900/40 text-red-400" />
+                <DietaryBadge label="Meat" color="bg-meat-900/40 text-meat-400" />
               )}
               {item.is_dairy && (
-                <DietaryBadge label="Dairy" color="bg-blue-900/40 text-blue-400" />
+                <DietaryBadge label="Dairy" color="bg-dairy-900/40 text-dairy-400" />
               )}
               {item.is_pareve && (
-                <DietaryBadge label="Pareve" color="bg-green-900/40 text-green-400" />
+                <DietaryBadge label="Pareve" color="bg-pareve-900/40 text-pareve-400" />
               )}
             </div>
           </div>
@@ -289,7 +289,7 @@ export function MenuItemModal({
                         )}
                         <span className="flex-1 text-sm">{mod.name}</span>
                         {!mod.is_available ? (
-                          <span className="text-xs text-red-400">Unavailable</span>
+                          <span className="text-xs text-danger-400">Unavailable</span>
                         ) : (
                           delta && (
                             <span className="text-sm text-dark-300">{delta}</span>
@@ -328,7 +328,7 @@ export function MenuItemModal({
         <div className="border-t border-dark-800 px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-4 space-y-3">
           {error && (
             <div
-              className="flex items-start gap-2 text-sm text-red-300 bg-red-900/20 border border-red-800 rounded-xl px-3 py-2"
+              className="flex items-start gap-2 text-sm text-danger-300 bg-danger-900/20 border border-danger-800 rounded-xl px-3 py-2"
               role="alert"
             >
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />

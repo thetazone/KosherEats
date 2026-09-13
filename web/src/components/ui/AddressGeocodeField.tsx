@@ -177,7 +177,7 @@ export function AddressGeocodeField({
             </span>
           </div>
         )}
-        {lookupError && <p className="text-sm text-red-400">{lookupError}</p>}
+        {lookupError && <p className="text-sm text-danger-400">{lookupError}</p>}
       </div>
 
       <div>
@@ -219,7 +219,7 @@ export function AddressGeocodeField({
                 onChange={(e) => onLngChange(e.target.value)}
               />
             </div>
-            {manualProblem && <p className="text-xs text-red-400">{manualProblem}</p>}
+            {manualProblem && <p className="text-xs text-danger-400">{manualProblem}</p>}
           </div>
         )}
       </div>

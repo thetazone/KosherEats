@@ -87,7 +87,7 @@ export function RestaurantCard({
             >
               <Heart
                 className={`w-5 h-5 transition-colors ${
-                  isFavorite ? "text-red-500 fill-red-500" : "text-white"
+                  isFavorite ? "text-danger-500 fill-danger-500" : "text-white"
                 }`}
                 aria-hidden="true"
               />

@@ -129,7 +129,7 @@ export function CourierRatingModal({
               >
                 <Star
                   className={`w-9 h-9 transition-colors ${
-                    i <= displayStars ? "text-yellow-400 fill-yellow-400" : "text-dark-600"
+                    i <= displayStars ? "text-warning-400 fill-warning-400" : "text-dark-600"
                   }`}
                   aria-hidden="true"
                 />
@@ -150,7 +150,7 @@ export function CourierRatingModal({
           {comment.length > 400 && (
             <p
               className={`text-xs mt-1 ${
-                comment.length >= MAX_COMMENT_LENGTH ? "text-red-400" : "text-dark-500"
+                comment.length >= MAX_COMMENT_LENGTH ? "text-danger-400" : "text-dark-500"
               }`}
             >
               {MAX_COMMENT_LENGTH - comment.length} characters remaining
@@ -158,7 +158,7 @@ export function CourierRatingModal({
           )}
 
           {error && (
-            <p className="text-red-400 text-sm mt-3" role="alert">
+            <p className="text-danger-400 text-sm mt-3" role="alert">
               {error}
             </p>
           )}

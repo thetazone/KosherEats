@@ -256,7 +256,7 @@ export function OrderChat({
       </div>
 
       {sendError && (
-        <p className="text-red-400 text-xs mt-2" role="alert">
+        <p className="text-danger-400 text-xs mt-2" role="alert">
           {sendError}
         </p>
       )}

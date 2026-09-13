@@ -285,7 +285,7 @@ export function VerificationGate({
         </div>
       )}
       {error && (
-        <div className="bg-red-900/30 border border-red-800 text-red-400 rounded-xl px-4 py-3 mb-4 text-sm">
+        <div className="bg-danger-900/30 border border-danger-800 text-danger-400 rounded-xl px-4 py-3 mb-4 text-sm">
           {error}
         </div>
       )}
@@ -441,7 +441,7 @@ export function VerificationGate({
               value={phoneCode}
               onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
               className={`input w-full text-center text-xl font-semibold tracking-[0.5em] ${
-                error ? "border-red-800 focus:border-red-500 focus:ring-red-500" : ""
+                error ? "border-danger-800 focus:border-danger-500 focus:ring-danger-500" : ""
               }`}
               placeholder="••••"
               autoFocus
