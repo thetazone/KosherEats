@@ -1,4 +1,15 @@
-import ActivityKit
+// `@preconcurrency` because ActivityKit has an SDK annotation gap, not because
+// we're papering over a real race. `Activity`'s `update(_:)` and
+// `end(_:dismissalPolicy:)` are *nonisolated async* methods — Apple's contract
+// is that you may call them from any concurrency domain — but the SDK's
+// swiftinterface declares `public class Activity<Attributes>: Identifiable`
+// with no `Sendable` conformance. So handing our main-actor-isolated `activity`
+// to those methods reads to region analysis as "sending a non-Sendable value
+// across an isolation boundary" (4 warnings, one per await site). Marking the
+// import preconcurrency is the sanctioned remedy for an un-annotated module and
+// is narrower than a retroactive `@unchecked Sendable` conformance on someone
+// else's non-final generic class. Revisit once ActivityKit annotates `Activity`.
+@preconcurrency import ActivityKit
 import Foundation
 import os.log
 
@@ -147,7 +158,9 @@ final class DeliveryActivityManager {
         case .cancelled: return "Order cancelled"
         case .rejected: return "Order rejected"
         case .completed: return "Order completed"
-        @unknown default: return "Unknown status"
+        // `OrderStatus` is same-module and has its own `.unknown` catch-all, so
+        // `@unknown default` (other-module cases only) left this non-exhaustive.
+        case .unknown: return "Unknown status"
         }
     }
 
