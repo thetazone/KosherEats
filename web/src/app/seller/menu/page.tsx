@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { MenuItemForm } from "@/components/seller/MenuItemForm";
-import { formatCents, sellerApi } from "@/lib/sellerApi";
+import { formatCents, isUnauthorized, sellerApi } from "@/lib/sellerApi";
 import type { SellerMenuCategory, SellerMenuItem, SellerModifierGroup } from "@/types/seller";
 
 /** The item form modal: editing an existing item, or creating into a category. */
@@ -57,6 +57,7 @@ export default function SellerMenuPage() {
     try {
       setCategories(await sellerApi.menu.get());
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setError((err as Error).message || "Failed to load menu");
     } finally {
       setLoading(false);
@@ -81,6 +82,7 @@ export default function SellerMenuPage() {
       setNewCategoryName("");
       setAddingCategory(false);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't create the category");
     } finally {
       setCreatingCategory(false);
@@ -108,6 +110,7 @@ export default function SellerMenuPage() {
       }
       setDeleteTarget(null);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't delete — please try again.");
       setDeleteTarget(null);
     } finally {
@@ -125,6 +128,7 @@ export default function SellerMenuPage() {
       const updated = await sellerApi.menu.setItemAvailability(item.id, !item.is_available);
       replaceItem(updated);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't update availability");
     } finally {
       setTogglingItemId(null);

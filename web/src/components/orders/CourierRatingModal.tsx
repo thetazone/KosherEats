@@ -1,6 +1,6 @@
 "use client";
 
-import { orders as ordersApi } from "@/lib/api";
+import { isUnauthorized, orders as ordersApi } from "@/lib/api";
 import { Loader2, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -10,11 +10,6 @@ import { useEffect, useState } from "react";
 // rating server-side. The parent controls visibility — render only while
 // open, pass onClose to dismiss.
 const MAX_COMMENT_LENGTH = 500;
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
 
 export function CourierRatingModal({
   token,

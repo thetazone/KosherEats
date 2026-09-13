@@ -5,14 +5,18 @@
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [ke_bugs_backend] Transient Stripe error silently disarms all four CreateOrder money guards** — FIXED
-  CreateOrder read four PaymentIntent stamps via four separate paymentintent.Get calls, and every call site was written as `err == nil && ok && mismatch
-  > The fix for this issue was already fully present in the working tree when I started (uncommitted, alongside other change
+- **[7/10] [web] A transient failure of POST /auth/refresh wipes the session and force-logs-out the user (consumer + seller)** — FIXED
+  `runRefresh` in both clients wraps the refresh call in a catch-all that clears localStorage on ANY error (web/src/lib/api.ts:97 `clearAuthTokens()`, w
+  > No web test suite exists (only `next lint`), so verification is `tsc --noEmit` + `eslint`, both green. Note the diff sta
 
-- **[6/10] [ke_bugs_backend] CreateOrder ran discarded live courier quotes inside the open order transaction** — FIXED
-  CreateOrder called quoteDeliveryFee (up to three provider HTTP quotes, each with a 30s client timeout) on every delivery order and then unconditionall
-  > The fix is already present in the working tree — `backend/internal/handlers/orders.go` (lines 243–298) already gates `qu
+- **[6/10] [web] Seller area never routes a dead session to /seller/login — expired sellers see raw 'refresh token revoked' errors and a 15 s poll loop** — FIXED
+  `sellerApi.isUnauthorized` (web/src/lib/sellerApi.ts:221) is exported but referenced by zero seller pages/components (grep: 0 hits in seller/page.tsx,
+  > Done. All changes are under `web/`; nothing committed (working tree also carries the pre-existing uncommitted issue-1 / 
 
-- **[5/10] [ke_bugs_backend] A rejected AddToCart destroyed the customer's existing cart** — FIXED
-  AddToCart clears every cart_items row and re-points carts.restaurant_id when the restaurant changes, and that transaction was COMMITTED (cart.go:175) 
-  > Fixed and verified. The two files named in the issue (`backend/internal/handlers/cart.go`, `backend/internal/handlers/in
+- **[5/10] [web] 'Payment methods' page saves cards that can never be seen, used, or removed on web — misleading dead-end feature** — FIXED
+  web/src/app/account/payments/page.tsx tells the user 'Cards you save are available at checkout here and in the app' (line 297) and after a successful 
+  > Both `tsc --noEmit` and `eslint` pass (exit 0, no output) on the edited files.
+
+## What I changed (web-only, 3 files)
+
+*

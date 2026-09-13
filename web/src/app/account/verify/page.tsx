@@ -2,7 +2,7 @@
 
 import { VerificationGate } from "@/components/auth/VerificationGate";
 import { Header } from "@/components/layout/Header";
-import { user as userApi } from "@/lib/api";
+import { isUnauthorized, user as userApi } from "@/lib/api";
 import type { User } from "@/types";
 import { ShieldCheck } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -44,8 +44,7 @@ function VerifyAccount() {
         // changed through the verified-change flows).
         window.localStorage.setItem("user", JSON.stringify(p));
       } catch (err) {
-        const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-        if (msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token")) {
+        if (isUnauthorized(err)) {
           window.localStorage.removeItem("token");
           router.replace("/auth");
           return;

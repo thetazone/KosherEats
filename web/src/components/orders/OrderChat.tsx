@@ -1,6 +1,6 @@
 "use client";
 
-import { orders as ordersApi } from "@/lib/api";
+import { isUnauthorized, orders as ordersApi } from "@/lib/api";
 import type { ChatMessage } from "@/types";
 import { Loader2, MessageCircle, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,11 +14,6 @@ const POLL_INTERVAL_MS = 5_000;
 
 // Backend rejects messages over 2000 chars (SendChatMessage).
 const MAX_MESSAGE_LENGTH = 2000;
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });

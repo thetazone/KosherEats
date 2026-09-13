@@ -1,8 +1,8 @@
 "use client";
 
 import {
+  clearPendingOrder,
   consumeRecoveryAuthInterrupted,
-  isUnauthorized,
   loadPendingOrder,
   markRecoveryAuthInterrupted,
   submitPendingOrder,
@@ -13,7 +13,7 @@ import {
 import { CheckoutPanel } from "@/components/checkout/CheckoutPanel";
 import { Header } from "@/components/layout/Header";
 import { KosherBadge } from "@/components/restaurant/KosherBadge";
-import { cart as cartApi, restaurants as restaurantsApi } from "@/lib/api";
+import { cart as cartApi, isUnauthorized, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import type { Cart, Restaurant } from "@/types";
 import { Loader2, ShoppingCart, Trash2 } from "lucide-react";
@@ -79,7 +79,10 @@ export default function CartPage() {
     } else if (outcome === "verify") {
       router.push(VERIFY_ROUTE);
     } else if (outcome === "unauthorized") {
-      // Session died mid-recovery and the refresh token couldn't revive it.
+      // Session died mid-recovery and the server REJECTED the refresh token
+      // (only a 400/401 gets here — a refresh that timed out or hit a 5xx
+      // stays "failed" below, with the session intact, so a one-packet blip
+      // never bounces the user to sign-in mid-recovery).
       // The PendingOrder snapshot STAYS persisted (the captured charge must
       // never lose its recovery record); flag the interruption so the
       // post-re-login mount explains the resumed recovery, then route through
@@ -93,6 +96,13 @@ export default function CartPage() {
       // is still intact server-side.
       setFinalizeError(
         "That deal was already used, so no order was placed and your payment was refunded."
+      );
+    } else if (outcome === "orphan_refunded") {
+      // The server rejected the PaymentIntent after the orphan-payment grace
+      // elapsed — the scheduler already refunded the charge and no order
+      // exists. The snapshot is cleared; retrying could never succeed.
+      setFinalizeError(
+        "We couldn't confirm this order, so the charge was refunded automatically — please check your statement. No order was placed."
       );
     } else {
       setFinalizeError(
@@ -135,6 +145,21 @@ export default function CartPage() {
       onTokenRefreshed: setToken,
     });
     handleOutcome(outcome, false);
+  }
+
+  // Escape hatch so stale localStorage can never brick the cart: the user
+  // asserts the charge is already resolved (refunded by the orphan-payment
+  // scheduler, or settled with support) and we drop the snapshot. Confirmed
+  // first — dismissing a snapshot whose charge is still recoverable would
+  // orphan it client-side (the server still refunds it after the grace).
+  function dismissPendingOrder() {
+    const ok = window.confirm(
+      "Only dismiss this if you've already been refunded or have contacted support about this charge. Dismiss it?"
+    );
+    if (!ok) return;
+    clearPendingOrder();
+    setFinalizeError(null);
+    setRecoveryNotice(null);
   }
 
   async function retryFinalize() {
@@ -263,6 +288,9 @@ export default function CartPage() {
   // the first charge still awaits recovery. Only the recovery banner (with
   // its retry/dismiss actions) may render in that state.
   const recovering = finalizing || finalizeError !== null || loadPendingOrder() !== null;
+  // Only a loaded row can say "closed" — the fetch is non-fatal, so an
+  // unknown restaurant never locks checkout.
+  const restaurantClosed = restaurant?.is_open === false;
 
   return (
     <>
@@ -277,6 +305,21 @@ export default function CartPage() {
             {/* Certification chip repeats here so kashrus trust carries from
                 the restaurant page into checkout. */}
             <KosherBadge restaurant={restaurant} size="compact" />
+          </div>
+        )}
+
+        {/* Closed restaurant: nothing server-side blocks the order — the
+            dispatcher just auto-rejects + refunds it 10 min later — so gate
+            here and in CheckoutPanel (same notice as the restaurant page). */}
+        {restaurantClosed && (
+          <div
+            role="status"
+            className="card p-4 mb-6 border border-dark-700 text-dark-300 text-sm"
+          >
+            <span className="font-medium text-white">
+              {restaurant?.name} is currently closed
+            </span>{" "}
+            — you can review your cart but not order right now.
           </div>
         )}
 
@@ -296,9 +339,14 @@ export default function CartPage() {
             ) : loadPendingOrder() ? (
               <>
                 <p className="text-danger-300 mb-4">{finalizeError}</p>
-                <button onClick={retryFinalize} className="btn-primary inline-block">
-                  Retry confirming order
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button onClick={retryFinalize} className="btn-primary inline-block">
+                    Retry confirming order
+                  </button>
+                  <button onClick={dismissPendingOrder} className="btn-secondary inline-block">
+                    Dismiss — I&apos;ve been refunded / contacted support
+                  </button>
+                </div>
               </>
             ) : (
               <>
@@ -406,6 +454,7 @@ export default function CartPage() {
                 <CheckoutPanel
                   token={token}
                   cart={cart}
+                  closed={restaurantClosed}
                   onUnauthorized={handleUnauthorized}
                   onPaymentCaptured={handlePaymentCaptured}
                 />

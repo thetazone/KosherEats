@@ -2,7 +2,13 @@
 // and components/checkout/CheckoutPanel.tsx (the live checkout flow). All
 // money values are integer cents.
 
-import { orders as ordersApi, refreshAccessToken } from "@/lib/api";
+import {
+  ApiError,
+  RefreshTransientError,
+  isUnauthorized,
+  orders as ordersApi,
+  refreshAccessToken,
+} from "@/lib/api";
 import type { Address } from "@/types";
 
 export const VERIFY_ROUTE = "/account/verify?next=/cart";
@@ -17,6 +23,14 @@ export const VERIFY_ROUTE = "/account/verify?next=/cart";
 // scheduled_for (RFC3339, omitted = ASAP) and applied_deal_id ride along so a
 // recovered order keeps its schedule and its deal (CreateOrder re-resolves the
 // deal to reconcile the recorded total with the charge).
+// user_id + created_at are stamped by savePendingOrder: the snapshot is
+// user-scoped (a shared device must not hand one account's recovery record —
+// and its checkout lock — to the next account that signs in) and aged
+// (see ORPHAN_PAYMENT_GRACE_MS). Both are absent on snapshots persisted by an
+// older build. The snapshot must NOT be cleared on sign-out: it is the only
+// client-side record of a captured charge with no confirmed order, and the
+// user signing back in must land in recovery rather than a fresh
+// PaymentIntent (charged twice). Only account deletion drops it.
 export interface PendingOrder {
   payment_intent_id: string;
   restaurant_id: string;
@@ -27,27 +41,86 @@ export interface PendingOrder {
   fulfillment_type?: "delivery" | "pickup";
   scheduled_for?: string;
   applied_deal_id?: string;
+  user_id?: string;
+  created_at?: string;
 }
 
 const PENDING_ORDER_KEY = "pending_order";
 const ORDER_RETRY_DELAYS_MS = [500, 1500, 4000];
 
-export function loadPendingOrder(): PendingOrder | null {
-  if (typeof window === "undefined") return null;
+// Mirrors the backend's scheduler orphanPaymentGrace: a succeeded
+// PaymentIntent with no order for longer than this is refunded server-side,
+// after which CreateOrder rejects it forever (402 "payment not confirmed").
+// Past this age a 402 is therefore terminal — the money is already on its way
+// back and no retry can ever converge the snapshot to an order.
+const ORPHAN_PAYMENT_GRACE_MS = 20 * 60 * 1000;
+
+// The signed-in user's id from the cached "user" row, or null when there is
+// no readable session.
+function currentUserId(): string | null {
   try {
-    const raw = window.localStorage.getItem(PENDING_ORDER_KEY);
-    return raw ? (JSON.parse(raw) as PendingOrder) : null;
+    const raw = window.localStorage.getItem("user");
+    const id = raw ? (JSON.parse(raw) as { id?: unknown }).id : undefined;
+    return typeof id === "string" && id ? id : null;
   } catch {
     return null;
   }
 }
 
+export function loadPendingOrder(): PendingOrder | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PENDING_ORDER_KEY);
+    if (!raw) return null;
+    const pending = JSON.parse(raw) as PendingOrder;
+    // Another account's snapshot (sign-in without a sign-out on this browser):
+    // its POST would only ever 402 on the PI ownership check, so it must not
+    // gate this user's checkout. Drop it — the original charge is protected
+    // server-side by the orphan-payment refund.
+    const uid = currentUserId();
+    if (pending.user_id && uid && pending.user_id !== uid) {
+      clearPendingOrder();
+      return null;
+    }
+    return pending;
+  } catch {
+    return null;
+  }
+}
+
+// Best-effort: called AFTER the charge is captured, so it must never throw —
+// a storage failure (private-mode quota, disabled storage) would otherwise
+// bubble into the checkout form as "Payment failed" with Pay re-enabled, on
+// a charge that already went through. The caller keeps the in-memory
+// snapshot and submits it directly; only the cross-mount recovery is lost.
 export function savePendingOrder(p: PendingOrder): void {
-  window.localStorage.setItem(PENDING_ORDER_KEY, JSON.stringify(p));
+  if (typeof window === "undefined") return;
+  const stamped: PendingOrder = {
+    ...p,
+    user_id: p.user_id ?? currentUserId() ?? undefined,
+    created_at: p.created_at ?? new Date().toISOString(),
+  };
+  try {
+    window.localStorage.setItem(PENDING_ORDER_KEY, JSON.stringify(stamped));
+  } catch {
+    // Storage unavailable — same best-effort contract as savePreselectedDeal.
+  }
 }
 
 export function clearPendingOrder(): void {
   window.localStorage.removeItem(PENDING_ORDER_KEY);
+}
+
+// True while a captured charge still awaits its order (recovery snapshot
+// present). The backend's CreateOrder re-reads the LIVE cart and re-verifies
+// it against the PaymentIntent amount, so ANY cart mutation from any page
+// makes every recovery replay 402 "payment not confirmed" — inside the
+// orphan grace the banner keeps promising retries that can never converge,
+// past it the charge is refunded and the paid-for order is silently lost.
+// Callers that would add to the cart must route to /cart (where the
+// retry/dismiss banner lives) instead of mutating it.
+export function isCartLockedByPendingOrder(): boolean {
+  return loadPendingOrder() !== null;
 }
 
 // Deal preselection handoff (Deals page → restaurant page → checkout). The
@@ -94,19 +167,22 @@ export function clearPreselectedDeal(): void {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
+// The server's {"error": ...} string for an ApiError, "" for anything else
+// (network failure, timeout) — the predicates below never match those.
+function apiErrorCode(err: unknown): string {
+  if (!(err instanceof ApiError)) return "";
+  const error = (err.body as { error?: unknown } | null)?.error;
+  return typeof error === "string" ? error : "";
 }
 
 // The backend hard-gates consumer transactions (payments.intent AND
 // orders.create) with 403 {"error":"verification_required",...} until both
-// email_verified and phone_verified are true — fetchAPI surfaces that body's
-// error string as the Error message. We intercept it and route into
+// email_verified and phone_verified are true. We intercept it and route into
 // /account/verify?next=/cart instead of showing a raw error.
 export function isVerificationRequired(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("verification_required");
+  return (
+    err instanceof ApiError && err.status === 403 && apiErrorCode(err) === "verification_required"
+  );
 }
 
 // orders.create is idempotent on payment_intent_id: if the FIRST POST committed
@@ -116,9 +192,10 @@ export function isVerificationRequired(err: unknown): boolean {
 // the backend's replay short-circuit). The order DOES exist, so this conflict
 // is a SUCCESS for our retry/recovery loop — we must clear the persisted
 // intent and proceed, never treat it as a retriable failure.
+// CreateOrder's only other 409 is the deal-conflict refund (below) — its
+// charge was reversed and no order exists, so it is excluded here explicitly.
 export function isAlreadyCreated(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("409") || msg.includes("already created for this payment");
+  return err instanceof ApiError && err.status === 409 && !isDealConflictRefunded(err);
 }
 
 // Deal-validation 400s from POST /payments/intent or /orders — the backend's
@@ -126,8 +203,12 @@ export function isAlreadyCreated(err: unknown): boolean {
 // "deal has expired", "below the deal minimum", "deal already used", …).
 // Callers drop the applied deal and re-quote without it.
 export function isDealError(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("deal");
+  return (
+    err instanceof ApiError &&
+    err.status === 400 &&
+    (err.endpoint === "/payments/intent" || err.endpoint === "/orders") &&
+    apiErrorCode(err).toLowerCase().includes("deal")
+  );
 }
 
 // The once-per-user deal index fired inside CreateOrder AFTER the charge was
@@ -135,8 +216,30 @@ export function isDealError(err: unknown): boolean {
 // has already been used — your payment was refunded". No order exists and no
 // money is owed, so the pending order must be cleared, not retried.
 export function isDealConflictRefunded(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("payment was refunded");
+  return (
+    err instanceof ApiError &&
+    err.status === 409 &&
+    apiErrorCode(err).toLowerCase().includes("payment was refunded")
+  );
+}
+
+// HTTP 402 "payment not confirmed" from POST /orders — verifyPI rejected the
+// PaymentIntent (not succeeded, refunded, or owned by another user). The
+// body does not say which; only the snapshot's age can.
+export function isPaymentNotConfirmed(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 402 && err.endpoint === "/orders";
+}
+
+// True once the snapshot is older than the backend's orphan-payment grace —
+// any succeeded PI behind it has already been refunded by the scheduler, so
+// verifyPI will reject it forever. A snapshot from an older build carries no
+// created_at; it predates this code by definition, so it is treated as past
+// the window rather than left to lock the cart.
+export function isPastOrphanGrace(pending: PendingOrder, now = Date.now()): boolean {
+  if (!pending.created_at) return true;
+  const created = Date.parse(pending.created_at);
+  if (Number.isNaN(created)) return true;
+  return now - created > ORPHAN_PAYMENT_GRACE_MS;
 }
 
 export function formatAddress(a: Address): string {
@@ -173,11 +276,22 @@ export function providerLabel(provider: string): string {
 // 401-replay uses, so recovery and any concurrent request can never race two
 // POST /auth/refresh calls (the loser of that race burns the rotated refresh
 // token and kills the session). api.ts owns the localStorage writes; on a dead
-// refresh token it clears the stored session and this returns null.
-async function refreshToken(onTokenRefreshed?: (t: string) => void): Promise<string | null> {
-  const fresh = await refreshAccessToken();
-  if (fresh) onTokenRefreshed?.(fresh);
-  return fresh;
+// refresh token it clears the stored session and this returns
+// { token: null, transient: false }. A timeout / TypeError / 5xx on the
+// refresh call itself (api.ts RefreshTransientError) keeps the session and
+// returns { token: null, transient: true } — the caller must retry, never
+// treat it as a dead session.
+async function refreshToken(
+  onTokenRefreshed?: (t: string) => void
+): Promise<{ token: string | null; transient: boolean }> {
+  try {
+    const fresh = await refreshAccessToken();
+    if (fresh) onTokenRefreshed?.(fresh);
+    return { token: fresh, transient: false };
+  } catch (err) {
+    if (err instanceof RefreshTransientError) return { token: null, transient: true };
+    throw err;
+  }
 }
 
 // Set when pending-order recovery is interrupted by a dead session (access
@@ -208,7 +322,13 @@ export function consumeRecoveryAuthInterrupted(): boolean {
   }
 }
 
-export type SubmitOutcome = "ok" | "failed" | "verify" | "refunded" | "unauthorized";
+export type SubmitOutcome =
+  | "ok"
+  | "failed"
+  | "verify"
+  | "refunded"
+  | "orphan_refunded"
+  | "unauthorized";
 
 // Re-POST a persisted order with backoff. On 401, refresh the token once and
 // retry with the fresh one. Clears the persisted intent on success; leaves it
@@ -217,10 +337,18 @@ export type SubmitOutcome = "ok" | "failed" | "verify" | "refunded" | "unauthori
 // so it is re-attempted when the user returns from /account/verify.
 // "refunded" means the once-per-user deal guard fired server-side and the
 // charge was refunded — the pending order is cleared, nothing to retry.
+// "orphan_refunded" means the server rejected the PaymentIntent (402) on a
+// snapshot older than the orphan-payment grace — the scheduler has already
+// refunded the charge and no retry can ever succeed, so the pending order is
+// cleared. A 402 inside the window (PI still `processing`, or a mismatch that
+// the grace-period refund will resolve) keeps backing off like any other
+// blip and exhausts to "failed" with the snapshot intact.
 // "unauthorized" means the session is dead AND the refresh token couldn't
 // revive it — the pending order stays persisted (a captured charge must never
 // lose its recovery record) and the caller routes through sign-in; recovery
-// resumes on the next /cart mount.
+// resumes on the next /cart mount. A refresh that merely failed transiently
+// (timeout, 5xx) is NOT "unauthorized": it backs off like any other blip and
+// exhausts to "failed", with the session intact.
 //
 // probeExisting: recovery paths (page remount / manual retry) first ask
 // GET /orders/by-payment-intent/{pi} whether the original POST actually
@@ -277,17 +405,26 @@ export async function submitPendingOrder(
       if (isVerificationRequired(err)) {
         return "verify";
       }
+      // Terminal 402: the orphan-payment scheduler has already refunded this
+      // PI, so verifyPI rejects it forever. Without this exit the snapshot
+      // would persist and lock checkout on this browser indefinitely.
+      if (isPaymentNotConfirmed(err) && isPastOrphanGrace(pending)) {
+        clearPendingOrder();
+        return "orphan_refunded";
+      }
       if (isUnauthorized(err)) {
         const fresh = await refreshToken(options.onTokenRefreshed);
-        if (fresh) {
-          activeToken = fresh;
+        if (fresh.token) {
+          activeToken = fresh.token;
           continue; // retry immediately with the refreshed token
         }
         // Refresh token missing or dead — every further retry would 401 the
         // same way, so backing off is pointless. Bail with the snapshot still
         // persisted so the caller can flag the interruption and route through
         // sign-in; the post-re-login mount resumes recovery.
-        return "unauthorized";
+        if (!fresh.transient) return "unauthorized";
+        // Transient refresh failure — the token is still good; fall through
+        // to the backoff below and try the refresh again on the next 401.
       }
       if (attempt < ORDER_RETRY_DELAYS_MS.length) {
         await sleep(ORDER_RETRY_DELAYS_MS[attempt]);

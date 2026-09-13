@@ -1,7 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/Header";
-import { payments as paymentsApi } from "@/lib/api";
+import { isUnauthorized, payments as paymentsApi } from "@/lib/api";
 import type { PaymentCustomerBundle } from "@/types";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
@@ -23,15 +23,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // consumable by the mobile CustomerSheet), so this page is the save-a-card
 // flow: SetupIntent → Payment Element → confirmSetup. Whatever is saved here
 // is attached to the same persistent Stripe Customer the checkout charges,
-// so saved cards surface at checkout and on iOS.
+// so saved cards surface in the iOS/Android app's CustomerSheet — but NOT at
+// web checkout: CheckoutPanel mounts <Elements> without a
+// customerSessionClientSecret, so its Payment Element is always a blank card
+// form. Until the backend exposes POST /payments/customer-session (+ list/
+// detach), the copy below must not promise web-side reuse or management.
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
-}
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
 }
 
 // Dev-stub detection — same signal iOS uses (CustomerBundle.isStub): the
@@ -262,8 +261,8 @@ export default function PaymentMethodsPage() {
                 role="status"
               >
                 <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
-                {savedCount === 1 ? "Card saved." : `${savedCount} cards saved.`} It&apos;ll be
-                available the next time you check out.
+                {savedCount === 1 ? "Card saved." : `${savedCount} cards saved.`} It&apos;ll
+                show up the next time you check out in the KosherEats app.
               </div>
             )}
 
@@ -271,7 +270,8 @@ export default function PaymentMethodsPage() {
               <div className="card p-6">
                 <h2 className="text-lg font-bold mb-1">Add a card</h2>
                 <p className="text-sm text-dark-400 mb-5">
-                  Your card is saved for future orders — nothing is charged now.
+                  Your card is saved for future orders in the KosherEats app — nothing is
+                  charged now.
                 </p>
                 <Elements
                   key={clientSecret}
@@ -299,7 +299,9 @@ export default function PaymentMethodsPage() {
                   <div>
                     <h2 className="font-bold">Saved cards</h2>
                     <p className="text-sm text-dark-400">
-                      Cards you save are available at checkout here and in the app.
+                      Cards saved here appear at checkout in the KosherEats iOS and Android
+                      app. On the web you enter your card at checkout, and saved cards
+                      can&apos;t be viewed or removed here yet.
                     </p>
                   </div>
                 </div>

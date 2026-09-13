@@ -12,7 +12,7 @@ import {
   Store,
   UtensilsCrossed,
 } from "lucide-react";
-import { sellerApi, sellerAuth } from "@/lib/sellerApi";
+import { isUnauthorized, registerUnauthorizedHandler, sellerApi, sellerAuth } from "@/lib/sellerApi";
 import type { SellerRestaurant } from "@/types/seller";
 
 const NAV_ITEMS = [
@@ -61,6 +61,17 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
     setReady(true);
   }, [isLoginPage, pathname, router]);
 
+  // Post-401 hook: when the refresh token dies mid-session (7-day expiry, or
+  // a token_epoch bump from a password reset) sellerFetch clears storage and
+  // calls this, so a seller parked on the Orders tab is routed to sign-in
+  // instead of watching every poll fail. ?next= brings them straight back.
+  useEffect(() => {
+    if (isLoginPage) return;
+    return registerUnauthorizedHandler(() => {
+      router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
+    });
+  }, [isLoginPage, pathname, router]);
+
   const loadRestaurants = useCallback(async () => {
     setRestaurantsLoading(true);
     setRestaurantsError(null);
@@ -79,6 +90,9 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
         setActiveId(null);
       }
     } catch (err) {
+      // Dead session: the redirect is already in flight — don't render the
+      // raw "refresh token revoked" with a Try again that can never succeed.
+      if (isUnauthorized(err)) return;
       setRestaurantsError((err as Error).message || "Failed to load restaurants");
     } finally {
       setRestaurantsLoading(false);

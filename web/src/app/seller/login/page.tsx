@@ -12,6 +12,13 @@ import { sellerApi, sellerAuth } from "@/lib/sellerApi";
  * whose user isn't a seller so a consumer/admin credential can't land in the
  * seller dashboard with a role it can't use.
  */
+// Where the layout sent us from on a dead session (?next=/seller/orders).
+// Only same-area paths are honored so the param can't bounce off-site.
+function nextPath(): string {
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && next.startsWith("/seller/") && next !== "/seller/login" ? next : "/seller";
+}
+
 export default function SellerLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -29,7 +36,7 @@ export default function SellerLoginPage() {
         throw new Error("This account is not a seller account.");
       }
       sellerAuth.save(res);
-      router.replace("/seller");
+      router.replace(nextPath());
     } catch (err) {
       setError((err as Error).message || "Sign in failed. Please try again.");
       setLoading(false);

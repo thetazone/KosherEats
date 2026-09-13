@@ -1,9 +1,10 @@
 "use client";
 
+import { isCartLockedByPendingOrder } from "@/components/checkout/checkoutShared";
 import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { RestaurantCertChip } from "@/components/restaurant/RestaurantCertChip";
-import { cart as cartApi, orders as ordersApi, restaurants as restaurantsApi } from "@/lib/api";
+import { cart as cartApi, isUnauthorized, orders as ordersApi, restaurants as restaurantsApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import {
   CANCELLABLE_ORDER_STATUSES,
@@ -18,11 +19,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /** How often an open tab re-checks the kitchen while an order is still moving. */
 const ACTIVE_POLL_MS = 20_000;
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
 
 // Orders whose courier the user has already rated, persisted across sessions.
 // The backend 200s on re-rates (silently overwriting the earlier rating), so
@@ -227,6 +223,13 @@ export default function OrdersPage() {
 
   async function reorder(order: Order) {
     if (!token) return;
+    // A captured charge is still being recovered into an order: re-adding
+    // items now would make that recovery unconvergeable (see
+    // isCartLockedByPendingOrder). Send the user to the recovery banner.
+    if (isCartLockedByPendingOrder()) {
+      router.push("/cart");
+      return;
+    }
     setReorderingId(order.id);
     setActionError(null);
     try {

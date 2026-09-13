@@ -1,9 +1,11 @@
 "use client";
 
 import { OtpInput } from "@/components/auth/OtpInput";
+import { clearPendingOrder } from "@/components/checkout/checkoutShared";
 import { COUNTRIES } from "@/components/auth/VerificationGate";
 import { Header } from "@/components/layout/Header";
 import {
+  isUnauthorized,
   linkedProviders as linkedProvidersApi,
   notificationPreferences as notificationPreferencesApi,
   user as userApi,
@@ -38,11 +40,6 @@ const DELETE_CONFIRM_WORD = "DELETE";
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
-}
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
 }
 
 // Placeholder addresses the backend synthesizes for phone-first / Apple-relay
@@ -702,6 +699,10 @@ export default function AccountPage() {
     window.localStorage.removeItem("token");
     window.localStorage.removeItem("refresh_token");
     window.localStorage.removeItem("user");
+    // The PendingOrder snapshot survives sign-out — it guards a captured
+    // charge against a second payment on re-sign-in, and loadPendingOrder
+    // already scopes it per user (see Header.handleSignOut).
+    window.localStorage.removeItem("rated_order_ids");
     router.replace("/");
   }
 
@@ -716,6 +717,8 @@ export default function AccountPage() {
       window.localStorage.removeItem("token");
       window.localStorage.removeItem("refresh_token");
       window.localStorage.removeItem("user");
+      clearPendingOrder();
+      window.localStorage.removeItem("rated_order_ids");
       router.replace("/");
     } catch (err) {
       setDeleteError(errorMessage(err));
@@ -966,7 +969,7 @@ export default function AccountPage() {
                 <div>
                   <div className="font-bold">Payment methods</div>
                   <div className="text-sm text-dark-400">
-                    Save a card to check out faster
+                    Save a card for faster checkout in the app
                   </div>
                 </div>
               </div>

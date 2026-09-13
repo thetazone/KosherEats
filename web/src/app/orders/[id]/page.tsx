@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/Header";
 import { CourierRatingModal } from "@/components/orders/CourierRatingModal";
 import { OrderChat } from "@/components/orders/OrderChat";
 import { RestaurantCertChip } from "@/components/restaurant/RestaurantCertChip";
-import { orders as ordersApi } from "@/lib/api";
+import { isUnauthorized, orders as ordersApi } from "@/lib/api";
 import { formatUSD } from "@/lib/format";
 import {
   CANCELLABLE_ORDER_STATUSES,
@@ -37,11 +37,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_INTERVAL_MS = 15_000;
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });

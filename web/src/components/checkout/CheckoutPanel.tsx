@@ -10,7 +10,6 @@ import {
   clearPreselectedDeal,
   formatAddress,
   isDealError,
-  isUnauthorized,
   isVerificationRequired,
   loadPreselectedDeal,
   parseCents,
@@ -20,8 +19,10 @@ import {
   type PendingOrder,
 } from "@/components/checkout/checkoutShared";
 import {
+  ApiError,
   deals as dealsApi,
   deliveryQuote as deliveryQuoteApi,
+  isUnauthorized,
   payments as paymentsApi,
   user as userApi,
 } from "@/lib/api";
@@ -34,13 +35,21 @@ import { Loader2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-// The server's courier-unavailable copy tells the customer to choose pickup
+// POST /payments/intent answers 503 "delivery is temporarily unavailable —
+// please choose pickup" when no courier provider could quote
 // (backend/internal/handlers/payments.go). On delivery that toggle is right
-// there, but the raw string is opaque — reword it into an actionable message
-// rather than surfacing the server text verbatim.
+// there, but the raw string is opaque — reword it into an actionable message.
+// Keyed on status + endpoint + the "pickup" body so the auth middleware's
+// 503 "temporarily unavailable, please retry" (a DB blip) is NOT mapped onto
+// courier copy — that one is shown as-is.
 function describeCheckoutError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.toLowerCase().includes("temporarily unavailable")) {
+  if (
+    err instanceof ApiError &&
+    err.status === 503 &&
+    err.endpoint === "/payments/intent" &&
+    msg.toLowerCase().includes("pickup")
+  ) {
     return "We couldn't line up a courier for this delivery right now. Try pickup, or try again in a few minutes.";
   }
   return msg || "Failed to start checkout";
@@ -115,6 +124,12 @@ export interface CheckoutPanelProps {
   token: string;
   /** Non-empty cart (the page only mounts the panel when items exist). */
   cart: Cart;
+  /**
+   * Restaurant is currently closed (`is_open === false`). The backend does
+   * not reject these — the dispatcher auto-rejects + refunds after 10 min —
+   * so Place Order is disabled until the seller reopens.
+   */
+  closed?: boolean;
   /** Dead session detected mid-checkout — clear auth and route to /auth. */
   onUnauthorized: () => void;
   /**
@@ -124,7 +139,7 @@ export interface CheckoutPanelProps {
   onPaymentCaptured: (pending: PendingOrder) => void;
 }
 
-export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }: CheckoutPanelProps) {
+export function CheckoutPanel({ token, cart, closed = false, onUnauthorized, onPaymentCaptured }: CheckoutPanelProps) {
   const router = useRouter();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -348,6 +363,12 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     if (!token || cart.items.length === 0) return;
     if (checkoutOpen || needsVerification) return;
     if (fulfillment === "delivery" && addressesLoading) return;
+    // Bump the generation NOW, not when refreshIntent runs: a quote already
+    // in flight for the previous selection must land as stale, otherwise it
+    // would adopt its (old) breakdown and clear previewPending inside this
+    // debounce window — briefly enabling "Place Order" against a PI priced
+    // for the previous address/tip/deal.
+    intentGen.current++;
     setPreviewPending(true);
     const handle = setTimeout(() => {
       void refreshIntent();
@@ -521,6 +542,10 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
   function beginCheckout() {
     if (!token) return;
     setCheckoutError(null);
+    if (closed) {
+      setCheckoutError("This restaurant is currently closed. Please try again when it reopens.");
+      return;
+    }
     // The verification gate blocks intent creation itself (403), so this must
     // route BEFORE the intent guard — there is no intent to check yet.
     if (needsVerification) {
@@ -534,6 +559,18 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     }
     if (fulfillment === "delivery" && !quotedAddress) {
       setCheckoutError("Select a delivery address first.");
+      return;
+    }
+    // Belt-and-braces: the intent must have been priced against exactly the
+    // address/tip/deal the user is looking at. previewPending should already
+    // guarantee this, but a mismatch here means a stale PI slipped through —
+    // never open the payment sheet on it.
+    if (
+      (fulfillment === "delivery" && quotedAddress?.id !== selectedAddressId) ||
+      intent.tip !== tipCents ||
+      quotedDealId !== appliedDealId
+    ) {
+      setCheckoutError("Your total is still updating. Please try again.");
       return;
     }
     const problem = scheduleProblem();
@@ -556,7 +593,9 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
   // while the modal is open), but even if it were somehow missing, throwing
   // here would strand the charge with no snapshot — instead the snapshot is
   // saved with what we have and the page's retry loop + "don't pay again"
-  // banner own the convergence.
+  // banner own the convergence. The handoff itself (close modal +
+  // onPaymentCaptured) runs in a finally so even a storage failure on the
+  // save can't leave the user in front of a live Pay button.
   async function handlePaymentSucceeded(paymentIntentId: string) {
     const isPickup = fulfillment === "pickup";
     const addr = quotedAddress;
@@ -585,19 +624,27 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
       // the discount from this id and the totals must reconcile with the charge.
       ...(quotedDealId ? { applied_deal_id: quotedDealId } : {}),
     };
-    savePendingOrder(pending);
+    // Everything between here and the handoff is best-effort; whatever
+    // happens, the modal closes and the page takes over with the in-memory
+    // snapshot (finally). A throw here must never surface as a payment error
+    // with Pay re-enabled — the charge is already captured.
+    try {
+      // Internally guarded (storage may be unavailable); kept inside the try
+      // so the handoff is structurally unconditional.
+      savePendingOrder(pending);
 
-    // Parity with the mobile clients: POST /payments/confirm after the
-    // Payment Element succeeds. Server-side it is a documented no-op (the
-    // webhook is the real signal), so it must never block or fail the order.
-    void paymentsApi.confirm(token).catch(() => {});
-
-    // Close the Stripe modal; the charged intent is consumed — drop it so a
-    // later re-quote starts clean. The page unmounts this panel while it
-    // submits the persisted order.
-    setCheckoutOpen(false);
-    setIntent(null);
-    onPaymentCaptured(pending);
+      // Parity with the mobile clients: POST /payments/confirm after the
+      // Payment Element succeeds. Server-side it is a documented no-op (the
+      // webhook is the real signal), so it must never block or fail the order.
+      void paymentsApi.confirm(token).catch(() => {});
+    } finally {
+      // Close the Stripe modal; the charged intent is consumed — drop it so a
+      // later re-quote starts clean. The page unmounts this panel while it
+      // submits the persisted order.
+      setCheckoutOpen(false);
+      setIntent(null);
+      onPaymentCaptured(pending);
+    }
   }
 
   async function saveAddress(e: React.FormEvent) {
@@ -675,6 +722,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     : "";
 
   const canPlaceOrder =
+    !closed &&
     cart.items.length > 0 &&
     (fulfillment === "pickup" || !!selectedAddressId) &&
     // A scheduled order needs a chosen time that passed on-selection
@@ -683,6 +731,11 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
     (timing === "asap" || (!!scheduledAt && !scheduleError)) &&
     (needsVerification || (!!intent && !previewPending && !previewError));
 
+  // No customerSessionClientSecret here, so the Payment Element never offers
+  // the customer's saved cards — web checkout is always a fresh card entry.
+  // Wiring that up needs a backend POST /payments/customer-session (the
+  // ephemeral_key_secret the intent returns is a mobile CustomerSheet
+  // primitive Elements can't consume). Until then the modal footer says so.
   const stripeOptions = useMemo(
     () =>
       intent
@@ -1112,7 +1165,9 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
           disabled={!canPlaceOrder}
           className="btn-primary w-full text-center mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {needsVerification
+          {closed
+            ? "Restaurant closed"
+            : needsVerification
             ? "Verify to place order"
             : intent && !previewPending
               ? `Place Order · ${formatUSD(intent.total)}`
@@ -1210,15 +1265,26 @@ function CheckoutForm({
     setSubmitting(true);
     onBusyChange(true);
     setLocalError(null);
+
+    // Pre-capture failure: no money moved, so it is safe (and required) to
+    // show the error and hand the Pay button back.
+    function failBeforeCapture(msg: string) {
+      setLocalError(msg);
+      onError(msg);
+      setSubmitting(false);
+      onBusyChange(false);
+    }
+
+    // Phase 1 — confirm. Only confirmPayment itself lives inside this
+    // try/catch: anything thrown here happened BEFORE a charge was captured.
+    let paymentIntentId: string;
     try {
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         redirect: "if_required",
       });
       if (error) {
-        const msg = error.message ?? "Payment failed";
-        setLocalError(msg);
-        onError(msg);
+        failBeforeCapture(error.message ?? "Payment failed");
         return;
       }
       // 'succeeded' is the normal outcome, but 'processing' (async settlement
@@ -1230,19 +1296,29 @@ function CheckoutForm({
       // prevent. Anything else is a genuine failure.
       const capturedStatuses = ["succeeded", "processing", "requires_capture"];
       if (!paymentIntent || !capturedStatuses.includes(paymentIntent.status)) {
-        const msg = `Payment not completed (status: ${paymentIntent?.status ?? "unknown"})`;
-        setLocalError(msg);
-        onError(msg);
+        failBeforeCapture(
+          `Payment not completed (status: ${paymentIntent?.status ?? "unknown"})`
+        );
         return;
       }
-      await onSuccess(paymentIntent.id);
+      paymentIntentId = paymentIntent.id;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Payment failed";
-      setLocalError(msg);
-      onError(msg);
-    } finally {
-      setSubmitting(false);
-      onBusyChange(false);
+      failBeforeCapture(err instanceof Error ? err.message : "Payment failed");
+      return;
+    }
+
+    // Phase 2 — the charge is captured. From here on nothing may re-enable
+    // Pay or read as a payment failure: a second click would charge the
+    // customer again for an order that already has its money. The panel's
+    // handoff closes this modal and routes the page into its finalizing/
+    // recovery state in a finally, so a throw out of onSuccess has already
+    // been handled upstream — we only make sure it can't reach the error
+    // branch above. submitting/busy are deliberately left set; the modal
+    // unmounts this form and beginCheckout resets the busy flag.
+    try {
+      await onSuccess(paymentIntentId);
+    } catch {
+      // Handled by the panel's handoff (see handlePaymentSucceeded).
     }
   }
 
@@ -1264,6 +1340,10 @@ function CheckoutForm({
           {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
           {submitting ? "Processing…" : `Pay ${formatUSD(total)}`}
         </button>
+        <p className="text-xs text-dark-500 text-center mt-3">
+          Saved cards aren&apos;t offered on the web yet — enter your card above. Cards you
+          save are used in the KosherEats app.
+        </p>
       </div>
     </form>
   );

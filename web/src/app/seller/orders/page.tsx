@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Clock, Inbox, Loader2, Store } from "lucide-react";
 import { ORDER_STATUS_META } from "@/lib/orderStatus";
-import { formatCents, sellerApi } from "@/lib/sellerApi";
+import { formatCents, isUnauthorized, sellerApi } from "@/lib/sellerApi";
 import type { OrderStatus, SellerOrder } from "@/types/seller";
 
 const PAGE_SIZE = 50;
@@ -102,6 +102,9 @@ export default function SellerOrdersPage() {
 
   /** Guards against a slow earlier poll overwriting a newer one's results. */
   const requestSeq = useRef(0);
+  // Latched on a 401: sellerFetch has already cleared the session and started
+  // the redirect to sign-in, so further polls would only hammer the API.
+  const sessionDead = useRef(false);
   /** Current list for callbacks (poll sizing, load-more cursor) without
    *  making them re-create — the poll interval holds one stable `load`. */
   const ordersRef = useRef<SellerOrder[]>([]);
@@ -122,6 +125,7 @@ export default function SellerOrdersPage() {
   );
 
   const load = useCallback(async () => {
+    if (sessionDead.current) return;
     const seq = ++requestSeq.current;
     try {
       // Cover everything currently loaded (up to the backend cap) so status
@@ -157,6 +161,10 @@ export default function SellerOrdersPage() {
       setHasData(true);
       setError(null);
     } catch (err) {
+      if (isUnauthorized(err)) {
+        sessionDead.current = true;
+        return;
+      }
       if (seq !== requestSeq.current) return;
       setError((err as Error).message || "Failed to load orders");
     } finally {
@@ -170,14 +178,15 @@ export default function SellerOrdersPage() {
     load();
 
     let timer: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (timer === null) timer = setInterval(load, 15_000);
-    };
     const stop = () => {
       if (timer !== null) {
         clearInterval(timer);
         timer = null;
       }
+    };
+    const tick = () => (sessionDead.current ? stop() : load());
+    const start = () => {
+      if (timer === null && !sessionDead.current) timer = setInterval(tick, 15_000);
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -214,6 +223,7 @@ export default function SellerOrdersPage() {
       });
       setHasMore(page.length === PAGE_SIZE);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setLoadMoreError((err as Error).message || "Couldn't load more orders");
     } finally {
       setLoadingMore(false);

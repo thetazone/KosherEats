@@ -2,7 +2,7 @@
 
 import { formatAddress } from "@/components/checkout/checkoutShared";
 import { Header } from "@/components/layout/Header";
-import { user as userApi } from "@/lib/api";
+import { isUnauthorized, user as userApi } from "@/lib/api";
 import type { Address } from "@/types";
 import { ArrowLeft, Loader2, MapPin, Plus } from "lucide-react";
 import Link from "next/link";
@@ -38,11 +38,6 @@ const EMPTY_FORM: AddressForm = {
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Something went wrong. Please try again.";
-}
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
 }
 
 export default function AddressesPage() {

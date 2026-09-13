@@ -81,6 +81,12 @@ export function Header() {
       window.localStorage.removeItem("token");
       window.localStorage.removeItem("refresh_token");
       window.localStorage.removeItem("user");
+      // The PendingOrder snapshot deliberately survives sign-out: it is the
+      // only client-side record of a captured charge whose order is still
+      // unconfirmed, and clearing it would let the same user pay again on
+      // re-sign-in. It is user-scoped (loadPendingOrder drops another
+      // account's snapshot), so a shared device is already covered.
+      window.localStorage.removeItem("rated_order_ids");
     }
     setUser(null);
     setCartCount(0);

@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { PhotoUpload } from "@/components/seller/PhotoUpload";
 import { AddressGeocodeField } from "@/components/ui/AddressGeocodeField";
-import { centsToDollars, parseCents, sellerApi } from "@/lib/sellerApi";
+import { centsToDollars, isUnauthorized, parseCents, sellerApi } from "@/lib/sellerApi";
 import type {
   DeliveryMode,
   KosherCertification,
@@ -134,6 +134,7 @@ export default function SellerSettingsPage() {
       setRestaurant(r);
       populate(r);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setError((err as Error).message || "Failed to load settings");
     } finally {
       setLoading(false);
@@ -286,6 +287,7 @@ export default function SellerSettingsPage() {
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSaved(false), 3000);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setSaveError((err as Error).message || "Failed to save settings. Please try again.");
     } finally {
       setSaving(false);

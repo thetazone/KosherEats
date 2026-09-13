@@ -1,15 +1,10 @@
 "use client";
 
-import { restaurants as restaurantsApi } from "@/lib/api";
+import { isUnauthorized, restaurants as restaurantsApi } from "@/lib/api";
 import type { RestaurantRequestState } from "@/types";
 import { Heart } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-
-function isUnauthorized(err: unknown): boolean {
-  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
-  return msg.includes("401") || msg.includes("unauthorized") || msg.includes("invalid token");
-}
 
 // State + toggle logic for the "Request restaurant" heart on a preview
 // listing. Optimistic flip, reconciled with the server's response; reverted

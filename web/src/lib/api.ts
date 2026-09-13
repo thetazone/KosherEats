@@ -31,6 +31,39 @@ function getStored(key: string): string | null {
   return window.localStorage.getItem(key);
 }
 
+// Thrown by fetchAPI for every non-2xx response. Callers branch on `status`
+// (and `body` when the server attaches structured fields — e.g. the 403
+// verification gate's email_verified/phone_verified) instead of sniffing the
+// message: the auth middleware's 401 bodies ("token revoked", "missing
+// authorization header", "refresh token revoked", …) never contained "401"
+// or "unauthorized", so message-based checks silently missed real sign-outs.
+export class ApiError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+  readonly body: unknown;
+
+  constructor(status: number, endpoint: string, body: unknown) {
+    super(apiErrorMessage(status, body));
+    this.name = "ApiError";
+    this.status = status;
+    this.endpoint = endpoint;
+    this.body = body;
+  }
+}
+
+// The server's {"error": "..."} string when present, else a status fallback —
+// same message shape callers displayed before ApiError existed.
+function apiErrorMessage(status: number, body: unknown): string {
+  const error = (body as { error?: unknown } | null)?.error;
+  return typeof error === "string" && error ? error : `HTTP ${status}`;
+}
+
+// Session is gone (expired + refresh failed, revoked, missing) — route to
+// sign-in. Network failures and timeouts are plain Errors and never match.
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
 function clearAuthTokens() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_KEY);
@@ -38,10 +71,42 @@ function clearAuthTokens() {
   window.localStorage.removeItem(USER_KEY);
 }
 
+// Thrown by refreshAccessToken when POST /auth/refresh failed for a reason
+// that says nothing about the refresh token itself — the 15 s timeout, a
+// TypeError (radio waking up on mobile), or the backend's deliberate 503
+// "temporarily unavailable, please retry" from writeAuthLookupError on a DB
+// blip. Refresh tokens are stateless server-side (only token_epoch revokes
+// them), so the stored session is KEPT and this surfaces in place of the
+// original 401: isUnauthorized() is false, so pages render their retryable
+// error state instead of signing the user out. Shared with sellerApi.ts.
+export class RefreshTransientError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error && cause.message
+        ? cause.message
+        : "Couldn't reach the server — please try again"
+    );
+    this.name = "RefreshTransientError";
+    this.cause = cause;
+  }
+}
+
+// Only the backend's verdict on the token itself is terminal: 401 (invalid,
+// wrong type, or epoch-revoked) and 400 (malformed body). Everything else —
+// timeout, TypeError, 5xx — is a blip the token will survive.
+export function isTerminalRefreshError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.status === 400);
+}
+
 // Single in-flight refresh shared across concurrent 401s so a burst of
 // requests (e.g. mid-checkout) only triggers one /auth/refresh round-trip.
 let refreshInFlight: Promise<string | null> | null = null;
 
+// null = the session is dead (no refresh token, or the server rejected it) and
+// storage has been cleared. Throws RefreshTransientError when the outcome is
+// unknown so the caller retries later with the tokens still in place.
 async function runRefresh(): Promise<string | null> {
   const refreshToken = getStored(REFRESH_TOKEN_KEY);
   if (!refreshToken) return null;
@@ -58,11 +123,15 @@ async function runRefresh(): Promise<string | null> {
       }
     }
     return data?.token ?? null;
-  } catch {
-    // Refresh itself failed — drop the dead session so the next guarded
-    // read sees a logged-out state, and let the original 401 propagate.
-    clearAuthTokens();
-    return null;
+  } catch (err) {
+    if (isTerminalRefreshError(err)) {
+      // The server rejected the refresh token — drop the dead session so the
+      // next guarded read sees a logged-out state, and let the original 401
+      // propagate.
+      clearAuthTokens();
+      return null;
+    }
+    throw new RefreshTransientError(err);
   }
 }
 
@@ -70,7 +139,7 @@ async function runRefresh(): Promise<string | null> {
 // Exported for the checkout pending-order recovery path (checkoutShared.ts):
 // recovery MUST share THIS single-flight — a second, independent POST
 // /auth/refresh racing it would burn the rotated refresh token and kill the
-// session mid-recovery.
+// session mid-recovery. Rejects with RefreshTransientError (see above).
 export function refreshAccessToken(): Promise<string | null> {
   if (!refreshInFlight) {
     refreshInFlight = runRefresh().finally(() => {
@@ -78,6 +147,21 @@ export function refreshAccessToken(): Promise<string | null> {
     });
   }
   return refreshInFlight;
+}
+
+// Resolve the bearer lazily, per attempt. Pages capture `token` into React
+// state once on mount and never re-read storage, so after the 15-min access
+// token expires they'd keep sending the stale one forever: every call would
+// 401 → /auth/refresh → replay (3 round trips + a fresh JWT pair per request,
+// and enough refresh traffic from a few open tabs to trip authLimiter and log
+// the user out). runRefresh and the sign-in page both write TOKEN_KEY, so the
+// stored value is always at least as new as anything a caller holds — prefer
+// it whenever the caller asked for auth. Fall back to the caller's token only
+// if storage is empty (e.g. cleared by another tab) so behaviour there is
+// unchanged. Callers without a token stay anonymous.
+function currentBearer(token: string | undefined): string | undefined {
+  if (!token) return undefined;
+  return getStored(TOKEN_KEY) ?? token;
 }
 
 function buildHeaders(token: string | undefined, extra: HeadersInit | undefined): HeadersInit {
@@ -122,7 +206,7 @@ async function fetchAPI<T>(endpoint: string, options: FetchOptions = {}): Promis
 
   let res: Response;
   try {
-    res = await doFetch(token);
+    res = await doFetch(currentBearer(token));
   } catch (err) {
     // Bug B: one automatic retry with short backoff for idempotent GETs only.
     // Retry on a fresh-timeout abort AND on genuine transient network errors
@@ -135,14 +219,16 @@ async function fetchAPI<T>(endpoint: string, options: FetchOptions = {}): Promis
         err instanceof TypeError);
     if (retriable) {
       await new Promise((resolve) => setTimeout(resolve, 300));
-      res = await doFetch(token);
+      res = await doFetch(currentBearer(token));
     } else {
       throw err;
     }
   }
 
   // Bug A: silent 15-min access-token expiry. On a 401, try one refresh and
-  // replay the original request with the new access token.
+  // replay the original request with the new access token. A transient
+  // refresh failure rejects here with RefreshTransientError — deliberately
+  // NOT the original 401, which every page reads as "sign out".
   if (res.status === 401 && !isRefreshCall && getStored(REFRESH_TOKEN_KEY)) {
     const newToken = await refreshAccessToken();
     if (newToken) {
@@ -151,8 +237,8 @@ async function fetchAPI<T>(endpoint: string, options: FetchOptions = {}): Promis
   }
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const body: unknown = await res.json().catch(() => ({ error: "Request failed" }));
+    throw new ApiError(res.status, endpoint, body);
   }
 
   return res.json();
@@ -372,7 +458,10 @@ async function streamOrderLocation(
       signal,
     });
 
-  let res = await open(token);
+  // Same lazy bearer as fetchAPI: the page's `token` state goes stale after
+  // the access token expires, and every SSE reconnect would otherwise pay a
+  // 401 + refresh before it could open.
+  let res = await open(currentBearer(token) ?? token);
   if (res.status === 401 && getStored(REFRESH_TOKEN_KEY)) {
     const newToken = await refreshAccessToken();
     if (newToken) {

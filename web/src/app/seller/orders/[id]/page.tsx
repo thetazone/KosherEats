@@ -41,7 +41,7 @@ import {
   X,
 } from "lucide-react";
 import { ORDER_STATUS_META } from "@/lib/orderStatus";
-import { formatCents, sellerApi } from "@/lib/sellerApi";
+import { formatCents, isUnauthorized, sellerApi } from "@/lib/sellerApi";
 import type { OrderStatus, SellerCourierPublic, SellerOrder } from "@/types/seller";
 
 /** Matches pendingOrderTTL in backend/internal/scheduler/dispatcher.go —
@@ -155,6 +155,9 @@ export default function SellerOrderDetailPage() {
 
   /** Guards against a slow earlier fetch overwriting a newer one's result. */
   const requestSeq = useRef(0);
+  // Latched on a 401: sellerFetch has already cleared the session and started
+  // the redirect to sign-in, so further polls would only hammer the API.
+  const sessionDead = useRef(false);
   /** Mirror of `busy` for the poll timer, which holds one stable callback. */
   const busyRef = useRef<Busy>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -182,6 +185,7 @@ export default function SellerOrderDetailPage() {
       // Never let a background poll race an in-flight action — its snapshot
       // predates the optimistic update and would visually revert the status.
       if (opts.background && busyRef.current) return;
+      if (sessionDead.current) return;
       const seq = ++requestSeq.current;
       try {
         const fresh = await sellerApi.orders.get(id);
@@ -190,6 +194,10 @@ export default function SellerOrderDetailPage() {
         setOrder(fresh);
         setError(null);
       } catch (err) {
+        if (isUnauthorized(err)) {
+          sessionDead.current = true;
+          return;
+        }
         if (seq !== requestSeq.current) return;
         // A failed background poll keeps the last good order on screen.
         if (!opts.background) setError((err as Error).message || "Failed to load order");
@@ -206,14 +214,15 @@ export default function SellerOrderDetailPage() {
     load();
 
     let timer: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (timer === null) timer = setInterval(() => load({ background: true }), 15_000);
-    };
     const stop = () => {
       if (timer !== null) {
         clearInterval(timer);
         timer = null;
       }
+    };
+    const tick = () => (sessionDead.current ? stop() : load({ background: true }));
+    const start = () => {
+      if (timer === null && !sessionDead.current) timer = setInterval(tick, 15_000);
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -270,6 +279,7 @@ export default function SellerOrderDetailPage() {
       }
     } catch (err) {
       setOrder(snapshot);
+      if (isUnauthorized(err)) return;
       showToast((err as Error).message || "Couldn't update the order");
     } finally {
       setBusy(null);
@@ -287,6 +297,7 @@ export default function SellerOrderDetailPage() {
       setOrder(await sellerApi.orders.setDeliveryMode(order.id, mode));
     } catch (err) {
       setOrder(snapshot);
+      if (isUnauthorized(err)) return;
       showToast((err as Error).message || "Couldn't update the delivery choice");
     } finally {
       setBusy(null);
@@ -303,6 +314,7 @@ export default function SellerOrderDetailPage() {
       await load(); // pulls external_delivery_id / provider / tracking URL
       setConfirmingEscalate(false);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       showToast((err as Error).message || "Couldn't hand the order to Uber Direct");
     } finally {
       setBusy(null);

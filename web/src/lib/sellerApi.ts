@@ -6,6 +6,7 @@
 // ?restaurant_id= (multi-restaurant support — the backend validates ownership
 // and falls back to the seller's first restaurant when absent).
 
+import { ApiError, RefreshTransientError, isTerminalRefreshError } from "@/lib/api";
 import type {
   CreateDealRequest,
   CreateRestaurantRequest,
@@ -89,6 +90,10 @@ export const sellerAuth = {
 
 let refreshInFlight: Promise<string | null> | null = null;
 
+// null = the session is dead (no refresh token, or the server rejected it) and
+// storage has been cleared. Throws RefreshTransientError (lib/api.ts) on a
+// timeout / TypeError / 5xx — including the backend's deliberate 503 on a DB
+// blip — so the tokens stay put and the caller retries later.
 async function runRefresh(): Promise<string | null> {
   const refreshToken = sellerAuth.getRefreshToken();
   if (!refreshToken) return null;
@@ -100,7 +105,10 @@ async function runRefresh(): Promise<string | null> {
       body: JSON.stringify({ refresh_token: refreshToken }),
       signal: AbortSignal.timeout(15000),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const body: unknown = await res.json().catch(() => ({ error: "Request failed" }));
+      throw new ApiError(res.status, "/auth/refresh", body);
+    }
     const data = (await res.json()) as { token?: string; refresh_token?: string };
     if (typeof window !== "undefined" && data?.token) {
       localStorage.setItem(TOKEN_KEY, data.token);
@@ -109,11 +117,15 @@ async function runRefresh(): Promise<string | null> {
       }
     }
     return data?.token ?? null;
-  } catch {
-    // Refresh itself failed — drop the dead session so the layout guard sees
-    // a logged-out state on the next check, and let the original 401 surface.
-    sellerAuth.clear();
-    return null;
+  } catch (err) {
+    if (isTerminalRefreshError(err)) {
+      // The server rejected the refresh token — drop the dead session so the
+      // layout guard sees a logged-out state on the next check, and let the
+      // original 401 surface.
+      sellerAuth.clear();
+      return null;
+    }
+    throw new RefreshTransientError(err);
   }
 }
 
@@ -124,6 +136,35 @@ function refreshAccessToken(): Promise<string | null> {
     });
   }
   return refreshInFlight;
+}
+
+// ── Dead-session routing ─────────────────────────────────────
+
+let unauthorizedHandler: (() => void) | null = null;
+
+/**
+ * SellerLayout registers a router-aware redirect here (so the seller lands
+ * back on the page they were on after signing in). Called from sellerFetch
+ * on a final 401, after storage has been cleared. Returns an unregister
+ * function for the layout's effect cleanup.
+ */
+export function registerUnauthorizedHandler(cb: () => void): () => void {
+  unauthorizedHandler = cb;
+  return () => {
+    if (unauthorizedHandler === cb) unauthorizedHandler = null;
+  };
+}
+
+// Concurrent 401s (the dashboard fires three requests at once) each land
+// here; clearing twice and replacing to the same URL twice are both no-ops.
+function handleDeadSession() {
+  if (typeof window === "undefined") return;
+  sellerAuth.clear();
+  if (unauthorizedHandler) {
+    unauthorizedHandler();
+  } else {
+    window.location.assign("/seller/login");
+  }
 }
 
 // ── Core fetch wrapper ───────────────────────────────────────
@@ -196,7 +237,9 @@ async function sellerFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
   // Silent access-token expiry: on a 401, try one refresh and replay the
   // original request with the new access token. /auth/* is exempt — a 401
   // there means bad credentials (or a bad refresh token), not an expired
-  // session, so replaying would just repeat the failure.
+  // session, so replaying would just repeat the failure. A transient refresh
+  // failure rejects here with RefreshTransientError — deliberately NOT the
+  // original 401, which the layout guard reads as "sign out".
   const isAuthCall = endpoint.startsWith("/auth/");
   if (res.status === 401 && !isAuthCall && sellerAuth.getRefreshToken()) {
     const newToken = await refreshAccessToken();
@@ -206,12 +249,26 @@ async function sellerFetch<T>(path: string, init: RequestInit = {}): Promise<T> 
   }
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const body: unknown = await res.json().catch(() => ({ error: "Request failed" }));
+    // A 401 that survived the refresh attempt is a dead session (refresh
+    // token expired / revoked by a token_epoch bump). Drop it and route to
+    // sign-in here, once, so no page has to remember to. /auth/* stays out:
+    // a 401 there is a wrong password, not an expired session.
+    if (res.status === 401 && !isAuthCall) handleDeadSession();
+    throw new ApiError(res.status, endpoint, body);
   }
 
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+// Seller session is gone (expired + refresh failed, revoked, missing).
+// sellerFetch has already cleared storage and kicked off the redirect to
+// seller sign-in, so callers should return quietly (no error UI, no toast,
+// stop polling). Twin of lib/api.ts isUnauthorized; both wrappers throw the
+// same ApiError so callers branch on status, never the message text.
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
 }
 
 // ── Endpoint groups ──────────────────────────────────────────

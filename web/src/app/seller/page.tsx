@@ -22,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { ActiveOrderCard, type OrderQuickAction } from "@/components/seller/ActiveOrderCard";
-import { formatCents, sellerApi } from "@/lib/sellerApi";
+import { formatCents, isUnauthorized, sellerApi } from "@/lib/sellerApi";
 import type {
   DashboardStats,
   OrderStatus,
@@ -75,8 +75,12 @@ export default function SellerDashboardPage() {
 
   // Guards against a slow earlier poll overwriting a newer one's results.
   const requestSeq = useRef(0);
+  // Latched on a 401: sellerFetch has already cleared the session and started
+  // the redirect to sign-in, so further polls would only hammer the API.
+  const sessionDead = useRef(false);
 
   const load = useCallback(async () => {
+    if (sessionDead.current) return;
     const seq = ++requestSeq.current;
     try {
       const [rest, statsRes, orderList] = await Promise.all([
@@ -91,6 +95,10 @@ export default function SellerDashboardPage() {
       setHasData(true);
       setError(null);
     } catch (err) {
+      if (isUnauthorized(err)) {
+        sessionDead.current = true;
+        return;
+      }
       if (seq !== requestSeq.current) return;
       setError((err as Error).message || "Failed to load dashboard");
     } finally {
@@ -104,14 +112,15 @@ export default function SellerDashboardPage() {
     load();
 
     let timer: ReturnType<typeof setInterval> | null = null;
-    const start = () => {
-      if (timer === null) timer = setInterval(load, 15_000);
-    };
     const stop = () => {
       if (timer !== null) {
         clearInterval(timer);
         timer = null;
       }
+    };
+    const tick = () => (sessionDead.current ? stop() : load());
+    const start = () => {
+      if (timer === null && !sessionDead.current) timer = setInterval(tick, 15_000);
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -134,28 +143,38 @@ export default function SellerDashboardPage() {
 
   async function toggleOpen() {
     if (!restaurant || toggling) return;
+    // Invalidate any in-flight poll so its stale `rest` can't snap the
+    // toggle back after this mutation resolves.
+    requestSeq.current++;
     setToggling(true);
     setActionError(null);
     try {
       // ToggleRestaurantStatus returns the fresh restaurant record.
       setRestaurant(await sellerApi.restaurants.setOpen(!restaurant.is_open));
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't update restaurant status");
     } finally {
       setToggling(false);
+      void load();
     }
   }
 
   async function setDeliveryMode(mode: "external" | "restaurant") {
     if (!restaurant || savingMode || restaurant.delivery_mode === mode) return;
+    // Invalidate any in-flight poll so its stale `rest` can't snap the
+    // selector back after this mutation resolves.
+    requestSeq.current++;
     setSavingMode(true);
     setActionError(null);
     try {
       setRestaurant(await sellerApi.restaurants.update({ delivery_mode: mode }));
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't update delivery method");
     } finally {
       setSavingMode(false);
+      void load();
     }
   }
 
@@ -173,6 +192,7 @@ export default function SellerDashboardPage() {
       }
       void load();
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't update the order");
     } finally {
       setActingOrderId(null);

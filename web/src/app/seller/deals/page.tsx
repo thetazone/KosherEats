@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { BadgePercent, ImageIcon, Loader2, Plus, Store, X } from "lucide-react";
 import { PhotoUpload } from "@/components/seller/PhotoUpload";
-import { formatCents, parseCents, sellerApi } from "@/lib/sellerApi";
+import { formatCents, isUnauthorized, parseCents, sellerApi } from "@/lib/sellerApi";
 import type { CreateDealRequest, DiscountType, SellerDeal, SellerMenuItem } from "@/types/seller";
 
 // ── Display helpers ──────────────────────────────────────────
@@ -84,6 +84,7 @@ export default function SellerDealsPage() {
     try {
       setDeals(await sellerApi.deals.list());
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setError((err as Error).message || "Failed to load deals");
     } finally {
       setLoading(false);
@@ -110,6 +111,7 @@ export default function SellerDealsPage() {
       setDeals((prev) => prev.map((d) => (d.id === id ? { ...d, is_active: false } : d)));
       setDeactivateTarget(null);
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setActionError((err as Error).message || "Couldn't deactivate the deal");
       setDeactivateTarget(null);
     } finally {
@@ -427,6 +429,7 @@ function CreateDealModal({
     try {
       onCreated(await sellerApi.deals.create(result.body));
     } catch (err) {
+      if (isUnauthorized(err)) return;
       setFormError((err as Error).message || "Failed to create the deal. Please try again.");
       setSubmitting(false);
     }

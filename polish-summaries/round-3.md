@@ -1,29 +1,20 @@
 # KosherEats Polish — Round 3
-**Max severity found:** 7
+**Max severity found:** 8
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[7/10] [ke_bugs_backend] Payout retry schedule outruns Stripe's 24h idempotency window, double-paying couriers** — FIXED
-  In backend/internal/scheduler/dispatcher.go, payoutBackoffSecs (line 1584) returns 5m/15m/1h/6h/24h and maxPayoutAttempts is 6 (line 128), so a failin
-  > Fixed. Both halves of the hazard are closed, in `backend/` only.
+- **[8/10] [web] Stuck pending_order permanently locks checkout on the browser (and leaks across users)** — FIXED
+  The PendingOrder recovery loop has no terminal failure path. `submitPendingOrder` only clears `pending_order` on 200/409/deal-refund; every other erro
+  > Typecheck and lint pass (`tsc` exit 0, `eslint` exit 0). The diff stat includes pre-existing uncommitted work on this br
 
-**`backend/internal/payments/stripe.go`**
-- Added `Ide
+- **[6/10] [web] Post-capture exception is reported as "Payment failed" with Pay re-enabled → double-charge path** — FIXED
+  In `CheckoutForm.handleSubmit` (`CheckoutPanel.tsx:1252-1256`) `await onSuccess(paymentIntent.id)` sits inside the same try/catch as `stripe.confirmPa
+  > Done. `tsc --noEmit` and `eslint` both pass on the two changed files (no test files cover this module).
 
-- **[7/10] [ke_bugs_backend] Password reset does not invalidate existing sessions; refresh tokens are self-renewing and unrevocable** — FIXED
-  There is no session store, token epoch, jti, or denylist anywhere in the backend (grep for token_version|revoked|jti|sessions across internal/ returns
-  > Fixed. All changes are under `backend/`.
+## What changed
 
-## What was wrong
-
-`ResetPassword` rewrote `password_hash` and nothing else. R
-
-- **[5/10] [ke_bugs_backend] Deleting a courier account cascade-deletes their outstanding payout queue rows** — FIXED
-  backend/internal/database/migrations/009_courier_payout_queue.sql:23 declares courier_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, and no 
-  > Fixed. The cascade is gone and the financial record now outlives the courier's user row.
-
-## Changes
-
-**`backend/interna
+- **[5/10] [web] Closed restaurants are fully orderable on web — charge, then auto-reject/refund 10 min later** — FIXED
+  `restaurant/[id]/page.tsx` never reads `restaurant.is_open` (the only "Closed" treatment is the browse card in `RestaurantCard.tsx:63`), and neither `
+  > Done. `tsc --noEmit` and `eslint` are both clean on all three files. (Note: the diff on these files also includes pre-ex
