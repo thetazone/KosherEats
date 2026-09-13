@@ -140,6 +140,9 @@ export function ModifierGroupsEditor({
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold truncate">{group.name}</span>
                     {group.is_required && (
+                      // TODO(rubric): 11px is off Tailwind's type scale
+                      // (text-xs is 12px). Left as-is by the M2 sweep —
+                      // snapping it is a design call.
                       <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-brand-500/15 text-brand-400">
                         Required
                       </span>

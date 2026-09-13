@@ -412,6 +412,10 @@ function PhoneChangeFlow({
           <p className="text-sm text-dark-400">
             Enter the code we sent to <span className="text-white">{sentDisplay}</span>.
           </p>
+          {/* TODO(rubric): tracking-[0.5em] is off Tailwind's letter-spacing
+              scale (widest is 0.1em). It is deliberate OTP digit spacing, so
+              the M2 sweep left it; adding a scale key is a design call.
+              VerificationGate.tsx has the identical field — both move together. */}
           <input
             type="text"
             inputMode="numeric"

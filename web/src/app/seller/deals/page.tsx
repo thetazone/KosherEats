@@ -252,6 +252,8 @@ function DealCard({ deal, onDeactivate }: { deal: SellerDeal; onDeactivate: () =
       <div className={`flex-1 min-w-0 ${dimmed ? "opacity-50" : ""}`}>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold truncate">{deal.title}</span>
+          {/* TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
+              Not rounded by the M2 sweep — snapping it is a design call. */}
           <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${badge.className}`}>
             {badge.label}
           </span>

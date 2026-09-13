@@ -247,6 +247,8 @@ export function OrderChat({
                   >
                     {decodeEntities(m.text)}
                   </div>
+                  {/* TODO(rubric): 11px is off Tailwind's type scale (text-xs
+                      is 12px). Left as-is by the M2 sweep — a design call. */}
                   <p className="text-[11px] text-dark-500 mt-0.5">{formatTime(m.created_at)}</p>
                 </div>
               </div>

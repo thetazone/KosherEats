@@ -1010,6 +1010,9 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                   >
                     <span className="block">{p.label}</span>
                     {presetCents !== null && (
+                      // TODO(rubric): 10px is off Tailwind's type scale
+                      // (text-xs is 12px). Left as-is by the M2 sweep —
+                      // snapping it is a design call.
                       <span className={`block text-[10px] font-normal ${selected ? "text-white/80" : "text-dark-500"}`}>
                         {formatUSD(presetCents)}
                       </span>

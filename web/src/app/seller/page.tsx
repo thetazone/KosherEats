@@ -490,6 +490,8 @@ function DeliveryModeTile({
         {pill("Self-delivery", "restaurant")}
       </div>
       {mode === "platform" && (
+        // TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
+        // Left as-is by the M2 sweep — snapping it is a design call.
         <p className="text-[11px] text-dark-500 mt-2">
           Currently: KosherEats couriers — pick a method above to change.
         </p>

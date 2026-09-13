@@ -78,6 +78,8 @@ function KashrusChip({
       <Icon className={`w-5 h-5 flex-shrink-0 ${iconColor}`} aria-hidden="true" />
       <div>
         <p className="text-sm font-bold leading-tight">{title}</p>
+        {/* TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
+            Not rounded by the M2 sweep — snapping it is a design call. */}
         <p className="text-[11px] text-dark-400 leading-tight">{subtitle}</p>
       </div>
     </div>
@@ -851,6 +853,8 @@ function RestaurantPageInner() {
               <span className="font-semibold">Go to Checkout</span>
               {/* Subtotal only — delivery/fees/tax are quoted at checkout. */}
               <span className="text-right leading-tight">
+                {/* TODO(rubric): 10px is off Tailwind's type scale (text-xs is
+                    12px). Left as-is by the M2 sweep — a design call. */}
                 <span className="block text-[10px] font-medium opacity-80">
                   Subtotal
                 </span>

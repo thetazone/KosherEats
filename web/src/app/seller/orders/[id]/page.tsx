@@ -820,6 +820,8 @@ function RoutingCard({
         {pill("Self-delivery", "restaurant")}
       </div>
       {mode === "platform" && (
+        // TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
+        // Left as-is by the M2 sweep — snapping it is a design call.
         <p className="text-[11px] text-dark-500 mt-2">
           Currently: KosherEats couriers — pick a method above to change.
         </p>
@@ -866,6 +868,8 @@ function RoutingCard({
                 <Truck className="w-4 h-4" aria-hidden="true" />
                 Hand off to Uber Direct
               </button>
+              {/* TODO(rubric): 11px is off Tailwind's type scale (text-xs is
+                  12px). Left as-is by the M2 sweep — a design call. */}
               <p className="text-[11px] text-dark-500 mt-2">
                 No driver available? Dispatch an Uber Direct courier for this order.
               </p>
@@ -956,6 +960,8 @@ function PartnerCard({ order }: { order: SellerOrder }) {
         </a>
       )}
       {order.external_delivery_id && (
+        // TODO(rubric): 11px is off Tailwind's type scale (text-xs is 12px).
+        // Left as-is by the M2 sweep — snapping it is a design call.
         <p className="text-[11px] text-dark-500 mt-2.5 break-all">
           Delivery ID: {order.external_delivery_id}
         </p>

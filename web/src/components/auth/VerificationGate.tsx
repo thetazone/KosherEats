@@ -432,6 +432,10 @@ export function VerificationGate({
             {/* Single free-length field (not the 6-box OtpInput): the SMS code
                 length is configured in Twilio Verify server-side and must not
                 be hard-coded here. */}
+            {/* TODO(rubric): tracking-[0.5em] is off Tailwind's letter-spacing
+                scale (widest is 0.1em). Deliberate OTP digit spacing, left by
+                the M2 sweep; account/page.tsx has the identical field and both
+                move together. */}
             <input
               id="verify-phone-code"
               type="text"

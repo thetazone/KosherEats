@@ -372,6 +372,8 @@ function OrderRow({ order, isNew }: { order: SellerOrder; isNew: boolean }) {
         <div className="flex items-center gap-2">
           <span className="font-semibold">Order #{order.id.slice(0, 8)}</span>
           {isNew && (
+            // TODO(rubric): 10px is off Tailwind's type scale (text-xs is
+            // 12px). Left as-is by the M2 sweep — snapping it is a design call.
             <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide bg-warning-500/15 text-warning-300 px-1.5 py-0.5 rounded-md">
               New
             </span>

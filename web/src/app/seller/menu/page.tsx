@@ -467,6 +467,9 @@ function MenuItemRow({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold truncate">{item.name}</span>
           {badge && (
+            // TODO(rubric): 11px is off Tailwind's type scale (text-xs is
+            // 12px); the "Paused" pill just below uses the same size. Both
+            // were left alone by the M2 sweep — snapping them is a design call.
             <span
               className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${badge.className}`}
             >
