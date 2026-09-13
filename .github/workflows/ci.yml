@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [consumer, seller]
+        app: [consumer, seller, courier]
     defaults:
       run:
         working-directory: android/${{ matrix.app }}
@@ -183,6 +183,9 @@ jobs:
           - app: seller
             project: ios/seller/KosherEatsSeller.xcodeproj
             scheme: KosherEatsSeller
+          - app: courier
+            project: ios/courier/KosherEatsCourier.xcodeproj
+            scheme: KosherEatsCourier
     steps:
       - uses: actions/checkout@v4
 
