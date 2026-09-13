@@ -260,7 +260,7 @@ export function MenuItemModal({
                         aria-checked={isSelected}
                         onClick={() => toggleModifier(group, mod)}
                         disabled={!mod.is_available}
-                        className="w-full flex items-center gap-3 px-4 py-3 min-h-[44px] text-left hover:bg-dark-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 min-h-11 text-left hover:bg-dark-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
                       >
                         {singleSelect ? (
                           <span

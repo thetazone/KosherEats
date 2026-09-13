@@ -218,7 +218,7 @@ export function KosherFilterPanel({
       <button
         onClick={toggleOpen}
         aria-expanded={open}
-        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] rounded-full text-sm font-medium transition-colors border ${
+        className={`flex items-center gap-2 px-4 py-2 min-h-11 rounded-full text-sm font-medium transition-colors border ${
           appliedCount > 0
             ? "bg-brand-500/20 text-brand-400 border-brand-500"
             : "bg-dark-800 text-dark-300 border-dark-700 hover:bg-dark-700"
@@ -274,7 +274,7 @@ export function KosherFilterPanel({
                       onClick={() => toggleCertification(cert)}
                       aria-pressed={selected}
                       aria-label={`${cert} certification`}
-                      className={`flex items-center gap-2 px-3 py-3 min-h-[44px] rounded-xl text-sm font-semibold border-2 transition-colors ${
+                      className={`flex items-center gap-2 px-3 py-3 min-h-11 rounded-xl text-sm font-semibold border-2 transition-colors ${
                         selected
                           ? "bg-dark-800 border-brand-500 text-white"
                           : "bg-dark-800 border-transparent text-dark-300 hover:bg-dark-700"
@@ -360,7 +360,7 @@ export function KosherFilterPanel({
               {isKosherFilterActive(draft) && (
                 <button
                   onClick={clear}
-                  className="btn-secondary flex items-center gap-1.5 text-sm py-3 min-h-[44px]"
+                  className="btn-secondary flex items-center gap-1.5 text-sm py-3 min-h-11"
                 >
                   <X className="w-4 h-4" aria-hidden="true" />
                   Clear

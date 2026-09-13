@@ -112,7 +112,7 @@ export function Header() {
               ? `Delivery address: ${defaultAddressLabel}. Manage saved addresses`
               : "Enter delivery address"
           }
-          className="hidden md:flex items-center gap-2 bg-dark-800 rounded-full px-4 py-2 text-sm hover:bg-dark-700 transition-colors max-w-[16rem]"
+          className="hidden md:flex items-center gap-2 bg-dark-800 rounded-full px-4 py-2 text-sm hover:bg-dark-700 transition-colors max-w-64"
         >
           <MapPin className="w-4 h-4 shrink-0 text-brand-500" aria-hidden="true" />
           <span

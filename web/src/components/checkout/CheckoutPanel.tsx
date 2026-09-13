@@ -717,7 +717,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
             type="button"
             onClick={() => setFulfillment("delivery")}
             aria-pressed={isDelivery}
-            className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
               isDelivery ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
             }`}
           >
@@ -727,7 +727,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
             type="button"
             onClick={() => setFulfillment("pickup")}
             aria-pressed={!isDelivery}
-            className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
+            className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
               !isDelivery ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
             }`}
           >
@@ -861,7 +861,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
               <button
                 type="button"
                 onClick={() => setShowAddressForm(true)}
-                className="mt-1 inline-flex items-center min-h-[44px] text-sm text-brand-400 underline"
+                className="mt-1 inline-flex items-center min-h-11 text-sm text-brand-400 underline"
               >
                 + Add delivery address
               </button>
@@ -887,7 +887,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 setScheduleError(null);
               }}
               aria-pressed={timing === "asap"}
-              className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
+              className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
                 timing === "asap" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
               }`}
             >
@@ -902,7 +902,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                 setScheduleError(scheduledAt ? scheduleProblemFor(scheduledAt) : null);
               }}
               aria-pressed={timing === "scheduled"}
-              className={`flex-1 rounded-lg py-2 min-h-[44px] text-sm font-semibold transition-colors ${
+              className={`flex-1 rounded-lg py-2 min-h-11 text-sm font-semibold transition-colors ${
                 timing === "scheduled" ? "bg-brand-500 text-white" : "text-dark-300 hover:text-white"
               }`}
             >
@@ -971,7 +971,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                       onClick={() => selectDeal(applied ? null : d.id)}
                       disabled={blocked}
                       aria-pressed={applied}
-                      className={`shrink-0 rounded-lg px-3 py-1.5 min-h-[44px] text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`shrink-0 rounded-lg px-3 py-1.5 min-h-11 text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                         applied
                           ? "bg-dark-700 text-dark-200 hover:bg-dark-600"
                           : "bg-brand-500 text-white hover:bg-brand-600"
@@ -1002,7 +1002,7 @@ export function CheckoutPanel({ token, cart, onUnauthorized, onPaymentCaptured }
                     type="button"
                     onClick={() => selectTip(p.key)}
                     aria-pressed={selected}
-                    className={`rounded-lg py-1.5 px-0.5 min-h-[44px] text-xs font-semibold transition-colors ${
+                    className={`rounded-lg py-1.5 px-0.5 min-h-11 text-xs font-semibold transition-colors ${
                       selected
                         ? "bg-brand-500 text-white"
                         : "bg-dark-800 text-dark-300 hover:bg-dark-700"

@@ -159,7 +159,7 @@ export function AddressGeocodeField({
         type="button"
         onClick={() => void lookup()}
         disabled={lookingUp || !query.trim()}
-        className="btn-secondary w-full text-sm py-2 min-h-[44px] inline-flex items-center justify-center gap-2"
+        className="btn-secondary w-full text-sm py-2 min-h-11 inline-flex items-center justify-center gap-2"
       >
         {lookingUp && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
         {lookingUp ? "Looking up…" : buttonLabel}
@@ -185,7 +185,7 @@ export function AddressGeocodeField({
           type="button"
           onClick={() => setManualOpen((o) => !o)}
           aria-expanded={manualOpen}
-          className="inline-flex items-center gap-1 min-h-[44px] text-sm text-dark-400 hover:text-white transition-colors"
+          className="inline-flex items-center gap-1 min-h-11 text-sm text-dark-400 hover:text-white transition-colors"
         >
           <ChevronDown
             className={`w-4 h-4 transition-transform ${manualOpen ? "rotate-180" : ""}`}
