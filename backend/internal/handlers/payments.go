@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/models"
@@ -62,6 +64,26 @@ type CreatePaymentIntentRequest struct {
 	// before computing tax and the Stripe charge total. CreateOrder must
 	// receive the same id so the recorded total matches the charge.
 	AppliedDealID string `json:"applied_deal_id,omitempty"`
+	// ScheduledFor mirrors CreateOrderRequest.ScheduledFor. It exists here for
+	// ONE gate: a restaurant that is currently closed still takes an order
+	// scheduled for a later window (that is what scheduling is for), so the
+	// closed-restaurant refusal below is skipped when this is far enough out to
+	// land as a 'scheduled' order — the same threshold CreateOrder uses. It has
+	// no effect on the charged amount.
+	ScheduledFor *time.Time `json:"scheduled_for,omitempty"`
+}
+
+// scheduledOrderLeadTime is how far out a requested delivery time must be for
+// the order to start in 'scheduled' status rather than 'pending' — the single
+// threshold both CreatePaymentIntent's closed-restaurant gate and CreateOrder's
+// initial-status choice key on, so the two can't disagree about which orders
+// are "scheduled".
+const scheduledOrderLeadTime = 30 * time.Minute
+
+// isScheduledOrder reports whether a requested time makes an order a
+// scheduled one (nil = ASAP).
+func isScheduledOrder(scheduledFor *time.Time) bool {
+	return scheduledFor != nil && scheduledFor.After(time.Now().Add(scheduledOrderLeadTime))
 }
 
 func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +152,49 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	}
 	if subtotal == 0 {
 		writeError(w, http.StatusBadRequest, "cart is empty")
+		return
+	}
+
+	// Two seller-controlled gates that have to run BEFORE the charge, because
+	// nothing after it can enforce them without creating charged-but-no-order:
+	//
+	//   is_open: the dashboard's "closed" toggle exists so a seller stops
+	//     receiving orders, but restaurantOrderable deliberately does not read
+	//     it (a closed restaurant is still listed), and neither CreateOrder nor
+	//     any client build checks it at pay time — the mobile apps only gray
+	//     the storefront, and a cart built while open pays fine after the
+	//     seller closes. The order then sits 'pending' in front of a seller who
+	//     has gone home until the stale-rejection sweep auto-rejects + refunds
+	//     it ten minutes later: a real charge, a "we rejected your order" push,
+	//     and a refund the customer's bank shows days later. A scheduled order
+	//     is exempt — being closed NOW is exactly the case scheduling serves.
+	//
+	//   min_order: the restaurant's "Minimum order ($)" is rendered to every
+	//     consumer ("Min. order: $15") and was enforced nowhere, so a seller's
+	//     floor was decorative: a $4 order at a $15-minimum restaurant charged,
+	//     dispatched a paid courier and reached the kitchen. Judged on the
+	//     pre-discount item subtotal, like the deal minimum.
+	var restOpen bool
+	var restMinOrder int
+	var restName string
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT is_open, min_order, name FROM restaurants WHERE id = $1`, cartRestID,
+	).Scan(&restOpen, &restMinOrder, &restName); err != nil {
+		// Fail closed: skipping these on a read error reopens the exact
+		// charge-then-auto-reject path they exist to prevent.
+		writeError(w, http.StatusInternalServerError, "failed to verify restaurant")
+		return
+	}
+	if !restOpen && !isScheduledOrder(req.ScheduledFor) {
+		writeError(w, http.StatusConflict,
+			restName+" is currently closed and not accepting orders right now")
+		return
+	}
+	if subtotal < restMinOrder {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("%s has a minimum order of $%d.%02d — add $%d.%02d more to check out",
+				restName, restMinOrder/100, restMinOrder%100,
+				(restMinOrder-subtotal)/100, (restMinOrder-subtotal)%100))
 		return
 	}
 
@@ -271,7 +336,10 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	// cartRestID, not a client-supplied id: the whole bundle was priced against
 	// the cart's restaurant, and CreateOrder re-derives the same value from the
 	// cart, so stamping it binds the pickup end of the quoted route.
-	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp, cartRestID)
+	// The deal discount + id ride along too: the total below already has the
+	// discount baked in, and CreateOrder must record THAT price rather than
+	// re-judge the deal after the card is charged (see payments.discountMetaKey).
+	bundle, err := h.stripe.CreatePaymentSheet(r.Context(), h.db.Pool, total, deliveryFee, user["user_id"], email, firstName+" "+lastName, fulfillmentType, deliveryAddrToStamp, cartRestID, discount, req.AppliedDealID)
 	if err != nil {
 		// Surface the real Stripe error to the logs so future "failed to
 		// create payment" reports take seconds, not an hour, to diagnose.

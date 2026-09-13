@@ -120,7 +120,7 @@ func TestIntegration_PickupPushOnlyFiresWhenThePickupLands(t *testing.T) {
 		},
 		{
 			name:          "doordash pickup on its own order notifies once",
-			orderProvider: "doordash_drive", orderDelivery: "d-dd-1", orderStatus: "ready",
+			orderProvider: "doordash_drive", orderDelivery: ownOrderID, orderStatus: "ready",
 			post: func(t *testing.T, h *Handler, o webhookOrder) int {
 				return postDoorDashWebhook(t, h, `{"event_name":"DASHER_PICKED_UP","external_delivery_id":"`+o.id+`"}`).Code
 			},
@@ -293,7 +293,7 @@ func TestIntegration_CourierAssignedPushIsProviderScoped(t *testing.T) {
 			}, 0,
 		},
 		{
-			"doordash dasher-confirmed on its own order", "doordash_drive", "d-dd-1",
+			"doordash dasher-confirmed on its own order", "doordash_drive", ownOrderID,
 			func(t *testing.T, h *Handler, o webhookOrder) int {
 				return postDoorDashWebhook(t, h, `{"event_name":"DASHER_CONFIRMED","external_delivery_id":"`+o.id+`"}`).Code
 			}, 1,

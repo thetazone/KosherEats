@@ -14,6 +14,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -150,6 +151,52 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 		return nil, fmt.Errorf("doordash create: %w", err)
 	}
 
+	var d Delivery
+	if err := json.Unmarshal(data, &d); err != nil {
+		return nil, fmt.Errorf("doordash delivery parse: %w", err)
+	}
+	return &d, nil
+}
+
+// IsDuplicateDeliveryID reports whether a CreateDelivery error is DoorDash's
+// 409 for an external_delivery_id that already names a delivery. DoorDash
+// answers the same way whether that delivery was created by a request whose
+// response we lost or by a persist that never landed, so the caller's next
+// move is GetDelivery, never a fresh create.
+func IsDuplicateDeliveryID(err error) bool {
+	var ae *APIError
+	return errors.As(err, &ae) && ae.StatusCode == http.StatusConflict
+}
+
+// IsCancelled reports whether a delivery's delivery_status is one of the
+// terminal cancel states, i.e. no Dasher will ever move this delivery.
+func (d *Delivery) IsCancelled() bool {
+	switch strings.ToLower(strings.TrimSpace(d.DeliveryStatus)) {
+	case "cancelled", "canceled":
+		return true
+	}
+	return false
+}
+
+// GetDelivery fetches the delivery filed under externalID. Dispatch calls it
+// after a 409 duplicate_delivery_id on create: the id already names a
+// delivery — one whose create response was lost, or that a failed persist
+// never recorded — and the only way to reconcile it is to read it back and
+// adopt it. The stub has no server-side state to read, and its create never
+// 409s, so it just reports the id as unknown.
+func (c *Client) GetDelivery(ctx context.Context, externalID string) (*Delivery, error) {
+	if !c.enabled {
+		return nil, &APIError{StatusCode: http.StatusNotFound, Body: "doordash stub: no delivery on file"}
+	}
+	token, err := c.mintJWT()
+	if err != nil {
+		return nil, fmt.Errorf("doordash jwt: %w", err)
+	}
+	data, err := c.doReq(ctx, http.MethodGet, token,
+		fmt.Sprintf("%s/deliveries/%s", apiBase, url.PathEscape(externalID)), nil)
+	if err != nil {
+		return nil, fmt.Errorf("doordash get delivery: %w", err)
+	}
 	var d Delivery
 	if err := json.Unmarshal(data, &d); err != nil {
 		return nil, fmt.Errorf("doordash delivery parse: %w", err)

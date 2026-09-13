@@ -1,26 +1,18 @@
 # KosherEats Polish — Round 3
-**Max severity found:** 5
+**Max severity found:** 7
 **Issues found:** 3
 **Fixes attempted:** 3
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[5/10] [ke_uiux_web] Meat/Dairy/Pareve item badge implemented three ways with divergent shape, size, and tint** — FIXED
-  Rubric dim 3 requires the kosher triad to be consistent everywhere, but the item-level dietary badge exists as two identical copy-pasted `DietaryBadge
-  > Done. `tsc --noEmit` and `eslint` are both clean on the touched files.
+- **[7/10] [ke_bugs_backend] DoorDash 409 duplicate_delivery_id on create is never reconciled — a lost create response ends in a double delivery** — FIXED
+  dispatch.Dispatch sends a DoorDash external_delivery_id that is deliberately stable across every retry of one dispatch cycle ("<order>-g<n>"). DoorDas
+  > This fix is already fully applied in the working tree on `feat/web-hunt-20260913` (uncommitted) — nothing further needed
 
-**What changed (all under `web/`):**
+- **[5/10] [ke_bugs_backend] DoorDash webhook branches not scoped to the webhook's own delivery id — stale events for a superseded delivery move/un-dispatch the live one** — FIXED
+  The 2026-06-25 backlog (docs/bug-backlog-2026-06-25.md:118-119) prescribed delivery-id matching for BOTH the Uber and DoorDash cancel branches; Uber (
+  > Done — the fix is complete and verified. All the work was already sitting in the working tree on `feat/web-hunt-20260913
 
-- **New `w
-
-- **[5/10] [ke_uiux_web] Kosher filter bottom sheet is the only modal with no dialog semantics** — FIXED
-  Below `md`, `KosherFilterPanel.tsx:242-249` opens a full-screen `fixed inset-0` sheet with body-scroll lock and Escape handling, but has zero `role="d
-  > No type errors. Added `role="dialog"`, `aria-modal={isSheet}` (derived from the existing `matchMedia` check), and `aria-
-
-- **[4/10] [ke_uiux_web] `scheduled` order status is the last raw Tailwind hue (sky-*), blocking M3 = 0** — FIXED
-  `lib/orderStatus.ts:35` (`bg-sky-500/15 text-sky-300`) and `components/seller/ActiveOrderCard.tsx:154` (`text-sky-300`) are the only raw-hue classes l
-  > Done — `tsc` and `eslint` both exit 0.
-
-**Changes** (only the two named files under `web/`):
-
-- `web/src/lib/orderStatus
+- **[5/10] [ke_bugs_backend] Orphan-payment sweep vs. late CreateOrder race can refund a fulfilled order** — FIXED
+  scheduler.sweepOrphanPayments refunds a succeeded checkout PaymentIntent that has no order after orphanPaymentGrace (20 min). Its two steps — `SELECT 
+  > The fix for this issue was already applied in the working tree on `feat/web-hunt-20260913` (uncommitted); I verified it 

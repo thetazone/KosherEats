@@ -246,31 +246,57 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 
-	// Refuse the delete while the account still has a live order. The orders step
-	// below anonymizes with `SET user_id = NULL` and has no status filter, so a
-	// paid, non-terminal order (pending/accepted/preparing/ready/picked_up, plus a
-	// scheduled one that hasn't been promoted yet) would be cut loose from its
-	// customer while its PaymentIntent stays captured: the stale-rejection sweep
-	// could no longer auto-reject + refund it, and auto-dispatch / mark-ready /
-	// seller escalation all resolve the consumer through orders.user_id, so a
-	// cooked order would become undeliverable. Money is on the line either way, so
-	// the order has to reach a terminal state (delivered/completed/cancelled/
-	// rejected — cancelling refunds) before the account can go.
-	var liveOrders int
+	// Refuse the delete while the account still has a live order — in ANY of the
+	// three roles this account can hold on an order, because each of the
+	// anonymizing steps below strands a paid, non-terminal order in its own way:
+	//
+	//   consumer (orders.user_id): `SET user_id = NULL` cuts the order loose from
+	//     its customer while its PaymentIntent stays captured — the stale-
+	//     rejection sweep could no longer auto-reject + refund it, and
+	//     auto-dispatch / mark-ready / seller escalation all resolve the consumer
+	//     through orders.user_id, so a cooked order would become undeliverable.
+	//   courier (orders.courier_id): `SET courier_id = NULL` on a 'picked_up'
+	//     order leaves food that is physically with the departed courier and an
+	//     order nobody can complete — DeliverOrder needs courier_id, the sweep
+	//     only re-dispatches 'ready', and the consumer can't cancel past
+	//     'accepted'. Charged, undeliverable, unrefundable.
+	//   seller (restaurants.owner_id): `SET owner_id = NULL` on the restaurant
+	//     orphans every accepted/preparing/ready order on it — no owner is left
+	//     to mark it ready, hand it off, or reject it — while the pending ones
+	//     merely wait out the stale-rejection TTL to be refunded.
+	//
+	// Money is on the line in every case, so each such order has to reach a
+	// terminal state (delivered/completed/cancelled/rejected — cancelling
+	// refunds) before the account can go. One query, three counts, so the
+	// refusal can tell the user which hat is blocking them.
+	var liveAsConsumer, liveAsCourier, liveAsSeller int
 	if err := tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM orders
-		 WHERE user_id = $1
-		   AND status NOT IN ('delivered', 'completed', 'cancelled', 'rejected')`,
-		uid).Scan(&liveOrders); err != nil {
+		SELECT COUNT(*) FILTER (WHERE o.user_id = $1),
+		       COUNT(*) FILTER (WHERE o.courier_id = $1),
+		       COUNT(*) FILTER (WHERE rest.owner_id = $1)
+		  FROM orders o
+		  LEFT JOIN restaurants rest ON rest.id = o.restaurant_id
+		 WHERE (o.user_id = $1 OR o.courier_id = $1 OR rest.owner_id = $1)
+		   AND o.status NOT IN ('delivered', 'completed', 'cancelled', 'rejected')`,
+		uid).Scan(&liveAsConsumer, &liveAsCourier, &liveAsSeller); err != nil {
 		slog.Error("DeleteAccount step failed",
 			slog.String("user_id", uid), slog.String("step", "check live orders"),
 			slog.String("error", err.Error()))
 		writeError(w, http.StatusInternalServerError, "failed to delete account")
 		return
 	}
-	if liveOrders > 0 {
+	switch {
+	case liveAsConsumer > 0:
 		writeError(w, http.StatusConflict,
 			"you have an order still in progress — cancel it or wait for it to be delivered before deleting your account")
+		return
+	case liveAsCourier > 0:
+		writeError(w, http.StatusConflict,
+			"you have a delivery still in progress — complete it before deleting your account")
+		return
+	case liveAsSeller > 0:
+		writeError(w, http.StatusConflict,
+			"your restaurant has orders still in progress — complete or reject them before deleting your account")
 		return
 	}
 

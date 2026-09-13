@@ -92,6 +92,26 @@ const deliveryAddrMetaKey = "delivery_addr_hash"
 // same item subtotal, and every other term (tax, tip, stamped fee) is unchanged.
 const restaurantMetaKey = "restaurant_id"
 
+// discountMetaKey / dealMetaKey record the deal discount (cents) and the deal
+// id the PaymentIntent's total was computed with. CreateOrder reuses them
+// (ReadCheckoutStamps) instead of re-adjudicating the deal from live state —
+// the exact analogue of deliveryFeeMetaKey. Re-adjudication was a
+// charged-but-no-order hole: the card is charged the discounted total in the
+// PaymentSheet, and CreateOrder then re-ran resolveDealDiscount, which re-checks
+// is_active / expires_at against NOW(). A deal that expired, or that the seller
+// deactivated, in the minute between minting the intent and confirming the
+// card — an ordinary end-of-day promo — answered 400 "deal has expired" AFTER
+// the charge, leaving the customer's money captured with no order until the
+// 20-minute orphan sweep refunded it. The stamped discount is what the card was
+// actually charged against, so it is authoritative; the once-per-user rule is
+// still enforced by uq_orders_user_deal_active at INSERT time (refund + 409).
+// The discount is stamped on every checkout PI (0 when no deal); the deal id
+// only when one applied.
+const (
+	discountMetaKey = "discount_cents"
+	dealMetaKey     = "applied_deal_id"
+)
+
 // DeliveryAddrHash normalizes a free-text delivery address (lowercase, trimmed,
 // internal whitespace collapsed) and returns a stable hex SHA-256 fingerprint of
 // it. Both CreatePaymentSheet (stamp) and CreateOrder (verify) derive the
@@ -571,7 +591,7 @@ func (c *Client) GetOrCreateCustomer(ctx context.Context, pool *pgxpool.Pool, us
 // In dev stub mode (no STRIPE_SECRET_KEY), returns fake values. The iOS app
 // detects the stub prefix and skips actually presenting PaymentSheet, which
 // keeps local dev functional without real Stripe keys.
-func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType, deliveryAddr, restaurantID string) (*PaymentSheetBundle, error) {
+func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amountCents, deliveryFeeCents int, userID, email, name, fulfillmentType, deliveryAddr, restaurantID string, discountCents int, appliedDealID string) (*PaymentSheetBundle, error) {
 	if !c.enabled {
 		return &PaymentSheetBundle{
 			PaymentIntentSecret: "pi_stub_" + fakeID() + "_secret_stub",
@@ -626,6 +646,13 @@ func (c *Client) CreatePaymentSheet(ctx context.Context, pool *pgxpool.Pool, amo
 	// restaurantMetaKey.
 	if restaurantID != "" {
 		piMetadata[restaurantMetaKey] = restaurantID
+	}
+	// Bind the deal the total was discounted by, so CreateOrder honors the
+	// price the card was charged rather than re-judging the deal's validity
+	// after the money has moved — see discountMetaKey.
+	piMetadata[discountMetaKey] = strconv.Itoa(discountCents)
+	if appliedDealID != "" {
+		piMetadata[dealMetaKey] = appliedDealID
 	}
 	pi, err := paymentintent.New(&stripe.PaymentIntentParams{
 		Amount:             stripe.Int64(int64(amountCents)),
@@ -787,6 +814,13 @@ type CheckoutStamps struct {
 
 	DeliveryFeeCents int
 	DeliveryFeeOK    bool
+
+	// DiscountOK is true when the intent carries a discount stamp (every PI
+	// minted after the stamp shipped, including a 0 for "no deal"); AppliedDealID
+	// is the deal it was discounted by, "" when none. See discountMetaKey.
+	DiscountCents int
+	DiscountOK    bool
+	AppliedDealID string
 }
 
 // ReadCheckoutStamps retrieves the PaymentIntent once and decodes every stamp
@@ -825,6 +859,12 @@ func (c *Client) ReadCheckoutStamps(paymentIntentID string) (CheckoutStamps, err
 	if v, present := pi.Metadata[deliveryFeeMetaKey]; present {
 		if n, cerr := strconv.Atoi(v); cerr == nil {
 			s.DeliveryFeeCents, s.DeliveryFeeOK = n, true
+		}
+	}
+	if v, present := pi.Metadata[discountMetaKey]; present {
+		if n, cerr := strconv.Atoi(v); cerr == nil && n >= 0 {
+			s.DiscountCents, s.DiscountOK = n, true
+			s.AppliedDealID = pi.Metadata[dealMetaKey]
 		}
 	}
 	return s, nil

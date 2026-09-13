@@ -116,8 +116,15 @@ func (a Address) JSON() string {
 }
 
 type CreateDeliveryRequest struct {
-	QuoteID        string
-	ExternalID     string
+	QuoteID    string
+	ExternalID string
+	// IdempotencyKey, when set, is sent as Uber's `idempotency_key`: a create
+	// that repeats a key seen within Uber's retention window (~60 minutes) is
+	// answered with the ORIGINAL delivery rather than creating — and billing —
+	// a second one. Dispatch derives it from the order id plus the order's
+	// dispatch generation so a retry after a lost response replays instead of
+	// double-buying (see migration 061). Empty sends no key.
+	IdempotencyKey string
 	PickupName     string
 	PickupAddress  Address
 	PickupPhone    string
@@ -212,6 +219,9 @@ func (c *Client) CreateDelivery(ctx context.Context, req CreateDeliveryRequest) 
 	}
 	if req.TipCents > 0 {
 		body["tip"] = req.TipCents
+	}
+	if req.IdempotencyKey != "" {
+		body["idempotency_key"] = req.IdempotencyKey
 	}
 	// Test-only: ask Uber to run this delivery with a simulated auto-advancing
 	// courier. Real API call and real webhooks, but no real courier and no

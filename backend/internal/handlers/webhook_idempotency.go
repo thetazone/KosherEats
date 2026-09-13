@@ -16,7 +16,7 @@ import (
 // distinct transitions differ in at least their status field and so hash
 // differently. This avoids having to assume any provider-specific field is
 // unique/stable across re-dispatches (Uber rotates delivery_id per dispatch;
-// DoorDash reuses our order id as the external id).
+// DoorDash echoes the "<order id>-g<generation>" external id we minted).
 func webhookEventID(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])

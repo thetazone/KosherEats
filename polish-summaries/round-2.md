@@ -5,21 +5,16 @@
 **Fixes succeeded:** 3
 
 ## Issues & Fixes
-- **[6/10] [ke_uiux_web] Half of all buttons skip the contract's .focus-ring (123/227), including every seller order-state button and modal close/stepper control** — FIXED
-  globals.css declares `.focus-ring` as "the single source of truth" for keyboard focus and instructs that it be applied directly to one-off controls th
-  > Done. Every `<button>` outside `admin/` now carries the contract's `.focus-ring` — 123 → 0 unfocused buttons, gate green
+- **[6/10] [ke_bugs_backend] Closed restaurants accept charges server-side — charged, then auto-rejected + refunded 10 minutes later** — FIXED
+  The seller dashboard 'closed' toggle (restaurants.is_open) is never read at pay time: restaurantOrderable deliberately excludes it, CreatePaymentInten
+  > ## Verified: fix is complete and green
 
-- **[5/10] [ke_uiux_web] Restaurant detail page never renders the cover photo or menu item photos that sellers are required to upload** — FIXED
-  `Restaurant` carries `image_url` + `cover_image_url` and `MenuItem` carries `image_url` (types/index.ts:39-40, :102). The seller onboarding form label
-  > Done — additive fix, both files under `web/`, typecheck and lint clean.
+The fix described in the issue was already applied in the working tree (uncommit
 
-**`web/src/app/restaurant/[id]/page.tsx`**
-- Im
+- **[5/10] [ke_bugs_backend] DoorDash re-dispatch after a cancel is a guaranteed 409 — the order burns its attempt budget and leaves the external path** — FIXED
+  dispatch.Dispatch sent DoorDash CreateDelivery with external_delivery_id = the bare order UUID. DoorDash never allows an external_delivery_id to be re
+  > The fix was already applied in the working tree (uncommitted); I verified it rather than re-implementing it. Everything 
 
-- **[4/10] [ke_uiux_web] text-dark-500 captions fail WCAG AA on every canvas surface (3.2–4.2:1) — ~30 real text instances, mostly 12px** — FIXED
-  Measured contrast for `text-dark-500` (#737373): 4.18:1 on dark-950, 3.78:1 on dark-900 (.card), 3.19:1 on dark-800 (inputs, chat bubbles) — all below
-  > Done. `tsc --noEmit` and `next lint` are both clean.
-
-## What changed
-
-**Contrast fix (`text-dark-500` → `text-dark-400`
+- **[4/10] [ke_bugs_backend] Restaurant minimum order is decorative — rendered to every consumer, editable by sellers, enforced nowhere** — FIXED
+  restaurants.min_order is a seller setting ('Minimum order ($)' in seller settings on web/iOS) and every consumer client renders it ('Min. order: $15' 
+  > The fix was already present, uncommitted, in the working tree on `feat/web-hunt-20260913` — my work here was verifying i

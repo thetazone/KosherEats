@@ -53,6 +53,8 @@ type fakePI struct {
 	deliveryFee *int   // nil = unstamped
 	addrHash    string // "" = unstamped
 	restaurant  string // "" = unstamped
+	discount    *int   // nil = unstamped (pre-deal-stamp PI)
+	deal        string // "" = no deal stamped
 	refunded    bool
 }
 
@@ -72,6 +74,12 @@ func (p fakePI) json(id string) string {
 	}
 	if p.restaurant != "" {
 		meta["restaurant_id"] = p.restaurant
+	}
+	if p.discount != nil {
+		meta["discount_cents"] = strconv.Itoa(*p.discount)
+	}
+	if p.deal != "" {
+		meta["applied_deal_id"] = p.deal
 	}
 	status := p.status
 	if status == "" {

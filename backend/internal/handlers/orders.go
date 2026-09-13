@@ -160,6 +160,25 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serialize against the orphan-payment sweep on THIS PaymentIntent for the
+	// rest of the transaction. The sweep refunds a succeeded PI that has no
+	// order after a grace period, and its "no order yet?" check and its Stripe
+	// refund are two steps. A CreateOrder landing between them — the web
+	// client's stored-PaymentIntent recovery retries exactly such late orders —
+	// passed VerifyPaymentSucceeded (not refunded yet), committed the order, and
+	// then the refund landed: an order the kitchen cooks and a courier is paid
+	// for, on a charge the customer got back. Holding the same lock the sweep
+	// takes (scheduler.sweepOrphanPayments) makes the two strictly ordered:
+	// either the sweep sees our committed order and leaves the charge alone, or
+	// we wait for its refund to settle and VerifyPaymentSucceeded rejects the
+	// now-refunded intent. Transaction-scoped, so it releases with the commit
+	// or rollback below; keyed on the PI id so unrelated checkouts never wait.
+	if _, err := tx.Exec(r.Context(),
+		`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, req.PaymentIntentID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to start transaction")
+		return
+	}
+
 	// Read every stamp this handler needs off the PaymentIntent in ONE Stripe
 	// call. Each guard below used to fetch the intent again (four round trips,
 	// each inside this open transaction while it holds the cart row locked), and
@@ -311,8 +330,30 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	// Apply the deal discount before tax so the recorded total agrees with
 	// the Stripe charge that CreatePaymentIntent computed using the same
 	// helper. resolveDealDiscount returns 0 when AppliedDealID is empty.
-	discount, err := h.resolveDealDiscount(r.Context(), req.AppliedDealID, cart.RestaurantID, user["user_id"], subtotal, items)
-	if err != nil {
+	//
+	// Prefer the discount STAMPED on the PaymentIntent over re-resolving the
+	// deal. CreatePaymentIntent already validated the deal (active, in its
+	// window, this restaurant, min order, unused by this user) and charged the
+	// discounted total; re-running those checks here re-judges them against
+	// NOW(), after the money has moved. A promo that expired, or that the
+	// seller deactivated, while the customer was typing card details answered
+	// 400 "deal has expired" on a card that was already charged — the
+	// charged-but-no-order hole the fee stamp closed for delivery pricing, open
+	// again for deals. The stamp is what the card paid; honor it. The
+	// once-per-user rule is not weakened: uq_orders_user_deal_active still
+	// rejects a second redemption at INSERT (refund + 409 below), and a PI with
+	// no deal stamped ignores any deal the client names now, which can only
+	// make the total disagree with the charge and trip the amount guard.
+	// DiscountOK is false for a pre-stamp PI or in stub mode — re-resolve as
+	// before.
+	var discount int
+	appliedDealID := req.AppliedDealID
+	if stamps.DiscountOK {
+		discount, appliedDealID = stamps.DiscountCents, stamps.AppliedDealID
+		if discount > subtotal {
+			discount = subtotal
+		}
+	} else if discount, err = h.resolveDealDiscount(r.Context(), appliedDealID, cart.RestaurantID, user["user_id"], subtotal, items); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -353,15 +394,15 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	// future start in 'scheduled' status; the background dispatcher flips
 	// them to 'pending' 30 minutes before the delivery window.
 	initialStatus := models.OrderPending
-	if req.ScheduledFor != nil && req.ScheduledFor.After(time.Now().Add(30*time.Minute)) {
+	if isScheduledOrder(req.ScheduledFor) {
 		initialStatus = models.OrderScheduled
 	}
 
 	// applied_deal_id is nullable in the DB — pass NULL when no deal was used
 	// so we don't violate the FK to deals(id).
 	var dealIDArg interface{}
-	if req.AppliedDealID != "" {
-		dealIDArg = req.AppliedDealID
+	if appliedDealID != "" {
+		dealIDArg = appliedDealID
 	}
 
 	var order models.Order

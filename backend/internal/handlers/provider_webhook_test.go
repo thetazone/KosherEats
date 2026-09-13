@@ -96,6 +96,15 @@ type webhookOrder struct {
 }
 
 // seedDispatchedOrder creates a paid delivery order already out with a provider.
+// ownOrderID, passed as seedDispatchedOrder's deliveryID, stamps the order's
+// OWN id as its external_delivery_id. That is what a DoorDash row looks like:
+// dispatch mints the DoorDash external_delivery_id from the order id (bare for
+// pre-generation rows, "<id>-g<n>" since), records it verbatim, and DoorDash
+// echoes it on every webhook — and the handler now scopes every mutating
+// statement on that equality, so a test that posts a bare-id DoorDash body
+// against its own order has to seed the row this way.
+const ownOrderID = "<own order id>"
+
 func seedDispatchedOrder(t *testing.T, status, provider, deliveryID string) webhookOrder {
 	t.Helper()
 	e := harness
@@ -130,6 +139,12 @@ func seedDispatchedOrder(t *testing.T, status, provider, deliveryID string) webh
 		_, _ = e.h.db.Pool.Exec(t.Context(), `DELETE FROM orders WHERE id = $1`, orderID)
 		_, _ = e.h.db.Pool.Exec(t.Context(), `DELETE FROM users WHERE id = $1`, consumerID)
 	})
+	if deliveryID == ownOrderID {
+		if _, err := e.h.db.Pool.Exec(t.Context(),
+			`UPDATE orders SET external_delivery_id = id::text WHERE id = $1`, orderID); err != nil {
+			t.Fatalf("stamp own order id as delivery id: %v", err)
+		}
+	}
 	return webhookOrder{id: orderID, consumer: consumerID}
 }
 
@@ -317,7 +332,7 @@ func TestIntegration_ProviderWebhooksAdvanceLifecycle(t *testing.T) {
 			},
 		},
 		{
-			name: "doordash_drive", provider: "doordash_drive", deliveryID: "unused",
+			name: "doordash_drive", provider: "doordash_drive", deliveryID: ownOrderID,
 			pickup: func(o webhookOrder) *httptest.ResponseRecorder {
 				return postDoorDashWebhook(t, h, fmt.Sprintf(`{"external_delivery_id":%q,"event_name":"DASHER_PICKED_UP"}`, o.id))
 			},
@@ -374,7 +389,7 @@ func TestIntegration_DeliveredAcceptedWithoutAPriorPickup(t *testing.T) {
 		{"uber", "uber_direct", "d1", func(o webhookOrder) *httptest.ResponseRecorder {
 			return postUberWebhook(t, h, fmt.Sprintf(`{"kind":"event.delivery_status","delivery_id":"d1","data":{"status":"delivered","external_id":%q}}`, o.id))
 		}},
-		{"doordash", "doordash_drive", "x", func(o webhookOrder) *httptest.ResponseRecorder {
+		{"doordash", "doordash_drive", ownOrderID, func(o webhookOrder) *httptest.ResponseRecorder {
 			return postDoorDashWebhook(t, h, fmt.Sprintf(`{"external_delivery_id":%q,"event_name":"DASHER_DROPPED_OFF"}`, o.id))
 		}},
 		{"shipday", "shipday", "77", func(o webhookOrder) *httptest.ResponseRecorder {
@@ -440,7 +455,7 @@ func TestIntegration_WebhookLedgerIsPerProvider(t *testing.T) {
 	h := withProviderClients(t)
 	clearWebhookLedger(t)
 	ordU := seedDispatchedOrder(t, "ready", "uber_direct", "dupe")
-	ordD := seedDispatchedOrder(t, "ready", "doordash_drive", "dupe")
+	ordD := seedDispatchedOrder(t, "ready", "doordash_drive", ownOrderID)
 
 	// Deliberately identical bodies except the order they name.
 	postUberWebhook(t, h, fmt.Sprintf(`{"kind":"event.delivery_status","data":{"status":"delivered","external_id":%q}}`, ordU.id))
@@ -534,7 +549,7 @@ func TestIntegration_CancelClearsLinkageFromEveryDispatchableStatus(t *testing.T
 		{"uber_direct", "uber_direct", "d1", func(o webhookOrder) *httptest.ResponseRecorder {
 			return postUberWebhook(t, h, fmt.Sprintf(`{"kind":"event.delivery_status","delivery_id":"d1","data":{"status":"canceled","external_id":%q}}`, o.id))
 		}},
-		{"doordash_drive", "doordash_drive", "x", func(o webhookOrder) *httptest.ResponseRecorder {
+		{"doordash_drive", "doordash_drive", ownOrderID, func(o webhookOrder) *httptest.ResponseRecorder {
 			return postDoorDashWebhook(t, h, fmt.Sprintf(`{"external_delivery_id":%q,"event_name":"DELIVERY_CANCELLED"}`, o.id))
 		}},
 		{"shipday", "shipday", "55", func(o webhookOrder) *httptest.ResponseRecorder {

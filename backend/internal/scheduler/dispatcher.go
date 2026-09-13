@@ -563,41 +563,83 @@ func (d *Dispatcher) sweepOrphanPayments(ctx context.Context) {
 			continue
 		}
 
-		// Does an order already point at this PaymentIntent? If so it's not an
-		// orphan — the charge produced an order as intended. This re-read also
-		// closes the race where CreateOrder landed between the Stripe list call
-		// and now.
-		var orderID string
-		err := d.db.QueryRow(ctx,
-			`SELECT id FROM orders WHERE stripe_payment_id = $1`,
-			c.PaymentIntentID,
-		).Scan(&orderID)
-		if err == nil {
-			// Matched an order — not orphaned, leave it alone.
-			continue
+		if d.refundOrphanUnlessOrdered(ctx, c) {
+			refunded++
 		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			slog.Error("orphan-payment: order lookup failed, skipping to be safe",
-				slog.String("payment_intent", c.PaymentIntentID),
-				slog.String("error", err.Error()))
-			continue
-		}
+	}
+}
 
-		// No order, clearly ours, past the grace window, not yet refunded:
-		// refund the customer.
-		if err := d.stripe.RefundPaymentIntent(c.PaymentIntentID); err != nil {
-			slog.Error("orphan-payment: refund failed, will retry next sweep",
-				slog.String("payment_intent", c.PaymentIntentID),
-				slog.String("user_id", c.UserID),
-				slog.String("error", err.Error()))
-			continue
-		}
-		refunded++
-		slog.Warn("orphan-payment: refunded charged-but-no-order PaymentIntent",
+// refundOrphanUnlessOrdered refunds one orphan candidate unless an order has
+// claimed its PaymentIntent. Reports whether a refund was issued.
+//
+// The order check and the refund run under a transaction-scoped advisory lock
+// on the PI id — the same lock handlers.CreateOrder takes before it verifies
+// the intent and inserts the order. Without it the two steps here were not
+// atomic against a CreateOrder in flight for the same PI: that request could
+// pass VerifyPaymentSucceeded (nothing refunded yet), commit its order, and
+// then have this refund land on top — a cooked, dispatched order on a charge
+// the customer got back. The web client's stored-PaymentIntent recovery makes
+// a CreateOrder this late a normal event, not a freak one. With the lock the
+// two are strictly ordered: CreateOrder either committed first (we see its
+// row and skip) or waits for our refund to settle (its verify then fails).
+// The Stripe call runs inside the transaction on purpose — releasing before
+// it would reopen the window; the lock only ever blocks the one checkout that
+// names this PI, and only for the length of one refund call.
+func (d *Dispatcher) refundOrphanUnlessOrdered(ctx context.Context, c payments.OrphanCandidate) bool {
+	tx, err := d.db.Begin(ctx)
+	if err != nil {
+		slog.Error("orphan-payment: begin tx failed, skipping to be safe",
+			slog.String("payment_intent", c.PaymentIntentID), slog.String("error", err.Error()))
+		return false
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	if _, err := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, c.PaymentIntentID); err != nil {
+		slog.Error("orphan-payment: lock failed, skipping to be safe",
+			slog.String("payment_intent", c.PaymentIntentID), slog.String("error", err.Error()))
+		return false
+	}
+
+	// Does an order already point at this PaymentIntent? If so it's not an
+	// orphan — the charge produced an order as intended. Under the lock this
+	// also settles the race where CreateOrder landed between the Stripe list
+	// call and now.
+	var orderID string
+	err = tx.QueryRow(ctx,
+		`SELECT id FROM orders WHERE stripe_payment_id = $1`, c.PaymentIntentID,
+	).Scan(&orderID)
+	if err == nil {
+		// Matched an order — not orphaned, leave it alone.
+		return false
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		slog.Error("orphan-payment: order lookup failed, skipping to be safe",
+			slog.String("payment_intent", c.PaymentIntentID),
+			slog.String("error", err.Error()))
+		return false
+	}
+
+	// No order, clearly ours, past the grace window, not yet refunded:
+	// refund the customer.
+	if err := d.stripe.RefundPaymentIntent(c.PaymentIntentID); err != nil {
+		slog.Error("orphan-payment: refund failed, will retry next sweep",
 			slog.String("payment_intent", c.PaymentIntentID),
 			slog.String("user_id", c.UserID),
-			slog.Int("amount_cents", c.AmountCents))
+			slog.String("error", err.Error()))
+		return false
 	}
+	slog.Warn("orphan-payment: refunded charged-but-no-order PaymentIntent",
+		slog.String("payment_intent", c.PaymentIntentID),
+		slog.String("user_id", c.UserID),
+		slog.Int("amount_cents", c.AmountCents))
+	// Nothing was written; the commit only releases the lock. A failure here
+	// releases it just the same via the deferred rollback.
+	if err := tx.Commit(ctx); err != nil {
+		slog.Warn("orphan-payment: commit after refund failed (refund already issued)",
+			slog.String("payment_intent", c.PaymentIntentID), slog.String("error", err.Error()))
+	}
+	return true
 }
 
 // sweepPendingRefunds is the reconcile half of the refund-atomicity fix.

@@ -216,7 +216,7 @@ func TestIntegration_DeliveredWithoutAPickupStillStampsPickedUpAt(t *testing.T) 
 			post: func(b string) int { return postUberWebhook(t, h, b).Code },
 		},
 		{
-			name: "doordash", provider: "doordash_drive", delID: "dd_pu",
+			name: "doordash", provider: "doordash_drive", delID: ownOrderID,
 			body: func(id string) string {
 				return fmt.Sprintf(`{"external_delivery_id":%q,"event_name":"DASHER_DROPPED_OFF"}`, id)
 			},

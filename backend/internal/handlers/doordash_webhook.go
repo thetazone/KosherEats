@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/koshereats/backend/internal/dispatch"
 )
 
 // ddWebhookPayload mirrors DoorDash Drive's webhook body. Field names verified
@@ -60,7 +61,25 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	orderID := payload.ExternalDeliveryID
+	// Dispatch mints external_delivery_id as "<order uuid>-g<generation>" so a
+	// re-dispatch after a cancel is not a DoorDash duplicate; strip the suffix
+	// to get back to the order. Bare ids pass through unchanged.
+	//
+	// The RAW id is kept as well: every mutating statement below matches it
+	// against orders.external_delivery_id, which dispatch records verbatim from
+	// the create response (DoorDash echoes the id we minted). Because the id now
+	// rolls per dispatch cycle, an order that was cancelled and re-dispatched is
+	// out with "<id>-g1" while late or retried events for "<id>-g0" can still
+	// arrive — not replays (different bodies), so the ledger passes them. Scoped
+	// only by provider, a stale DASHER_PICKED_UP flipped the LIVE delivery to
+	// picked_up (and pushed "your driver has your food") before its Dasher had
+	// been anywhere, and a stale DELIVERY_CANCELLED cleared the live linkage
+	// and re-armed the sweep to buy a second courier. Uber and Shipday already
+	// scope on the webhook's own delivery id; this holds DoorDash to it. Rows
+	// from before the suffix carry the bare order id, which is exactly what
+	// DoorDash echoes for those deliveries, so equality holds for them too.
+	deliveryID := strings.TrimSpace(payload.ExternalDeliveryID)
+	orderID := dispatch.ParseDoorDashExternalDeliveryID(deliveryID)
 	// Uppercased because the documented casing isn't uniform: the core lifecycle
 	// events are UPPER_SNAKE while the opt-in tracking events
 	// (dasher_enroute_to_pickup, …) are lowercase.
@@ -144,8 +163,9 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			// naming an Uber-dispatched order would push "your courier is on the
 			// way" to the wrong consumer.
 			`SELECT user_id, restaurant_id FROM orders
-			  WHERE id = $1 AND external_provider = 'doordash_drive'`,
-			orderID).Scan(&consumerID, &restaurantID)
+			  WHERE id = $1 AND external_provider = 'doordash_drive'
+			    AND external_delivery_id = $2`,
+			orderID, deliveryID).Scan(&consumerID, &restaurantID)
 		if err == nil && h.notify != nil {
 			postCommit = append(postCommit, func() {
 				h.notify.OrderClaimed(context.Background(), orderID, consumerID, restaurantID, dasherName)
@@ -159,8 +179,8 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			// keying only on 'ready' stranded those orders. Mirrors the Uber webhook.
 			`UPDATE orders SET status = 'picked_up', picked_up_at = $1, updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted', 'preparing', 'ready')
-			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
-			time.Now(), orderID)
+			    AND external_provider = 'doordash_drive' AND external_delivery_id = $3`,
+			time.Now(), orderID, deliveryID)
 		if err := uerr; err != nil {
 			// Fail closed so DoorDash retries rather than stranding the order.
 			slog.Error("doordash webhook: pickup update failed",
@@ -205,8 +225,8 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			`UPDATE orders SET status = 'delivered', delivered_at = $1,
 			        picked_up_at = COALESCE(picked_up_at, $1), updated_at = $1
 			  WHERE id = $2 AND status IN ('accepted','preparing','ready','picked_up')
-			    AND external_provider = 'doordash_drive' AND external_delivery_id IS NOT NULL`,
-			now, orderID)
+			    AND external_provider = 'doordash_drive' AND external_delivery_id = $3`,
+			now, orderID, deliveryID)
 		if err != nil {
 			slog.Error("doordash webhook: delivered update failed",
 				slog.String("order_id", orderID),
@@ -244,6 +264,9 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 		// order escalated to DoorDash while still preparing must get its dead
 		// linkage cleared here too, or it can never re-arm (the event dedupes,
 		// the claim CAS requires NULL linkage). Same fix as the Shipday handler.
+		// external_delivery_id scoping is equally load-bearing: a late cancel for
+		// the SUPERSEDED delivery must not un-dispatch the live one (see the
+		// note at the top of the handler).
 		tag, err := tx.Exec(ctx,
 			`UPDATE orders
 			    SET external_delivery_id = NULL, external_provider = NULL,
@@ -251,7 +274,8 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			        status = CASE WHEN status = 'picked_up' THEN 'ready' ELSE status END,
 			        updated_at = NOW()
 			  WHERE id = $1 AND status IN ('accepted', 'preparing', 'ready', 'picked_up')
-			    AND external_provider = 'doordash_drive'`, orderID)
+			    AND external_provider = 'doordash_drive'
+			    AND external_delivery_id = $2`, orderID, deliveryID)
 		if err != nil {
 			slog.Error("doordash webhook: cancel cleanup failed",
 				slog.String("order_id", orderID),

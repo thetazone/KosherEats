@@ -1,12 +1,13 @@
 # webhunt-20260913 — web-first pre-merge campaign
 
-Branch `feat/web-hunt-20260913` (stacked on `feat/web-ordering-rubric-sweep-m2`). Nothing pushed, nothing deployed. Generated 2026-09-13 12:35.
+Branch `feat/web-hunt-20260913` (stacked on `feat/web-ordering-rubric-sweep-m2`). Nothing pushed, nothing deployed. Generated 2026-09-13 12:58.
 
 ## Phases
 
 | Phase | Area | Rounds | Fixed | Gate | Commit |
 |---|---|---|---|---|---|
 | hunt | `web` | 4 | 12 | GREEN | `eefef7b7` |
+| uiux | `ke_uiux_web` | 3 | 9 | GREEN | `ede30f59` |
 
 ## hunt — `web`
 
@@ -51,6 +52,63 @@ Round summaries: `polish-summaries/webhunt-20260913/hunt/`
 ├ ○ /seller/onboarding                   6.99 kB         101 kB
 ├ ○ /seller/orders                       3.53 kB         106 kB
 ├ ƒ /seller/orders/[id]                  8.09 kB         111 kB
+├ ○ /seller/settings                     6.72 kB         110 kB
+├ ○ /support                             147 B           102 kB
+└ ○ /terms                               147 B           102 kB
++ First Load JS shared by all            87.3 kB
+  ├ chunks/2117-c6c0f3e875b3b048.js      31.7 kB
+  ├ chunks/fd9d1056-6c04e91e0db6fb3a.js  53.7 kB
+  └ other shared chunks (total)          1.95 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+```
+
+## uiux — `ke_uiux_web`
+
+Findings across all rounds, severity descending:
+
+| Sev | Round | Finding | Status |
+|---|---|---|---|
+| 6 | 2 | Half of all buttons skip the contract's .focus-ring (123/227), including every seller order-state button and modal close/stepper control | FIXED |
+| 5 | 1 | No focus-visible styling anywhere in web/ — buttons, chips, and btn-primary links fall back to the browser's blue UA ring | FIXED |
+| 5 | 1 | text-dark-500 helper copy fails AA contrast — 97 uses, ~40 of them at text-xs/text-sm | FIXED |
+| 5 | 2 | Restaurant detail page never renders the cover photo or menu item photos that sellers are required to upload | FIXED |
+| 5 | 3 | Meat/Dairy/Pareve item badge implemented three ways with divergent shape, size, and tint | FIXED |
+| 5 | 3 | Kosher filter bottom sheet is the only modal with no dialog semantics | FIXED |
+| 4 | 1 | Error banner hand-rolled ~28 times in 5 recipes; only 9 of 86 danger messages have role="alert" | FIXED |
+| 4 | 2 | text-dark-500 captions fail WCAG AA on every canvas surface (3.2–4.2:1) — ~30 real text instances, mostly 12px | FIXED |
+| 4 | 3 | `scheduled` order status is the last raw Tailwind hue (sky-*), blocking M3 = 0 | FIXED |
+
+Round summaries: `polish-summaries/webhunt-20260913/uiux/`
+
+### Gate (web)
+
+### tsc: ok
+```
+
+```
+### lint: ok
+```
+✔ No ESLint warnings or errors
+```
+### build: ok
+```
+├ ○ /privacy                             146 B           102 kB
+├ ƒ /restaurant/[id]                     11.8 kB         119 kB
+├ ○ /search                              9.22 kB         114 kB
+├ ○ /seller                              6.02 kB         109 kB
+├ ○ /seller/deals                        5.79 kB         109 kB
+├ ○ /seller/login                        1.49 kB         104 kB
+├ ○ /seller/menu                         8.54 kB         111 kB
+├ ○ /seller/onboarding                   6.99 kB         101 kB
+├ ○ /seller/orders                       3.53 kB         106 kB
+├ ƒ /seller/orders/[id]                  8.08 kB         111 kB
 ├ ○ /seller/settings                     6.72 kB         110 kB
 ├ ○ /support                             147 B           102 kB
 └ ○ /terms                               147 B           102 kB

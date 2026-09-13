@@ -1,0 +1,21 @@
+-- Dispatch generation: the per-order counter that makes an Uber Direct
+-- CreateDelivery retry SAFE.
+--
+-- dispatch.Dispatch classifies a transport error, client-side timeout or 5xx
+-- on the create call as transient and retries it on a later tick (or on the
+-- seller's next tap of "Dispatch to Uber"). But an ambiguous failure — the
+-- request reached Uber, the delivery was created and BILLED, and only the
+-- response was lost — is indistinguishable from "nothing happened", so the
+-- retry bought a SECOND paid courier for the same food. Uber's API dedupes
+-- creates that carry the same `idempotency_key` (retained ~60 minutes), which
+-- turns that retry into a replay that returns the ORIGINAL delivery instead.
+--
+-- The key has to be stable across every retry of one dispatch cycle (sweep
+-- retries, seller re-taps, a stale claim recycled by the reaper) yet differ
+-- once a delivery has actually been recorded and later cancelled, or the
+-- legitimate re-dispatch would be answered with the dead delivery. This
+-- counter is that cycle id: it is bumped only by the persist statement that
+-- records a provider delivery on the order, so every attempt that fails before
+-- a delivery is on file shares a key (orderID:generation), and the first
+-- attempt after a cancel gets a fresh one. Additive + idempotent.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS external_dispatch_generation INT NOT NULL DEFAULT 0;

@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -131,8 +133,9 @@ func (e *quoteBatchError) Error() string {
 //     JWT locally, so even bad creds surface as an API 401 here);
 //   - 409: conflict — DoorDash answers 409 duplicate_delivery_id when a
 //     delivery for this order ALREADY EXISTS (e.g. created but unrecorded);
-//     auto-falling-back on that could double-deliver. Those need the orphan
-//     reconcile path, not a reroute.
+//     auto-falling-back on that could double-deliver. Dispatch reconciles it
+//     by reading the delivery back (adoptExistingDoorDashDelivery); this
+//     classification only matters if that read itself fails.
 //
 // Account-level failures still stop looping via the attempts cap.
 func isPermanentProviderError(err error) bool {
@@ -162,6 +165,49 @@ func permanentStatus(code int) bool {
 		return false
 	}
 	return code >= 400 && code < 500
+}
+
+// dispatchIdempotencyKey is the Uber Direct idempotency_key for one dispatch
+// cycle of an order: stable across every retry that happens before a delivery
+// is recorded on the row, different once one has been (the persist statement
+// bumps the generation). See migration 061 and the Uber create call in
+// Dispatch for why the retry MUST replay rather than re-create.
+func dispatchIdempotencyKey(orderID string, generation int) string {
+	return orderID + ":" + strconv.Itoa(generation)
+}
+
+// DoorDashExternalDeliveryID is the external_delivery_id sent on the DoorDash
+// CREATE call for one dispatch cycle of an order: the order id plus the same
+// dispatch generation that keys the Uber idempotency_key, in a form DoorDash
+// accepts in a URL path ("<uuid>-g<n>"). handlers.DoorDashWebhook strips the
+// suffix to recover the order id (ParseDoorDashExternalDeliveryID).
+//
+// Per-generation, not the bare order id, because DoorDash never lets an
+// external_delivery_id be reused — a cancelled delivery keeps its id forever
+// and a second create under it draws 409 duplicate_delivery_id. With the bare
+// id, every re-dispatch after a DoorDash cancel (DELIVERY_CANCELLED clears the
+// linkage and re-arms the sweep) was a guaranteed 409: classified transient,
+// so the order burned an attempt per tick until the cap retired it to the
+// internal pool — a paid delivery that DoorDash was never able to take again.
+// The generation only advances once a delivery is recorded (migration 061) —
+// or when a 409 reveals the id already names a delivery DoorDash cancelled
+// (adoptExistingDoorDashDelivery) — so retries within one cycle keep the same
+// id, and a 409 on one reliably means "this order's delivery already exists".
+func DoorDashExternalDeliveryID(orderID string, generation int) string {
+	return orderID + "-g" + strconv.Itoa(generation)
+}
+
+// ParseDoorDashExternalDeliveryID recovers the order id from a DoorDash
+// external_delivery_id minted by DoorDashExternalDeliveryID. A value with no
+// generation suffix (pre-suffix rows, the portal's Delivery Simulator, a
+// bare order id) is returned unchanged, so callers can keep validating it as
+// an order UUID exactly as before. A canonical UUID is hex digits and hyphens
+// only, so "-g" cannot occur inside one — the split is unambiguous.
+func ParseDoorDashExternalDeliveryID(externalDeliveryID string) string {
+	if i := strings.Index(externalDeliveryID, "-g"); i > 0 {
+		return externalDeliveryID[:i]
+	}
+	return externalDeliveryID
 }
 
 // truncate bounds an untrusted provider error string before it goes into an
@@ -228,7 +274,12 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 	// tap) owns it — returning here prevents a duplicate, real, *paid* delivery.
 	// The bare courier_id-IS-NULL guard on the final UPDATE can't prevent that,
 	// because by then CreateDelivery has already charged us.
-	tag, err := e.db.Exec(ctx, `
+	//
+	// RETURNING the dispatch generation: the cycle id that keys this attempt's
+	// Uber idempotency_key (see dispatchIdempotencyKey). It is read in the same
+	// statement that wins the claim so the key is fixed before any paid call.
+	var generation int
+	err = e.db.QueryRow(ctx, `
 		UPDATE orders
 		   SET external_provider = 'dispatching', updated_at = NOW()
 		 WHERE id = $1
@@ -250,16 +301,17 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		   -- EVERY sweep tick (tryAutoAssign), which would otherwise retry a
 		   -- hopeless order forever. Seller-initiated escalations ($2) bypass
 		   -- the cap: an explicit human retry is allowed to try again.
-		   AND ($2 OR external_dispatch_attempts < $3)`,
-		in.OrderID, in.AllowRestaurantMode, maxExternalDispatchAttempts)
-	if err != nil {
-		return "", "", 0, err
-	}
-	if tag.RowsAffected() == 0 {
+		   AND ($2 OR external_dispatch_attempts < $3)
+		 RETURNING external_dispatch_generation`,
+		in.OrderID, in.AllowRestaurantMode, maxExternalDispatchAttempts).Scan(&generation)
+	if errors.Is(err, pgx.ErrNoRows) {
 		// Already claimed/dispatched/assigned by someone else — not an error.
 		slog.Info("external-dispatch: order already claimed, skipping",
 			slog.String("order_id", in.OrderID))
 		return "", "", 0, nil
+	}
+	if err != nil {
+		return "", "", 0, err
 	}
 
 	// On any failure after we've claimed, release the claim and decide between
@@ -495,8 +547,25 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 	switch best.provider {
 	case "uber_direct":
 		del, cerr := e.uber.CreateDelivery(ctx, uberdirect.CreateDeliveryRequest{
-			QuoteID:        best.uberQuoteID,
-			ExternalID:     in.OrderID,
+			QuoteID:    best.uberQuoteID,
+			ExternalID: in.OrderID,
+			// Makes a retry after a lost response a REPLAY, not a second paid
+			// delivery. A transport error, a client-side timeout (the seller's
+			// escalate handler runs this under a 30s deadline) or a 5xx on this
+			// call is classified transient below, so the sweep — or the seller's
+			// next tap — tries again; when the first request had in fact reached
+			// Uber and created the delivery, that retry bought and billed a
+			// second courier for food a courier was already collecting. With the
+			// same key Uber answers the retry with the original delivery, which
+			// the persist below then records. Also self-heals the persist-failed
+			// orphan (the reaper recycles the claim, the retry replays). The key
+			// is stable across every attempt of one cycle and rolls only once a
+			// delivery is recorded (migration 061), so a post-cancel re-dispatch
+			// is not answered with the dead delivery. Should Uber ever reject a
+			// replay whose body differs (the retry carries a fresh quote_id),
+			// that is a 4xx → permanent → platform fallback + alert: loud and
+			// unpaid, versus the silent double-buy this replaces.
+			IdempotencyKey: dispatchIdempotencyKey(in.OrderID, generation),
 			PickupName:     in.RestaurantName,
 			PickupAddress:  uberdirect.Address{Street: []string{in.RestAddress}, Country: "US"},
 			PickupPhone:    in.RestPhone,
@@ -519,7 +588,11 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 
 	case "doordash_drive":
 		del, cerr := e.doordash.CreateDelivery(ctx, doordash.CreateDeliveryRequest{
-			ExternalDeliveryID: in.OrderID,
+			// Per dispatch cycle, never the bare order id: DoorDash refuses to
+			// reuse an external_delivery_id even after the delivery under it was
+			// cancelled, so the bare id made every post-cancel re-dispatch a
+			// guaranteed 409. See DoorDashExternalDeliveryID.
+			ExternalDeliveryID: DoorDashExternalDeliveryID(in.OrderID, generation),
 			PickupAddress:      in.RestAddress,
 			PickupBusinessName: in.RestaurantName,
 			PickupPhone:        in.RestPhone,
@@ -529,6 +602,25 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 			OrderValue:         in.Subtotal,
 			TipCents:           in.TipCents,
 		})
+		if cerr != nil && doordash.IsDuplicateDeliveryID(cerr) {
+			// 409 duplicate_delivery_id: this cycle's id ALREADY names a DoorDash
+			// delivery. DoorDash has no idempotency_key; the id is the dedupe, so
+			// this is the retry after a create whose response was lost (or whose
+			// persist never landed — the reaper then recycled the claim). Treating
+			// it as a plain transient burned an attempt per tick under the same id
+			// until the cap retired the order to the internal pool — and a KE
+			// courier was assigned to food a Dasher was already collecting, with
+			// the DoorDash bill still running. The seller's escalate path was worse:
+			// it never counts attempts, so every tap was a 502 forever. Read the
+			// delivery back and adopt it instead — the DoorDash twin of Uber's
+			// idempotency replay.
+			adopted, aerr := e.adoptExistingDoorDashDelivery(ctx, in, DoorDashExternalDeliveryID(in.OrderID, generation), cerr)
+			if aerr != nil {
+				fail(false, aerr)
+				return "", "", 0, aerr
+			}
+			del, cerr = adopted, nil
+		}
 		if cerr != nil {
 			slog.Error("external-dispatch: doordash create failed",
 				slog.String("order_id", in.OrderID), slog.String("error", cerr.Error()))
@@ -607,10 +699,18 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 	// claim was released and the next sweep bought a SECOND paid courier for
 	// food already in flight. See
 	// TestDispatch_PersistSurvivesCallerCancellation.
+	//
+	// external_dispatch_generation + 1: this is the ONLY place the dispatch
+	// cycle id advances. Every attempt that fails before a delivery is on file
+	// keeps replaying the same Uber idempotency_key; the first attempt after
+	// this delivery is cancelled (webhook / reconciler clears the linkage) gets
+	// a fresh key and a genuinely new courier.
 	tag2, uerr := e.db.Exec(context.Background(), `
 		UPDATE orders
 		   SET external_delivery_id = $1, external_provider = $2, external_tracking_url = $3,
-		       provider_fee_cents = $5, updated_at = NOW()
+		       provider_fee_cents = $5,
+		       external_dispatch_generation = external_dispatch_generation + 1,
+		       updated_at = NOW()
 		 WHERE id = $4 AND external_provider = 'dispatching'`,
 		deliveryID, best.provider, trackingURL, in.OrderID, fee)
 	if uerr != nil {
@@ -678,6 +778,60 @@ func (e *ExternalDispatcher) Dispatch(ctx context.Context, in Input) (provider, 
 		slog.String("delivery_id", deliveryID),
 		slog.Int("fee_cents", fee))
 	return best.provider, deliveryID, fee, nil
+}
+
+// adoptExistingDoorDashDelivery resolves a 409 duplicate_delivery_id on the
+// DoorDash create by reading back the delivery already filed under extID.
+//
+// A live delivery is returned for the caller to persist exactly as if the
+// create had succeeded — a Dasher is (or will be) on the way, and the row
+// must say so or the webhooks never bind and the sweep buys a second courier.
+//
+// A CANCELLED one means nobody is delivering under this id, and DoorDash will
+// 409 that id forever: roll the dispatch cycle here (the persist statement,
+// the only other place the generation advances, never ran) so the retry the
+// returned error triggers presents DoorDash with a fresh id instead of
+// re-drawing the same 409 until the cap. The bump is scoped to our own claim
+// sentinel like every other write in this cycle.
+//
+// Any read failure is returned as a transient error: the delivery's state is
+// unknown, so neither adopting nor re-creating is safe, and the sweep's next
+// tick asks again under the same id.
+func (e *ExternalDispatcher) adoptExistingDoorDashDelivery(ctx context.Context, in Input, extID string, createErr error) (*doordash.Delivery, error) {
+	existing, gerr := e.doordash.GetDelivery(ctx, extID)
+	if gerr != nil {
+		slog.Error("external-dispatch: doordash create drew 409 duplicate_delivery_id but the delivery could not be read back",
+			slog.String("order_id", in.OrderID),
+			slog.String("external_delivery_id", extID),
+			slog.String("error", gerr.Error()))
+		// %v, not %w: the read-back's own status (a 404 from a flaky read, say)
+		// must not leak into IsPermanent — the bookkeeping above counted a
+		// transient attempt, and the returned verdict has to agree with it.
+		return nil, fmt.Errorf("doordash duplicate delivery id could not be reconciled: %v (create: %v)", gerr, createErr)
+	}
+	if existing.IsCancelled() {
+		slog.Warn("external-dispatch: doordash id already names a cancelled delivery; rolling the dispatch cycle so the retry gets a fresh id",
+			slog.String("order_id", in.OrderID),
+			slog.String("external_delivery_id", extID),
+			slog.String("delivery_status", existing.DeliveryStatus))
+		if _, uerr := e.db.Exec(context.Background(), `
+			UPDATE orders
+			   SET external_dispatch_generation = external_dispatch_generation + 1
+			 WHERE id = $1 AND external_provider = 'dispatching'`, in.OrderID); uerr != nil {
+			slog.Error("external-dispatch: failed to roll dispatch generation past a cancelled DoorDash delivery",
+				slog.String("order_id", in.OrderID), slog.String("error", uerr.Error()))
+		}
+		return nil, fmt.Errorf("doordash delivery %s is already cancelled; retrying under a fresh id", extID)
+	}
+	slog.Warn("external-dispatch: adopted an existing DoorDash delivery after 409 duplicate_delivery_id — a prior create succeeded but was never recorded",
+		slog.String("order_id", in.OrderID),
+		slog.String("external_delivery_id", extID),
+		slog.String("delivery_status", existing.DeliveryStatus),
+		slog.Int("fee_cents", existing.Fee))
+	if existing.ExternalDeliveryID == "" {
+		existing.ExternalDeliveryID = extID
+	}
+	return existing, nil
 }
 
 // announceFallback surfaces a fallback-to-platform that fail() already

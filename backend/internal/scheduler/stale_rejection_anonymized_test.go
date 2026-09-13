@@ -18,12 +18,15 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/koshereats/backend/internal/config"
@@ -31,14 +34,29 @@ import (
 	"github.com/koshereats/backend/internal/payments"
 )
 
-// staleSweepDB connects to the same database the handlers suite migrates and
-// makes sure the schema is present. Skips (rather than fails) when no Postgres
-// is reachable, matching how this package is run locally vs. in CI.
+// staleSweepDB connects to THIS package's own database (the configured name
+// plus a "_scheduler" suffix, created on demand) and makes sure the schema is
+// present. Skips (rather than fails) when no Postgres is reachable, matching
+// how this package is run locally vs. in CI.
+//
+// Own database, not the handlers suite's: `go test ./...` runs packages
+// concurrently, and internal/handlers resets between its tests with
+// `TRUNCATE ... orders RESTART IDENTITY CASCADE`. Sharing koshereats_test made
+// this test flaky — the swept order it reads back was wiped from under it
+// ("read swept order: no rows in result set"). Same isolation the dispatch
+// suite applies, for the same reason.
 func staleSweepDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
 		url = "postgres://postgres:postgres@localhost:5433/koshereats_test?sslmode=disable"
+	}
+	url, err := ownDatabaseURL(url)
+	if err != nil {
+		t.Fatalf("derive scheduler test database url: %v", err)
+	}
+	if err := ensureDatabaseExists(url); err != nil {
+		t.Skipf("no test Postgres at %s: %v", url, err)
 	}
 	db, err := database.Connect(url)
 	if err != nil {
@@ -52,6 +70,74 @@ func staleSweepDB(t *testing.T) *pgxpool.Pool {
 		t.Skipf("cannot migrate test database: %v", err)
 	}
 	return db.Pool
+}
+
+const schedulerDBSuffix = "_scheduler"
+
+// ownDatabaseURL returns dbURL pointing at the "<name>_scheduler" database.
+func ownDatabaseURL(dbURL string) (string, error) {
+	cfg, err := pgx.ParseConfig(dbURL)
+	if err != nil {
+		return "", fmt.Errorf("parse url: %w", err)
+	}
+	if cfg.Database == "" {
+		return "", fmt.Errorf("no database name in %q", dbURL)
+	}
+	if strings.HasSuffix(cfg.Database, schedulerDBSuffix) {
+		return dbURL, nil
+	}
+	u, err := neturl.Parse(dbURL)
+	if err != nil {
+		return "", fmt.Errorf("parse url: %w", err)
+	}
+	u.Path = "/" + cfg.Database + schedulerDBSuffix
+	return u.String(), nil
+}
+
+// ensureDatabaseExists creates the target database if it is missing, via the
+// maintenance `postgres` database on the same server. Mirrors the dispatch and
+// handlers helpers so a fresh checkout needs only an empty Postgres server.
+func ensureDatabaseExists(dbURL string) error {
+	cfg, err := pgx.ParseConfig(dbURL)
+	if err != nil {
+		return fmt.Errorf("parse url: %w", err)
+	}
+	target := cfg.Database
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if pool, perr := pgxpool.New(ctx, dbURL); perr == nil {
+		pingErr := pool.Ping(ctx)
+		pool.Close()
+		if pingErr == nil {
+			return nil
+		}
+	}
+
+	adminCfg := cfg.Copy()
+	adminCfg.Database = "postgres"
+	adminConn, err := pgx.ConnectConfig(ctx, adminCfg)
+	if err != nil {
+		return fmt.Errorf("connect maintenance db: %w", err)
+	}
+	defer adminConn.Close(ctx)
+
+	var exists bool
+	if err := adminConn.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)`, target).Scan(&exists); err != nil {
+		return fmt.Errorf("check database exists: %w", err)
+	}
+	if exists {
+		return nil
+	}
+	// Identifiers can't be parameterized; target is derived from our own
+	// env/default, not user input. Quote defensively all the same.
+	if _, err := adminConn.Exec(ctx,
+		fmt.Sprintf(`CREATE DATABASE %s`, pgx.Identifier{target}.Sanitize())); err != nil {
+		return fmt.Errorf("create database %q: %w", target, err)
+	}
+	return nil
 }
 
 // seedAnonymizedPendingOrder creates a charged 'pending' order that is already
