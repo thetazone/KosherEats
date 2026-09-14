@@ -2207,6 +2207,7 @@ components:
             Latest courier position reported by the external provider (Uber
             Direct event.courier_update). Null until the provider has sent a
             fix or once the order is no longer out with that provider.
+          type: object
           nullable: true
           allOf: [{ $ref: "#/components/schemas/ExternalCourierLocation" }]
         created_at: { type: string, format: date-time }
