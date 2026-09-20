@@ -10,7 +10,7 @@ Last updated: 2026-09-20 (status block below); the sections after it are the Jun
 - [x] **Web ordering + selling live** on koshereats.shop (Vercel via git integration on `main`); webhunt-20260913 fixes shipped; backend at Fly v176+ with migrations 061/062.
 - [x] **Courier apps in CI** (Android matrix + iOS slow lane) and consumer iOS Swift-6 strict-concurrency warnings cleared (30 → 0).
 - [x] **`CancelOrder` scheduled-order cancel** landed on main (paired with the client Cancel button).
-- [ ] **T7 Temporal payouts** — still OFF in prod. `koshereats-temporal` / `koshereats-temporal-db` Fly apps exist (Jul 2) but the API has no `TEMPORAL_*` config; `feat/temporal-payout-prep` (local branch) carries the payout workflow tests + go-live runbook.
+- [ ] **T7 Temporal payouts** — still OFF in prod. the Jul-2 `koshereats-temporal` / `koshereats-temporal-db` Fly apps sat unwired (no `TEMPORAL_*` on the API) and were destroyed 2026-09-20. Re-provision from `infra/temporal-server/` + `docs/temporal-payouts-go-live.md` when flipping T7; workflow tests live in `backend/internal/payout/payout_test.go`.
 - Archived process docs now live in `docs/archive/` (campaign reports, polish round summaries, June handoff, bug backlogs).
 
 ---

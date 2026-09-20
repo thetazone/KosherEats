@@ -126,8 +126,8 @@ comes from `NEXT_PUBLIC_API_URL` in the Vercel project's environment variables
 via GoDaddy A/AAAA records → the Fly IPs).
 
 `web/fly.toml` is kept only as a fallback container recipe (any host that
-runs the Dockerfile works); the legacy Fly `koshereats-web` app does not serve
-the domain.
+runs the Dockerfile works); the legacy Fly `koshereats-web` app was destroyed
+on 2026-09-20.
 
 The admin lives at `https://koshereats.shop/admin/login`. Seed a real admin
 user (not the dev placeholder) before first login:
