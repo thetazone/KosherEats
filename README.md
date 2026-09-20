@@ -25,8 +25,7 @@ backend/    Go (chi router, pgx/PostgreSQL, Stripe) — REST API, OpenAPI spec, 
 web/        Next.js 14 · React 18 · TypeScript
 ios/        Native Swift apps — consumer, seller, courier (+ GreenEats variants)
 android/    Native Kotlin apps — consumer, seller, courier (+ GreenEats variants)
-temporal/   background workflows
-docs/       deployment, Firebase, and work-handoff notes
+docs/       runbooks (Uber Direct, Shipday, DoorDash, Clover), design rubric, TODO board; docs/archive/ holds past campaign reports
 ```
 
 - **Backend:** Go + `chi` + `pgx`, Postgres, **Stripe** for payments, an `openapi.yaml` contract, containerized and deployed on **Fly.io**.

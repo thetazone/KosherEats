@@ -10,7 +10,7 @@ Fly, DigitalOcean App Platform, a bare VM, etc.).
 ## 1. Prerequisites
 
 - [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/) installed and authenticated (`fly auth login`)
-- A registered domain you control (e.g. `koshereats.com`)
+- A registered domain you control (production is `koshereats.shop`)
 - Accounts provisioned for:
   - [Stripe](https://stripe.com) + Stripe Connect enabled
   - Apple Developer (for APNs + App Store)
@@ -118,23 +118,18 @@ curl https://koshereats-api.fly.dev/health
 The web app is one Next.js project that serves both the consumer-facing
 restaurant discovery pages and the `/admin` dashboard.
 
-```sh
-cd web
+**Production is Vercel, via the GitHub integration on `main`** — pushing to
+`main` is the web deploy. The site is `https://koshereats.shop`. The API base
+comes from `NEXT_PUBLIC_API_URL` in the Vercel project's environment variables
+(the code falls back to `https://koshereats-api.fly.dev/api/v1`;
+`https://api.koshereats.shop` is the custom-domain alias for the same Fly app,
+via GoDaddy A/AAAA records → the Fly IPs).
 
-fly launch --no-deploy
-fly secrets set NEXT_PUBLIC_API_URL=https://koshereats-api.fly.dev/api/v1 --app koshereats-web
-fly deploy --build-arg NEXT_PUBLIC_API_URL=https://koshereats-api.fly.dev/api/v1
-```
+`web/fly.toml` is kept only as a fallback container recipe (any host that
+runs the Dockerfile works); the legacy Fly `koshereats-web` app does not serve
+the domain.
 
-Then point your domain's DNS at Fly:
-
-```sh
-fly certs create koshereats.com --app koshereats-web
-fly certs create www.koshereats.com --app koshereats-web
-# Follow the CNAME/A record instructions Fly prints.
-```
-
-The admin lives at `https://koshereats.com/admin/login`. Seed a real admin
+The admin lives at `https://koshereats.shop/admin/login`. Seed a real admin
 user (not the dev placeholder) before first login:
 
 ```sh
@@ -278,7 +273,7 @@ Check logs:
 
 ```sh
 fly logs --app koshereats-api
-fly logs --app koshereats-web
+# Web: Vercel dashboard → Deployments / Logs
 ```
 
 ---

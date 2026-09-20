@@ -25,7 +25,7 @@ export interface OrderStatusMeta {
 // classes on the admin restaurants approval pill onto warning-*, so that
 // mapping is established. Note warning-* aliases Tailwind yellow, not amber —
 // a deliberate (small) hue shift onto an existing token rather than a new one.
-// See docs/RUBRIC_SWEEP_REPORT_web-ordering.md.
+// See docs/archive/RUBRIC_SWEEP_REPORT_web-ordering.md.
 // `scheduled` sits on the neutral dark-* ramp: it's a dormant, informational
 // state (nothing for the kitchen to do until it flips to `pending`), so it
 // gets the same quiet treatment as StatusHint on seller/orders/[id] rather

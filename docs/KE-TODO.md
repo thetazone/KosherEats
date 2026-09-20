@@ -1,7 +1,17 @@
 # KosherEats — Master TODO (live tracker)
 
-The single working checklist. Deeper context in `docs/KE-WORK-HANDOFF.md`.
-Last updated: 2026-06-26.
+The single working checklist. Deeper context in `docs/archive/KE-WORK-HANDOFF.md`.
+Last updated: 2026-09-20 (status block below); the sections after it are the June 2026 board as it stood.
+
+---
+
+## 📌 Status update 2026-09-20 — what closed since the June board
+- [x] **Uber Direct dispatch + status webhook VERIFIED** (2026-09-13): new "KosherEats" Uber org, prod creds on Fly, `event.delivery_status` + `event.courier_update` webhooks on `api.koshereats.shop`; sandbox order ran accept → dispatch → pickup → delivered end to end. Runbook: `docs/uber-direct-go-live.md`. Shipday key is unset on Fly (Uber Direct is the only external provider) — see `docs/shipday-go-live.md` to re-enable.
+- [x] **Web ordering + selling live** on koshereats.shop (Vercel via git integration on `main`); webhunt-20260913 fixes shipped; backend at Fly v176+ with migrations 061/062.
+- [x] **Courier apps in CI** (Android matrix + iOS slow lane) and consumer iOS Swift-6 strict-concurrency warnings cleared (30 → 0).
+- [x] **`CancelOrder` scheduled-order cancel** landed on main (paired with the client Cancel button).
+- [ ] **T7 Temporal payouts** — still OFF in prod. `koshereats-temporal` / `koshereats-temporal-db` Fly apps exist (Jul 2) but the API has no `TEMPORAL_*` config; `feat/temporal-payout-prep` (local branch) carries the payout workflow tests + go-live runbook.
+- Archived process docs now live in `docs/archive/` (campaign reports, polish round summaries, June handoff, bug backlogs).
 
 ---
 
@@ -40,7 +50,7 @@ Re-triaged the cycle 1–3 med/low tail (153 raw → 132 real); fixed the 16 wor
 
 ---
 
-## 🔬 Adversarial bug-hunt — cycle 1 (2026-06-25) — full list in `docs/bug-backlog-2026-06-25.md`
+## 🔬 Adversarial bug-hunt — cycle 1 (2026-06-25) — full list in `docs/archive/bug-backlog-2026-06-25.md`
 Multi-agent hunt (8 lenses × 5 rounds, skeptic-verified): **102 confirmed — 3 critical, 36 high, 40 medium, 23 low.** Fixed + committed so far (branch `feat/seller-delivery-mode-ui`):
 - [x] **CRITICAL — anon admin self-registration** (auth/social/phone signup took `role` from the body, no allowlist → admin JWT → full /admin surface). Allowlist (`allowedSignupRole`) on all 3 creation paths + regression test. **Committed `d3dab2e0` and DEPLOYED — verified live: prod now returns `400 invalid role`.**
 - [x] **CRITICAL — scheduled orders auto-rejected+refunded on promotion** (stale-rejection keyed off `created_at`; scheduled orders are old by the time they go pending). Key off `updated_at`. Committed `664527cb`.
@@ -55,7 +65,7 @@ Multi-agent hunt (8 lenses × 5 rounds, skeptic-verified): **102 confirmed — 3
 - [x] **Consumer Uber-delivery tracking — DONE (iOS + Android):** `external_provider`/`external_delivery_id`/`external_tracking_url` on the consumer Order; the tracking screen now swaps the dead platform map / "finding a courier" UI for a "Delivered by Uber/DoorDash" card + a "Track delivery" button opening `external_tracking_url`. Backend serializes the fields (deployed).
 - [x] **Flagged backend — done where safe:** self-delivery seller now keeps 100% of the courier tip (was dropped to the platform); added a reaper for leaked `external_provider='dispatching'` claim sentinels (>2 min → re-dispatch).
 - [x] **4 more open highs fixed (2026-06-25, committed `64a0cacd`, deploying):** courier available-deliveries feed no longer leaks the customer's exact address/GPS pre-claim (address withheld + coords coarsened to ~block level; full address on claim); suspended-after-claim courier can no longer Pickup/Deliver (`requireApprovedCourier` re-check); seller dashboard "today" totals now use America/New_York not UTC (single-market assumption noted); provider (Uber/DoorDash) cancel after pickup resets picked_up→ready instead of stranding the order.
-- **Flagged backend — still deferred (need migration / product / ops decision):** courier-payout double-pay (legacy↔Temporal idempotency-key mismatch — only fires on a mode switch, and Temporal payouts are OFF in prod; fix = key Temporal's StripeTransfer on the queue row id like legacy, do it WHEN wiring Temporal); refund-before-commit atomicity in CancelOrder/tryStaleReject (needs idempotent-refund + reconcile design — current order fails toward free-food, flip-first fails toward charged-customer; don't change without the reaper); LinkProvider multi-account (needs a UNIQUE constraint migration on user_auth_providers); courier-no-Stripe-Connect payout; kosher-cert change post-approval (lock + re-review = product call); courier one-at-a-time busy-guard (product call). Full details in `docs/bug-backlog-2026-06-25.md`.
+- **Flagged backend — still deferred (need migration / product / ops decision):** courier-payout double-pay (legacy↔Temporal idempotency-key mismatch — only fires on a mode switch, and Temporal payouts are OFF in prod; fix = key Temporal's StripeTransfer on the queue row id like legacy, do it WHEN wiring Temporal); refund-before-commit atomicity in CancelOrder/tryStaleReject (needs idempotent-refund + reconcile design — current order fails toward free-food, flip-first fails toward charged-customer; don't change without the reaper); LinkProvider multi-account (needs a UNIQUE constraint migration on user_auth_providers); courier-no-Stripe-Connect payout; kosher-cert change post-approval (lock + re-review = product call); courier one-at-a-time busy-guard (product call). Full details in `docs/archive/bug-backlog-2026-06-25.md`.
 - **Flagged (need product/migration/ops decisions, NOT auto-fixed):** courier-payout double-pay (legacy↔Temporal idempotency keys — coordinated), courier-payout amount/2.5% model, UTC "today" reporting (needs restaurant TZ), refund-before-commit atomicity in CancelOrder/tryStaleReject (needs idempotent-refund design), external-cancel post-pickup stranding (where's the food?), `dispatching` sentinel reaper, LinkProvider multi-account (needs DB constraint), self-delivery tip→seller earnings (product), kosher-cert change post-approval (trust/product), device-token overwrite (intentional for login/logout — NOT a bug). Consumer apps have **no Uber-delivery tracking** (frozen map) — feature-sized. NOTE: single-skeptic verify is permissive — re-verify before applying (e.g. the device-token "hijack" overwrite is intentional for login/logout hand-off; not fixed). Notable un-fixed highs: courier-payout double-pay (legacy↔Temporal idempotency-key mismatch), consumer apps have **no external/Uber delivery tracking** (frozen map), self-delivery tip dropped from seller earnings, external-cancel webhook strands orders, `dispatching` claim sentinel can leak (no reaper), couriers can poach self-delivery orders, checkout address change doesn't re-price.
 - Cycles 2 & 3 NOT yet run — pending decision (see report): burning down this backlog likely beats finding ~200 more.
 
@@ -166,7 +176,7 @@ Per Salto's model (replaced the earlier min/free-delivery attempt): **consumer p
 - [ ] Confirm Fly `APNS_KEY_ID == 77W7RLLZTB` (or let the order-push test confirm it)
 - [ ] Clean up ~30 stale `agent/*` worktree branches
 
-## 🔬 Adversarial bug-hunt — cycles 2-3 (2026-06-25) — full list in `docs/bug-backlog-2026-06-25-cycles23.md`
+## 🔬 Adversarial bug-hunt — cycles 2-3 (2026-06-25) — full list in `docs/archive/bug-backlog-2026-06-25-cycles23.md`
 Second sweep (cycle-1's 102 excluded): **136 NEW confirmed — 1 critical, 45 high, 48 medium, 42 low.** Fixed + deployed:
 - [x] **CRITICAL — phone/OAuth account takeover** via derivable synthetic password ("phone-"+phone) + no auth_provider guard in /login. Login guard + crypto-random synthetic passwords + migration 045 + regression test. Deployed + live.
 - [x] **HIGH — self-pickup ↔ Uber-escalate TOCTOU** (double delivery): guards on both SellerPickupOrder + dispatch claim CAS.

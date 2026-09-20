@@ -20,6 +20,7 @@ backend/vendor/
 web/node_modules/
 web/.next/
 web/out/
+web/*.tsbuildinfo
 # iOS
 # NOTE: don't add `ios/**/*.xcworkspace` — that matches `project.xcworkspace/`
 # inside xcodeproj bundles too, which hides the SPM Package.resolved that
