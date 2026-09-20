@@ -1,0 +1,40 @@
+# Self-hosted Temporal server for KosherEats courier payouts.
+#
+# This is pure infrastructure — it runs the public temporalio/auto-setup image
+# (server + one-shot schema setup), NOT any code in this repo. It is reached
+# only over Fly's private network at koshereats-temporal.internal:7233; there is
+# deliberately no [http_service], so it is never internet-exposed.
+#
+# Deploy (run from THIS directory so the Docker build context includes the
+# Dockerfile + fly-entrypoint.sh):
+#   cd infra/temporal-server
+#   fly secrets set -a koshereats-temporal POSTGRES_PWD='<admin pw>'   # once
+#   fly deploy -a koshereats-temporal
+#
+# Backing store: koshereats-temporal-db (a separate Fly Postgres, isolated from
+# the app's koshereats-db on purpose). auto-setup creates the `temporal` and
+# `temporal_visibility` databases + runs migrations on first boot.
+#
+# The Dockerfile wraps the stock temporalio/auto-setup image only to bind the
+# server to Fly's private IPv6 (see fly-entrypoint.sh) — mandatory, or the
+# backend can't reach it over 6PN.
+
+app = "koshereats-temporal"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DB = "postgres12"
+  DB_PORT = "5432"
+  POSTGRES_SEEDS = "koshereats-temporal-db.flycast"
+  POSTGRES_USER = "postgres"
+  # POSTGRES_PWD is a Fly secret, never committed.
+  # SQL-based visibility (no Elasticsearch) — auto-setup provisions it in the
+  # same Postgres when no ES env is present.
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024
