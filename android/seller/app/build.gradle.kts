@@ -18,7 +18,7 @@ fun lp(key: String): String = localProps.getProperty(key, "")
 
 android {
     namespace = "com.koshereats.seller"
-    compileSdk = 35
+    compileSdk = 36
 
     signingConfigs {
         // Shared debug keystore committed at repo root. Pinned SHA-1 so Firebase
@@ -48,7 +48,7 @@ android {
     defaultConfig {
         applicationId = "com.koshereats.seller"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 12
         versionName = "1.0.8"
 
