@@ -12,12 +12,12 @@ export default function PrivacyPolicyPage() {
       <Header />
       <main className="max-w-3xl mx-auto px-6 py-16 text-dark-200">
       <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
-      <p className="text-dark-400 mb-10">Last updated: April 5, 2026</p>
+      <p className="text-dark-400 mb-10">Last updated: October 1, 2026</p>
 
       <div className="space-y-8 text-sm leading-relaxed">
         <Section title="1. Who We Are">
           <p>
-            KosherEats (&quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates the KosherEats
+            KosherEats LLC (&quot;KosherEats,&quot; &quot;we,&quot; &quot;us,&quot; or &quot;our&quot;) operates the KosherEats
             mobile applications (Consumer, Seller, and Courier) and the website
             at koshereats.shop (collectively, the &quot;Service&quot;). This Privacy
             Policy explains how we collect, use, share, and protect your
@@ -61,11 +61,13 @@ export default function PrivacyPolicyPage() {
         <Section title="4. How We Share Your Information">
           <p>We do not sell your personal information. We share data only in these limited circumstances:</p>
           <ul className="list-disc pl-5 space-y-1">
-            <li><strong>Restaurants:</strong> receive your name, delivery address, and order details to prepare your food.</li>
-            <li><strong>Couriers:</strong> receive the restaurant address, your delivery address, and your first name to complete the delivery.</li>
-            <li><strong>Payment processors:</strong> Stripe processes payments and courier payouts. Their use of your data is governed by <a href="https://stripe.com/privacy" className="text-brand-400 underline" target="_blank" rel="noopener noreferrer">Stripe&apos;s Privacy Policy</a>.</li>
+            <li><strong>Restaurants:</strong> receive your first name, the last four digits of your phone number, your delivery address and instructions, and your order details so they can prepare your order. We do not give restaurants your email address or full phone number, and we do not share your contact information with restaurants for marketing.</li>
+            <li><strong>Couriers:</strong> a KosherEats courier receives the restaurant address, your first name, your delivery address and instructions, and your phone number so they can reach you during the delivery.</li>
+            <li><strong>Delivery partners:</strong> when a partner such as Uber Direct delivers your order, it receives your name, phone number, delivery address, and delivery instructions to complete the delivery. Its use of that information is governed by its own privacy policy.</li>
+            <li><strong>Payment processors:</strong> Stripe processes payments and payouts to restaurants and couriers. Their use of your data is governed by <a href="https://stripe.com/privacy" className="text-brand-400 underline" target="_blank" rel="noopener noreferrer">Stripe&apos;s Privacy Policy</a>.</li>
+            <li><strong>Messaging and sign-in:</strong> Twilio sends verification codes and text messages; Apple and Google handle sign-in if you choose them, and deliver push notifications; an email provider sends receipts and account emails.</li>
             <li><strong>Background check provider:</strong> Checkr processes courier background checks. Their use is governed by <a href="https://checkr.com/privacy-policy" className="text-brand-400 underline" target="_blank" rel="noopener noreferrer">Checkr&apos;s Privacy Policy</a>.</li>
-            <li><strong>Cloud infrastructure:</strong> we use Amazon Web Services (S3) for document and image storage, and Fly.io for application hosting.</li>
+            <li><strong>Cloud infrastructure:</strong> Fly.io hosts our servers and database, Tigris (S3-compatible storage) holds uploaded images and documents, and Vercel hosts our website.</li>
             <li><strong>Legal requirements:</strong> we may disclose information if required by law, regulation, or legal process.</li>
           </ul>
         </Section>

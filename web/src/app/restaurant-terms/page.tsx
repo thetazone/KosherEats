@@ -247,18 +247,15 @@ export default function RestaurantTermsPage() {
 
         <Section id="customer-data" title="11. Customer data">
           <p>
-            Consistent with New York City law, if you ask, KosherEats will share with you the
-            following information about customers who ordered from your restaurant, unless the
-            customer has opted out of this sharing: their name, phone number, email address,
-            delivery address, and the contents of their orders. To request it, email{" "}
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-400 underline">
-              {SUPPORT_EMAIL}
-            </a>
-            .
+            For each order, KosherEats gives you the customer information you need to fill it: the
+            customer&apos;s first name, the last four digits of their phone number, their delivery
+            address and instructions, and the contents of the order. KosherEats does not otherwise
+            share customers&apos; contact information with restaurants.
           </p>
           <p>
-            You will use customer data only in ways the law allows, and you will protect it with
-            reasonable security measures against unauthorized access, use, or disclosure.
+            You will use customer data only to fill the order it came with and in ways the law
+            allows, and you will protect it with reasonable security measures against
+            unauthorized access, use, or disclosure.
           </p>
         </Section>
 
