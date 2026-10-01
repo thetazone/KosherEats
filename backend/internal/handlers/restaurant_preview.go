@@ -20,10 +20,12 @@ import (
 // has never heard of us.
 
 // restaurantOrderableSQL is the single definition of "money may move against
-// this restaurant". Standard visibility + active + approved; a preview row can
-// never satisfy it no matter what its other flags say.
+// this restaurant". Standard visibility + active + approved + merchant
+// agreement satisfied (exempt, or the current version accepted — see
+// merchant_agreement.go); a preview row can never satisfy it no matter what its
+// other flags say.
 const restaurantOrderableSQL = `
-	SELECT (is_active AND approval_status = 'approved' AND listing_visibility = 'standard')
+	SELECT ` + liveRestaurantSQL + `
 	  FROM restaurants WHERE id = $1`
 
 // restaurantOrderable reports whether orders/payments may proceed against the
@@ -86,7 +88,7 @@ func (h *Handler) decorateRestaurantListings(ctx context.Context, rs []models.Re
 	}
 	rows, err := h.db.Pool.Query(ctx, `
 		SELECT r.id, r.listing_visibility,
-		       (r.is_active AND r.approval_status = 'approved' AND r.listing_visibility = 'standard') AS orderable,
+		       `+liveRestaurantSQLr+` AS orderable,
 		       (SELECT COUNT(*) FROM restaurant_requests rr WHERE rr.restaurant_id = r.id) AS request_count,
 		       EXISTS (SELECT 1 FROM restaurant_requests rr2
 		                WHERE rr2.restaurant_id = r.id AND rr2.user_id = $2) AS requested

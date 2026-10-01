@@ -424,3 +424,10 @@ ON CONFLICT (id) DO UPDATE SET
     expires_at      = EXCLUDED.expires_at,
     is_active       = true,
     updated_at      = NOW();
+
+-- ── Merchant agreement (migration 064) ─────────────────────
+-- The demo restaurants stand in for the grandfathered ones, so they stay
+-- listed/orderable without a click-to-accept. Restaurants inserted after 064
+-- otherwise default to agreement_exempt = false and are hidden from consumers.
+UPDATE restaurants SET agreement_exempt = TRUE
+ WHERE owner_id = '11111111-1111-1111-1111-111111111111';

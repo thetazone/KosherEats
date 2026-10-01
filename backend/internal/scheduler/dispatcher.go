@@ -26,6 +26,11 @@
 //     Replaces the old fire-and-forget goroutine that silently dropped
 //     failed payouts.
 //
+//  6. restaurant payouts — the restaurantpayout.Processor sweep over
+//     restaurant_payout_lines: backfill missed ledger lines, resolve each
+//     order's Stripe processing fee, book refunds (withhold / reverse), and —
+//     only when RESTAURANT_PAYOUTS_ENABLED — transfer each restaurant's net.
+//
 // Multi-instance safe: runAll gates every tick behind a session-level
 // Postgres advisory lock (pg_try_advisory_lock on sweepAdvisoryLockKey), so
 // when several API instances run this loop only the lock holder executes the
@@ -52,6 +57,7 @@ import (
 	"github.com/koshereats/backend/internal/notify"
 	"github.com/koshereats/backend/internal/payments"
 	"github.com/koshereats/backend/internal/payout"
+	"github.com/koshereats/backend/internal/restaurantpayout"
 	"github.com/koshereats/backend/internal/shipday"
 	"github.com/koshereats/backend/internal/uberdirect"
 )
@@ -200,6 +206,11 @@ type Dispatcher struct {
 	// Nil/disabled keeps the legacy direct-transfer behavior unchanged.
 	payoutStarter *payout.Starter
 
+	// restaurantPayouts runs the restaurant payout ledger sweep and records the
+	// ledger line for orders this dispatcher itself delivers (the Uber status
+	// reconciler). Nil (the default, e.g. in tests) skips both.
+	restaurantPayouts *restaurantpayout.Processor
+
 	// alerter sends admin anomaly alerts (auto-refunds, permanently failed
 	// payouts). Nil is safe — notify.Alerter.Alert is nil-receiver-safe and
 	// degrades to a logged no-op, so a dispatcher with no alerter wired keeps
@@ -232,6 +243,10 @@ var (
 // SetPayoutStarter injects the Temporal payout starter. Passing a nil starter
 // (the default) leaves the dispatcher in legacy direct-transfer mode.
 func (d *Dispatcher) SetPayoutStarter(s *payout.Starter) { d.payoutStarter = s }
+
+// SetRestaurantPayouts injects the restaurant payout processor. Optional: nil
+// leaves the restaurant payout sweep off.
+func (d *Dispatcher) SetRestaurantPayouts(p *restaurantpayout.Processor) { d.restaurantPayouts = p }
 
 // SetAlerter injects the admin alerter used for auto-refund and failed-payout
 // anomaly alerts. Optional: a nil alerter (the default) degrades to log-only.
@@ -337,6 +352,7 @@ func (d *Dispatcher) runAll(ctx context.Context) {
 	d.sweepOrphanPayments(ctx)
 	d.sweepPendingRefunds(ctx)
 	d.sweepCourierPayouts(ctx)
+	d.restaurantPayouts.Sweep(ctx) // nil-safe
 	d.sweepStuckExternalDeliveries(ctx)
 }
 
@@ -1179,6 +1195,11 @@ func (d *Dispatcher) reconcileUberDeliveryStatus(ctx context.Context, o external
 				slog.String("delivery_id", o.deliveryID),
 				slog.String("error", err.Error()))
 			return
+		}
+		if tag.RowsAffected() > 0 {
+			// Terminal state reached here rather than in a webhook: record the
+			// restaurant's ledger line (idempotent; the sweep backfills a miss).
+			d.restaurantPayouts.RecordOrder(ctx, "uber_status_reconcile", o.orderID)
 		}
 		if tag.RowsAffected() > 0 && d.notify != nil {
 			d.notify.OrderDelivered(ctx, o.orderID, o.consumerID)

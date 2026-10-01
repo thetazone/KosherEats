@@ -201,6 +201,8 @@ func (h *Handler) ShipdayWebhook(w http.ResponseWriter, r *http.Request) {
 			logProviderScopeMiss(ctx, tx, "shipday", event, orderID, "shipday")
 			break
 		}
+		// Terminal state: the restaurant payout ledger line commits with it.
+		h.recordRestaurantPayoutLineTx(ctx, tx, "shipday_webhook", orderID)
 
 		var consumerID string
 		if err := tx.QueryRow(ctx,

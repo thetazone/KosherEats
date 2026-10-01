@@ -466,6 +466,12 @@ func (c *Client) FindCourierTransfer(orderID string) (string, error) {
 		if t.Reversed {
 			continue
 		}
+		// The restaurant payout for the same order can carry the same
+		// "order_<id>" group (restaurant.go). It is not the courier's money, so
+		// it must never satisfy "the courier was already paid".
+		if t.Metadata[transferKindMetaKey] == restaurantPayoutKind {
+			continue
+		}
 		return t.ID, nil
 	}
 	if err := it.Err(); err != nil {

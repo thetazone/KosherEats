@@ -33,10 +33,10 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		FROM restaurants
 		WHERE vertical = $1
-		  AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		  AND (` + liveRestaurantSQL + `
 		    OR ($2::boolean AND listing_visibility = 'preview'))
 		  AND ($3::text = '' OR EXISTS (SELECT 1 FROM unnest(cuisine_type) ct WHERE ct ILIKE $3::text))`
-	const orderPrefix = ` ORDER BY (is_active AND approval_status = 'approved' AND listing_visibility = 'standard') DESC,
+	const orderPrefix = ` ORDER BY ` + liveRestaurantSQL + ` DESC,
 		listing_priority DESC, `
 
 	// The classic feed stays capped at 50; a preview-aware client is asking for
@@ -128,7 +128,7 @@ func (h *Handler) GetRestaurant(w http.ResponseWriter, r *http.Request) {
 		is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 		est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		FROM restaurants WHERE id = $1 AND vertical = $2
-		  AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		  AND (`+liveRestaurantSQL+`
 		    OR ($3::boolean AND listing_visibility = 'preview'))`, id, vertical, includePreviews(r),
 	).Scan(&rest.ID, &rest.OwnerID, &rest.Name, &rest.Description, &rest.ImageURL, &rest.CoverImageURL, &rest.LogoURL,
 		&rest.Phone, &rest.Email, &rest.Street, &rest.City, &rest.State, &rest.ZipCode,
@@ -161,7 +161,7 @@ func (h *Handler) GetMenu(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.Pool.QueryRow(r.Context(),
 		`SELECT EXISTS(SELECT 1 FROM restaurants
 		   WHERE id = $1 AND vertical = $2
-		     AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		     AND (`+liveRestaurantSQL+`
 		       OR ($3::boolean AND listing_visibility = 'preview')))`,
 		id, vertical, includePreviews(r),
 	).Scan(&visible); err != nil {
@@ -348,12 +348,12 @@ func (h *Handler) SearchRestaurants(w http.ResponseWriter, r *http.Request) {
 		 est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 		 FROM restaurants
 		 WHERE vertical = $2
-		   AND ((is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard')
+		   AND (`+liveRestaurantSQL+`
 		     OR ($3::boolean AND listing_visibility = 'preview'))
 		   AND (name ILIKE $1 OR EXISTS (
 		       SELECT 1 FROM unnest(cuisine_type) ct WHERE ct ILIKE $1
 		   ))
-		 ORDER BY (is_active AND approval_status = 'approved' AND listing_visibility = 'standard') DESC,
+		 ORDER BY `+liveRestaurantSQL+` DESC,
 		   listing_priority DESC, rating DESC LIMIT 100`,
 		"%"+q+"%", vertical, includePreviews(r))
 	if err != nil {
@@ -443,7 +443,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE id = ANY($1) AND vertical = $2 AND is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard'`, familiarIDs, vertical)
+			  WHERE id = ANY($1) AND vertical = $2 AND `+liveRestaurantSQL, familiarIDs, vertical)
 		if err == nil {
 			scanned, _ := scanRestaurants(famRows)
 			famRows.Close()
@@ -477,7 +477,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard' AND vertical = $3 AND id != ALL($1)
+			  WHERE `+liveRestaurantSQL+` AND vertical = $3 AND id != ALL($1)
 			  ORDER BY rating DESC
 			  LIMIT $2`, allOrderedIDs, limit, vertical)
 		if err == nil {
@@ -493,7 +493,7 @@ func (h *Handler) SuggestedRestaurants(w http.ResponseWriter, r *http.Request) {
 			        is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			        est_delivery_min, est_delivery_max, is_open, is_active, approval_status, delivery_mode, created_at, updated_at
 			   FROM restaurants
-			  WHERE is_active = true AND approval_status = 'approved' AND listing_visibility = 'standard' AND vertical = $2
+			  WHERE `+liveRestaurantSQL+` AND vertical = $2
 			  ORDER BY rating DESC
 			  LIMIT $1`, limit, vertical)
 		if err == nil {

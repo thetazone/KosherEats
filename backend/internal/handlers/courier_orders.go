@@ -495,6 +495,10 @@ func (h *Handler) DeliverOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The restaurant's payout ledger line commits with the delivery (savepoint:
+	// a ledger failure can't fail the courier's hand-off; the sweep backfills).
+	h.recordRestaurantPayoutLineTx(r.Context(), tx, "courier_deliver", orderID)
+
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to commit")
 		return

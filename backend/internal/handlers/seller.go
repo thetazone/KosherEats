@@ -1233,8 +1233,10 @@ func (h *Handler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
 	//
 	// Revenue is FOOD SALES only — the discounted item subtotal the seller earns
 	// on (subtotal - discount_cents, matching discountedSubtotal in CreateOrder);
-	// tips/tax/fees are pass-throughs. Delivery earnings is the seller's 50% of
-	// the delivery fee on self-delivered orders (0 otherwise).
+	// tips/tax/fees are pass-throughs. Delivery earnings is orders.
+	// seller_delivery_earnings: on self-delivered orders the restaurant's FULL own
+	// delivery fee (delivery_fee minus KE's separate marketplace markup) plus 100%
+	// of the tip, written by SellerDeliverOrder; 0 for courier/provider orders.
 	err = h.db.Pool.QueryRow(r.Context(),
 		`SELECT
 		    COUNT(*) FILTER (WHERE status NOT IN ('cancelled','rejected'))                                   AS today_orders,

@@ -23,6 +23,7 @@ import (
 	"github.com/koshereats/backend/internal/payments"
 	"github.com/koshereats/backend/internal/payout"
 	"github.com/koshereats/backend/internal/redisclient"
+	"github.com/koshereats/backend/internal/restaurantpayout"
 	"github.com/koshereats/backend/internal/scheduler"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -388,6 +389,19 @@ func main() {
 			r.Post("/{id}/test", h.TestPOSIntegration)
 			r.Delete("/{id}", h.DisconnectPOSIntegration)
 		})
+
+		// Restaurant payouts (Stripe Connect Express account per restaurant)
+		// and the per-order payout / sales-tax statement.
+		r.Post("/payouts/account", h.SellerCreatePayoutAccount)
+		r.Get("/payouts/link", h.SellerGetPayoutLink)
+		r.Get("/payouts/status", h.SellerGetPayoutStatus)
+		r.Get("/payouts/summary", h.SellerPayoutSummary)
+		r.Get("/payouts", h.SellerListPayouts)
+
+		// Click-to-accept merchant agreement (gates consumer listing/ordering
+		// for restaurants that are not grandfathered).
+		r.Get("/agreement", h.SellerGetAgreement)
+		r.Post("/agreement/accept", h.SellerAcceptAgreement)
 	})
 
 	// POS OAuth callback — public (browser redirect from Clover), guarded
@@ -531,6 +545,11 @@ func main() {
 	// Wire the admin alerter so auto-refunds and permanently-failed payouts
 	// raise an alert (email when ADMIN_ALERT_EMAIL is set, log-only otherwise).
 	dispatcher.SetAlerter(h.Alerter())
+	// Restaurant payouts: the ledger/fee/refund bookkeeping always runs; Stripe
+	// transfers to restaurants only when RESTAURANT_PAYOUTS_ENABLED=true.
+	dispatcher.SetRestaurantPayouts(restaurantpayout.NewProcessor(
+		db.Pool, h.Stripe(), cfg.RestaurantPayoutsEnabled, cfg.DeliveryMarkupFor, h.Alerter()))
+	logger.Info("restaurant payouts", slog.Bool("transfers_enabled", cfg.RestaurantPayoutsEnabled))
 
 	// ── Temporal durable payouts (DISABLED unless TEMPORAL_HOSTPORT is set) ──
 	// When off we never dial a client, never start a worker, and inject a nil

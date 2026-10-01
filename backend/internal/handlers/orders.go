@@ -17,6 +17,7 @@ import (
 	"github.com/koshereats/backend/internal/dispatch"
 	"github.com/koshereats/backend/internal/models"
 	"github.com/koshereats/backend/internal/payments"
+	"github.com/koshereats/backend/internal/restaurantpayout"
 )
 
 type CreateOrderRequest struct {
@@ -1430,6 +1431,12 @@ func (h *Handler) CompleteOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pickup's terminal state: record the restaurant payout ledger line. The
+	// status UPDATE above is a single committed statement, so this runs after
+	// it; WithoutCancel so a client disconnect can't drop it (and the sweep
+	// backfills any failure).
+	h.recordRestaurantPayoutLine(context.WithoutCancel(r.Context()), "seller_complete", id)
+
 	order, err := h.loadOrderWithCourier(r, id, "restaurant_owner", user["user_id"])
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "status updated but failed to reload order")
@@ -1813,19 +1820,25 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Self-delivery: the restaurant keeps 100% of its own delivery fee — the
-	// customer-paid delivery_fee minus the KosherEats marketplace fee (which KE
-	// keeps) — PLUS 100% of the courier tip. The seller performed the delivery,
-	// so the tip is theirs ("100% of the tip goes to your courier"). Folded into
-	// the status CAS below so a replayed deliver can't double-count; the CASE
-	// guard keys off who ACTUALLY delivered (courier_id / external_delivery_id),
-	// not delivery_mode, so an order escalated to a courier/provider pays 0 here.
+	// Self-delivery under the KosherEats fee model (internal/restaurantpayout):
+	// the restaurant keeps its FULL own delivery fee and 100% of the tip — the
+	// old 50/50 split of migration 044 is gone. "Full delivery fee" is the
+	// customer-paid delivery_fee minus the KosherEats marketplace markup: that
+	// markup is a separate KE line, priced from KE's own tiers on top of the
+	// restaurant's configured fee (quoteDeliveryFee: consumerFee = restaurantFee
+	// + markup) and frozen on the order as delivery_markup_cents, so the
+	// restaurant's share is exactly the fee it set. KE's compensation on a
+	// self-delivered order is the 5% basic service fee + the actual processing
+	// fee, taken from the payout ledger line recorded below — never from the
+	// delivery fee. Folded into the status CAS below so a replayed deliver can't
+	// double-count; the CASE guard keys off who ACTUALLY delivered (courier_id /
+	// external_delivery_id), not delivery_mode, so an order escalated to a
+	// courier/provider credits 0 here.
 	//
-	// The marketplace fee comes from delivery_markup_cents, frozen on the row at
+	// The markup comes from delivery_markup_cents, frozen on the row at
 	// checkout, NOT from live config: delivery_fee is a historical charge, so
 	// re-deriving its split from today's tiers would silently re-split every
-	// order still in flight whenever the markup config changes — KE pocketing
-	// the difference and short-paying the seller by the delta. Pre-058 rows have
+	// order still in flight whenever the markup config changes. Pre-058 rows have
 	// no stamp and can only fall back to the live tiers.
 	//
 	// NOTE: the in-house courier payout (DeliverOrder, courier_orders.go) does
@@ -1835,11 +1848,7 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 	if stampedMarkup != nil {
 		markup = *stampedMarkup
 	}
-	restaurantFee := deliveryFee - markup
-	if restaurantFee < 0 {
-		restaurantFee = 0
-	}
-	sellerShare := restaurantFee + courierTip
+	sellerShare := restaurantpayout.RestaurantDeliveryShare(deliveryFee, markup) + courierTip
 
 	result, err := tx.Exec(r.Context(),
 		`UPDATE orders SET status = 'delivered', delivered_at = NOW(), updated_at = NOW(),
@@ -1853,6 +1862,10 @@ func (h *Handler) SellerDeliverOrder(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "cannot update order status")
 		return
 	}
+
+	// Terminal state: record the restaurant payout ledger line atomically with
+	// the delivery (savepoint-isolated; the sweep backfills a failure).
+	h.recordRestaurantPayoutLineTx(r.Context(), tx, "seller_deliver", id)
 
 	if err = tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "cannot update order status")

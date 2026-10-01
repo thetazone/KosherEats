@@ -528,6 +528,14 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Order" }
         "400": { $ref: "#/components/responses/Error" }
+        "403":
+          description: >
+            The cart's restaurant is not orderable (inactive, unapproved, a
+            preview listing, or a non-grandfathered restaurant that has not
+            accepted the current merchant agreement).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/orders/by-payment-intent/{pi}:
     get:
@@ -662,6 +670,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PaymentIntentResponse" }
         "400": { $ref: "#/components/responses/Error" }
+        "403":
+          description: The cart's restaurant is not orderable (see POST /api/v1/orders).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/payments/confirm:
     post:
@@ -1319,6 +1332,166 @@ paths:
       responses:
         "200": { description: Deactivated }
 
+  # ── Seller restaurant payouts (Stripe Connect) + statements ──────────────
+  # Every payout/agreement route accepts ?restaurant_id= (must be owned by the
+  # caller, else 404); omitted, it falls back to the seller's first restaurant
+  # by name — the same rule as every other /seller endpoint.
+  /api/v1/seller/payouts/account:
+    post:
+      tags: [seller]
+      summary: Create (or reuse) the restaurant's Stripe Connect Express account
+      description: >
+        Idempotent. Creates an Express account for the RESTAURANT if it has
+        none (restaurants.stripe_connect_id), then refreshes and returns its
+        status (restaurants.payout_ready = payouts_enabled AND details_submitted).
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Payout account status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RestaurantPayoutStatus" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/payouts/link:
+    get:
+      tags: [seller]
+      summary: Fresh Stripe-hosted onboarding link for the restaurant's account
+      description: >
+        return_url = WEB_URL + /seller/payouts/return, refresh_url = WEB_URL +
+        /seller/payouts/refresh. 400 when no account exists yet (call
+        POST /seller/payouts/account first).
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Onboarding link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                required: [url]
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/payouts/status:
+    get:
+      tags: [seller]
+      summary: Refresh the restaurant's payout readiness from Stripe
+      description: Same shape as POST /seller/payouts/account. No account yet → payout_ready false, connect_id absent.
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Payout account status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RestaurantPayoutStatus" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/payouts:
+    get:
+      tags: [seller]
+      summary: Per-order payout ledger (newest first, keyset-paginated)
+      description: >
+        One line per order that reached its successful terminal state
+        (delivered; completed for pickup). Pass next_cursor back as cursor for
+        the next page; next_cursor is absent on the last page.
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: Ledger page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RestaurantPayoutList" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/payouts/summary:
+    get:
+      tags: [seller]
+      summary: Payout / sales-tax pass-through statement for a date range
+      description: >
+        from/to are inclusive America/New_York calendar dates matched against
+        each line's completed_at. Statement totals exclude fully refunded orders
+        (void / reversed lines); partially refunded orders count at their
+        recorded amounts. paid_cents = transferred and kept (net of reversals);
+        pending_cents = still owed (awaiting_account / pending). Failed lines
+        count in the totals but in neither bucket.
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Statement summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RestaurantPayoutSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/agreement:
+    get:
+      tags: [seller]
+      summary: Merchant agreement status for the restaurant
+      description: >
+        required = !agreement_exempt && !accepted(current_version). While
+        required, consumers cannot list, view or order from the restaurant
+        (enforced server-side). A seller with no restaurant yet gets 200 with
+        required=true and accepted=false.
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      responses:
+        "200":
+          description: Agreement status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MerchantAgreementStatus" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/v1/seller/agreement/accept:
+    post:
+      tags: [seller]
+      summary: Click-to-accept the current merchant agreement
+      description: >
+        Records legal_name, the accepting user, the client IP (RealIP /
+        X-Forwarded-For) and the version. Idempotent: re-accepting the current
+        version returns the existing acceptance. 409 when version is not the
+        current version; 404 when the seller has no restaurant yet.
+      parameters:
+        - { $ref: "#/components/parameters/SellerRestaurantQuery" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcceptMerchantAgreementRequest" }
+      responses:
+        "200":
+          description: Agreement status after acceptance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MerchantAgreementStatus" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
   /api/v1/seller/integrations:
     get:
       tags: [seller]
@@ -1858,6 +2031,13 @@ paths:
     post:
       tags: [webhooks]
       summary: Stripe webhook (Stripe-Signature verified)
+      description: >
+        account.updated flips payout_ready for courier AND restaurant Connect
+        accounts (and moves the restaurant's untransferred payout lines between
+        awaiting_account and pending). charge.refunded books the refund on the
+        order's restaurant payout line (withheld before transfer, reversed
+        proportionally after). charge.dispute.created holds an untransferred
+        restaurant payout line (status failed) for review.
       security: []
       responses:
         "200": { description: Acknowledged }
@@ -2272,6 +2452,102 @@ components:
         tax: { type: integer, description: cents }
         tip: { type: integer, description: cents }
         total: { type: integer, description: cents }
+
+    RestaurantPayoutStatus:
+      type: object
+      properties:
+        payout_ready: { type: boolean }
+        connect_id: { type: string, description: Stripe Connect account id; absent until created }
+        details_submitted: { type: boolean }
+      required: [payout_ready, details_submitted]
+
+    PayoutFulfillment:
+      type: string
+      description: >
+        Fee class. courier_delivery = external provider or KE courier (KE fee
+        10% of food subtotal; KE absorbs processing). pickup = 5% + actual
+        Stripe processing fee. self_delivery = restaurant's own driver (5% +
+        actual processing; restaurant keeps its full own delivery fee + tip).
+      enum: [courier_delivery, pickup, self_delivery]
+
+    RestaurantPayoutLine:
+      type: object
+      description: >
+        All amounts are cents. food_subtotal_cents is the item subtotal after
+        the (restaurant-funded) deal discount. sales_tax_cents is passed through
+        100%. delivery_fee_cents / tip_cents are the amounts CREDITED to the
+        restaurant (non-zero only for self_delivery). ke_fee_cents is the
+        percentage fee only; processing_fee_cents is recorded for every class
+        but deducted only for pickup / self_delivery, and is 0 until the sweep
+        has read the charge from Stripe (net_cents is provisional until then).
+        net_cents = food + tax + delivery + tip − ke_fee − (processing for
+        pickup/self_delivery), never negative. order_number is omitted (orders
+        have no human-facing number).
+      properties:
+        id: { type: string }
+        order_id: { type: string }
+        completed_at: { type: string, format: date-time }
+        fulfillment: { $ref: "#/components/schemas/PayoutFulfillment" }
+        food_subtotal_cents: { type: integer }
+        sales_tax_cents: { type: integer }
+        delivery_fee_cents: { type: integer }
+        tip_cents: { type: integer }
+        ke_fee_cents: { type: integer }
+        processing_fee_cents: { type: integer }
+        net_cents: { type: integer }
+        status:
+          type: string
+          enum: [awaiting_account, pending, paid, failed, reversed, void]
+        transfer_id: { type: string, nullable: true }
+        paid_at: { type: string, format: date-time, nullable: true }
+      required: [id, order_id, completed_at, fulfillment, food_subtotal_cents, sales_tax_cents,
+                 delivery_fee_cents, tip_cents, ke_fee_cents, processing_fee_cents, net_cents,
+                 status, transfer_id, paid_at]
+
+    RestaurantPayoutList:
+      type: object
+      properties:
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/RestaurantPayoutLine" }
+        next_cursor: { type: string, description: Absent on the last page }
+      required: [lines]
+
+    RestaurantPayoutSummary:
+      type: object
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        orders: { type: integer }
+        food_subtotal_cents: { type: integer }
+        sales_tax_cents: { type: integer }
+        delivery_fee_cents: { type: integer }
+        tip_cents: { type: integer }
+        ke_fee_cents: { type: integer }
+        processing_fee_cents: { type: integer }
+        net_cents: { type: integer }
+        paid_cents: { type: integer }
+        pending_cents: { type: integer }
+      required: [from, to, orders, food_subtotal_cents, sales_tax_cents, delivery_fee_cents, tip_cents,
+                 ke_fee_cents, processing_fee_cents, net_cents, paid_cents, pending_cents]
+
+    MerchantAgreementStatus:
+      type: object
+      properties:
+        required: { type: boolean, description: "!agreement_exempt && !accepted" }
+        accepted: { type: boolean, description: The current version has been accepted }
+        current_version: { type: string, example: "2026-10-01" }
+        accepted_version: { type: string, description: Most relevant accepted version; absent if never accepted }
+        accepted_at: { type: string, format: date-time, description: Absent if never accepted }
+        terms_url: { type: string, format: uri, description: "WEB_URL + /restaurant-terms" }
+      required: [required, accepted, current_version, terms_url]
+
+    AcceptMerchantAgreementRequest:
+      type: object
+      properties:
+        legal_name: { type: string, minLength: 1, maxLength: 200, description: Trimmed; must be non-empty }
+        version: { type: string, description: Must equal the current version, else 409 }
+      required: [legal_name, version]
 
     Deal:
       type: object

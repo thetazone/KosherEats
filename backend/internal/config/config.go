@@ -129,6 +129,15 @@ type Config struct {
 	// account to have Tax enabled, so this stays off until that's provisioned.
 	StripeTaxEnabled bool
 
+	// RestaurantPayoutsEnabled is the kill switch for moving money to
+	// restaurants (RESTAURANT_PAYOUTS_ENABLED, default false). Ledger lines are
+	// recorded, processing fees resolved and refunds booked regardless, so
+	// seller statements are always accurate; only the Stripe TRANSFER step of the
+	// restaurant-payout sweep is gated on this. Flipping it on transfers every
+	// outstanding 'pending' line whose restaurant has a payout-ready Connect
+	// account — void any line already settled by hand first.
+	RestaurantPayoutsEnabled bool
+
 	// AdminAlertEmail receives anomaly alerts (charge disputes, refunds,
 	// auto-refunds, permanently failed payouts). Empty (the default) makes
 	// alertAdmin a logged no-op so dev/test never tries to send mail.
@@ -301,6 +310,7 @@ func Load() *Config {
 		DeliveryLargeOrderCents:    getEnvInt("DELIVERY_LARGE_ORDER_CENTS", 4000),
 		DeliveryHighestOrderCents:  getEnvInt("DELIVERY_HIGHEST_ORDER_CENTS", 8000),
 		StripeTaxEnabled:           getEnv("STRIPE_TAX_ENABLED", "") == "true",
+		RestaurantPayoutsEnabled:   getEnvBool("RESTAURANT_PAYOUTS_ENABLED", false),
 		AdminAlertEmail:            getEnv("ADMIN_ALERT_EMAIL", ""),
 
 		SentryDSN: getEnv("SENTRY_DSN", ""),
@@ -330,6 +340,22 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// DeliveryMarkupFor is the flat KosherEats marketplace markup added to the
+// consumer delivery fee, tiered by item subtotal (excl. delivery): the small fee
+// up to DeliveryLargeOrderCents, the large fee up to DeliveryHighestOrderCents,
+// the highest fee above. Single definition shared by checkout pricing and the
+// restaurant-payout ledger's fallback for orders with no frozen markup.
+func (c *Config) DeliveryMarkupFor(subtotalCents int) int {
+	switch {
+	case subtotalCents > c.DeliveryHighestOrderCents:
+		return c.DeliveryMarkupHighestCents
+	case subtotalCents > c.DeliveryLargeOrderCents:
+		return c.DeliveryMarkupLargeCents
+	default:
+		return c.DeliveryMarkupCents
+	}
 }
 
 // defaultTaxRatePPM is New York City's combined state + local sales-tax

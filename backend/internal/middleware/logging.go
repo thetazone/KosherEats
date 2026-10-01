@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/koshereats/backend/internal/ctxkeys"
@@ -74,6 +75,15 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			)
 		})
 	}
+}
+
+// ClientIP is the exported form of clientIP for handlers that must RECORD the
+// caller's IP (e.g. merchant-agreement acceptance), so they resolve it exactly
+// the way the request log and rate limiter do. Runs after chi's RealIP
+// middleware in production, which has already folded True-Client-IP /
+// X-Real-IP / X-Forwarded-For into RemoteAddr.
+func ClientIP(r *http.Request) string {
+	return strings.TrimSpace(clientIP(r))
 }
 
 // clientIP extracts the best-guess client IP from X-Forwarded-For (when

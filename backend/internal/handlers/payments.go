@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/koshereats/backend/internal/models"
 	"github.com/koshereats/backend/internal/notify"
+	"github.com/koshereats/backend/internal/restaurantpayout"
 	"github.com/stripe/stripe-go/v78/webhook"
 )
 
@@ -530,6 +531,28 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		// Restaurant Connect accounts (restaurant payouts): same readiness rule.
+		// Flip the restaurant's flag and move its untransferred ledger lines
+		// between awaiting_account and pending so the sweep pays the backlog as
+		// soon as onboarding completes (and stops if the account is disabled).
+		var restaurantID string
+		if err := tx.QueryRow(r.Context(),
+			`UPDATE restaurants SET payout_ready = $1, updated_at = NOW()
+			  WHERE stripe_connect_id = $2 RETURNING id`, ready, account.ID).Scan(&restaurantID); err != nil &&
+			!errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("StripeWebhook: failed to update restaurant payout_ready",
+				slog.String("connect_id", account.ID), slog.String("error", err.Error()))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if restaurantID != "" {
+			if err := restaurantpayout.SyncRestaurantLines(r.Context(), tx, restaurantID, ready); err != nil {
+				slog.Error("StripeWebhook: failed to sync restaurant payout lines",
+					slog.String("restaurant_id", restaurantID), slog.String("error", err.Error()))
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
 		if ready {
 			// Backfill payouts queued before this courier onboarded: stamp their
 			// connect id so the next sweep can finally pay the backlog (DeliverOrder
@@ -579,6 +602,22 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		alertSubject = "Stripe dispute opened"
 		alertBody = disputeAlertBody(dispute.ID, dispute.Charge, dispute.PaymentIntent, orderID, dispute.Amount, dispute.Reason)
 		haltPayoutOrderID = orderID
+		// Hold the restaurant's payout for a disputed order the same way the
+		// courier payout is halted: an untransferred line goes to 'failed' for
+		// admin review instead of paying out of money that may be clawed back.
+		// (A line already paid needs a manual decision; the alert above covers it.)
+		if orderID != "" {
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE restaurant_payout_lines
+				   SET status = 'failed', last_error = $2, updated_at = NOW()
+				 WHERE order_id = $1 AND status IN ('awaiting_account', 'pending')`,
+				orderID, "held: charge disputed ("+dispute.ID+") — admin review"); err != nil {
+				slog.Error("StripeWebhook: failed to hold restaurant payout on dispute",
+					slog.String("order_id", orderID), slog.String("error", err.Error()))
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+		}
 
 	case "charge.refunded":
 		// A charge was refunded (manually in the dashboard, by our auto-refund
@@ -619,6 +658,28 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		alertBody = refundAlertBody(charge.ID, charge.PaymentIntent, orderID, charge.AmountRefunded)
 		if fullRefund {
 			haltPayoutOrderID = orderID
+		}
+		// Book the refund on the restaurant's payout ledger line (if the order
+		// has one). The restaurant pays back its net in proportion to the
+		// refunded share of the charge; the sweep does the money part — a
+		// withhold/void before the transfer, a transfer reversal after it.
+		// refunded_cents only ever grows (charge.amount_refunded is cumulative
+		// and events can arrive out of order). A charge with no usable amount is
+		// booked as a full refund, the same conservative rule as the halt above.
+		if orderID != "" {
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE restaurant_payout_lines
+				   SET refunded_cents = GREATEST(refunded_cents,
+				                                 CASE WHEN $3 > 0 THEN $2 ELSE order_total_cents END),
+				       order_total_cents = CASE WHEN $3 > 0 THEN $3 ELSE order_total_cents END,
+				       updated_at = NOW()
+				 WHERE order_id = $1`,
+				orderID, charge.AmountRefunded, charge.Amount); err != nil {
+				slog.Error("StripeWebhook: failed to book refund on restaurant payout line",
+					slog.String("order_id", orderID), slog.String("error", err.Error()))
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 

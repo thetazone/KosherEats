@@ -357,13 +357,18 @@ func (e *testEnv) seed(ctx context.Context) error {
 
 // seedRestaurant inserts a restaurant in the given approval state plus one
 // category and one available menu item, returning the restaurant + item IDs.
+//
+// The fixture is agreement_exempt (grandfathered, like every restaurant that
+// existed when migration 064 ran) so the suite's existing ordering/listing tests
+// keep exercising what they were written for; the merchant-agreement gate has
+// its own tests that seed non-exempt restaurants explicitly.
 func (e *testEnv) seedRestaurant(ctx context.Context, ownerID, name, approval string) (restID, itemID string, err error) {
 	pool := e.h.db.Pool
 	if err = pool.QueryRow(ctx,
 		`INSERT INTO restaurants
 		   (owner_id, name, street, city, state, zip_code, is_active, is_open,
-		    approval_status, vertical)
-		 VALUES ($1, $2, '1 Main St', 'Brooklyn', 'NY', '11218', true, true, $3, 'kosher')
+		    approval_status, vertical, agreement_exempt)
+		 VALUES ($1, $2, '1 Main St', 'Brooklyn', 'NY', '11218', true, true, $3, 'kosher', true)
 		 RETURNING id`,
 		ownerID, name, approval,
 	).Scan(&restID); err != nil {

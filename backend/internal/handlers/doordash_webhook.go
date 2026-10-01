@@ -239,6 +239,8 @@ func (h *Handler) DoorDashWebhook(w http.ResponseWriter, r *http.Request) {
 			logProviderScopeMiss(ctx, tx, "doordash", event, orderID, "doordash_drive")
 			break
 		}
+		// Terminal state: the restaurant payout ledger line commits with it.
+		h.recordRestaurantPayoutLineTx(ctx, tx, "doordash_webhook", orderID)
 
 		var consumerID string
 		if err := tx.QueryRow(ctx,

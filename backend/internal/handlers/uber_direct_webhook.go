@@ -294,6 +294,8 @@ func (h *Handler) UberDirectWebhook(w http.ResponseWriter, r *http.Request) {
 			logProviderScopeMiss(ctx, tx, "uber", "delivered", externalID, "uber_direct")
 			break
 		}
+		// Terminal state: the restaurant payout ledger line commits with it.
+		h.recordRestaurantPayoutLineTx(ctx, tx, "uber_webhook", externalID)
 
 		var consumerID string
 		if err := tx.QueryRow(ctx,

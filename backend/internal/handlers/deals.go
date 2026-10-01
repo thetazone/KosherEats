@@ -354,8 +354,7 @@ func (h *Handler) ListNearbyDeals(w http.ResponseWriter, r *http.Request) {
 		 WHERE d.is_active = true
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
-		   AND r.is_active = true
-		   AND r.approval_status = 'approved'
+		   AND `+liveRestaurantSQLr+`
 		   AND r.vertical = $1
 		 ORDER BY d.expires_at ASC
 		 LIMIT 100`, vertical)
@@ -407,8 +406,7 @@ func (h *Handler) ListRestaurantDeals(w http.ResponseWriter, r *http.Request) {
 		   AND d.is_active = true
 		   AND d.starts_at <= NOW()
 		   AND d.expires_at > NOW()
-		   AND r.is_active = true
-		   AND r.approval_status = 'approved'
+		   AND `+liveRestaurantSQLr+`
 		   AND r.vertical = $2
 		 ORDER BY d.expires_at ASC`, restaurantID, vertical)
 	if err != nil {

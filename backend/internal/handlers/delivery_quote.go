@@ -149,14 +149,7 @@ const selfDeliveryEstMinutes = 35
 // consumer on every delivery (kept by KE): the small fee up to the large
 // threshold, the large fee up to the highest threshold, the highest fee above.
 func (h *Handler) deliveryMarkupCents(subtotalCents int) int {
-	switch {
-	case subtotalCents > h.cfg.DeliveryHighestOrderCents:
-		return h.cfg.DeliveryMarkupHighestCents
-	case subtotalCents > h.cfg.DeliveryLargeOrderCents:
-		return h.cfg.DeliveryMarkupLargeCents
-	default:
-		return h.cfg.DeliveryMarkupCents
-	}
+	return h.cfg.DeliveryMarkupFor(subtotalCents)
 }
 
 // quoteParams is everything a provider needs to price a route. Checkout and
