@@ -13,7 +13,6 @@ package payments
 // test suite never touch the network.
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/mail"
@@ -146,14 +145,11 @@ type RestaurantTransfer struct {
 // TransferToRestaurant moves a restaurant's net for one order to its connected
 // account and returns the transfer id.
 //
-// transfer_group is "order_<id>", like the courier payout. Stripe documents
-// that a transfer created WITH a source_transaction takes the charge's transfer
-// group (generating "group_<pi>" when the charge has none), so a request that
-// names its own group may be refused as conflicting. If Stripe rejects the
-// group as an invalid request — which means no transfer was created — we retry
-// once without it under a derived key and let Stripe assign the group. The
-// reconcile lookup (FindRestaurantTransfer) matches on destination + metadata,
-// so it finds the transfer either way.
+// A transfer funded by the order's charge (source_transaction) takes the
+// charge's transfer group — Stripe assigns it ("group_<pi>" when the charge has
+// none) — so we only name a group, "order_<id>" like the courier payout, when
+// there is no charge to fund from. The reconcile lookup (FindRestaurantTransfer)
+// matches on destination + metadata, never on the group.
 func (c *Client) TransferToRestaurant(t RestaurantTransfer) (string, error) {
 	if !c.enabled {
 		log.Printf("[stripe stub] restaurant transfer $%d.%02d -> %s for order %s (source %s)",
@@ -164,50 +160,29 @@ func (c *Client) TransferToRestaurant(t RestaurantTransfer) (string, error) {
 		return "", fmt.Errorf("invalid restaurant transfer parameters")
 	}
 
-	build := func(withGroup bool, key string) *stripe.TransferParams {
-		p := &stripe.TransferParams{
-			Amount:      stripe.Int64(int64(t.AmountCents)),
-			Currency:    stripe.String(string(stripe.CurrencyUSD)),
-			Destination: stripe.String(t.AccountID),
-			Description: stripe.String("KosherEats order " + t.OrderID),
-		}
-		if withGroup {
-			p.TransferGroup = stripe.String(courierTransferGroup(t.OrderID))
-		}
-		if t.ChargeID != "" {
-			p.SourceTransaction = stripe.String(t.ChargeID)
-		}
-		p.AddMetadata(transferKindMetaKey, restaurantPayoutKind)
-		p.AddMetadata("order_id", t.OrderID)
-		if t.RestaurantID != "" {
-			p.AddMetadata("restaurant_id", t.RestaurantID)
-		}
-		p.SetIdempotencyKey(key)
-		return p
+	p := &stripe.TransferParams{
+		Amount:      stripe.Int64(int64(t.AmountCents)),
+		Currency:    stripe.String(string(stripe.CurrencyUSD)),
+		Destination: stripe.String(t.AccountID),
+		Description: stripe.String("KosherEats order " + t.OrderID),
 	}
+	if t.ChargeID != "" {
+		p.SourceTransaction = stripe.String(t.ChargeID)
+	} else {
+		p.TransferGroup = stripe.String(courierTransferGroup(t.OrderID))
+	}
+	p.AddMetadata(transferKindMetaKey, restaurantPayoutKind)
+	p.AddMetadata("order_id", t.OrderID)
+	if t.RestaurantID != "" {
+		p.AddMetadata("restaurant_id", t.RestaurantID)
+	}
+	p.SetIdempotencyKey(t.IdempotencyKey)
 
-	tr, err := transfer.New(build(true, t.IdempotencyKey))
-	if err != nil && t.ChargeID != "" && isTransferGroupRejection(err) {
-		log.Printf("[stripe] restaurant transfer for order %s: transfer_group refused alongside source_transaction (%v); retrying with the charge's group",
-			t.OrderID, err)
-		tr, err = transfer.New(build(false, t.IdempotencyKey+":charge-group"))
-	}
+	tr, err := transfer.New(p)
 	if err != nil {
 		return "", err
 	}
 	return tr.ID, nil
-}
-
-// isTransferGroupRejection reports whether Stripe refused a transfer because of
-// its transfer_group parameter. An invalid_request_error means nothing was
-// created, so a retry without the parameter cannot double-pay.
-func isTransferGroupRejection(err error) bool {
-	var se *stripe.Error
-	if !errors.As(err, &se) || se.Type != stripe.ErrorTypeInvalidRequest {
-		return false
-	}
-	return se.Param == "transfer_group" || strings.Contains(strings.ToLower(se.Msg), "transfer_group") ||
-		strings.Contains(strings.ToLower(se.Msg), "transfer group")
 }
 
 // ReverseRestaurantTransfer claws `amountCents` of a restaurant payout back to
