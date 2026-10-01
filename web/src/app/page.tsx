@@ -555,6 +555,9 @@ export default function Home() {
                   <a href="#restaurants" className="hover:text-white transition-colors">For Restaurants</a>
                 </li>
                 <li>
+                  <Link href="/restaurant-terms" className="hover:text-white transition-colors">Restaurant Partner Agreement</Link>
+                </li>
+                <li>
                   <a href="#couriers" className="hover:text-white transition-colors">Deliver with us</a>
                 </li>
               </ul>

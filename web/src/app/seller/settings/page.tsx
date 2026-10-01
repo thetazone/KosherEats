@@ -25,6 +25,7 @@ import {
   MapPin,
   Store,
 } from "lucide-react";
+import { PayoutsNotice } from "@/components/seller/PayoutsNotice";
 import { PhotoUpload } from "@/components/seller/PhotoUpload";
 import { AddressGeocodeField } from "@/components/ui/AddressGeocodeField";
 import { centsToDollars, isUnauthorized, parseCents, sellerApi } from "@/lib/sellerApi";
@@ -585,6 +586,10 @@ export default function SellerSettingsPage() {
           {saving ? "Saving…" : "Save changes"}
         </button>
       </form>
+
+      {/* Outside the form: payouts are managed in the Restaurant app, and the
+          partner agreement (fees, payouts, sales tax) is linked from here. */}
+      <PayoutsNotice className="mt-8" />
     </div>
   );
 }

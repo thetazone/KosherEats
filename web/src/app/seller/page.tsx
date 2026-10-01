@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { ActiveOrderCard, type OrderQuickAction } from "@/components/seller/ActiveOrderCard";
+import { PayoutsNotice } from "@/components/seller/PayoutsNotice";
 import { formatCents, isUnauthorized, sellerApi } from "@/lib/sellerApi";
 import type {
   DashboardStats,
@@ -332,6 +333,9 @@ export default function SellerDashboardPage() {
           )}
         </div>
       )}
+
+      {/* Payout setup lives in the Restaurant app (Stripe Connect) — point there. */}
+      {restaurant && <PayoutsNotice className="mb-4" />}
 
       {/* Stats grid + delivery-method tile */}
       {stats && (

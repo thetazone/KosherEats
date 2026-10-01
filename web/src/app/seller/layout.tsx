@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   BadgePercent,
+  FileText,
   LayoutDashboard,
   LogOut,
   ReceiptText,
@@ -36,6 +37,12 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
   const router = useRouter();
   const pathname = usePathname();
   const isLoginPage = pathname === "/seller/login";
+  // Stripe Connect return/refresh landing pages (/seller/payouts/return and
+  // /seller/payouts/refresh). Stripe redirects there from the Restaurant
+  // app's in-app browser, which has no web seller session — so they're
+  // public, skip the guard, and render without the dashboard shell.
+  const isPayoutLandingPage = pathname.startsWith("/seller/payouts/");
+  const isPublicPage = isLoginPage || isPayoutLandingPage;
 
   const [ready, setReady] = useState(false);
   const [restaurants, setRestaurants] = useState<SellerRestaurant[]>([]);
@@ -47,7 +54,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
   // this boundary, so a localStorage check is the whole gate (the API rejects
   // non-seller tokens server-side regardless).
   useEffect(() => {
-    if (isLoginPage) {
+    if (isPublicPage) {
       setReady(true);
       return;
     }
@@ -59,18 +66,18 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
       return;
     }
     setReady(true);
-  }, [isLoginPage, pathname, router]);
+  }, [isPublicPage, pathname, router]);
 
   // Post-401 hook: when the refresh token dies mid-session (7-day expiry, or
   // a token_epoch bump from a password reset) sellerFetch clears storage and
   // calls this, so a seller parked on the Orders tab is routed to sign-in
   // instead of watching every poll fail. ?next= brings them straight back.
   useEffect(() => {
-    if (isLoginPage) return;
+    if (isPublicPage) return;
     return registerUnauthorizedHandler(() => {
       router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
     });
-  }, [isLoginPage, pathname, router]);
+  }, [isPublicPage, pathname, router]);
 
   const loadRestaurants = useCallback(async () => {
     setRestaurantsLoading(true);
@@ -100,9 +107,13 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    if (!ready || isLoginPage) return;
+    if (!ready || isPublicPage) return;
     loadRestaurants();
-  }, [ready, isLoginPage, loadRestaurants]);
+  }, [ready, isPublicPage, loadRestaurants]);
+
+  // Payout landing pages are static server pages — render them straight away
+  // (including during SSR) instead of waiting on the client-side guard.
+  if (isPayoutLandingPage) return <>{children}</>;
 
   if (!ready) return null;
 
@@ -199,7 +210,14 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
           {picker}
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">{nav}</nav>
-        <div className="p-4 border-t border-dark-800">
+        <div className="p-4 border-t border-dark-800 space-y-1">
+          <Link
+            href="/restaurant-terms"
+            className="flex items-center gap-3 px-3 py-2.5 min-h-11 rounded-xl text-sm font-medium text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
+          >
+            <FileText className="w-4 h-4 shrink-0" />
+            Partner agreement
+          </Link>
           <button
             onClick={signOut}
             className="focus-ring flex items-center gap-3 w-full px-3 py-2.5 min-h-11 rounded-xl text-sm font-medium text-dark-400 hover:bg-dark-800 hover:text-white transition-colors"
