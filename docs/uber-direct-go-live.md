@@ -91,7 +91,7 @@ Open a prod DB tunnel:
 ```bash
 DBURL=$(fly ssh console -a koshereats-api -C "printenv DATABASE_URL" | tr -d '\r')
 CURL=$(python3 -c "import urllib.parse,sys;u=urllib.parse.urlparse(sys.argv[1]);print(urllib.parse.urlunparse((u.scheme,f'{u.username}:{u.password}@host.docker.internal:16432',u.path,'','sslmode=disable','')))" "$DBURL")
-fly proxy 16432:5432 -a koshereats-db &   # leave running; query via docker psql
+fly proxy 16432:5432 -a koshereats-postgres &   # leave running; query via docker psql
 ```
 
 Webhook ledger (should start populating):

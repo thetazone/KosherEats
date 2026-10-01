@@ -5,8 +5,8 @@
 #   fly deploy
 #
 # Postgres is provisioned separately:
-#   fly postgres create --name koshereats-db --region iad
-#   fly postgres attach koshereats-db            # auto-sets DATABASE_URL
+#   fly postgres create --org koshereats --name koshereats-postgres --region iad
+#   fly postgres attach koshereats-postgres       # auto-sets DATABASE_URL
 #
 # Redis (optional, for future caching):
 #   fly redis create --name koshereats-redis --region iad

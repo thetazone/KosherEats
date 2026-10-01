@@ -21,8 +21,14 @@ Fly, DigitalOcean App Platform, a bare VM, etc.).
 
 ## 2. Provision shared infrastructure on Fly
 
+> **Production lives in the `koshereats` Fly org** (moved from the personal org
+> on 2026-10-01). The database app is `koshereats-postgres`. The old
+> `koshereats-db` in the personal org is retired and read-only. Never run
+> `fly pg detach koshereats-db -a koshereats-api`: it unsets the API's
+> `DATABASE_URL`, which now points at `koshereats-postgres`.
+
 ```sh
-fly postgres create --name koshereats-db --region iad --vm-size shared-cpu-1x --volume-size 10
+fly postgres create --org koshereats --name koshereats-postgres --region iad --vm-size shared-cpu-1x --volume-size 10
 fly redis create --name koshereats-redis --region iad
 ```
 
@@ -92,7 +98,7 @@ fly launch --no-deploy
 
 # Attach the managed Postgres. This auto-writes DATABASE_URL into your app's
 # secret store.
-fly postgres attach koshereats-db --app koshereats-api
+fly postgres attach koshereats-postgres --app koshereats-api
 
 # Copy .env.example to .env.production, fill in real values, then pipe the
 # whole file into fly secrets. It handles the `KEY=value` format natively.
@@ -133,7 +139,7 @@ The admin lives at `https://koshereats.shop/admin/login`. Seed a real admin
 user (not the dev placeholder) before first login:
 
 ```sh
-fly postgres connect --app koshereats-db
+fly postgres connect --app koshereats-postgres
 # In psql:
 INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
 VALUES ('you@koshereats.com',
