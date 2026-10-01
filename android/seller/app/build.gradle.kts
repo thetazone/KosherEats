@@ -167,6 +167,10 @@ dependencies {
     // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.1")
 
+    // Chrome Custom Tabs — Stripe payout onboarding + Partner Agreement terms.
+    // Same version the courier module uses for its payouts flow.
+    implementation("androidx.browser:browser:1.7.0")
+
     // Firebase Cloud Messaging. Manual init (no google-services plugin) —
     // see PushBootstrap + FIREBASE.md.
     implementation(platform("com.google.firebase:firebase-bom:32.7.4"))

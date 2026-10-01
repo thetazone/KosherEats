@@ -322,7 +322,8 @@ data class DashboardStats(
     @Json(name = "today_revenue") val todayRevenue: Int = 0,
     @Json(name = "active_orders") val activeOrders: Int = 0,
     @Json(name = "avg_prep_time") val avgPrepTime: Double = 0.0,
-    // Seller's 50% cut of delivery fees on orders they self-delivered today.
+    // Delivery fees the seller kept on orders they self-delivered today (self-delivering
+    // restaurants keep the full delivery fee and tip; KosherEats keeps 5% + card processing).
     @Json(name = "today_delivery_earnings") val todayDeliveryEarnings: Int = 0,
 )
 
@@ -566,4 +567,95 @@ data class POSIntegration(
 @JsonClass(generateAdapter = true)
 data class CloverConnectURLResponse(
     @Json(name = "connect_url") val connectUrl: String,
+)
+
+// --- Payouts (Stripe Connect) ---
+
+/** POST /seller/payouts/account and GET /seller/payouts/status. */
+@JsonClass(generateAdapter = true)
+data class PayoutStatus(
+    @Json(name = "payout_ready") val payoutReady: Boolean = false,
+    @Json(name = "connect_id") val connectId: String? = null,
+    @Json(name = "details_submitted") val detailsSubmitted: Boolean = false,
+)
+
+/** GET /seller/payouts/link — a one-time Stripe-hosted onboarding URL. */
+@JsonClass(generateAdapter = true)
+data class PayoutLinkResponse(
+    val url: String = "",
+)
+
+/**
+ * One order's payout line from GET /seller/payouts. `fulfillment` is one of
+ * courier_delivery | pickup | self_delivery; `status` is one of
+ * awaiting_account | pending | paid | failed | reversed | void. Both stay raw
+ * strings so a value the backend adds later renders instead of failing parse.
+ */
+@JsonClass(generateAdapter = true)
+data class PayoutLine(
+    val id: String = "",
+    @Json(name = "order_id") val orderId: String = "",
+    @Json(name = "order_number") val orderNumber: String? = null,
+    @Json(name = "completed_at") val completedAt: String = "",
+    val fulfillment: String = "",
+    @Json(name = "food_subtotal_cents") val foodSubtotalCents: Long = 0,
+    @Json(name = "sales_tax_cents") val salesTaxCents: Long = 0,
+    @Json(name = "delivery_fee_cents") val deliveryFeeCents: Long = 0,
+    @Json(name = "tip_cents") val tipCents: Long = 0,
+    @Json(name = "ke_fee_cents") val keFeeCents: Long = 0,
+    @Json(name = "processing_fee_cents") val processingFeeCents: Long = 0,
+    @Json(name = "net_cents") val netCents: Long = 0,
+    val status: String = "",
+    @Json(name = "transfer_id") val transferId: String? = null,
+    @Json(name = "paid_at") val paidAt: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class PayoutLinesResponse(
+    val lines: List<PayoutLine> = emptyList(),
+    @Json(name = "next_cursor") val nextCursor: String? = null,
+)
+
+/** GET /seller/payouts/summary?from=YYYY-MM-DD&to=YYYY-MM-DD (America/New_York dates). */
+@JsonClass(generateAdapter = true)
+data class PayoutSummary(
+    val from: String = "",
+    val to: String = "",
+    val orders: Int = 0,
+    @Json(name = "food_subtotal_cents") val foodSubtotalCents: Long = 0,
+    @Json(name = "sales_tax_cents") val salesTaxCents: Long = 0,
+    @Json(name = "delivery_fee_cents") val deliveryFeeCents: Long = 0,
+    @Json(name = "tip_cents") val tipCents: Long = 0,
+    @Json(name = "ke_fee_cents") val keFeeCents: Long = 0,
+    @Json(name = "processing_fee_cents") val processingFeeCents: Long = 0,
+    @Json(name = "net_cents") val netCents: Long = 0,
+    @Json(name = "paid_cents") val paidCents: Long = 0,
+    @Json(name = "pending_cents") val pendingCents: Long = 0,
+)
+
+// --- Restaurant Partner Agreement ---
+
+/** GET /seller/agreement and POST /seller/agreement/accept. */
+@JsonClass(generateAdapter = true)
+data class SellerAgreement(
+    val required: Boolean = false,
+    val accepted: Boolean = false,
+    @Json(name = "current_version") val currentVersion: String = "",
+    @Json(name = "accepted_version") val acceptedVersion: String? = null,
+    @Json(name = "accepted_at") val acceptedAt: String? = null,
+    @Json(name = "terms_url") val termsUrl: String = "",
+) {
+    /**
+     * Gate only when the server says acceptance is required AND the seller hasn't
+     * already accepted this exact version — tolerant of either reading of
+     * `required` ("must hold an agreement" vs "must accept now").
+     */
+    val needsAcceptance: Boolean
+        get() = required && !(accepted && acceptedVersion == currentVersion)
+}
+
+@JsonClass(generateAdapter = true)
+data class AcceptAgreementRequest(
+    @Json(name = "legal_name") val legalName: String,
+    val version: String,
 )

@@ -39,6 +39,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koshereats.seller.R
+import com.koshereats.seller.ui.screens.agreement.MerchantAgreementScreen
 import com.koshereats.seller.ui.screens.auth.PhoneLoginScreen
 import com.koshereats.seller.ui.screens.auth.SellerLoginScreen
 import com.koshereats.seller.ui.screens.dashboard.DashboardScreen
@@ -49,6 +50,7 @@ import com.koshereats.seller.ui.screens.menu.MenuManagementScreen
 import com.koshereats.seller.ui.screens.onboarding.OnboardingScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrderDetailScreen
 import com.koshereats.seller.ui.screens.orders.SellerOrdersScreen
+import com.koshereats.seller.ui.screens.payouts.PayoutsScreen
 import com.koshereats.seller.ui.screens.settings.IntegrationsScreen
 import com.koshereats.seller.ui.screens.settings.RestaurantSettingsScreen
 import com.koshereats.seller.ui.theme.BackgroundBlack
@@ -56,6 +58,8 @@ import com.koshereats.seller.ui.theme.BackgroundDark
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.viewmodels.AgreementGateStatus
+import com.koshereats.seller.ui.viewmodels.AgreementViewModel
 import com.koshereats.seller.ui.viewmodels.AuthViewModel
 
 @Composable
@@ -73,11 +77,44 @@ fun NavGraph(
         currentDestination?.hierarchy?.any { it.route == screen.route } == true
     }
 
+    // Restaurant Partner Agreement gate (activity-scoped). Re-checked whenever
+    // the seller logs in, finishes onboarding (hasRestaurants flips), or the
+    // active restaurant changes — the endpoint is scoped by the restaurant_id
+    // interceptor. Declared before the early returns so it runs during splash.
+    val agreementViewModel: AgreementViewModel = hiltViewModel()
+    val agreementState by agreementViewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(authState.isLoggedIn, authState.hasRestaurants, authState.restaurant?.id) {
+        if (!authState.isLoggedIn) {
+            agreementViewModel.reset()
+            return@LaunchedEffect
+        }
+        val hasRestaurants = authState.hasRestaurants ?: return@LaunchedEffect
+        agreementViewModel.check("$hasRestaurants:${authState.restaurant?.id.orEmpty()}")
+    }
+
     // While the auth check runs, or while a logged-in seller's restaurants are
     // still loading (a network call with a 30s read timeout), show a branded
     // splash instead of an empty Surface — otherwise cold start is a black screen.
-    if (authState.isLoading || (authState.isLoggedIn && authState.hasRestaurants == null)) {
+    // Also hold it until the first agreement check answers (bounded to 10s and
+    // fail-open in AgreementViewModel) so the dashboard never flashes before the gate.
+    if (authState.isLoading ||
+        (authState.isLoggedIn && authState.hasRestaurants == null) ||
+        (authState.isLoggedIn && agreementState.status == AgreementGateStatus.UNKNOWN)
+    ) {
         SplashLoading()
+        return
+    }
+
+    // Non-dismissable: rendered INSTEAD of the Scaffold/NavHost, so there is no
+    // back stack or bottom bar to escape through. Covers both brand-new sellers
+    // (before onboarding completes) and existing restaurants that aren't
+    // grandfathered. Accept flips status → NOT_REQUIRED and the NavHost returns
+    // at its start destination.
+    if (authState.isLoggedIn && agreementState.status == AgreementGateStatus.REQUIRED) {
+        MerchantAgreementScreen(
+            viewModel = agreementViewModel,
+            onSignOut = { authViewModel.logout() },
+        )
         return
     }
 
@@ -227,6 +264,9 @@ fun NavGraph(
                     onOrderClick = { orderId ->
                         navController.navigate(Screen.OrderDetail.createRoute(orderId))
                     },
+                    onSetUpPayouts = {
+                        navController.navigate(Screen.Payouts.route) { launchSingleTop = true }
+                    },
                     onViewAllOrders = {
                         navController.navigate(Screen.Orders.route) {
                             popUpTo(navController.graph.findStartDestination().id) {
@@ -340,7 +380,16 @@ fun NavGraph(
                     onIntegrations = {
                         navController.navigate(Screen.Integrations.route)
                     },
+                    onPayouts = {
+                        navController.navigate(Screen.Payouts.route) { launchSingleTop = true }
+                    },
                     authViewModel = authViewModel,
+                )
+            }
+
+            composable(Screen.Payouts.route) {
+                PayoutsScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
 

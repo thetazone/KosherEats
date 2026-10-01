@@ -15,7 +15,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -57,9 +60,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.formatPrice
+import com.koshereats.seller.data.repository.PayoutSetupState
+import com.koshereats.seller.data.repository.setupState
+import com.koshereats.seller.ui.util.PartnerTermsCopy
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.Orange
 import com.koshereats.seller.ui.theme.StatusAccepted
+import com.koshereats.seller.ui.theme.StatusPending
 import com.koshereats.seller.ui.theme.StatusPreparing
 import com.koshereats.seller.ui.theme.SuccessGreen
 import com.koshereats.seller.ui.theme.SurfaceDark
@@ -70,6 +77,7 @@ import com.koshereats.seller.ui.theme.TextWhite
 import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.viewmodels.AuthViewModel
 import com.koshereats.seller.ui.viewmodels.DashboardViewModel
+import com.koshereats.seller.ui.viewmodels.PayoutStatusViewModel
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,11 +85,14 @@ import kotlin.math.roundToInt
 fun DashboardScreen(
     onOrderClick: (String) -> Unit,
     onViewAllOrders: () -> Unit,
+    onSetUpPayouts: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel(),
     authViewModel: AuthViewModel = hiltViewModel(),
+    payoutStatusViewModel: PayoutStatusViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val authState by authViewModel.state.collectAsStateWithLifecycle()
+    val payoutStatus by payoutStatusViewModel.status.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
@@ -110,7 +121,12 @@ fun DashboardScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START -> viewModel.startPolling()
+                Lifecycle.Event.ON_START -> {
+                    viewModel.startPolling()
+                    // Picks up a Stripe onboarding finished elsewhere (Payouts screen,
+                    // another device) so the prompt card disappears on return.
+                    payoutStatusViewModel.refresh()
+                }
                 Lifecycle.Event.ON_STOP -> viewModel.stopPolling()
                 else -> {}
             }
@@ -245,6 +261,18 @@ fun DashboardScreen(
                 }
             }
 
+            // Payouts prompt — only once the status is known and payouts aren't
+            // live yet (hidden while loading so Ready restaurants never see a flash).
+            val payoutSetup = payoutStatus?.setupState
+            if (payoutSetup != null && payoutSetup != PayoutSetupState.READY) {
+                item(key = "payouts_prompt") {
+                    PayoutsPromptCard(
+                        pendingVerification = payoutSetup == PayoutSetupState.PENDING_VERIFICATION,
+                        onClick = onSetUpPayouts,
+                    )
+                }
+            }
+
             // Stats grid
             item {
                 Row(
@@ -282,7 +310,8 @@ fun DashboardScreen(
                     )
                     StatCard(
                         title = "Delivery Earnings",
-                        // Seller's 50% of delivery fees on orders they self-delivered today.
+                        // Delivery fees (and tips) the seller kept on orders they
+                        // self-delivered today — self-delivery keeps the full fee.
                         value = state.stats.todayDeliveryEarnings.formatPrice(),
                         icon = Icons.Filled.DirectionsCar,
                         iconTint = SuccessGreen,
@@ -320,6 +349,18 @@ fun DashboardScreen(
                     } else {
                         Spacer(modifier = Modifier.weight(1f))
                     }
+                }
+            }
+
+            // Self-delivery economics under the delivery-mode tile, so the
+            // seller sees what choosing Self-delivery means before tapping it.
+            if (authState.restaurant != null) {
+                item(key = "self_delivery_note") {
+                    Text(
+                        text = "Self-delivery: ${PartnerTermsCopy.SELF_DELIVERY_KEEP}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
                 }
             }
 
@@ -555,5 +596,72 @@ private fun DeliveryModePill(
             color = if (selected) TextWhite else TextSecondary,
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * Dashboard nudge shown until Stripe payouts are Ready. Tapping opens the
+ * Payouts screen, which runs the Stripe-hosted onboarding.
+ */
+@Composable
+private fun PayoutsPromptCard(
+    pendingVerification: Boolean,
+    onClick: () -> Unit,
+) {
+    val tint = if (pendingVerification) StatusPending else Orange
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .semantics { role = Role.Button },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = tint.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(tint.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (pendingVerification) Icons.Filled.HourglassTop else Icons.Filled.AccountBalance,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(modifier = Modifier.size(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (pendingVerification) "Payouts pending verification" else "Set up payouts",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextWhite,
+                )
+                Text(
+                    text = if (pendingVerification) {
+                        "Stripe is verifying your details. Tap to check or finish setup."
+                    } else {
+                        PartnerTermsCopy.PAYOUTS_PROMPT
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }

@@ -232,4 +232,41 @@ interface ApiService {
 
     @DELETE("seller/integrations/{id}")
     suspend fun disconnectIntegration(@Path("id") id: String): Response<Map<String, String>>
+
+    // --- Payouts (Stripe Connect) ---
+    // Every /seller/* call carries ?restaurant_id= via sellerRestaurantInterceptor,
+    // so payout status / history are scoped to the active restaurant.
+
+    /** Idempotently creates the restaurant's Stripe Connect account. */
+    @POST("seller/payouts/account")
+    suspend fun createPayoutAccount(): Response<PayoutStatus>
+
+    /** Fresh Stripe-hosted onboarding link; open it in a Custom Tab. */
+    @GET("seller/payouts/link")
+    suspend fun getPayoutLink(): Response<PayoutLinkResponse>
+
+    @GET("seller/payouts/status")
+    suspend fun getPayoutStatus(): Response<PayoutStatus>
+
+    @GET("seller/payouts")
+    suspend fun listPayouts(
+        @Query("limit") limit: Int = 50,
+        @Query("cursor") cursor: String? = null,
+    ): Response<PayoutLinesResponse>
+
+    /** [from] / [to] are inclusive YYYY-MM-DD dates in America/New_York. */
+    @GET("seller/payouts/summary")
+    suspend fun getPayoutSummary(
+        @Query("from") from: String,
+        @Query("to") to: String,
+    ): Response<PayoutSummary>
+
+    // --- Restaurant Partner Agreement ---
+
+    @GET("seller/agreement")
+    suspend fun getAgreement(): Response<SellerAgreement>
+
+    /** 409 when [AcceptAgreementRequest.version] is no longer current — re-fetch. */
+    @POST("seller/agreement/accept")
+    suspend fun acceptAgreement(@Body body: AcceptAgreementRequest): Response<SellerAgreement>
 }

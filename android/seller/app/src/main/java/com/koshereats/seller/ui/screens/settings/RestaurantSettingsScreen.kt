@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -81,17 +82,22 @@ import coil.compose.AsyncImage
 import com.koshereats.seller.data.models.KosherCertification
 import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.data.util.Money
+import com.koshereats.seller.data.repository.PayoutSetupState
+import com.koshereats.seller.data.repository.setupState
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
 import com.koshereats.seller.ui.theme.Orange
+import com.koshereats.seller.ui.theme.StatusPending
 import com.koshereats.seller.ui.theme.SuccessGreen
 import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.SurfaceDarkElevated
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.util.PartnerTermsCopy
 import com.koshereats.seller.ui.viewmodels.AuthViewModel
+import com.koshereats.seller.ui.viewmodels.PayoutStatusViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,9 +113,13 @@ import okio.source
 fun RestaurantSettingsScreen(
     onLogout: () -> Unit,
     onIntegrations: () -> Unit = {},
+    onPayouts: () -> Unit = {},
     authViewModel: AuthViewModel = hiltViewModel(),
+    payoutStatusViewModel: PayoutStatusViewModel = hiltViewModel(),
 ) {
     val authState by authViewModel.state.collectAsStateWithLifecycle()
+    val payoutStatus by payoutStatusViewModel.status.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { payoutStatusViewModel.refresh() }
     val restaurant = authState.restaurant
     val isApproved = restaurant?.approvalStatus?.equals("approved", ignoreCase = true) == true
     val context = LocalContext.current
@@ -602,7 +612,7 @@ fun RestaurantSettingsScreen(
                 // no per-restaurant picker here. The Delivery Fee below is now the
                 // self-delivery fee. Parity with iOS.
                 Text(
-                    text = "Your self-delivery fee — what you charge and keep when you deliver an order yourself. Choose your delivery method (Self-delivery or Uber Direct) on the Dashboard.",
+                    text = "Your self-delivery fee — what you charge when you deliver an order yourself. ${PartnerTermsCopy.SELF_DELIVERY_KEEP} Choose your delivery method (Self-delivery or Uber Direct) on the Dashboard.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                 )
@@ -734,6 +744,55 @@ fun RestaurantSettingsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                 }
                 Text("Save Changes", fontWeight = FontWeight.SemiBold)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Payouts (Stripe Connect) — status at a glance; tap for setup + history.
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        ) {
+            val setup = payoutStatus?.setupState
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onPayouts)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AccountBalance,
+                    contentDescription = null,
+                    tint = Orange,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Payouts",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = TextWhite,
+                    )
+                    Text(
+                        text = setup?.label ?: "Bank account, earnings & fees",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (setup) {
+                            PayoutSetupState.READY -> SuccessGreen
+                            PayoutSetupState.PENDING_VERIFICATION -> StatusPending
+                            PayoutSetupState.NOT_SET_UP -> Orange
+                            null -> TextMuted
+                        },
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = TextMuted,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
 

@@ -16,6 +16,7 @@ import com.koshereats.seller.data.models.PhoneStartRequest
 import com.koshereats.seller.data.models.PhoneVerifyRequest
 import com.koshereats.seller.data.models.PresignResponse
 import com.koshereats.seller.data.models.Restaurant
+import com.koshereats.seller.data.repository.PayoutsRepository
 import com.koshereats.seller.push.PushBootstrap
 import com.koshereats.seller.auth.GoogleSignInHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -58,6 +59,7 @@ data class AuthState(
 class AuthViewModel @Inject constructor(
     private val apiService: ApiService,
     private val tokenProvider: TokenProvider,
+    private val payoutsRepository: PayoutsRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -621,6 +623,7 @@ class AuthViewModel @Inject constructor(
         tokenProvider.clearTokens()
         NetworkModule.cachedRestaurantId = null
         context.dataStore.edit { it.clear() }
+        payoutsRepository.clear()
         _state.value = AuthState(isLoggedIn = false, isLoading = false)
     }
 }

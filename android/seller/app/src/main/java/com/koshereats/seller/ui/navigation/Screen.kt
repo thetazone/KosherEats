@@ -64,6 +64,7 @@ sealed class Screen(
     }
     data object CreateDeal : Screen("deals/create", "Create Deal")
     data object Integrations : Screen("settings/integrations", "Integrations")
+    data object Payouts : Screen("settings/payouts", "Payouts")
 
     companion object {
         val bottomNavItems = listOf(Dashboard, Orders, Menu, Deals, Settings)
