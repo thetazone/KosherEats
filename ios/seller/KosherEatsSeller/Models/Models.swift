@@ -989,7 +989,8 @@ struct DashboardStats: Codable {
     var todayOrders: Int = 0
     /// Cents. Divide by 100 to display.
     var todayRevenue: Int = 0
-    /// Cents. Seller's 50% of delivery fees on orders they self-delivered today.
+    /// Cents. Delivery fees the seller kept on orders they self-delivered
+    /// today (self-delivering restaurants keep the full delivery fee + tip).
     var todayDeliveryEarnings: Int = 0
     var activeOrders: Int = 0
     /// Minutes, averaged across today's delivered orders.

@@ -58,6 +58,12 @@
 		EF195795DB4F52C8C95931A5 /* DealsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41BD4932A2AA7B09CE74CF5B /* DealsViewModel.swift */; };
 		F420633E0799D386DD761703 /* ModifierGroupsEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6C3EC7CC3E786580998A7B2 /* ModifierGroupsEditorView.swift */; };
 		FDEEDB2EC0724A40FB453D7D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = B5B94FA70DDCEC8CB7C63111 /* Localizable.xcstrings */; };
+		09830FF4D74C87E9169F1ADE /* PayoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83EC9754113579FC3D721FFD /* PayoutModels.swift */; };
+		ECBFBF0631FA021472C284C3 /* PayoutsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77CAC7004F473B4C380761BA /* PayoutsViewModel.swift */; };
+		ECEE6F6FC4D7973762E82B5A /* InAppSafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1915A2BA95FA9E96F684A3C6 /* InAppSafariView.swift */; };
+		A6AF4350AE7BC3E8CE105482 /* PayoutsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BDDD1A7891761C34B0F3B44 /* PayoutsView.swift */; };
+		4AEE8BC1BD10BF10C356779B /* PayoutLineDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82AF52EA41D729A48D134EE1 /* PayoutLineDetailSheet.swift */; };
+		41A54576AE8A57BD78E169E1 /* PartnerAgreementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D581216C424DCADA265B046 /* PartnerAgreementView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -114,6 +120,12 @@
 		ED058EA6182AC0662AD2596F /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		EEAEF8A919BD60C7E6FB9AD1 /* MenuManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuManagementView.swift; sourceTree = "<group>"; };
 		FA3A23E0A68C8DEA323B53F4 /* KosherEatsSeller.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KosherEatsSeller.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		83EC9754113579FC3D721FFD /* PayoutModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayoutModels.swift; sourceTree = "<group>"; };
+		77CAC7004F473B4C380761BA /* PayoutsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayoutsViewModel.swift; sourceTree = "<group>"; };
+		1915A2BA95FA9E96F684A3C6 /* InAppSafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppSafariView.swift; sourceTree = "<group>"; };
+		6BDDD1A7891761C34B0F3B44 /* PayoutsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayoutsView.swift; sourceTree = "<group>"; };
+		82AF52EA41D729A48D134EE1 /* PayoutLineDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayoutLineDetailSheet.swift; sourceTree = "<group>"; };
+		1D581216C424DCADA265B046 /* PartnerAgreementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartnerAgreementView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,6 +153,8 @@
 				21732CA90062D02DAA99CB6A /* Menu */,
 				460EE84AE930E935B97B94A7 /* Orders */,
 				57EEF44A473EC415647690E6 /* Settings */,
+				DF48F02EC8C519C9FEC6E34B /* Payouts */,
+				B254ADD14AB27296D5D0E49C /* Agreement */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -199,6 +213,7 @@
 			children = (
 				8880863DB045CDE512837232 /* Country.swift */,
 				ED058EA6182AC0662AD2596F /* Models.swift */,
+				83EC9754113579FC3D721FFD /* PayoutModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -269,6 +284,7 @@
 				41BD4932A2AA7B09CE74CF5B /* DealsViewModel.swift */,
 				974440267F22F40FB9157133 /* MenuViewModel.swift */,
 				63BC77F71B8BE4175E230F98 /* OrdersViewModel.swift */,
+				77CAC7004F473B4C380761BA /* PayoutsViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -287,6 +303,7 @@
 				7A6B2F3E34FF12AE55BA4307 /* ErrorStateView.swift */,
 				97ADA6BA7A9D3EA9672327DD /* RemoteImage.swift */,
 				3042B335F49FF44BF0C2EBE3 /* SkeletonViews.swift */,
+				1915A2BA95FA9E96F684A3C6 /* InAppSafariView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -314,6 +331,23 @@
 				B42B0F9A3832B22C3A10A6B2 /* RestaurantPickerSheet.swift */,
 			);
 			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		DF48F02EC8C519C9FEC6E34B /* Payouts */ = {
+			isa = PBXGroup;
+			children = (
+				6BDDD1A7891761C34B0F3B44 /* PayoutsView.swift */,
+				82AF52EA41D729A48D134EE1 /* PayoutLineDetailSheet.swift */,
+			);
+			path = Payouts;
+			sourceTree = "<group>";
+		};
+		B254ADD14AB27296D5D0E49C /* Agreement */ = {
+			isa = PBXGroup;
+			children = (
+				1D581216C424DCADA265B046 /* PartnerAgreementView.swift */,
+			);
+			path = Agreement;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -441,6 +475,12 @@
 				019E66C4A5A16A978C68945A /* SellerRootGate.swift in Sources */,
 				D74BF3D33B6FB0621A327FDD /* SkeletonViews.swift in Sources */,
 				3C390EBEA80DFA7939012F13 /* UploadService.swift in Sources */,
+				09830FF4D74C87E9169F1ADE /* PayoutModels.swift in Sources */,
+				ECBFBF0631FA021472C284C3 /* PayoutsViewModel.swift in Sources */,
+				ECEE6F6FC4D7973762E82B5A /* InAppSafariView.swift in Sources */,
+				A6AF4350AE7BC3E8CE105482 /* PayoutsView.swift in Sources */,
+				4AEE8BC1BD10BF10C356779B /* PayoutLineDetailSheet.swift in Sources */,
+				41A54576AE8A57BD78E169E1 /* PartnerAgreementView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -789,7 +789,8 @@ actor APIService {
     }
 
     /// Self-delivery: the seller's own driver delivered the order (picked_up ->
-    /// delivered) and is credited 50% of the delivery fee server-side.
+    /// delivered). The restaurant keeps the full delivery fee and tip;
+    /// KosherEats keeps 5% + card processing (settled via payouts).
     func sellerDeliverOrder(id: String) async throws {
         try await requestVoid("PATCH", path: await sellerPath("/seller/orders/\(id)/deliver"))
     }
@@ -798,6 +799,76 @@ actor APIService {
 
     func getDashboardStats() async throws -> DashboardStats {
         try await request("GET", path: await sellerPath("/seller/dashboard/stats"))
+    }
+
+    // MARK: - Payouts (Stripe Connect)
+    //
+    // Mirrors the courier app's /courier/payouts/* trio, scoped to the
+    // selected restaurant via sellerPath. KYC happens in Stripe's hosted
+    // onboarding (SFSafariViewController); the app only creates the account,
+    // fetches a one-time link, and polls status when the sheet closes.
+
+    private struct EmptyBody: Encodable {}
+
+    /// Idempotent server-side: returns the existing account's status if one
+    /// was already created for this restaurant.
+    func createPayoutAccount() async throws -> SellerPayoutStatus {
+        try await request("POST", path: await sellerPath("/seller/payouts/account"), body: EmptyBody())
+    }
+
+    func getPayoutStatus() async throws -> SellerPayoutStatus {
+        try await request("GET", path: await sellerPath("/seller/payouts/status"))
+    }
+
+    func getPayoutLink() async throws -> SellerPayoutLink {
+        try await request("GET", path: await sellerPath("/seller/payouts/link"))
+    }
+
+    /// One page of the per-order payout ledger, newest first. Pass the
+    /// previous page's `next_cursor` (opaque) to continue.
+    func getPayoutLines(limit: Int = 50, cursor: String? = nil) async throws -> PayoutLinesPage {
+        var components = URLComponents()
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { items.append(URLQueryItem(name: "cursor", value: cursor)) }
+        components.queryItems = items
+        // Same `+` → %2B escape as getOrders(): Go decodes a bare `+` as a
+        // space, which would corrupt an RFC3339/base64 cursor.
+        let rawQuery = components.percentEncodedQuery.map { $0.replacingOccurrences(of: "+", with: "%2B") }
+        let path = "/seller/payouts" + (rawQuery.map { "?\($0)" } ?? "")
+        return try await request("GET", path: await sellerPath(path))
+    }
+
+    /// Totals for an inclusive America/New_York date range (YYYY-MM-DD).
+    func getPayoutSummary(from: String, to: String) async throws -> PayoutSummary {
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "from", value: from),
+            URLQueryItem(name: "to", value: to),
+        ]
+        let path = "/seller/payouts/summary?\(components.percentEncodedQuery ?? "")"
+        return try await request("GET", path: await sellerPath(path))
+    }
+
+    // MARK: - Restaurant Partner Agreement
+
+    func getAgreement() async throws -> SellerAgreement {
+        try await request("GET", path: await sellerPath("/seller/agreement"))
+    }
+
+    /// Records acceptance of `version`. The backend answers 409 when `version`
+    /// is no longer current (the terms changed while the screen was open) —
+    /// callers re-fetch and show the new version.
+    func acceptAgreement(legalName: String, version: String) async throws -> SellerAgreement {
+        struct Body: Encodable {
+            let legalName: String
+            let version: String
+            enum CodingKeys: String, CodingKey {
+                case legalName = "legal_name"
+                case version
+            }
+        }
+        return try await request("POST", path: await sellerPath("/seller/agreement/accept"),
+                                 body: Body(legalName: legalName, version: version))
     }
 
     // MARK: - Uploads (menu item photos)

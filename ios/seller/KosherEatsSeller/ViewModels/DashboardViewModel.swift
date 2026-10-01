@@ -13,6 +13,10 @@ class DashboardViewModel: ObservableObject {
     @Published var restaurantCount: Int = 1
     @Published var isLoading = false
     @Published var errorMessage: String?
+    /// Stripe Connect payout status for the selected restaurant. nil until the
+    /// first fetch lands (or when it failed) — the Dashboard only shows the
+    /// "Set up payouts" prompt when we positively know payouts aren't ready.
+    @Published var payoutStatus: SellerPayoutStatus?
 
     /// Shared OrdersViewModel so Dashboard→OrderDetail navigations use a
     /// VM that already has orders loaded, avoiding silent no-op actions.
@@ -80,6 +84,9 @@ class DashboardViewModel: ObservableObject {
         let currentRestaurantId = SelectedRestaurant.shared.id
         if !hasLoadedStatsOnce || statsRestaurantId != currentRestaurantId {
             stats = DashboardStats()
+            // Payout accounts are per restaurant — don't carry A's status
+            // (and its prompt) over to B while B's fetch is in flight.
+            payoutStatus = nil
         }
         hasLoadedStatsOnce = true
         statsRestaurantId = currentRestaurantId
@@ -89,6 +96,7 @@ class DashboardViewModel: ObservableObject {
             group.addTask { await self.fetchStats(generation: gen) }
             group.addTask { await self.fetchRestaurant(generation: gen) }
             group.addTask { await self.fetchRestaurantCount(generation: gen) }
+            group.addTask { await self.fetchPayoutStatus(generation: gen) }
         }
 
         if gen == loadGeneration {
@@ -292,5 +300,20 @@ class DashboardViewModel: ObservableObject {
             guard generation == loadGeneration else { return }
             self.restaurantCount = list.count
         }
+    }
+
+    /// Re-check payout status on its own — e.g. when the seller comes back
+    /// from the Payouts screen after finishing Stripe onboarding.
+    func refreshPayoutStatus() async {
+        await fetchPayoutStatus(generation: loadGeneration)
+    }
+
+    private func fetchPayoutStatus(generation: Int) async {
+        // Best-effort, like fetchRestaurantCount: a failure (including the
+        // endpoint not being deployed yet) hides the prompt rather than
+        // surfacing an unrelated error on the dashboard.
+        guard let fetched = try? await APIService.shared.getPayoutStatus() else { return }
+        guard generation == loadGeneration else { return }
+        self.payoutStatus = fetched
     }
 }

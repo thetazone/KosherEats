@@ -101,7 +101,7 @@ struct RestaurantSettingsView: View {
 
                     // Delivery Settings
                     settingsSection("Delivery", icon: "car.fill") {
-                        Text("Your self-delivery fee — what you charge and keep when you deliver an order yourself. Choose your delivery method (Self-delivery or Uber Direct) on the Dashboard.")
+                        Text("Your self-delivery fee — what you charge when you deliver an order yourself. \(PayoutCopy.selfDeliveryFees) Choose your delivery method (Self-delivery or Uber Direct) on the Dashboard.")
                             .font(.caption2)
                             .foregroundColor(.keTextMuted)
                             .padding(.bottom, 4)
@@ -324,6 +324,34 @@ struct RestaurantSettingsView: View {
                             .foregroundColor(.keError)
                     }
 
+                    // Payouts (Stripe Connect setup + payout history)
+                    NavigationLink {
+                        PayoutsView()
+                            .onDisappear { Task { await dashVM.refreshPayoutStatus() } }
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "banknote.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.kePrimary)
+                                .frame(width: 24)
+                            Text("Payouts")
+                                .font(.system(size: 15))
+                                .foregroundColor(.keTextPrimary)
+                            Spacer()
+                            if let payout = dashVM.payoutStatus {
+                                payoutStatusLabel(payout.setupState)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13))
+                                .foregroundColor(.keTextMuted)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Color.keCard)
+                        .cornerRadius(12)
+                    }
+                    .accessibilityIdentifier("settings_payouts")
+
                     // Connected Accounts
                     NavigationLink {
                         ConnectedAccountsView()
@@ -540,6 +568,19 @@ struct RestaurantSettingsView: View {
                 .cornerRadius(10)
                 .accessibilityLabel(label)
         }
+    }
+
+    private func payoutStatusLabel(_ state: SellerPayoutStatus.SetupState) -> some View {
+        let (text, color): (String, Color) = {
+            switch state {
+            case .ready: return ("Ready", .keSuccess)
+            case .pendingVerification: return ("Pending verification", .keWarning)
+            case .notSetUp: return ("Set up to get paid", .kePrimary)
+            }
+        }()
+        return Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(color)
     }
 
     private func legalLinkRow(_ title: String, icon: String, action: @escaping () -> Void) -> some View {

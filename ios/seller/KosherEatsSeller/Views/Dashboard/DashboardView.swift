@@ -26,6 +26,16 @@ struct DashboardView: View {
                             profileCompletionBanner
                         }
 
+                        // Payouts-not-set-up prompt: without a Stripe Connect
+                        // account the restaurant's order earnings sit in
+                        // "awaiting_account" and never transfer. Only shown
+                        // once we positively know setup hasn't happened — a
+                        // failed status fetch hides it rather than nagging.
+                        // Mirrors the courier app's payoutReminderBanner.
+                        if let payout = vm.payoutStatus, payout.setupState == .notSetUp {
+                            payoutSetupPrompt
+                        }
+
                         // Restaurant Status
                         if let restaurant = vm.restaurant {
                             restaurantStatusCard(restaurant)
@@ -171,6 +181,46 @@ struct DashboardView: View {
         .cornerRadius(16)
     }
 
+    // MARK: - Payout Setup Prompt
+
+    private var payoutSetupPrompt: some View {
+        NavigationLink {
+            PayoutsView()
+                .onDisappear { Task { await vm.refreshPayoutStatus() } }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "dollarsign.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.kePrimary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Payouts not set up")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.keTextPrimary)
+                    Text(PayoutCopy.setupPrompt)
+                        .font(.caption)
+                        .foregroundColor(.keTextSecondary)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.keTextMuted)
+                    .accessibilityHidden(true)
+            }
+            .padding()
+            .background(Color.kePrimary.opacity(0.12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.kePrimary.opacity(0.35), lineWidth: 1)
+            )
+            .cornerRadius(16)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens payouts to connect your bank with Stripe")
+    }
+
     // MARK: - Restaurant Status
 
     private func restaurantStatusCard(_ restaurant: Restaurant) -> some View {
@@ -264,7 +314,8 @@ struct DashboardView: View {
 
             StatCard(
                 title: "Delivery Earnings",
-                // Seller's 50% of delivery fees on self-delivered orders today.
+                // Delivery fees the seller kept on self-delivered orders today
+                // (self-delivering restaurants keep the full fee + tip).
                 value: CurrencyFormat.string(fromCents: vm.stats.todayDeliveryEarnings),
                 icon: "car.circle.fill",
                 iconColor: .keSuccess
@@ -310,12 +361,29 @@ struct DashboardView: View {
                         .foregroundColor(.keTextSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // What the restaurant keeps under the selected method, so the
+                // trade-off is visible right where the choice is made.
+                if let feeNote = deliveryModeFeeNote(mode) {
+                    Text(feeNote)
+                        .font(.caption2)
+                        .foregroundColor(.keTextMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.keCard)
         .cornerRadius(16)
+    }
+
+    private func deliveryModeFeeNote(_ mode: String) -> String? {
+        switch mode {
+        case "restaurant": return PayoutCopy.selfDeliveryFees
+        case "external", "platform": return PayoutCopy.courierDeliveryFees
+        default: return nil
+        }
     }
 
     private func deliveryModePill(_ title: String, value: String, selected: Bool) -> some View {

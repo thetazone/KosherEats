@@ -414,7 +414,8 @@ class OrdersViewModel: ObservableObject {
     }
 
     /// Self-delivery: the seller's own driver delivered the order (picked_up ->
-    /// delivered). Credits 50% of the delivery fee server-side.
+    /// delivered). The restaurant keeps the full delivery fee and tip;
+    /// KosherEats keeps 5% + card processing (settled via payouts).
     func markSelfDeliver(id: String) async {
         guard !inFlightOrderIDs.contains(id) else { return }
         inFlightOrderIDs.insert(id)
