@@ -34,12 +34,12 @@ func (h *Handler) alertAdmin(subject, body string) {
 //
 // TODO: integrate Stripe Tax (needs the connected Stripe account's Tax feature
 // enabled). When wired, this should call Stripe's tax calculation for the
-// order's jurisdiction instead of the flat TaxRatePercent. Until then the
+// order's jurisdiction instead of the flat TaxRatePPM. Until then the
 // flat rate is authoritative and StripeTaxEnabled is effectively a feature
 // flag guarding an inert seam.
 func (h *Handler) taxForOrder(discountedSubtotal int) int {
 	// TODO: integrate Stripe Tax (needs the Stripe account's Tax enabled).
-	return discountedSubtotal * h.cfg.TaxRatePercent / 100
+	return h.cfg.TaxOn(discountedSubtotal)
 }
 
 // CreatePaymentIntent computes the authoritative total server-side (cart +
@@ -287,7 +287,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	serviceFee := 0
-	// Default: flat TaxRatePercent (unchanged). When StripeTaxEnabled is set we
+	// Default: flat TaxRatePPM via cfg.TaxOn. When StripeTaxEnabled is set we
 	// route through taxForOrder, the Stripe Tax integration seam — which today
 	// returns the same flat-rate value, so the charged total is identical until
 	// that stub is wired to real Stripe Tax.
@@ -295,7 +295,7 @@ func (h *Handler) CreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.StripeTaxEnabled {
 		tax = h.taxForOrder(discountedSubtotal)
 	} else {
-		tax = discountedSubtotal * h.cfg.TaxRatePercent / 100
+		tax = h.cfg.TaxOn(discountedSubtotal)
 	}
 	tip := req.Tip
 	if tip < 0 {

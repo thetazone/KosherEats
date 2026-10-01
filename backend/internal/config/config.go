@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -102,9 +103,12 @@ type Config struct {
 	ShipdayAPIKey       string
 	ShipdayWebhookToken string
 
-	// Tax rate as a whole-number percentage (e.g. 9 = 9%). Defaults to 9
-	// if TAX_RATE_PERCENT is not set.
-	TaxRatePercent int
+	// Sales-tax rate in parts per million of the taxable subtotal
+	// (8.875% = 88_750), so fractional rates like New York City's combined
+	// 8.875% are exact in integer math. Loaded from TAX_RATE_PERCENT, which
+	// accepts a decimal percentage ("8.875"); defaults to NYC's 8.875%.
+	// Apply it with TaxOn, never by hand.
+	TaxRatePPM int
 
 	// Delivery pricing: the consumer always pays the cheapest external courier
 	// (Uber Direct / DoorDash) quote PLUS a flat markup we keep — no minimum, no
@@ -118,7 +122,7 @@ type Config struct {
 	DeliveryLargeOrderCents    int
 	DeliveryHighestOrderCents  int
 
-	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePercent
+	// StripeTaxEnabled flips order-tax computation from the flat TaxRatePPM
 	// to the (currently stubbed) Stripe Tax integration point. Default false:
 	// the flat-rate path is unchanged unless STRIPE_TAX_ENABLED=true. See
 	// handlers.taxForOrder — wiring Stripe Tax also needs the connected Stripe
@@ -289,7 +293,7 @@ func Load() *Config {
 		ShipdayAPIKey:       getEnv("SHIPDAY_API_KEY", ""),
 		ShipdayWebhookToken: getEnv("SHIPDAY_WEBHOOK_TOKEN", ""),
 
-		TaxRatePercent: getEnvInt("TAX_RATE_PERCENT", 9),
+		TaxRatePPM: getEnvPercentPPM("TAX_RATE_PERCENT", defaultTaxRatePPM),
 
 		DeliveryMarkupCents:        getEnvInt("DELIVERY_MARKUP_CENTS", 100),
 		DeliveryMarkupLargeCents:   getEnvInt("DELIVERY_MARKUP_LARGE_CENTS", 200),
@@ -326,6 +330,35 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// defaultTaxRatePPM is New York City's combined state + local sales-tax
+// rate, 8.875%, the rate for every KosherEats market today.
+const defaultTaxRatePPM = 88_750
+
+// TaxOn returns the sales tax, in cents, on a taxable amount in cents,
+// rounded half up to the nearest cent. Integer-only so the PaymentIntent
+// amount and the recorded order total are computed identically.
+func (c *Config) TaxOn(cents int) int {
+	if cents <= 0 || c.TaxRatePPM <= 0 {
+		return 0
+	}
+	return int((int64(cents)*int64(c.TaxRatePPM) + 500_000) / 1_000_000)
+}
+
+// getEnvPercentPPM reads a decimal percentage ("8.875") and returns it in
+// parts per million. Unset, unparseable, or out-of-range (0–25%) values fall
+// back, so a typo can never zero out or inflate the tax on every order.
+func getEnvPercentPPM(key string, fallback int) int {
+	val := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(os.Getenv(key)), "%"))
+	if val == "" {
+		return fallback
+	}
+	pct, err := strconv.ParseFloat(val, 64)
+	if err != nil || pct < 0 || pct > 25 {
+		return fallback
+	}
+	return int(math.Round(pct * 10_000))
 }
 
 func getEnvInt(key string, fallback int) int {

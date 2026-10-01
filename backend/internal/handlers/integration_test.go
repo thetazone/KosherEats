@@ -110,8 +110,9 @@ func TestMain(m *testing.M) {
 
 	cfg := &config.Config{
 		// A non-empty JWT secret so generated tokens verify in AuthMiddleware.
-		JWTSecret:      "integration-test-secret",
-		TaxRatePercent: 9,
+		JWTSecret: "integration-test-secret",
+		// Integration fixtures assert totals computed at a flat 9%.
+		TaxRatePPM: 90_000,
 		// Exercise the enforced behavior (register email-OTP gate + transaction
 		// gate). The flag defaults off in prod for a phased rollout, but the
 		// verification tests assert the on-state.

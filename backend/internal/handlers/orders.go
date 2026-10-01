@@ -365,7 +365,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.StripeTaxEnabled {
 		tax = h.taxForOrder(discountedSubtotal)
 	} else {
-		tax = discountedSubtotal * h.cfg.TaxRatePercent / 100
+		tax = h.cfg.TaxOn(discountedSubtotal)
 	}
 	tip := req.Tip
 	if tip < 0 {
