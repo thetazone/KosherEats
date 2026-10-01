@@ -2546,7 +2546,7 @@ components:
       type: object
       properties:
         legal_name: { type: string, minLength: 1, maxLength: 200, description: Trimmed; must be non-empty }
-        version: { type: string, description: Must equal the current version, else 409 }
+        version: { type: string, description: "Must equal the current version, else 409" }
       required: [legal_name, version]
 
     Deal:
