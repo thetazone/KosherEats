@@ -9,5 +9,5 @@ enum LegalURLs {
 
     static let privacyPolicy = URL(string: "https://koshereats.com/privacy") ?? fallbackURL
     static let termsOfService = URL(string: "https://koshereats.com/terms") ?? fallbackURL
-    static let supportEmail = URL(string: "mailto:support@koshereats.com") ?? fallbackURL
+    static let supportEmail = URL(string: "mailto:support@koshereats.shop") ?? fallbackURL
 }

@@ -6,7 +6,7 @@ import Foundation
 enum LegalURLs {
     static let privacyPolicy = safeURL("https://koshereats.com/privacy")
     static let termsOfService = safeURL("https://koshereats.com/terms")
-    static let supportEmail = safeURL("mailto:sellers@koshereats.com")
+    static let supportEmail = safeURL("mailto:partners@koshereats.shop")
 
     private static func safeURL(_ string: String) -> URL {
         guard let url = URL(string: string) else {

@@ -6,5 +6,5 @@ import Foundation
 enum LegalURLs {
     static let privacyPolicy = URL(string: "https://koshereats.com/privacy")!
     static let termsOfService = URL(string: "https://koshereats.com/terms")!
-    static let supportEmail = URL(string: "mailto:couriers@koshereats.com")!
+    static let supportEmail = URL(string: "mailto:deliver@koshereats.shop")!
 }

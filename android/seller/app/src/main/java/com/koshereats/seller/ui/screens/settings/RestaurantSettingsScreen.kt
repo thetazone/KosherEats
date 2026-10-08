@@ -840,7 +840,7 @@ fun RestaurantSettingsScreen(
                 ) {
                     openExternalUri(
                         context = context,
-                        uri = Uri.parse("mailto:sellers@koshereats.com"),
+                        uri = Uri.parse("mailto:partners@koshereats.shop"),
                         action = Intent.ACTION_SENDTO,
                     )
                 }

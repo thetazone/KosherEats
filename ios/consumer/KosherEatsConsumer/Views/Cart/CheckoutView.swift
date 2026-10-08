@@ -176,7 +176,7 @@ struct CheckoutView: View {
                 }
             }
             Button("Contact Support") {
-                if let url = URL(string: "mailto:support@koshereats.com") {
+                if let url = URL(string: "mailto:support@koshereats.shop") {
                     UIApplication.shared.open(url)
                 }
             }
