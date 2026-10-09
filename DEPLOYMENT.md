@@ -206,6 +206,14 @@ presigned PUTs work without extra setup. Stored image URLs point at
 R2 bucket (`pub-7bf58359….r2.dev`) and the personal-org Tigris bucket
 `koshereats-uploads` are retired copies — don't write to them.
 
+Courier identity documents (license / ID, insurance, registration) go to a
+separate **private** Tigris bucket, `koshereats-private`, in the same org.
+It was created without `-p`, and its keys are the `koshereats-api` secrets
+`PRIVATE_BUCKET_NAME`, `PRIVATE_AWS_ACCESS_KEY_ID` and
+`PRIVATE_AWS_SECRET_ACCESS_KEY`. The database stores `private://<key>`, and
+the API hands out 15-minute signed links on read. If those secrets are missing,
+document uploads return 503 instead of falling back to the public bucket.
+
 The generic AWS recipe below is kept for reference.
 
 ```sh
