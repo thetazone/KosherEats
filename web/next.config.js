@@ -18,6 +18,10 @@ const nextConfig = {
       // blocks every cover and the cards render blank.
       { protocol: 'https', hostname: '**.r2.dev' },
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com' },
+      // Tigris (Fly) — the KosherEats-org bucket that now holds every upload
+      // (virtual-host URLs) plus path-style URLs on the shared endpoint.
+      { protocol: 'https', hostname: '**.fly.storage.tigris.dev' },
+      { protocol: 'https', hostname: 'fly.storage.tigris.dev' },
     ],
   },
 };
