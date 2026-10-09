@@ -290,7 +290,7 @@ fun RestaurantDetailScreen(
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = restaurant.cuisineTypes.mapNotNull { it?.displayName }.joinToString(" • "),
+                            text = restaurant.cuisineTypes.filter { it.isNotBlank() }.joinToString(" • "),
                             style = MaterialTheme.typography.titleMedium,
                             color = TextTertiary,
                         )
@@ -809,6 +809,8 @@ fun RestaurantDetailScreen(
                         restaurantId = activeRestaurant.id,
                         restaurantName = activeRestaurant.name,
                         restaurantImageUrl = activeRestaurant.logoUrl ?: activeRestaurant.imageUrl,
+                        estDeliveryMin = activeRestaurant.deliveryTimeMin,
+                        estDeliveryMax = activeRestaurant.deliveryTimeMax,
                         quantity = qty,
                         selectedModifiers = modifiers,
                         specialInstructions = instructions,

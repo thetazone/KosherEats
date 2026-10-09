@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand orange (ui/theme/Color.kt Orange) for FCM-rendered notification accents. -->
+    <color name="notification_accent">#FFFF7A1A</color>
+</resources>

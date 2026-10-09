@@ -4,10 +4,6 @@ import com.koshereats.consumer.data.models.*
 import retrofit2.Response
 import retrofit2.http.*
 
-data class RefreshRequest(
-    @com.google.gson.annotations.SerializedName("refresh_token") val refreshToken: String,
-)
-
 object ApiPaging {
     const val RESTAURANTS_PAGE_SIZE = 20
     const val ORDERS_PAGE_SIZE = 20
@@ -23,9 +19,6 @@ interface ApiService {
     @POST("auth/register")
     suspend fun register(@Body request: RegisterRequest): Response<AuthResponse>
 
-    @POST("auth/refresh")
-    suspend fun refreshToken(@Body request: RefreshRequest): Response<AuthResponse>
-
     @POST("auth/social")
     suspend fun socialLogin(@Body request: SocialLoginRequest): Response<AuthResponse>
 
@@ -35,15 +28,19 @@ interface ApiService {
     @POST("auth/phone/verify")
     suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<AuthResponse>
 
-    @POST("auth/email/check")
-    suspend fun checkEmail(@Body request: EmailCheckRequest): Response<EmailCheckResponse>
-
     // Email-signup OTP (pre-account): verify the email before register.
     @POST("auth/email/start")
     suspend fun emailSignupStart(@Body request: EmailStartRequest): Response<StatusResponse>
 
     @POST("auth/email/verify")
     suspend fun emailSignupVerify(@Body request: EmailVerifyRequest): Response<StatusResponse>
+
+    // Password reset (email code). Both always answer 200 for unknown emails.
+    @POST("auth/password/forgot")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<StatusResponse>
+
+    @POST("auth/password/reset")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<StatusResponse>
 
     // ── User ──────────────────────────────────────────────
 
@@ -64,9 +61,6 @@ interface ApiService {
 
     @GET("user/profile")
     suspend fun getProfile(): Response<User>
-
-    @PUT("user/profile")
-    suspend fun updateProfile(@Body user: User): Response<User>
 
     @PUT("user/profile")
     suspend fun updateProfileFields(@Body body: Map<String, String>): Response<User>
@@ -150,20 +144,8 @@ interface ApiService {
 
     // ── Cart (server-backed, used during checkout sync) ──
 
-    @GET("cart")
-    suspend fun getCart(): Response<ServerCart>
-
     @POST("cart/items")
     suspend fun addToCart(@Body request: AddToCartRequest): Response<ServerCart>
-
-    @PATCH("cart/items/{id}")
-    suspend fun updateCartItem(
-        @Path("id") itemId: String,
-        @Body request: UpdateCartItemRequest,
-    ): Response<ServerCart>
-
-    @DELETE("cart/items/{id}")
-    suspend fun removeCartItem(@Path("id") itemId: String): Response<ServerCart>
 
     @DELETE("cart")
     suspend fun clearServerCart(): Response<Unit>

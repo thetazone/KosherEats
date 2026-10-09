@@ -1,5 +1,9 @@
 package com.koshereats.consumer.ui.screens.profile
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +28,8 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
@@ -59,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -69,6 +76,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.koshereats.consumer.R
 import com.koshereats.consumer.ui.theme.*
+import com.koshereats.consumer.ui.util.LegalUrls
 import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,8 +94,12 @@ fun ProfileScreen(
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showSignOutConfirm by remember { mutableStateOf(false) }
+
+    // Errors on AuthViewModel are shared with the sign-in forms; don't show a stale one here.
+    LaunchedEffect(Unit) { viewModel.clearError() }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
@@ -349,7 +361,25 @@ fun ProfileScreen(
                         ProfileMenuItem(
                             icon = Icons.AutoMirrored.Filled.HelpOutline,
                             title = stringResource(R.string.profile_menu_help),
-                            onClick = {},
+                            onClick = {
+                                openExternal(
+                                    context,
+                                    Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${LegalUrls.SUPPORT_EMAIL}"))
+                                        .putExtra(Intent.EXTRA_SUBJECT, "KosherEats support"),
+                                )
+                            },
+                        )
+                        HorizontalDivider(color = SurfaceDarkBorder)
+                        ProfileMenuItem(
+                            icon = Icons.Filled.PrivacyTip,
+                            title = stringResource(R.string.profile_menu_privacy),
+                            onClick = { openExternal(context, Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.PRIVACY))) },
+                        )
+                        HorizontalDivider(color = SurfaceDarkBorder)
+                        ProfileMenuItem(
+                            icon = Icons.Filled.Description,
+                            title = stringResource(R.string.profile_menu_terms),
+                            onClick = { openExternal(context, Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.TERMS))) },
                         )
                     }
                 }
@@ -420,6 +450,16 @@ fun ProfileScreen(
                     }
                 }
 
+                // Delete-account outcome (409 while an order is live, network errors, …).
+                state.error?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // App version
@@ -448,6 +488,7 @@ fun ProfileScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    if (state.isLoading) return@TextButton
                     showDeleteConfirm = false
                     onDeleteAccountClick()
                 }) {
@@ -508,6 +549,15 @@ private fun GuestBenefitRow(icon: ImageVector, text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
+    }
+}
+
+/** Launches [intent] and swallows the no-handler case (no mail/browser app). */
+private fun openExternal(context: Context, intent: Intent) {
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        // Nothing can handle it on this device; the row simply does nothing.
     }
 }
 

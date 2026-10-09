@@ -183,7 +183,7 @@ fun OrderTrackingScreen(
             } else {
                 TrackingMap(order = order, modifier = Modifier.fillMaxWidth().height(340.dp))
             }
-            StatusHeader(status = order.status, estimatedDeliveryTime = order.estimatedDeliveryTime)
+            StatusHeader(status = order.status, estimatedDeliveryTime = order.estimatedDeliveryTime, isPickup = order.fulfillmentType == "pickup")
 
             state.errorMessage?.let { msg ->
                 Row(
@@ -288,7 +288,7 @@ private fun TrackingMap(order: Order, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StatusHeader(status: OrderStatus, estimatedDeliveryTime: String?) {
+private fun StatusHeader(status: OrderStatus, estimatedDeliveryTime: String?, isPickup: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -297,12 +297,12 @@ private fun StatusHeader(status: OrderStatus, estimatedDeliveryTime: String?) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = phaseText(status),
+            text = phaseText(status, isPickup),
             color = TextWhite,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
         )
-        val subtext = phaseSubtext(status)
+        val subtext = phaseSubtext(status, isPickup)
         if (subtext.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
             Text(text = subtext, color = TextTertiary, fontSize = 12.sp)
@@ -365,13 +365,13 @@ private fun ProgressBar(status: OrderStatus) {
     }
 }
 
-private fun phaseText(status: OrderStatus): String = when (status) {
+private fun phaseText(status: OrderStatus, isPickup: Boolean): String = when (status) {
     OrderStatus.SCHEDULED -> "Your order is scheduled"
     OrderStatus.PENDING -> "Waiting for the restaurant"
     OrderStatus.ACCEPTED -> "Restaurant accepted your order"
     OrderStatus.PREPARING -> "Your food is being prepared"
-    OrderStatus.READY -> "Waiting for a courier"
-    OrderStatus.PICKED_UP -> "Your order is on the way"
+    OrderStatus.READY -> if (isPickup) "Ready for pickup" else "Finding your driver"
+    OrderStatus.PICKED_UP -> if (isPickup) "Picked up" else "Your order is on the way"
     OrderStatus.DELIVERED -> "Delivered \u2014 enjoy!"
     OrderStatus.COMPLETED -> "Order complete"
     OrderStatus.CANCELLED -> "Order was ${status.displayName.lowercase()}"
@@ -379,13 +379,13 @@ private fun phaseText(status: OrderStatus): String = when (status) {
     OrderStatus.UNKNOWN -> "Order status unknown"
 }
 
-private fun phaseSubtext(status: OrderStatus): String = when (status) {
-    OrderStatus.SCHEDULED -> "We'll start preparing closer to your delivery time."
+private fun phaseSubtext(status: OrderStatus, isPickup: Boolean): String = when (status) {
+    OrderStatus.SCHEDULED -> if (isPickup) "We'll start preparing closer to your pickup time." else "We'll start preparing closer to your delivery time."
     OrderStatus.PENDING -> "We've sent your order to the restaurant."
     OrderStatus.ACCEPTED -> "They'll start cooking any moment."
-    OrderStatus.PREPARING -> "Arriving soon."
-    OrderStatus.READY -> "A courier will claim your order shortly."
-    OrderStatus.PICKED_UP -> "Your courier is heading to you."
+    OrderStatus.PREPARING -> if (isPickup) "We'll let you know when it's ready." else "Arriving soon."
+    OrderStatus.READY -> if (isPickup) "Head to the restaurant to pick up your order." else "An Uber driver is being matched to your order."
+    OrderStatus.PICKED_UP -> if (isPickup) "" else "Your driver is heading to you."
     OrderStatus.REJECTED -> ""
     else -> ""
 }
@@ -532,7 +532,7 @@ private fun ExternalDeliveryCard(provider: String?, status: OrderStatus, trackin
                     )
                 }
             }
-            if (!trackingUrl.isNullOrBlank()) {
+            if (trackingUrl != null && trackingUrl.startsWith("https://")) {
                 Button(
                     onClick = {
                         try {

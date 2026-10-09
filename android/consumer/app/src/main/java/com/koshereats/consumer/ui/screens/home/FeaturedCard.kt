@@ -83,7 +83,7 @@ fun FeaturedCard(
                     }
 
                     val cuisines = restaurant.cuisineTypes
-                        .mapNotNull { it?.displayName }
+                        .filter { it.isNotBlank() }
                         .joinToString(" · ")
                     if (cuisines.isNotBlank()) {
                         Text(

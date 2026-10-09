@@ -17,6 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.KosherEats"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         tools:targetApi="34">
 
         <activity
@@ -33,6 +34,19 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
+
+        <!-- Channel, icon and accent FCM uses when it renders a notification-payload
+             push itself (app in background). The channel id must match
+             KosherEatsMessagingService.CHANNEL_ID or the push lands in "Miscellaneous". -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="koshereats_consumer_default" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
 
         <!-- Firebase Cloud Messaging receiver. Hilt injects ApiService via
              @AndroidEntryPoint. See FIREBASE.md for project setup. -->

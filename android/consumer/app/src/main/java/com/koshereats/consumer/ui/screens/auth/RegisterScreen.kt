@@ -71,7 +71,6 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 fun RegisterScreen(
     onRegisterSuccess: () -> Unit,
     onLoginClick: () -> Unit,
-    onPhoneNeeded: () -> Unit = {},
     onGuestContinue: () -> Unit = onRegisterSuccess,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
@@ -92,9 +91,9 @@ fun RegisterScreen(
     val confirmFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
-    LaunchedEffect(state.isLoggedIn, state.isGuest, state.needsPhone) {
+    LaunchedEffect(state.isLoggedIn, state.isGuest) {
         if (state.isLoggedIn && !state.isGuest) {
-            if (state.needsPhone) onPhoneNeeded() else onRegisterSuccess()
+            onRegisterSuccess()
         }
     }
 

@@ -12,7 +12,9 @@ import com.koshereats.consumer.data.models.EmailStartRequest
 import com.koshereats.consumer.data.models.EmailVerifyRequest
 import com.koshereats.consumer.data.models.LoginRequest
 import com.koshereats.consumer.data.models.PhoneChangeVerifyRequest
+import com.koshereats.consumer.data.models.ForgotPasswordRequest
 import com.koshereats.consumer.data.models.PhoneStartRequest
+import com.koshereats.consumer.data.models.ResetPasswordRequest
 import com.koshereats.consumer.data.models.PhoneVerifyRequest
 import com.koshereats.consumer.data.models.RegisterRequest
 import com.koshereats.consumer.data.models.SocialLoginRequest
@@ -61,7 +63,6 @@ data class AuthUiState(
     val otpCode: String = "",
     val phoneIsSending: Boolean = false,
     val phoneIsVerifying: Boolean = false,
-    val needsPhone: Boolean = false,
     // ── Mandatory account verification (post sign-in) ──
     // Separate fields from the login phone flow above so the two never clash.
     val vEmail: String = "",
@@ -74,6 +75,14 @@ data class AuthUiState(
     val vPhoneCodeSent: Boolean = false,
     val vBusy: Boolean = false,
     val vError: String? = null,
+    // ── Password reset (email code) ──
+    val resetEmail: String = "",
+    val resetCode: String = "",
+    val resetNewPassword: String = "",
+    val resetCodeSent: Boolean = false,
+    val resetBusy: Boolean = false,
+    val resetError: String? = null,
+    val resetDone: Boolean = false,
 ) {
     val isLoggedIn: Boolean get() = (sessionState == SessionState.Authenticated && user != null && !isSessionStale) || sessionState == SessionState.Guest
     val isGuest: Boolean get() = sessionState == SessionState.Guest
@@ -131,8 +140,16 @@ class AuthViewModel @Inject constructor(
                             PushBootstrap.registerCurrentToken(apiService)
                         }
                         response.code() == 401 -> {
-                            clearAuth()
-                            _uiState.update { it.copy(sessionState = SessionState.LoggedOut, isRehydrating = false, isSessionStale = false) }
+                            // TokenAuthenticator already tried the refresh token. If it was
+                            // rejected the tokens are gone and this is a real logout; if the
+                            // refresh merely failed (network, 5xx) the refresh token is still
+                            // on disk and the session is only stale — keep the user signed in.
+                            if (tokenProvider.refreshToken == null) {
+                                clearAuth()
+                                _uiState.update { it.copy(sessionState = SessionState.LoggedOut, isRehydrating = false, isSessionStale = false) }
+                            } else {
+                                _uiState.update { it.copy(sessionState = SessionState.Authenticated, isRehydrating = false, isSessionStale = true) }
+                            }
                         }
                         // 5xx or other transient error: keep session alive but mark stale
                         // so the UI can surface a retry banner. user=null until refresh succeeds.
@@ -319,10 +336,6 @@ class AuthViewModel @Inject constructor(
                             sessionState = SessionState.Authenticated,
                             user = authData.user,
                             isLoading = false,
-                            // Phone collection is now handled by the mandatory
-                            // verification gate (needsVerification), not the old
-                            // best-effort PhonePrompt — leave needsPhone false.
-                            needsPhone = false,
                         )
                     }
                     PushBootstrap.registerCurrentToken(apiService)
@@ -491,42 +504,6 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    fun submitPhone(phone: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val user = _uiState.value.user
-                val body = mapOf(
-                    "first_name" to (user?.firstName.orEmpty()),
-                    "last_name" to (user?.lastName.orEmpty()),
-                    "phone" to phone,
-                )
-                val response = apiService.updateProfileFields(body)
-                if (response.isSuccessful) {
-                    _uiState.update { it.copy(isLoading = false, needsPhone = false, user = response.body()) }
-                } else {
-                    val serverMsg = try {
-                        val body = response.errorBody()?.string().orEmpty()
-                        com.google.gson.JsonParser.parseString(body).asJsonObject
-                            .get("error")?.asString
-                    } catch (_: Exception) { null }
-                    val msg = when {
-                        response.code() == 409 -> serverMsg ?: "That phone number is already linked to another account"
-                        else -> "Failed to save phone number"
-                    }
-                    _uiState.update { it.copy(isLoading = false, error = msg) }
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage ?: "Network error") }
-            }
-        }
-    }
-
-    fun skipPhone() {
-        _uiState.update { it.copy(needsPhone = false) }
-    }
-
     // ── Mandatory verification flow (post sign-in) ─────────
     //
     // Drives AccountVerificationScreen. Uses the authenticated add-email
@@ -623,6 +600,73 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    // ── Password reset — used by ForgotPasswordScreen ──
+
+    fun updateResetEmail(v: String) = _uiState.update { it.copy(resetEmail = v.trim().take(254), resetError = null) }
+    fun updateResetCode(v: String) = _uiState.update { it.copy(resetCode = v.filter { c -> c.isDigit() }.take(6), resetError = null) }
+    fun updateResetNewPassword(v: String) = _uiState.update { it.copy(resetNewPassword = v.take(128), resetError = null) }
+
+    /** Entering the screen: seed the email from the login field and drop stale state. */
+    fun startResetFlow() = _uiState.update {
+        it.copy(
+            resetEmail = it.resetEmail.ifBlank { it.loginEmail },
+            resetCode = "", resetNewPassword = "", resetCodeSent = false,
+            resetBusy = false, resetError = null, resetDone = false,
+        )
+    }
+
+    fun backToResetEmail() = _uiState.update { it.copy(resetCodeSent = false, resetCode = "", resetError = null) }
+
+    fun sendResetCode() {
+        val email = _uiState.value.resetEmail
+        if (!email.contains("@") || email.length < 5) {
+            _uiState.update { it.copy(resetError = "Enter the email you signed up with") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(resetBusy = true, resetError = null) }
+            try {
+                val r = apiService.forgotPassword(ForgotPasswordRequest(email))
+                if (r.isSuccessful) {
+                    _uiState.update { it.copy(resetBusy = false, resetCodeSent = true, resetCode = "") }
+                } else {
+                    _uiState.update { it.copy(resetBusy = false, resetError = serverError(r) ?: "Couldn't send the reset code — try again") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(resetBusy = false, resetError = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
+    fun submitPasswordReset() {
+        val s = _uiState.value
+        when {
+            s.resetCode.length < 4 -> { _uiState.update { it.copy(resetError = "Enter the code from your email") }; return }
+            s.resetNewPassword.length < 6 -> { _uiState.update { it.copy(resetError = "Password must be at least 6 characters") }; return }
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(resetBusy = true, resetError = null) }
+            try {
+                val r = apiService.resetPassword(ResetPasswordRequest(s.resetEmail, s.resetCode, s.resetNewPassword))
+                if (r.isSuccessful) {
+                    _uiState.update {
+                        it.copy(
+                            resetBusy = false, resetDone = true, resetCode = "", resetNewPassword = "",
+                            // Land the user back on the sign-in form with the email filled in.
+                            loginEmail = s.resetEmail, loginPassword = "", error = null,
+                        )
+                    }
+                } else {
+                    _uiState.update { it.copy(resetBusy = false, resetError = serverError(r) ?: "Couldn't reset the password — try again") }
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _uiState.update { it.copy(resetBusy = false, resetError = e.localizedMessage ?: "Network error") }
+            }
+        }
+    }
+
     // ── Email-signup OTP (pre-register) — used by RegisterScreen ──
     // The email must be OTP-verified BEFORE register creates the account, so the
     // user picks a password only after proving the email.
@@ -687,8 +731,10 @@ class AuthViewModel @Inject constructor(
                     onComplete(true)
                 } else {
                     val msg = when (response.code()) {
-                        401 -> "Session expired"
-                        else -> "Couldn't delete account (${response.code()})"
+                        401 -> "Session expired — sign in again and retry"
+                        409 -> serverError(response)
+                            ?: "You have an order in progress. Once it's delivered or cancelled you can delete your account."
+                        else -> serverError(response) ?: "Couldn't delete account (${response.code()})"
                     }
                     _uiState.update { it.copy(isLoading = false, error = msg) }
                     onComplete(false)

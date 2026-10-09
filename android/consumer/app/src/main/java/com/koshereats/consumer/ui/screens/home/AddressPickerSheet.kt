@@ -45,16 +45,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koshereats.consumer.data.models.Address
+import com.koshereats.consumer.data.util.AddressGeocoder
+import kotlinx.coroutines.launch
 import com.koshereats.consumer.ui.theme.*
 
 private val fieldColors
@@ -88,6 +92,10 @@ fun AddressPickerSheet(
     var newState by remember { mutableStateOf("") }
     var newZip by remember { mutableStateOf("") }
     var newLabel by remember { mutableStateOf("") }
+    var newGeocodeError by remember { mutableStateOf<String?>(null) }
+    var isGeocoding by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val filteredAddresses = if (searchQuery.length >= 2) {
         addresses.filter {
@@ -336,27 +344,47 @@ fun AddressPickerSheet(
                         }
                     }
 
+                    newGeocodeError?.let { err ->
+                        Text(
+                            text = err,
+                            color = ErrorRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 2.dp),
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(4.dp))
                     Button(
                         onClick = {
-                            if (newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.isNotBlank()) {
-                                val street = if (newApt.isNotBlank()) "$newStreet, $newApt" else newStreet
-                                onAddAddress(
-                                    Address(
-                                        label = newLabel,
-                                        streetAddress = street,
-                                        city = newCity,
-                                        state = newState,
-                                        zipCode = newZip,
-                                    )
+                            if (newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.isNotBlank() && !isGeocoding) {
+                                val draft = Address(
+                                    label = newLabel,
+                                    streetAddress = newStreet.trim(),
+                                    apt = newApt.trim(),
+                                    city = newCity.trim(),
+                                    state = newState.trim(),
+                                    zipCode = newZip,
                                 )
-                                newStreet = ""
-                                newApt = ""
-                                newCity = ""
-                                newState = ""
-                                newZip = ""
-                                newLabel = ""
-                                showAddForm = false
+                                isGeocoding = true
+                                scope.launch {
+                                    // Locate the address before it is saved: the backend keeps
+                                    // whatever coordinates it gets and (0, 0) blocks checkout.
+                                    val geocoded = AddressGeocoder.geocode(context, draft)
+                                    isGeocoding = false
+                                    if (geocoded == null) {
+                                        newGeocodeError = AddressGeocoder.FAILURE_MESSAGE
+                                        return@launch
+                                    }
+                                    newGeocodeError = null
+                                    onAddAddress(geocoded)
+                                    newStreet = ""
+                                    newApt = ""
+                                    newCity = ""
+                                    newState = ""
+                                    newZip = ""
+                                    newLabel = ""
+                                    showAddForm = false
+                                }
                             }
                         },
                         modifier = Modifier
@@ -364,10 +392,10 @@ fun AddressPickerSheet(
                             .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                        enabled = newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.length == 5,
+                        enabled = newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.length == 5 && !isGeocoding,
                     ) {
                         Text(
-                            text = "Save address",
+                            text = if (isGeocoding) "Checking address…" else "Save address",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                         )

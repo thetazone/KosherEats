@@ -76,7 +76,7 @@ fun NotificationPreferencesScreen(
                 HorizontalDivider(color = SurfaceDarkBorder)
                 ToggleRow(
                     title = "Chat messages",
-                    subtitle = "Get pinged when your courier or the restaurant messages you.",
+                    subtitle = "Get pinged when the restaurant messages you about an order.",
                     checked = state.prefs.chatMessages,
                     onChange = vm::setChatMessages,
                 )

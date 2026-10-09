@@ -53,6 +53,7 @@ import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.models.OrderItem
 import com.koshereats.consumer.data.models.OrderStatus
 import com.koshereats.consumer.data.models.formatPrice
+import com.koshereats.consumer.ui.util.formatOrderDate
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.OrderDetailViewModel
 
@@ -129,7 +130,7 @@ fun OrderDetailScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    StatusCard(status = order.status)
+                    StatusCard(status = order.status, fulfillmentType = order.fulfillmentType)
 
                     if (order.status == OrderStatus.REJECTED) {
                         RejectedNotice()
@@ -222,7 +223,7 @@ fun OrderDetailScreen(
 }
 
 @Composable
-private fun StatusCard(status: OrderStatus) {
+private fun StatusCard(status: OrderStatus, fulfillmentType: String) {
     val color = statusColor(status)
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -237,7 +238,7 @@ private fun StatusCard(status: OrderStatus) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = status.displayName,
+                text = status.labelFor(fulfillmentType),
                 color = color,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -318,7 +319,7 @@ private fun RestaurantHeader(order: Order) {
                 )
                 if (order.createdAt.isNotEmpty()) {
                     Text(
-                        text = order.createdAt.take(10),
+                        text = formatOrderDate(order.createdAt),
                         color = TextMuted,
                         fontSize = 13.sp,
                     )

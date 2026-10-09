@@ -58,6 +58,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.consumer.data.models.Order
 import com.koshereats.consumer.data.models.OrderStatus
 import com.koshereats.consumer.data.models.formatPrice
+import com.koshereats.consumer.ui.util.formatOrderDate
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.OrdersViewModel
 
@@ -197,7 +198,7 @@ private fun OrderCard(
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                OrderStatusBadge(status = order.status)
+                OrderStatusBadge(status = order.status, fulfillmentType = order.fulfillmentType)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -236,7 +237,7 @@ private fun OrderCard(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = order.createdAt.take(10),
+                    text = formatOrderDate(order.createdAt),
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                 )
@@ -266,7 +267,7 @@ private fun OrderCard(
 }
 
 @Composable
-private fun OrderStatusBadge(status: OrderStatus) {
+private fun OrderStatusBadge(status: OrderStatus, fulfillmentType: String) {
     val (color, icon) = when (status) {
         OrderStatus.SCHEDULED -> Orange to Icons.Filled.Schedule
         OrderStatus.PENDING -> Orange to Icons.Filled.Pending
@@ -291,7 +292,7 @@ private fun OrderStatusBadge(status: OrderStatus) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
         Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text = status.displayName,
+            text = status.labelFor(fulfillmentType),
             color = color,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,

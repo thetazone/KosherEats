@@ -1,5 +1,6 @@
 package com.koshereats.consumer.ui.viewmodels
 
+import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -9,6 +10,8 @@ import androidx.lifecycle.viewModelScope
 import com.koshereats.consumer.data.api.ApiService
 import com.koshereats.consumer.data.models.Address
 import com.koshereats.consumer.data.session.SessionManager
+import com.koshereats.consumer.data.util.AddressGeocoder
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +34,7 @@ class AddressViewModel @Inject constructor(
     private val apiService: ApiService,
     private val dataStore: DataStore<Preferences>,
     private val sessionManager: SessionManager,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AddressUiState())
@@ -88,7 +92,13 @@ class AddressViewModel @Inject constructor(
     fun addAddress(address: Address) {
         viewModelScope.launch {
             try {
-                val response = apiService.addAddress(address)
+                // Every caller geocodes first; this is the backstop so an address at
+                // (0, 0) can never reach the server and later block checkout.
+                val geocoded = AddressGeocoder.geocode(context, address) ?: run {
+                    _uiState.update { it.copy(error = AddressGeocoder.FAILURE_MESSAGE) }
+                    return@launch
+                }
+                val response = apiService.addAddress(geocoded)
                 if (response.isSuccessful) {
                     val saved = response.body() ?: return@launch
                     _uiState.update {

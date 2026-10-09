@@ -68,6 +68,7 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 fun EmailLoginScreen(
     onLoginSuccess: () -> Unit,
     onRegisterClick: () -> Unit,
+    onForgotPassword: () -> Unit,
     onBack: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
@@ -159,22 +160,9 @@ fun EmailLoginScreen(
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
             )
 
-            // Forgot password — opens mail to support
+            // Forgot password — emailed reset code (ForgotPasswordScreen)
             TextButton(
-                onClick = {
-                    try {
-                        context.startActivity(
-                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@koshereats.dev"))
-                                .apply { putExtra(Intent.EXTRA_SUBJECT, "Password reset request") }
-                        )
-                    } catch (_: ActivityNotFoundException) {
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                "No email app available — contact support@koshereats.dev"
-                            )
-                        }
-                    }
-                },
+                onClick = onForgotPassword,
                 modifier = Modifier.align(Alignment.End),
             ) {
                 Text(

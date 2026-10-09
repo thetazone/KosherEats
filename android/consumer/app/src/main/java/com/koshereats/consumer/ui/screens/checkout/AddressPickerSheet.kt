@@ -37,16 +37,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.koshereats.consumer.data.models.Address
 import com.koshereats.consumer.data.models.formatted
+import com.koshereats.consumer.data.util.AddressGeocoder
+import kotlinx.coroutines.launch
 import com.koshereats.consumer.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -176,8 +180,11 @@ private fun AddAddressForm(
     var city by remember { mutableStateOf("") }
     var state by remember { mutableStateOf("") }
     var zip by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
     var isDefault by remember { mutableStateOf(false) }
+    var geocodeError by remember { mutableStateOf<String?>(null) }
+    var isGeocoding by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val canSubmit = street.isNotBlank() && city.isNotBlank() && state.length == 2 && zip.length == 5
 
@@ -205,21 +212,14 @@ private fun AddAddressForm(
             placeholder = "ZIP",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         )
-        OutlinedTextField(
-            value = notes,
-            onValueChange = { if (it.length <= 500) notes = it },
-            placeholder = { Text("Delivery instructions (optional)", color = TextMuted) },
-            minLines = 2,
-            maxLines = 3,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextWhite,
-                unfocusedTextColor = TextWhite,
-                focusedBorderColor = Orange,
-                unfocusedBorderColor = SurfaceDarkBorder,
-                cursorColor = Orange,
-            ),
-        )
+        geocodeError?.let { err ->
+            Text(
+                text = err,
+                color = ErrorRed,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -249,24 +249,35 @@ private fun AddAddressForm(
             }
             Button(
                 onClick = {
-                    onSubmit(
-                        Address(
-                            label = label.ifBlank { "Home" },
-                            streetAddress = if (apt.isNotBlank()) "${street.trim()}, ${apt.trim()}" else street.trim(),
-                            city = city.trim(),
-                            state = state,
-                            zipCode = zip,
-                            deliveryInstructions = notes.trim().ifBlank { null },
-                            isDefault = isDefault,
-                        )
+                    val draft = Address(
+                        label = label.ifBlank { "Home" },
+                        streetAddress = street.trim(),
+                        apt = apt.trim(),
+                        city = city.trim(),
+                        state = state,
+                        zipCode = zip,
+                        isDefault = isDefault,
                     )
+                    isGeocoding = true
+                    scope.launch {
+                        // Locate before saving — the backend keeps whatever coordinates
+                        // it gets, and an address at (0, 0) can never be delivered to.
+                        val geocoded = AddressGeocoder.geocode(context, draft)
+                        isGeocoding = false
+                        if (geocoded == null) {
+                            geocodeError = AddressGeocoder.FAILURE_MESSAGE
+                        } else {
+                            geocodeError = null
+                            onSubmit(geocoded)
+                        }
+                    }
                 },
-                enabled = canSubmit,
+                enabled = canSubmit && !isGeocoding,
                 modifier = Modifier.weight(1f).height(48.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Orange),
             ) {
-                Text("Save", fontWeight = FontWeight.SemiBold, color = TextWhite)
+                Text(if (isGeocoding) "Checking…" else "Save", fontWeight = FontWeight.SemiBold, color = TextWhite)
             }
         }
     }

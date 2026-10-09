@@ -1,6 +1,7 @@
 package com.koshereats.consumer.ui.viewmodels
 
 import android.util.Log
+import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -21,6 +22,8 @@ import com.koshereats.consumer.data.models.PaymentSheetBundle
 import com.koshereats.consumer.data.models.PaymentSheetRequest
 import com.koshereats.consumer.data.util.Money
 import com.koshereats.consumer.BuildConfig
+import com.koshereats.consumer.data.util.AddressGeocoder
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,6 +75,8 @@ data class CheckoutUiState(
     /** Quick delivery-fee preview from /delivery-quote — shown while bundle is loading. */
     val deliveryQuoteCents: Int? = null,
     val deliveryQuoteMinutes: Int? = null,
+    /** From /delivery-quote: no courier can serve this address, so delivery cannot be bought. */
+    val deliveryUnavailable: Boolean = false,
     val isProcessing: Boolean = false,
     val errorMessage: String? = null,
     val placedOrder: Order? = null,
@@ -95,6 +100,7 @@ class CheckoutViewModel @Inject constructor(
     private val api: ApiService,
     private val savedStateHandle: SavedStateHandle,
     private val dataStore: DataStore<Preferences>,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private companion object {
@@ -111,6 +117,10 @@ class CheckoutViewModel @Inject constructor(
         // NEW PaymentIntent — charging again would double-charge the customer for
         // an order we never recovered. Survives process death (DataStore).
         val INFLIGHT_PAYMENT_INTENT = stringPreferencesKey("inflight_payment_intent")
+        // What was handed to Stripe when the user tapped Pay (intent id, priced
+        // bundle, fulfillment, address). Written BEFORE the sheet opens and read
+        // back by onPaymentResult when the process died while it was open.
+        val PRESENTED_CHECKOUT = stringPreferencesKey("checkout_presented")
         // Post-charge recovery backoff: 0.5s / 1s / 2s, riding out brief
         // replication / commit lag before surfacing an error to the user.
         val RECOVERY_DELAYS_MS = longArrayOf(500L, 1000L, 2000L)
@@ -142,6 +152,7 @@ class CheckoutViewModel @Inject constructor(
     // Idempotency: track which payment intent IDs have already been finalized
     // so a duplicate PaymentSheetResult.Completed cannot create a second order.
     private val finalizedIntentIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val gson = com.google.gson.Gson()
 
     fun bootstrap(
         localCart: List<CartItem>,
@@ -336,6 +347,7 @@ class CheckoutViewModel @Inject constructor(
                     it.copy(
                         deliveryQuoteCents = q?.deliveryFeeCents,
                         deliveryQuoteMinutes = q?.estMinutes,
+                        deliveryUnavailable = q?.deliveryUnavailable == true,
                     )
                 }
             }
@@ -362,16 +374,29 @@ class CheckoutViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val resp = api.addAddress(address)
+                // Backstop behind the picker's own geocode: never save (0, 0).
+                val geocoded = AddressGeocoder.geocode(context, address) ?: run {
+                    _uiState.update { it.copy(errorMessage = AddressGeocoder.FAILURE_MESSAGE) }
+                    return@launch
+                }
+                val resp = api.addAddress(geocoded)
                 if (resp.isSuccessful) {
-                    val saved = resp.body() ?: return@launch
+                    var saved = resp.body() ?: return@launch
+                    // POST /user/addresses ignores is_default; honour the checkbox through
+                    // the dedicated endpoint and mirror the result locally.
+                    if (address.isDefault) {
+                        val d = runCatching { api.setDefaultAddress(saved.id) }.getOrNull()
+                        if (d?.isSuccessful == true) saved = saved.copy(isDefault = true)
+                    }
+                    val savedFinal = saved
                     _uiState.update { state ->
+                        val others = if (savedFinal.isDefault) state.addresses.map { it.copy(isDefault = false) } else state.addresses
                         state.copy(
-                            addresses = state.addresses + saved,
-                            selectedAddress = saved,
+                            addresses = others + savedFinal,
+                            selectedAddress = savedFinal,
                         )
                     }
-                    launch { fetchDeliveryQuote(saved) }
+                    launch { fetchDeliveryQuote(savedFinal) }
                     launchRefreshBundle()
                 } else {
                     val serverMsg = try {
@@ -498,10 +523,18 @@ class CheckoutViewModel @Inject constructor(
                     refreshBundle()
                 }
             } else {
+                // 503 is the backend refusing a delivery order because no courier
+                // could quote the route — the fix is pickup, not a retry.
+                val unavailable = resp.code() == 503 && _uiState.value.fulfillmentType != "pickup"
                 _uiState.update {
                     it.copy(
                         isLoadingBundle = false,
-                        errorMessage = "Failed to price order (${resp.code()})",
+                        deliveryUnavailable = unavailable || it.deliveryUnavailable,
+                        errorMessage = if (unavailable) {
+                            "Delivery isn't available for this address right now. Choose pickup to continue."
+                        } else {
+                            "Failed to price order (${resp.code()})"
+                        },
                     )
                 }
             }
@@ -541,7 +574,7 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Selected time has passed. Please pick a new time.", scheduledFor = null) }
             return
         }
-        // Validate the delivery address BEFORE charging. A non-geocoded address would be
+        // Validate the delivery address BEFORE charging. An address at (0, 0) would be
         // rejected when the order is created, but only AFTER the card was charged — so
         // refuse to charge and prompt the user to re-add it first.
         val state = _uiState.value
@@ -551,8 +584,12 @@ class CheckoutViewModel @Inject constructor(
                 _uiState.update { it.copy(errorMessage = "Select a delivery address") }
                 return
             }
-            if (!address.isGeocoded) {
+            if (!address.hasCoordinates) {
                 _uiState.update { it.copy(errorMessage = "Address location could not be verified. Please remove and re-add this address.") }
+                return
+            }
+            if (state.deliveryUnavailable) {
+                _uiState.update { it.copy(errorMessage = "Delivery isn't available for this address right now. Choose pickup to continue.") }
                 return
             }
         }
@@ -576,6 +613,12 @@ class CheckoutViewModel @Inject constructor(
             }
             if (bundle.isStub) {
                 presentedBundle = null
+                // The backend only prices a stub (no Stripe key) in dev. A release build
+                // must never place an unpaid order, whatever the server says.
+                if (!BuildConfig.DEBUG) {
+                    _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment is not configured. Please try again later.") }
+                    return@launch
+                }
                 finalizeOrder(paymentIntentId = "stub_intent_${java.util.UUID.randomUUID()}", paidBundle = bundle)
                 return@launch
             }
@@ -584,6 +627,22 @@ class CheckoutViewModel @Inject constructor(
                 presentedBundle = null
                 _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment is not configured. Please refresh and try again.") }
                 return@launch
+            }
+            // Snapshot what is about to be charged. If the process dies while the
+            // PaymentSheet is open, Stripe redelivers the result to the recreated
+            // activity but our in-memory bundle is gone; onPaymentResult restores it
+            // from here so the paid order still gets created instead of orphaned.
+            extractIntentId(bundle.paymentIntentSecret)?.let { pi ->
+                persistPresented(
+                    PresentedCheckout(
+                        paymentIntentId = pi,
+                        bundle = bundle,
+                        fulfillmentType = state.fulfillmentType,
+                        scheduledFor = state.scheduledFor?.toString(),
+                        addressId = state.selectedAddress?.id,
+                        restaurantId = _restaurantId,
+                    ),
+                )
             }
             _uiState.update { it.copy(pendingPaymentSheet = bundle) }
         }
@@ -599,27 +658,46 @@ class CheckoutViewModel @Inject constructor(
         // Use the bundle that was actually presented to Stripe, not _uiState.value.bundle —
         // the latter may have been swapped by a refresh that raced the open PaymentSheet.
         val paid = presentedBundle
+        presentedBundle = null
         if (!success) {
-            presentedBundle = null
+            viewModelScope.launch { clearPresented() }
             // Force a fresh bundle (and new payment intent) on the next attempt so the user
             // never gets stuck retrying against a stale intent the server already saw fail.
             _uiState.update { it.copy(isProcessing = false, errorMessage = error, bundle = null) }
             launchRefreshBundle()
             return
         }
-        val bundle = paid ?: run {
-            presentedBundle = null
-            _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment recorded but order summary was lost. Please check your orders.") }
-            return
+        viewModelScope.launch {
+            var bundle = paid
+            if (bundle == null) {
+                // Process death while the sheet was open: Stripe's ActivityResult survives
+                // it, our memory did not. Restore the charged bundle and the checkout
+                // choices from the snapshot written in onPayTapped.
+                val snap = readPresented()
+                if (snap != null) {
+                    bundle = snap.bundle
+                    if (_restaurantId.isEmpty()) _restaurantId = snap.restaurantId
+                    val restoredSchedule = snap.scheduledFor?.let { runCatching { LocalDateTime.parse(it) }.getOrNull() }
+                    _uiState.update { it.copy(fulfillmentType = snap.fulfillmentType, scheduledFor = restoredSchedule) }
+                    if (snap.fulfillmentType != "pickup" && _uiState.value.selectedAddress?.id != snap.addressId && snap.addressId != null) {
+                        val list = runCatching { api.getAddresses() }.getOrNull()?.takeIf { it.isSuccessful }?.body().orEmpty()
+                        list.firstOrNull { a -> a.id == snap.addressId }?.let { a ->
+                            _uiState.update { it.copy(addresses = list, selectedAddress = a) }
+                        }
+                    }
+                }
+            }
+            if (bundle == null) {
+                _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment recorded but order summary was lost. Please check your orders.") }
+                return@launch
+            }
+            val intentId = extractIntentId(bundle.paymentIntentSecret)
+            if (intentId == null) {
+                _uiState.update { it.copy(isProcessing = false, errorMessage = "Unexpected Stripe response — please try again") }
+                return@launch
+            }
+            finalizeOrder(intentId, paidBundle = bundle)
         }
-        val intentId = extractIntentId(bundle.paymentIntentSecret)
-        if (intentId == null) {
-            presentedBundle = null
-            _uiState.update { it.copy(isProcessing = false, errorMessage = "Unexpected Stripe response — please try again") }
-            return
-        }
-        presentedBundle = null
-        finalizeOrder(intentId, paidBundle = bundle)
     }
 
     private fun finalizeOrder(paymentIntentId: String, paidBundle: PaymentSheetBundle) {
@@ -638,9 +716,9 @@ class CheckoutViewModel @Inject constructor(
             _uiState.update { it.copy(isProcessing = false, errorMessage = "Select a delivery address") }
             return
         }
-        // NOTE: the non-geocoded-address gate now runs in onPayTapped() BEFORE the charge
-        // (see the isGeocoded check there) so we never charge a card for an address the
-        // order endpoint would reject — keeping it here would only fire post-charge.
+        // NOTE: the no-coordinates gate runs in onPayTapped() BEFORE the charge (see the
+        // hasCoordinates check there) so we never charge a card for an address the order
+        // endpoint would reject — keeping it here would only fire post-charge.
         // Use the bundle the user actually paid for. The server cross-checks that the
         // client-sent tip matches the amount baked into the paid intent (VerifyPaymentSucceeded),
         // so sending _uiState.value.bundle.tip after a mid-payment reprice would fail verification.
@@ -664,6 +742,8 @@ class CheckoutViewModel @Inject constructor(
             if (!isStubIntent) {
                 persistInflightPI(paymentIntentId)
             }
+            // The charge outcome is known now; the pre-sheet snapshot has done its job.
+            clearPresented()
             val scheduledFor = state.scheduledFor?.let { local ->
                 local.atZone(ZoneId.systemDefault())
                     .toOffsetDateTime()
@@ -675,7 +755,7 @@ class CheckoutViewModel @Inject constructor(
                     val resp = api.createOrder(
                         CreateOrderRequest(
                             restaurantId = _restaurantId,
-                            deliveryAddress = if (isPickup || address == null) "" else "${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}",
+                            deliveryAddress = if (isPickup || address == null) "" else address.formatted,
                             deliveryLat = if (isPickup || address == null) 0.0 else address.latitude,
                             deliveryLng = if (isPickup || address == null) 0.0 else address.longitude,
                             paymentIntentId = paymentIntentId,
@@ -694,6 +774,15 @@ class CheckoutViewModel @Inject constructor(
                         }
                         return@launch
                     } else if (resp.code() == 409) {
+                        // A 409 that is NOT the duplicate-intent case (e.g. "this deal has
+                        // already been used — your payment was refunded") means no order
+                        // exists and none will: show the server's reason and stop.
+                        val conflictMsg = parseErrorBody(resp)
+                        if (conflictMsg != null && !conflictMsg.contains("already created", ignoreCase = true)) {
+                            if (!isStubIntent) clearInflightPI()
+                            _uiState.update { it.copy(isProcessing = false, errorMessage = conflictMsg) }
+                            return@launch
+                        }
                         // Duplicate payment_intent_id — the order already exists server-side.
                         // Recover it STRICTLY by PaymentIntent (mirrors iOS): a restaurant-only
                         // "most recent order" heuristic could surface a stale prior order and
@@ -747,6 +836,43 @@ class CheckoutViewModel @Inject constructor(
                     errorMessage = lastError?.localizedMessage ?: "Network error. Please check your connection.",
                 )
             }
+        }
+    }
+
+    /** The backend's `{"error": "..."}` body, or null when absent/unparseable. */
+    private fun parseErrorBody(resp: retrofit2.Response<*>): String? = try {
+        com.google.gson.JsonParser.parseString(resp.errorBody()?.string().orEmpty())
+            .asJsonObject.get("error")?.asString?.takeIf { it.isNotBlank() }
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        null
+    }
+
+    // ── Pre-sheet checkout snapshot (process death while PaymentSheet is open) ──
+
+    private suspend fun persistPresented(p: PresentedCheckout) {
+        try {
+            dataStore.edit { it[PRESENTED_CHECKOUT] = gson.toJson(p) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("CheckoutViewModel", "persistPresented failed", e)
+        }
+    }
+
+    private suspend fun readPresented(): PresentedCheckout? = try {
+        dataStore.data.first()[PRESENTED_CHECKOUT]?.let { gson.fromJson(it, PresentedCheckout::class.java) }
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        Log.e("CheckoutViewModel", "readPresented failed", e)
+        null
+    }
+
+    private suspend fun clearPresented() {
+        try {
+            dataStore.edit { it.remove(PRESENTED_CHECKOUT) }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("CheckoutViewModel", "clearPresented failed", e)
         }
     }
 
@@ -818,16 +944,24 @@ class CheckoutViewModel @Inject constructor(
      * Returns the recovered order, if any, so a caller can route the user to it.
      */
     suspend fun reconcileInflightOrder(): Order? {
-        val pi = readInflightPI() ?: return null
+        val inflight = readInflightPI()
+        val presented = if (inflight == null) readPresented() else null
+        val pi = inflight ?: presented?.paymentIntentId ?: return null
         try {
             val resp = api.getOrderByPaymentIntent(pi)
             if (resp.isSuccessful) {
                 val order = resp.body()
                 if (order != null) {
                     clearInflightPI()
+                    clearPresented()
                     _uiState.update { it.copy(placedOrder = order) }
                     return order
                 }
+            } else if (presented != null && resp.code() == 404) {
+                // The sheet was presented, we never learned the outcome, and no order
+                // exists. If the card was charged the backend's orphan-payment sweep
+                // refunds it; either way there is nothing left for this snapshot to do.
+                clearPresented()
             }
         } catch (e: CancellationException) {
             throw e
@@ -907,3 +1041,18 @@ class CheckoutViewModel @Inject constructor(
         _uiState.update { it.copy(errorMessage = null) }
     }
 }
+
+/**
+ * Persisted copy of what Stripe was asked to charge (see
+ * [CheckoutViewModel.onPayTapped]). Explicit JSON keys: this class lives
+ * outside data.models, so without them R8 would rename the fields and a build
+ * update could not read the previous build's snapshot.
+ */
+private data class PresentedCheckout(
+    @com.google.gson.annotations.SerializedName("pi") val paymentIntentId: String,
+    @com.google.gson.annotations.SerializedName("bundle") val bundle: PaymentSheetBundle,
+    @com.google.gson.annotations.SerializedName("fulfillment_type") val fulfillmentType: String,
+    @com.google.gson.annotations.SerializedName("scheduled_for") val scheduledFor: String?,
+    @com.google.gson.annotations.SerializedName("address_id") val addressId: String?,
+    @com.google.gson.annotations.SerializedName("restaurant_id") val restaurantId: String,
+)

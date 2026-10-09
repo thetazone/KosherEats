@@ -188,7 +188,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
             Text("No messages yet", color = TextSecondary, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             Spacer(Modifier.height(4.dp))
             Text(
-                "Send a note to your driver or the restaurant.",
+                "Send a note to the restaurant about this order.",
                 color = TextMuted,
                 fontSize = 12.sp,
             )

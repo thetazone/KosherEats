@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
-import com.google.gson.reflect.TypeToken
 import com.koshereats.consumer.data.models.*
 import com.koshereats.consumer.data.session.SessionManager
 import android.util.Log
@@ -96,7 +95,6 @@ class CartViewModel @Inject constructor(
     }
 
     private val gson = Gson()
-    private val snapshotType = object : TypeToken<CartSnapshot>() {}.type
 
     private val _uiState = MutableStateFlow(CartUiState())
     val uiState: StateFlow<CartUiState> = _uiState.asStateFlow()
@@ -114,7 +112,10 @@ class CartViewModel @Inject constructor(
                 val json = dataStore.data.first()[KEY_CART_SNAPSHOT]
                 if (!json.isNullOrEmpty()) {
                     val snap: CartSnapshot? = try {
-                        gson.fromJson(json, snapshotType)
+                        // Concrete class, not a TypeToken: R8 full mode strips the
+                        // anonymous subclass's generic signature and Gson then sees
+                        // a raw Object, which silently fails to restore the cart.
+                        gson.fromJson(json, CartSnapshot::class.java)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         Log.e("CartViewModel", "Failed to parse persisted cart snapshot", e)
@@ -167,6 +168,8 @@ class CartViewModel @Inject constructor(
         restaurantId: String,
         restaurantName: String,
         restaurantImageUrl: String? = null,
+        estDeliveryMin: Int = 0,
+        estDeliveryMax: Int = 0,
         quantity: Int = 1,
         selectedModifiers: List<SelectedModifier> = emptyList(),
         specialInstructions: String? = null,
@@ -176,6 +179,8 @@ class CartViewModel @Inject constructor(
                 restaurantId = restaurantId,
                 restaurantName = restaurantName,
                 restaurantImageUrl = restaurantImageUrl,
+                estDeliveryMin = estDeliveryMin,
+                estDeliveryMax = estDeliveryMax,
             )
 
             val normalizedNote = specialInstructions?.trim()?.take(500)?.takeIf { it.isNotBlank() }
@@ -212,6 +217,8 @@ class CartViewModel @Inject constructor(
                 restaurantId = restaurantId,
                 restaurantName = restaurantName,
                 restaurantImageUrl = restaurantImageUrl ?: currentCart.restaurantImageUrl,
+                estDeliveryMin = if (estDeliveryMax > 0) estDeliveryMin else currentCart.estDeliveryMin,
+                estDeliveryMax = if (estDeliveryMax > 0) estDeliveryMax else currentCart.estDeliveryMax,
                 items = updatedItems,
             )
 

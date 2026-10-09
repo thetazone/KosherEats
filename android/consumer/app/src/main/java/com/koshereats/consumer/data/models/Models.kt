@@ -56,29 +56,14 @@ enum class OrderStatus(val displayName: String) {
             DELIVERED, CANCELLED, COMPLETED, REJECTED, UNKNOWN -> false
             else -> true
         }
-}
 
-enum class CuisineType(val displayName: String) {
-    @SerializedName(value = "israeli", alternate = ["Israeli"]) ISRAELI("Israeli"),
-    @SerializedName(value = "middle_eastern", alternate = ["Middle Eastern"]) MIDDLE_EASTERN("Middle Eastern"),
-    @SerializedName(value = "american", alternate = ["American"]) AMERICAN("American"),
-    @SerializedName(value = "italian", alternate = ["Italian"]) ITALIAN("Italian"),
-    @SerializedName(value = "asian", alternate = ["Asian"]) ASIAN("Asian"),
-    @SerializedName(value = "mexican", alternate = ["Mexican"]) MEXICAN("Mexican"),
-    @SerializedName(value = "sushi", alternate = ["Sushi"]) SUSHI("Sushi"),
-    @SerializedName(value = "pizza", alternate = ["Pizza"]) PIZZA("Pizza"),
-    @SerializedName(value = "deli", alternate = ["Deli"]) DELI("Deli"),
-    @SerializedName(value = "bakery", alternate = ["Bakery"]) BAKERY("Bakery"),
-    @SerializedName(value = "bbq", alternate = ["BBQ"]) BBQ("BBQ"),
-    @SerializedName(value = "falafel", alternate = ["Falafel"]) FALAFEL("Falafel"),
-    @SerializedName(value = "indian", alternate = ["Indian"]) INDIAN("Indian"),
-    @SerializedName(value = "grill", alternate = ["Grill"]) GRILL("Grill"),
-    @SerializedName(value = "dairy", alternate = ["Dairy"]) DAIRY("Dairy"),
-    @SerializedName(value = "eastern_european", alternate = ["Eastern European"]) EASTERN_EUROPEAN("Eastern European"),
-    @SerializedName(value = "comfort", alternate = ["Comfort"]) COMFORT("Comfort"),
-    @SerializedName(value = "mediterranean", alternate = ["Mediterranean"]) MEDITERRANEAN("Mediterranean"),
-    @SerializedName(value = "other", alternate = ["Other"]) OTHER("Other"),
-    UNKNOWN("Unknown"),
+    /** Status label that reads correctly for both fulfillment types. */
+    fun labelFor(fulfillmentType: String): String = when {
+        this == READY && fulfillmentType == "pickup" -> "Ready for Pickup"
+        this == READY -> "Ready for Driver"
+        this == PICKED_UP && fulfillmentType == "pickup" -> "Picked Up"
+        else -> displayName
+    }
 }
 
 // ── User ──────────────────────────────────────────────────
@@ -89,7 +74,7 @@ data class User(
     @SerializedName("first_name") val firstName: String = "",
     @SerializedName("last_name") val lastName: String = "",
     val phone: String = "",
-    @SerializedName("profile_image_url") val profileImageUrl: String? = null,
+    @SerializedName(value = "avatar_url", alternate = ["profile_image_url"]) val profileImageUrl: String? = null,
     @SerializedName("default_address") val defaultAddress: Address? = null,
     val addresses: List<Address> = emptyList(),
     @SerializedName("created_at") val createdAt: String = "",
@@ -105,17 +90,25 @@ data class Address(
     val id: String = "",
     val label: String = "",
     @SerializedName("street") val streetAddress: String = "",
+    /** Apartment / unit, stored separately so the street line stays geocodable. */
+    val apt: String = "",
     val city: String = "",
     val state: String = "",
     @SerializedName("zip_code") val zipCode: String = "",
     @SerializedName("lat") val latitude: Double = 0.0,
     @SerializedName("lng") val longitude: Double = 0.0,
-    @SerializedName("delivery_instructions") val deliveryInstructions: String? = null,
     @SerializedName("is_default") val isDefault: Boolean = false,
-    @SerializedName("is_geocoded") val isGeocoded: Boolean = false,
-)
+) {
+    /** The backend stores whatever coordinates the app sends; (0, 0) means "never geocoded". */
+    val hasCoordinates: Boolean get() = latitude != 0.0 || longitude != 0.0
+}
 
-val Address.formatted: String get() = "$streetAddress, $city, $state $zipCode"
+val Address.formatted: String
+    get() = buildString {
+        append(streetAddress)
+        if (apt.isNotBlank()) append(", ").append(apt)
+        append(", ").append(city).append(", ").append(state).append(' ').append(zipCode)
+    }
 
 // ── Auth ──────────────────────────────────────────────────
 
@@ -140,17 +133,6 @@ data class SocialLoginRequest(
     @SerializedName("first_name") val firstName: String,
     @SerializedName("last_name") val lastName: String,
     val role: String = "consumer",
-)
-
-data class EmailCheckRequest(
-    val email: String,
-    val role: String = "consumer",
-)
-
-data class EmailCheckResponse(
-    val exists: Boolean = false,
-    @SerializedName("has_password") val hasPassword: Boolean = false,
-    @SerializedName("linked_providers") val linkedProviders: List<String> = emptyList(),
 )
 
 data class AuthResponse(
@@ -180,6 +162,16 @@ data class PhoneVerifyRequest(
 // the account exists for the email-signup flow; authenticated (/user/email/*)
 // attaches and verifies a real inbox onto an existing account (phone flow).
 data class EmailStartRequest(val email: String)
+
+// Password reset: the backend scopes the lookup by (email, role, vertical) and
+// emails a short code; the reset call trades the code for a new password.
+data class ForgotPasswordRequest(val email: String, val role: String = "consumer")
+data class ResetPasswordRequest(
+    val email: String,
+    val code: String,
+    @SerializedName("new_password") val newPassword: String,
+    val role: String = "consumer",
+)
 data class EmailVerifyRequest(val email: String, val code: String)
 
 // Add/verify a phone after social/email sign-in (/user/phone/change/*).
@@ -200,7 +192,9 @@ data class Restaurant(
     val phone: String = "",
     val rating: Double = 0.0,
     @SerializedName("review_count") val reviewCount: Int = 0,
-    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<CuisineType> = emptyList(),
+    // Free-form tags from the backend (TEXT[]), shown as-is. The home chips filter
+    // server-side by tag, so no client enum is needed and new tags never read as "Unknown".
+    @SerializedName(value = "cuisine_types", alternate = ["cuisine_type"]) val cuisineTypes: List<String> = emptyList(),
     @SerializedName("kosher_certification") val kosherCertification: KosherCertification? = null,
     @SerializedName("certifying_agency") val certifyingAgency: String = "",
     @SerializedName("mashgiach_name") val mashgiachName: String? = null,
@@ -260,13 +254,6 @@ data class Restaurant(
 data class RestaurantRequestResponse(
     val requested: Boolean = false,
     @SerializedName("request_count") val requestCount: Int = 0,
-)
-
-data class OperatingHour(
-    @SerializedName("day_of_week") val dayOfWeek: Int = 0,
-    @SerializedName("open_time") val openTime: String = "",
-    @SerializedName("close_time") val closeTime: String = "",
-    @SerializedName("is_closed") val isClosed: Boolean = false,
 )
 
 // ── Menu ──────────────────────────────────────────────────
@@ -347,9 +334,20 @@ data class Cart(
     @SerializedName("restaurant_id") val restaurantId: String = "",
     @SerializedName("restaurant_name") val restaurantName: String = "",
     @SerializedName("restaurant_image_url") val restaurantImageUrl: String? = null,
+    /** Restaurant's quoted prep+delivery window, captured when the first item is added. */
+    @SerializedName("est_delivery_min") val estDeliveryMin: Int = 0,
+    @SerializedName("est_delivery_max") val estDeliveryMax: Int = 0,
     val items: List<CartItem> = emptyList(),
     val appliedDeal: Deal? = null,
 ) {
+    /** "25–40 min" when the restaurant publishes an estimate, else null. */
+    val etaLabel: String?
+        get() = when {
+            estDeliveryMax <= 0 -> null
+            estDeliveryMin in 1 until estDeliveryMax -> "$estDeliveryMin–$estDeliveryMax min"
+            else -> "~$estDeliveryMax min"
+        }
+
     val subtotal: Int get() = items.sumOf { it.totalPrice }
     val itemCount: Int get() = items.sumOf { it.quantity }
     /** Cents discounted by the applied deal (0 when no deal or min order unmet). */
@@ -550,16 +548,13 @@ data class DeliveryQuoteResponse(
     @SerializedName("est_minutes") val estMinutes: Int = 0,
     val provider: String = "",
     @SerializedName("provider_fee") val providerFeeCents: Int = 0,
+    /** True when no courier can quote this route; /payments/intent will refuse delivery with a 503. */
+    @SerializedName("delivery_unavailable") val deliveryUnavailable: Boolean = false,
 )
 
 data class RateOrderRequest(
     val stars: Int,
     val comment: String = "",
-)
-
-data class UpdateCartItemRequest(
-    val quantity: Int,
-    val notes: String = "",
 )
 
 data class NotificationPreferences(
@@ -649,14 +644,6 @@ data class CourierLocationEvent(
 
 // ── API Responses ─────────────────────────────────────────
 
-data class PaginatedResponse<T>(
-    val items: List<T> = emptyList(),
-    val total: Int = 0,
-    val page: Int = 1,
-    @SerializedName("per_page") val perPage: Int = 20,
-    @SerializedName("total_pages") val totalPages: Int = 1,
-)
-
 // ── Chat (order-scoped messaging) ────────────────────────
 
 /**
@@ -684,16 +671,6 @@ data class RegisterDeviceRequest(
 )
 
 // ── Reviews ───────────────────────────────────────────────
-
-data class Review(
-    val id: String = "",
-    @SerializedName("user_id") val userId: String = "",
-    @SerializedName("user_name") val userName: String = "",
-    @SerializedName("restaurant_id") val restaurantId: String = "",
-    val rating: Int = 0,
-    val comment: String = "",
-    @SerializedName("created_at") val createdAt: String = "",
-)
 
 // ── Deals ─────────────────────────────────────────────────
 

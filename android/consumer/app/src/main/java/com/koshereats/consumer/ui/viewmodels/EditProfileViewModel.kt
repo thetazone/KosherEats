@@ -61,11 +61,8 @@ class EditProfileViewModel @Inject constructor(
 
     fun updateFirstName(value: String) = _uiState.update { it.copy(firstName = value.take(100), saved = false) }
     fun updateLastName(value: String) = _uiState.update { it.copy(lastName = value.take(100), saved = false) }
-    fun updatePhone(value: String) {
-        val digitsOnly = value.filter { c -> c.isDigit() }
-        val formatted = if (value.startsWith("+")) "+$digitsOnly" else digitsOnly
-        _uiState.update { it.copy(phone = formatted.take(20), saved = false) }
-    }
+    /** Phone is read-only here; it changes only through the OTP flow (AuthViewModel). */
+    fun setPhone(value: String) = _uiState.update { it.copy(phone = value) }
 
     fun saveProfile() {
         val state = _uiState.value
@@ -73,20 +70,15 @@ class EditProfileViewModel @Inject constructor(
             _uiState.update { it.copy(error = "First and last name are required") }
             return
         }
-        val phoneTrim = state.phone.trim()
-        if (phoneTrim.isNotBlank() && phoneTrim.filter { it.isDigit() }.length !in 7..15) {
-            _uiState.update { it.copy(error = "Please enter a valid phone number") }
-            return
-        }
-
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true, error = null) }
             try {
+                // The backend ignores `phone` on this endpoint (it is a login factor and
+                // only changes through the verified OTP flow), so only names are sent.
                 val response = apiService.updateProfileFields(
                     mapOf(
                         "first_name" to state.firstName.trim(),
                         "last_name" to state.lastName.trim(),
-                        "phone" to state.phone.trim(),
                     )
                 )
                 if (response.isSuccessful) {

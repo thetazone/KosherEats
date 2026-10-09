@@ -5,7 +5,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -149,7 +148,6 @@ dependencies {
     // Lifecycle + ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.59.2")
@@ -175,9 +173,6 @@ dependencies {
     // because polish cycle-3 R17 fix uses the MasterKey builder API which
     // ships in 1.1.x only; 1.0.0 has only the deprecated MasterKeys helper.
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-
-    // Kotlinx Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
     // Google Maps
     implementation("com.google.maps.android:maps-compose:4.3.0")

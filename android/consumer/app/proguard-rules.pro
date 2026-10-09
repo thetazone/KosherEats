@@ -44,6 +44,13 @@
 # Gson
 -keep class com.google.gson.** { *; }
 -keepattributes EnclosingMethod
+# Anonymous TypeToken subclasses rely on their generic superclass signature;
+# R8 full mode drops it unless the subclasses are kept.
+-keep class * extends com.google.gson.reflect.TypeToken
+# Persisted cart snapshot lives outside data.models — keep it whole so the
+# DataStore JSON written by one build is readable by the next.
+-keep class com.koshereats.consumer.ui.viewmodels.CartSnapshot { *; }
+-keep class com.koshereats.consumer.ui.viewmodels.PresentedCheckout { *; }
 -keep class * implements com.google.gson.TypeAdapterFactory
 -keepclassmembers class * implements com.google.gson.TypeAdapterFactory { <init>(...); }
 -keep class * implements com.google.gson.JsonSerializer
@@ -74,16 +81,15 @@
 # Hilt
 -dontwarn dagger.hilt.**
 
-# Kotlinx Serialization
--keepattributes *Annotation*, InnerClasses
--dontnote kotlinx.serialization.AnnotationsKt
--keepclassmembers @kotlinx.serialization.Serializable class ** {
-    *** Companion;
-    kotlinx.serialization.KSerializer serializer(...);
+# Release logging: drop v/d/i/w so request/response details, tokens-adjacent
+# metadata and user data never reach logcat on a production device. Log.e
+# stays for crash triage.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
 }
-# R8 full mode strips the plugin-generated $$serializer inner class unless
-# kept explicitly — Companion alone is not sufficient.
--keep class **$$serializer { *; }
 
 # Compose (R8 full mode)
 -dontwarn androidx.compose.**

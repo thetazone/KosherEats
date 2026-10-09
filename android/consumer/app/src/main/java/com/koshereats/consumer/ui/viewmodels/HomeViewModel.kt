@@ -42,7 +42,7 @@ data class HomeUiState(
     val isSearching: Boolean = false,
     val searchQuery: String = "",
     // Server-side cuisine tag (case-insensitive match on the backend), or null
-    // for "All". These are free-form tags, not CuisineType enum values.
+    // for "All". These are free-form tags matched case-insensitively by the server.
     val selectedCuisine: String? = null,
     val filterGlattOnly: Boolean = false,
     val filterCholovYisroelOnly: Boolean = false,
@@ -111,21 +111,17 @@ class HomeViewModel @Inject constructor(
                         }
                         is Resource.Success -> {
                             _uiState.update { state ->
-                                // Dedupe by id against the RAW list: the backend currently ignores
-                                // page/per_page and returns the same set on every page, so a naive
-                                // append would add duplicate restaurants and crash the LazyColumn
-                                // (which keys by id).
+                                // Dedupe by id against the RAW list: the LazyColumn keys by id, so a
+                                // restaurant that straddles a page boundary (e.g. a rating change
+                                // between requests) must never be appended twice.
                                 val merged = if (page == 1) {
                                     result.data.distinctBy { it.id }
                                 } else {
                                     (state.rawRestaurants + result.data).distinctBy { it.id }
                                 }
-                                // Only consider there to be more pages if this page actually grew
-                                // the list AND came back full. If a page brought no new ids
-                                // (server didn't paginate), stop — otherwise loadMore() would loop.
-                                val grew = merged.size > state.rawRestaurants.size || page == 1
-                                val hasMore = grew &&
-                                    result.data.size >= ApiPaging.RESTAURANTS_PAGE_SIZE
+                                // The backend pages with LIMIT/OFFSET and a stable tiebreaker: a
+                                // full page may be followed by more, a short page is the end.
+                                val hasMore = result.data.size >= ApiPaging.RESTAURANTS_PAGE_SIZE
                                 state.copy(
                                     rawRestaurants = merged,
                                     // The feed renders allRestaurants, so it must be the filtered view.
@@ -171,7 +167,7 @@ class HomeViewModel @Inject constructor(
     // RestaurantStore.filteredRestaurants. Cuisine is deliberately NOT filtered
     // here: ?cuisine= is honored server-side (the fetched list already reflects
     // it), and re-filtering locally would break for tags that don't map onto
-    // the CuisineType enum (Bagels, Heimish, …). Ordering is also preserved
+    // a fixed client-side list (Bagels, Heimish, …). Ordering is also preserved
     // as-is — the server puts orderable restaurants first and preview listings
     // after, and the client must never re-sort previews above orderable rows.
     private fun applyFilters(source: List<Restaurant>, state: HomeUiState): List<Restaurant> =

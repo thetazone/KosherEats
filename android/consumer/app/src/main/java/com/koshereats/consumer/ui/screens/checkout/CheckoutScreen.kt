@@ -241,6 +241,15 @@ fun CheckoutScreen(
                 ui.bundle?.let { TotalsCard(it) }
             }
 
+            if (ui.fulfillmentType == "delivery" && ui.deliveryUnavailable) {
+                Text(
+                    text = "Delivery isn't available for this address right now. Switch to pickup to continue.",
+                    color = WarningYellow,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+
             ui.errorMessage?.let { msg ->
                 Spacer(Modifier.height(12.dp))
                 Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
@@ -266,7 +275,7 @@ fun CheckoutScreen(
         // Sticky pay button
         val canPay = ui.bundle != null &&
             (ui.bundle?.subtotal ?: 0) > 0 &&
-            (ui.fulfillmentType == "pickup" || ui.selectedAddress != null) &&
+            (ui.fulfillmentType == "pickup" || (ui.selectedAddress != null && !ui.deliveryUnavailable)) &&
             !ui.isProcessing &&
             !ui.isLoadingBundle
         val totalLabel = ui.bundle?.let { it.total.formatPrice() } ?: "--"

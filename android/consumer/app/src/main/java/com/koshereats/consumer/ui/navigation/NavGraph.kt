@@ -51,10 +51,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koshereats.consumer.ui.screens.auth.EmailLoginScreen
+import com.koshereats.consumer.ui.screens.auth.ForgotPasswordScreen
 import com.koshereats.consumer.ui.screens.auth.LoginScreen
 import com.koshereats.consumer.ui.screens.auth.AccountVerificationScreen
 import com.koshereats.consumer.ui.screens.auth.PhoneAuthScreen
-import com.koshereats.consumer.ui.screens.auth.PhonePromptScreen
 import com.koshereats.consumer.ui.screens.auth.RegisterScreen
 import com.koshereats.consumer.ui.screens.cart.CartScreen
 import com.koshereats.consumer.ui.screens.checkout.CheckoutScreen
@@ -509,11 +509,6 @@ fun KosherEatsNavHost(
                     onEmailLoginClick = {
                         navController.navigate(Screen.EmailLogin.route)
                     },
-                    onPhoneNeeded = {
-                        navController.navigate(Screen.PhonePrompt.route) {
-                            popUpTo(Screen.Login.route) { inclusive = true }
-                        }
-                    },
                     onGuestContinue = {
                         pendingGuestReturn.value = null
                         navController.navigate(Screen.Home.route) {
@@ -535,7 +530,16 @@ fun KosherEatsNavHost(
                         }
                     },
                     onRegisterClick = { navController.navigate(Screen.Register.route) },
+                    onForgotPassword = { navController.navigate(Screen.ForgotPassword.route) },
                     onBack = { navController.popBackStack() },
+                    viewModel = authViewModel,
+                )
+            }
+
+            composable(Screen.ForgotPassword.route) {
+                ForgotPasswordScreen(
+                    onBack = { navController.popBackStack() },
+                    onDone = { navController.popBackStack() },
                     viewModel = authViewModel,
                 )
             }
@@ -576,29 +580,10 @@ fun KosherEatsNavHost(
                         }
                     },
                     onLoginClick = { navController.popBackStack() },
-                    onPhoneNeeded = {
-                        navController.navigate(Screen.PhonePrompt.route) {
-                            popUpTo(Screen.Login.route) { inclusive = true }
-                        }
-                    },
                     onGuestContinue = {
                         pendingGuestReturn.value = null
                         navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Login.route) { inclusive = true }
-                        }
-                    },
-                    viewModel = authViewModel,
-                )
-            }
-
-            composable(Screen.PhonePrompt.route) {
-                val returnRoute = pendingGuestReturn.value
-                PhonePromptScreen(
-                    onComplete = {
-                        pendingGuestReturn.value = null
-                        val target = returnRoute ?: Screen.Home.route
-                        navController.navigate(target) {
-                            popUpTo(Screen.PhonePrompt.route) { inclusive = true }
                         }
                     },
                     viewModel = authViewModel,
@@ -645,6 +630,7 @@ fun KosherEatsNavHost(
 
             composable(Screen.EditProfile.route) {
                 EditProfileScreen(
+                    authViewModel = authViewModel,
                     onBack = { navController.popBackStack() },
                     onSaved = { firstName, lastName, phone ->
                         authViewModel.patchUser(firstName, lastName, phone)

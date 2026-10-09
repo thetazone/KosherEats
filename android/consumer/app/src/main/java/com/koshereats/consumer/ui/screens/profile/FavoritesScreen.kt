@@ -128,7 +128,7 @@ fun FavoritesScreen(
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    "★ %.1f · ${restaurant.cuisineTypes.firstOrNull()?.name?.lowercase() ?: ""}".format(restaurant.rating),
+                                    "★ %.1f · ${restaurant.cuisineTypes.firstOrNull().orEmpty()}".format(restaurant.rating),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = TextTertiary,
                                 )

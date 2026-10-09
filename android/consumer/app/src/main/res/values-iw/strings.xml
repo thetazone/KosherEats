@@ -8,10 +8,6 @@
 <resources>
     <string name="app_name">KosherEats</string>
 
-    <string name="auth_email">דוא"ל</string>
-    <string name="auth_password">סיסמה</string>
-    <string name="auth_login_title">ברוך שובך</string>
-    <string name="auth_signup_title">צור חשבון</string>
     <string name="auth_or_divider">או</string>
     <string name="auth_welcome_title">ברוכים הבאים ל-KosherEats</string>
     <string name="auth_welcome_subtitle">משלוחי כשר, כמו שצריך.</string>
@@ -22,33 +18,12 @@
     <string name="auth_use_different_google">השתמש בחשבון Google אחר</string>
     <string name="auth_account_settings_unavailable">הגדרות חשבון אינן זמינות במכשיר זה</string>
 
-    <string name="home_title">כּשר איטס</string>
-    <string name="home_tagline">משלוחי כשר, כמו שצריך</string>
-    <string name="home_search_placeholder">חפש מסעדות...</string>
-    <string name="home_featured">מומלצים</string>
-    <string name="home_all_restaurants">כל המסעדות</string>
 
-    <string name="tabs_home">בית</string>
-    <string name="tabs_search">חיפוש</string>
-    <string name="tabs_orders">הזמנות</string>
     <string name="tabs_profile">פרופיל</string>
 
-    <string name="cart_title">עגלה</string>
     <string name="cart_empty_title">העגלה שלך ריקה</string>
-    <string name="cart_checkout">לתשלום</string>
-    <string name="checkout_delivery_time">זמן משלוח</string>
-    <string name="checkout_asap">בהקדם האפשרי</string>
-    <string name="checkout_schedule">קבע זמן</string>
-    <string name="checkout_tip_title">טיפ לנהג</string>
-    <string name="checkout_place_order">בצע הזמנה</string>
 
-    <string name="chat_title">צ\'אט</string>
-    <string name="chat_placeholder">הקלד הודעה…</string>
 
-    <string name="order_status_pending">ממתין למסעדה</string>
-    <string name="order_status_preparing">האוכל שלך בהכנה</string>
-    <string name="order_status_on_the_way">ההזמנה שלך בדרך</string>
-    <string name="order_status_delivered">נמסר — בתיאבון!</string>
     <string name="order_tracking_title">מעקב</string>
     <string name="action_retry">נסה שוב</string>
 
@@ -66,6 +41,8 @@
     <string name="profile_menu_notifications">העדפות התראות</string>
     <string name="profile_menu_connected_accounts">חשבונות מחוברים</string>
     <string name="profile_menu_help">עזרה ותמיכה</string>
+    <string name="profile_menu_privacy">מדיניות פרטיות</string>
+    <string name="profile_menu_terms">תנאי שימוש</string>
     <string name="profile_sign_out">התנתק</string>
     <string name="profile_delete_account">מחק חשבון</string>
     <string name="profile_delete_confirm_title">למחוק את החשבון?</string>
@@ -75,6 +52,4 @@
     <string name="profile_sign_out_confirm_body">תצטרך להיכנס שוב כדי לגשת להזמנות, לכתובות ולאמצעי התשלום שלך.</string>
 
     <string name="common_cancel">ביטול</string>
-    <string name="common_done">סיום</string>
-    <string name="common_retry">נסה שוב</string>
 </resources>

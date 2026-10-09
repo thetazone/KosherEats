@@ -113,6 +113,13 @@ fun HomeScreen(
         }
     }
 
+    // Re-query the feed around the "Deliver to" address so distance sorting
+    // follows the header instead of a location the view model never receives.
+    LaunchedEffect(addressState.selectedAddress?.id) {
+        val addr = addressState.selectedAddress?.takeIf { it.hasCoordinates }
+        viewModel.setLocation(addr?.latitude, addr?.longitude)
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack)) {
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,

@@ -30,16 +30,20 @@ object PushBootstrap {
     private var appContext: Context? = null
 
     fun init(context: Context) {
+        // google-services.json (through the Gradle plugin) is the source of truth:
+        // the default app already exists whenever it was bundled, regardless of
+        // what local.properties held on the build machine. Only fall back to the
+        // BuildConfig keys when it is absent, and skip FCM when neither exists.
+        if (FirebaseApp.getApps(context).any { it.name == FirebaseApp.DEFAULT_APP_NAME }) {
+            initialized = true
+            appContext = context.applicationContext
+            return
+        }
         if (BuildConfig.FIREBASE_PROJECT_ID.isBlank() ||
             BuildConfig.FIREBASE_API_KEY.isBlank() ||
             BuildConfig.FIREBASE_APP_ID.isBlank()
         ) {
-            Log.w(TAG, "Firebase keys missing in local.properties — skipping FCM init (push disabled).")
-            return
-        }
-        if (FirebaseApp.getApps(context).any { it.name == FirebaseApp.DEFAULT_APP_NAME }) {
-            initialized = true
-            appContext = context.applicationContext
+            Log.w(TAG, "No Firebase config (google-services.json or local.properties) — push disabled.")
             return
         }
         val options = FirebaseOptions.Builder()

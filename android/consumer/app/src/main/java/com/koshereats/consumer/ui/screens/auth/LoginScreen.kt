@@ -70,7 +70,6 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onPhoneCodeSent: () -> Unit,
     onEmailLoginClick: () -> Unit,
-    onPhoneNeeded: () -> Unit = {},
     onGuestContinue: () -> Unit = onLoginSuccess,
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
@@ -81,9 +80,9 @@ fun LoginScreen(
     val focusManager = LocalFocusManager.current
     var showCountryPicker by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.sessionState, state.needsPhone) {
+    LaunchedEffect(state.sessionState) {
         if (state.sessionState == SessionState.Authenticated) {
-            if (state.needsPhone) onPhoneNeeded() else onLoginSuccess()
+            onLoginSuccess()
         }
     }
 

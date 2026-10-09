@@ -76,3 +76,6 @@ android/**/app/*/release/
 # local stub-mode API binary (dev testing of dispatch happy-path)
 backend/ke-api-stub
 build/
+
+# Play Console tester list (personal emails) — never commit
+android/consumer/playstore-assets/testers.csv

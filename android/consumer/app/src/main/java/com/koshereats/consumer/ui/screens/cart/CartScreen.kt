@@ -430,6 +430,7 @@ private fun CartDetailView(
                 Spacer(modifier = Modifier.height(24.dp))
                 DeliveryTimeCard(
                     scheduledFor = state.scheduledFor,
+                    asapSubtitle = state.cart.etaLabel ?: "Earliest available",
                     onChange = { cartViewModel.updateScheduledFor(it) },
                 )
             }

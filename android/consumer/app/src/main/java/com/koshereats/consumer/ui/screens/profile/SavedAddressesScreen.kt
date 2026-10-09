@@ -47,7 +47,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import android.location.Geocoder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +60,6 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -71,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.koshereats.consumer.data.models.Address
+import com.koshereats.consumer.data.util.AddressGeocoder
 import com.koshereats.consumer.ui.theme.*
 import com.koshereats.consumer.ui.viewmodels.AddressViewModel
 
@@ -283,34 +282,23 @@ fun SavedAddressesScreen(
                         Button(
                             onClick = {
                                 if (newStreet.isNotBlank() && newCity.isNotBlank() && newState.isNotBlank() && newZip.isNotBlank()) {
-                                    val street = if (newApt.isNotBlank()) "$newStreet, $newApt" else newStreet
                                     scope.launch {
-                                        val fullAddress = "$street, $newCity, $newState $newZip"
-                                        val coords = withContext(Dispatchers.IO) {
-                                            try {
-                                                if (!Geocoder.isPresent()) return@withContext null
-                                                @Suppress("DEPRECATION")
-                                                Geocoder(context, Locale.US)
-                                                    .getFromLocationName(fullAddress, 1)
-                                                    ?.firstOrNull()
-                                                    ?.let { it.latitude to it.longitude }
-                                            } catch (_: Exception) { null }
-                                        }
-                                        if (coords == null) {
-                                            geocodeError = "We couldn't verify this address. Please check the details and try again."
+                                        val geocoded = AddressGeocoder.geocode(
+                                            context,
+                                            Address(
+                                                label = newLabel,
+                                                streetAddress = newStreet.trim(),
+                                                apt = newApt.trim(),
+                                                city = newCity.trim(),
+                                                state = newState.trim(),
+                                                zipCode = newZip,
+                                            ),
+                                        )
+                                        if (geocoded == null) {
+                                            geocodeError = AddressGeocoder.FAILURE_MESSAGE
                                         } else {
                                             geocodeError = null
-                                            viewModel.addAddress(
-                                                Address(
-                                                    label = newLabel,
-                                                    streetAddress = street,
-                                                    city = newCity,
-                                                    state = newState,
-                                                    zipCode = newZip,
-                                                    latitude = coords.first,
-                                                    longitude = coords.second,
-                                                )
-                                            )
+                                            viewModel.addAddress(geocoded)
                                             newStreet = ""
                                             newApt = ""
                                             newCity = ""
