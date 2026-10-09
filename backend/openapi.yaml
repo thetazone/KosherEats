@@ -274,6 +274,11 @@ paths:
     get:
       tags: [restaurants]
       summary: List restaurants in the caller's vertical
+      description: >-
+        Sorted orderable-first, then listing priority, then distance (when lat/lng
+        are given) or rating, with id as the final tiebreaker so pages are stable.
+        Without page/per_page the feed returns up to 50 restaurants (400 with
+        include_previews=1). A short page means there are no more.
       security: []
       parameters:
         - { $ref: "#/components/parameters/VerticalQuery" }
@@ -283,6 +288,22 @@ paths:
         - in: query
           name: lng
           schema: { type: number, format: double }
+        - in: query
+          name: cuisine
+          description: Case-insensitive cuisine tag filter.
+          schema: { type: string }
+        - in: query
+          name: include_previews
+          description: "1 to include preview (not yet orderable) listings."
+          schema: { type: string, enum: ["0", "1"] }
+        - in: query
+          name: page
+          description: 1-based page number.
+          schema: { type: integer, minimum: 1, maximum: 100000, default: 1 }
+        - in: query
+          name: per_page
+          description: Page size, capped at 100 (400 with include_previews=1).
+          schema: { type: integer, minimum: 1, maximum: 400 }
       responses:
         "200":
           description: Restaurant list
@@ -291,6 +312,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Restaurant" }
+        "400": { $ref: "#/components/responses/Error" }
 
   /api/v1/restaurants/search:
     get:
@@ -811,7 +833,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/Address" }
       responses:
-        "200":
+        "201":
           description: Created address
           content:
             application/json:
@@ -834,6 +856,16 @@ paths:
         - { $ref: "#/components/parameters/PathId" }
       responses:
         "200": { description: Default set }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [user]
+      summary: Clear the default flag on an address
+      description: Leaves the user with no default address; does not delete the address.
+      parameters:
+        - { $ref: "#/components/parameters/PathId" }
+      responses:
+        "200": { description: Default cleared }
+        "404": { $ref: "#/components/responses/Error" }
 
   /api/v1/user/notification-preferences:
     get:
@@ -1208,11 +1240,26 @@ paths:
     get:
       tags: [seller]
       summary: List the restaurant's orders
+      description: >-
+        Newest first. Cursor-paginated: pass the created_at of the last order
+        received as `cursor` to get the next page. A page shorter than `limit`
+        is the last one.
       parameters:
         - { $ref: "#/components/parameters/SellerRestaurantQuery" }
         - in: query
           name: status
-          schema: { $ref: "#/components/schemas/OrderStatus" }
+          description: >-
+            One order status or a comma-separated list (e.g. `pending,accepted`).
+            Unknown values are a 400. Omit for all statuses.
+          schema: { type: string }
+        - in: query
+          name: limit
+          description: Page size; values outside 1-100 fall back to 50.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - in: query
+          name: cursor
+          description: RFC 3339 created_at of the last order on the previous page.
+          schema: { type: string, format: date-time }
       responses:
         "200":
           description: Orders
@@ -1221,6 +1268,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Error" }
 
   /api/v1/seller/orders/{id}:
     get:

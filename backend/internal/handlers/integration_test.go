@@ -300,6 +300,11 @@ func buildRouter(h *Handler) http.Handler {
 		r.Post("/email/verify", h.VerifyEmailChange)
 		r.Post("/phone/change/start", h.StartPhoneChange)
 		r.Post("/phone/change/verify", h.VerifyPhoneChange)
+		r.Get("/addresses", h.ListAddresses)
+		r.Post("/addresses", h.AddAddress)
+		r.Delete("/addresses/{id}", h.DeleteAddress)
+		r.Patch("/addresses/{id}/default", h.SetDefaultAddress)
+		r.Delete("/addresses/{id}/default", h.ClearDefaultAddress)
 	})
 
 	r.Route("/api/v1/cart", func(r chi.Router) {

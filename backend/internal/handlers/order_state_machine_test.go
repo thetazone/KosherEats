@@ -27,6 +27,7 @@ func sellerRouter(h *Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Route("/api/v1/seller/orders", func(r chi.Router) {
 		r.Use(h.AuthMiddleware)
+		r.Get("/", h.ListSellerOrders)
 		r.Patch("/{id}/accept", h.AcceptOrder)
 		r.Patch("/{id}/preparing", h.MarkOrderPreparing)
 		r.Patch("/{id}/delivery-mode", h.SetOrderDeliveryMode)

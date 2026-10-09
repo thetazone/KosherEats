@@ -116,7 +116,7 @@ func (f *FCM) Send(ctx context.Context, deviceToken string, app App, payload Pay
 		return
 	}
 
-	body, err := buildFCMBody(deviceToken, payload)
+	body, err := buildFCMBody(deviceToken, app, payload)
 	if err != nil {
 		log.Printf("[fcm] body error: %v", err)
 		return
@@ -221,9 +221,37 @@ func (f *FCM) ensureAccessToken(ctx context.Context) (string, error) {
 	return f.cachedTok, nil
 }
 
+// Notification channel ids declared by the Android apps
+// (KosherEatsMessagingService.ensureChannel in each app). When the app is in
+// the background FCM renders the `notification` block itself and files it
+// under this channel; without it the push lands in the OS "Miscellaneous"
+// channel with whatever sound/importance the user never configured.
+const (
+	fcmChannelConsumer        = "koshereats_consumer_default"
+	fcmChannelSeller          = "koshereats_seller_default"
+	fcmChannelSellerNewOrders = "koshereats_seller_new_orders"
+)
+
+// fcmChannelID picks the Android notification channel for a push. The seller
+// app rings a dedicated high-attention channel for new orders and files
+// everything else under its default channel; the consumer app has one
+// channel. The courier app registers no channel, so it gets none.
+func fcmChannelID(app App, p Payload) string {
+	switch app {
+	case AppConsumer:
+		return fcmChannelConsumer
+	case AppSeller:
+		if p.Data["type"] == "new_order" {
+			return fcmChannelSellerNewOrders
+		}
+		return fcmChannelSeller
+	}
+	return ""
+}
+
 // buildFCMBody shapes a Payload into the FCM HTTP v1 message format. All
 // data values are stringified per the spec.
-func buildFCMBody(deviceToken string, p Payload) ([]byte, error) {
+func buildFCMBody(deviceToken string, app App, p Payload) ([]byte, error) {
 	message := map[string]any{
 		"token": deviceToken,
 		"notification": map[string]string{
@@ -238,9 +266,13 @@ func buildFCMBody(deviceToken string, p Payload) ([]byte, error) {
 	// Android-specific options: default priority is normal which can delay
 	// delivery. Bump to high for user-facing alerts (order updates, new
 	// delivery available, etc).
-	message["android"] = map[string]any{
+	android := map[string]any{
 		"priority": "HIGH",
 	}
+	if ch := fcmChannelID(app, p); ch != "" {
+		android["notification"] = map[string]string{"channel_id": ch}
+	}
+	message["android"] = android
 	return json.Marshal(map[string]any{"message": message})
 }
 

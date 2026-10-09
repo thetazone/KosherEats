@@ -125,7 +125,7 @@ func (h *Handler) AdminCreateRestaurant(w http.ResponseWriter, r *http.Request) 
 		 est_delivery_min, est_delivery_max, is_open, is_active, delivery_mode,
 		 vertical, approval_status, reviewed_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-		         $16, $17, $18, '', $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'platform'),
+		         $16, $17, $18, '', $19, $20, $21, $22, $23, true, true, COALESCE(NULLIF($24,''), 'external'),
 		         COALESCE(NULLIF($25,''), 'kosher'), 'approved', NOW())
 		 RETURNING id`,
 		req.OwnerID, req.Name, req.Description, req.ImageURL, req.CoverImageURL,

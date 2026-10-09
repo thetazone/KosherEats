@@ -247,13 +247,13 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var restName, restAddress, restPhone string
-	restaurantDeliveryMode := "platform"
+	restaurantDeliveryMode := "external"
 	var restaurantDeliveryFee int
 	if err := tx.QueryRow(r.Context(),
 		`SELECT name,
 		        COALESCE(street || ', ' || city || ', ' || state || ' ' || zip_code, ''),
 		        COALESCE(phone, ''),
-		        COALESCE(delivery_mode, 'platform'), delivery_fee
+		        COALESCE(delivery_mode, 'external'), delivery_fee
 		   FROM restaurants WHERE id = $1`, cart.RestaurantID,
 	).Scan(&restName, &restAddress, &restPhone, &restaurantDeliveryMode, &restaurantDeliveryFee); err != nil {
 		writeError(w, http.StatusBadRequest, "restaurant not found")
@@ -1087,39 +1087,37 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 100 {
 		sellerLimit = l
 	}
-	sellerCursor := r.URL.Query().Get("cursor")
-
-	// Scoped to the resolved restaurant so multi-restaurant sellers see
-	// only the orders for the one they've currently selected in the app.
-	var rows pgx.Rows
-	if sellerCursor != "" {
-		cursorTime, parseErr := time.Parse(time.RFC3339Nano, sellerCursor)
+	var cursorTime *time.Time
+	if sellerCursor := r.URL.Query().Get("cursor"); sellerCursor != "" {
+		parsed, parseErr := time.Parse(time.RFC3339Nano, sellerCursor)
 		if parseErr != nil {
 			writeError(w, http.StatusBadRequest, "invalid cursor format")
 			return
 		}
-		rows, err = h.db.Pool.Query(r.Context(),
-			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
-			        o.courier_tip, o.delivery_address, o.est_delivery_time,
-			        o.fulfillment_type, COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
-			        o.created_at, o.updated_at
-			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
-			  WHERE o.restaurant_id = $1 AND o.created_at < $2
-			  ORDER BY o.created_at DESC LIMIT $3`,
-			restID, cursorTime, sellerLimit)
-	} else {
-		rows, err = h.db.Pool.Query(r.Context(),
-			`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
-			        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
-			        o.courier_tip, o.delivery_address, o.est_delivery_time,
-			        o.fulfillment_type, COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
-			        o.created_at, o.updated_at
-			   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
-			  WHERE o.restaurant_id = $1
-			  ORDER BY o.created_at DESC LIMIT $2`,
-			restID, sellerLimit)
+		cursorTime = &parsed
 	}
+	statuses, err := parseOrderStatusFilter(r.URL.Query().Get("status"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Scoped to the resolved restaurant so multi-restaurant sellers see
+	// only the orders for the one they've currently selected in the app.
+	// A nil cursor / nil status list arrive as SQL NULL and disable that
+	// predicate, so one query serves every combination.
+	rows, err := h.db.Pool.Query(r.Context(),
+		`SELECT o.id, o.user_id, o.restaurant_id, rest.name, o.status,
+		        o.subtotal, o.discount_cents, o.delivery_fee, o.service_fee, o.tax, o.total,
+		        o.courier_tip, o.delivery_address, o.est_delivery_time,
+		        o.fulfillment_type, COALESCE(o.delivery_mode, rest.delivery_mode, 'platform'),
+		        o.created_at, o.updated_at
+		   FROM orders o JOIN restaurants rest ON o.restaurant_id = rest.id
+		  WHERE o.restaurant_id = $1
+		    AND ($2::timestamptz IS NULL OR o.created_at < $2)
+		    AND ($3::text[] IS NULL OR o.status = ANY($3))
+		  ORDER BY o.created_at DESC LIMIT $4`,
+		restID, cursorTime, statuses, sellerLimit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch orders")
 		return
@@ -1168,6 +1166,43 @@ func (h *Handler) ListSellerOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, orders)
+}
+
+// parseOrderStatusFilter turns the seller list's `status` query — one status
+// or a comma-separated list — into a validated, de-duplicated slice. Empty
+// input means "no filter" and returns nil (SQL NULL). An unknown status is an
+// error so a typo in a client can't silently return an empty dashboard.
+func parseOrderStatusFilter(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	valid := map[string]bool{}
+	for _, s := range []models.OrderStatus{
+		models.OrderScheduled, models.OrderPending, models.OrderAccepted, models.OrderPreparing,
+		models.OrderReady, models.OrderPickedUp, models.OrderDelivered, models.OrderCompleted,
+		models.OrderCancelled, models.OrderRejected,
+	} {
+		valid[string(s)] = true
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		s := strings.ToLower(strings.TrimSpace(part))
+		if s == "" {
+			continue
+		}
+		if !valid[s] {
+			return nil, fmt.Errorf("unknown order status %q", s)
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil, errors.New("status must name at least one order status")
+	}
+	return out, nil
 }
 
 // loadOrderItemsBatch fetches order items for many orders in a single query

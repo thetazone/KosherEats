@@ -270,14 +270,14 @@ func (h *Handler) CreateRestaurant(w http.ResponseWriter, r *http.Request) {
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
 			is_glatt_kosher, kosher_certificate_url, cuisine_type, rating, review_count, delivery_fee, min_order,
 			est_delivery_min, est_delivery_max, is_open, is_active,
-			approval_status, approval_token, vertical
+			approval_status, approval_token, vertical, delivery_mode
 		)
 		VALUES ($1, $2, $3, $4, '', $5,
 			$6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, 0, 0, $21, $22,
 			$23, $24, false, false,
-			'pending', $25, $26)
+			'pending', $25, $26, 'external')
 		RETURNING id, owner_id, name, description, image_url, cover_image_url, logo_url,
 			phone, email, street, city, state, zip_code, lat, lng,
 			kosher_certification, certifying_agency, is_cholov_yisroel, is_pas_yisroel,
@@ -428,7 +428,7 @@ func (h *Handler) UpdateRestaurant(w http.ResponseWriter, r *http.Request) {
 	if req.DeliveryMode != nil || req.Phone != nil {
 		var curPhone, curMode string
 		if err := h.db.Pool.QueryRow(r.Context(),
-			`SELECT COALESCE(phone, ''), COALESCE(delivery_mode, 'platform')
+			`SELECT COALESCE(phone, ''), COALESCE(delivery_mode, 'external')
 			   FROM restaurants WHERE id = $1`, restID).Scan(&curPhone, &curMode); err != nil {
 			// Fail closed: skipping the check on a transient read error would
 			// let exactly the phoneless-external state this guard exists to

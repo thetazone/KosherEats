@@ -512,6 +512,7 @@ func main() {
 		r.Post("/addresses", h.AddAddress)
 		r.Delete("/addresses/{id}", h.DeleteAddress)
 		r.Patch("/addresses/{id}/default", h.SetDefaultAddress)
+		r.Delete("/addresses/{id}/default", h.ClearDefaultAddress)
 		r.Get("/notification-preferences", h.GetNotificationPreferences)
 		r.Put("/notification-preferences", h.UpdateNotificationPreferences)
 		r.Delete("/account", h.DeleteAccount)

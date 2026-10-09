@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -39,15 +40,13 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	const orderPrefix = ` ORDER BY ` + liveRestaurantSQL + ` DESC,
 		listing_priority DESC, `
 
-	// The classic feed stays capped at 50; a preview-aware client is asking for
-	// the whole catalog (287 previews today), so give it room.
-	limit := ` LIMIT 50`
-	if previews {
-		limit = ` LIMIT 400`
+	limit, offset, err := restaurantPaging(r, previews)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	var rows pgx.Rows
-	var err error
 
 	latF, errLat := strconv.ParseFloat(lat, 64)
 	lngF, errLng := strconv.ParseFloat(lng, 64)
@@ -55,13 +54,16 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 		errLat == nil && errLng == nil &&
 		latF >= -90 && latF <= 90 && lngF >= -180 && lngF <= 180
 
+	// `id` breaks sort-key ties (equal rating, equal distance) so a page
+	// boundary never repeats or skips a restaurant between two requests.
 	if useDistance {
 		rows, err = h.db.Pool.Query(r.Context(),
-			baseQuery+orderPrefix+`point($4, $5) <-> point(lng, lat)`+limit,
-			vertical, previews, cuisine, lngF, latF)
+			baseQuery+orderPrefix+`point($4, $5) <-> point(lng, lat), id LIMIT $6 OFFSET $7`,
+			vertical, previews, cuisine, lngF, latF, limit, offset)
 	} else {
 		rows, err = h.db.Pool.Query(r.Context(),
-			baseQuery+orderPrefix+`rating DESC`+limit, vertical, previews, cuisine)
+			baseQuery+orderPrefix+`rating DESC, id LIMIT $4 OFFSET $5`,
+			vertical, previews, cuisine, limit, offset)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch restaurants")
@@ -76,6 +78,42 @@ func (h *Handler) ListRestaurants(w http.ResponseWriter, r *http.Request) {
 	}
 	restaurants = h.decorateRestaurantListings(r.Context(), restaurants, optionalUserID(r))
 	writeJSON(w, http.StatusOK, redactPublicRestaurants(restaurants))
+}
+
+// restaurantPaging resolves `page`/`per_page` on the public feed into a
+// LIMIT/OFFSET pair.
+//
+// The Android consumer app pages with per_page=20 and stops when a page comes
+// back short, so a malformed value is a 400 rather than silently ignored
+// (an ignored per_page would hand it the full feed and make it page forever).
+// Callers that send neither keep the pre-pagination sizes: 50 for the
+// orderable feed, 400 for a preview-aware client (web catalog, iOS) that asks
+// for the whole list in one request.
+func restaurantPaging(r *http.Request, previews bool) (limit, offset int, err error) {
+	q := r.URL.Query()
+	perPage, maxPerPage := 50, 100
+	if previews {
+		perPage, maxPerPage = 400, 400
+	}
+	if v := q.Get("per_page"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 1 {
+			return 0, 0, errors.New("per_page must be a positive integer")
+		}
+		if n > maxPerPage {
+			n = maxPerPage
+		}
+		perPage = n
+	}
+	page := 1
+	if v := q.Get("page"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 1 || n > 100000 {
+			return 0, 0, errors.New("page must be an integer between 1 and 100000")
+		}
+		page = n
+	}
+	return perPage, (page - 1) * perPage, nil
 }
 
 // scanRestaurants drains a pgx.Rows into a slice of models.Restaurant.

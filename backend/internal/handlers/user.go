@@ -234,6 +234,23 @@ func (h *Handler) SetDefaultAddress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
+// ClearDefaultAddress un-defaults one address without promoting another.
+// The consumer apps' "Set as default" toggle needs an off position; before
+// this the only way to clear a default was to delete the address.
+func (h *Handler) ClearDefaultAddress(w http.ResponseWriter, r *http.Request) {
+	user, _ := getUserFromContext(r)
+	addrID := chi.URLParam(r, "id")
+
+	result, err := h.db.Pool.Exec(r.Context(),
+		`UPDATE addresses SET is_default = false WHERE id = $1 AND user_id = $2`,
+		addrID, user["user_id"])
+	if err != nil || result.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "address not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	user, _ := getUserFromContext(r)
 	uid := user["user_id"]
