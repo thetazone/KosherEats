@@ -193,6 +193,21 @@ fly secrets set APNS_P8_KEY="$(cat AuthKey_XYZ890.p8)" --app koshereats-api
 
 ## 7. S3 setup (document + menu image uploads)
 
+**Production today (since 2026-10-09):** uploads live in the public Tigris
+bucket `koshereats-media` in the **KosherEats** Fly org (billed to the LLC).
+It was created with `fly storage create -o koshereats -n koshereats-media -p`.
+`koshereats-api` secrets: `BUCKET_NAME`/`S3_BUCKET=koshereats-media`,
+`AWS_ENDPOINT_URL_S3`/`S3_ENDPOINT=https://fly.storage.tigris.dev`,
+`AWS_REGION`/`S3_REGION=auto`,
+`S3_PUBLIC_URL=https://koshereats-media.fly.storage.tigris.dev`, plus the
+bucket's access keys. Tigris's default CORS allows any origin, so the website's
+presigned PUTs work without extra setup. Stored image URLs point at
+`https://koshereats-media.fly.storage.tigris.dev/<key>`. The older Cloudflare
+R2 bucket (`pub-7bf58359….r2.dev`) and the personal-org Tigris bucket
+`koshereats-uploads` are retired copies — don't write to them.
+
+The generic AWS recipe below is kept for reference.
+
 ```sh
 # Create bucket
 aws s3 mb s3://koshereats-uploads --region us-east-1
