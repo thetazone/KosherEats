@@ -67,6 +67,8 @@ import com.koshereats.seller.ui.theme.SurfaceDark
 import com.koshereats.seller.ui.theme.TextMuted
 import com.koshereats.seller.ui.theme.TextSecondary
 import com.koshereats.seller.ui.theme.TextWhite
+import com.koshereats.seller.ui.util.LegalUrls
+import com.koshereats.seller.ui.util.PartnerTermsCopy
 import com.koshereats.seller.ui.util.openCustomTab
 import com.koshereats.seller.ui.viewmodels.AgreementViewModel
 
@@ -156,8 +158,7 @@ fun MerchantAgreementScreen(
                 KeyTerm(
                     Icons.Filled.Percent,
                     "Fees",
-                    "KosherEats keeps 10% of the food subtotal on orders delivered by our courier partners, " +
-                        "and 5% plus card processing on pickup and self-delivered orders.",
+                    PartnerTermsCopy.FEE_SENTENCE,
                 )
                 KeyTerm(
                     Icons.Filled.AccountBalance,
@@ -167,8 +168,7 @@ fun MerchantAgreementScreen(
                 KeyTerm(
                     Icons.AutoMirrored.Filled.ReceiptLong,
                     "Sales tax pass-through",
-                    "You receive 100% of the sales tax collected on your orders — you're responsible for " +
-                        "reporting and remitting it.",
+                    PartnerTermsCopy.TAX_SENTENCE,
                 )
                 KeyTerm(
                     Icons.Filled.Wc,
@@ -191,8 +191,7 @@ fun MerchantAgreementScreen(
         Spacer(Modifier.height(12.dp))
 
         OutlinedButton(
-            onClick = { agreement?.termsUrl?.takeIf { it.isNotBlank() }?.let { openCustomTab(context, it) } },
-            enabled = !agreement?.termsUrl.isNullOrBlank(),
+            onClick = { openCustomTab(context, agreement?.termsUrl?.takeIf { it.isNotBlank() } ?: LegalUrls.PARTNER_TERMS) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),

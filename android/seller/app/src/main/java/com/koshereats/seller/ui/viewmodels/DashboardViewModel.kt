@@ -11,6 +11,7 @@ import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.models.DashboardStats
 import com.koshereats.seller.data.models.Order
+import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.push.OrderEventBus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -194,7 +195,7 @@ class DashboardViewModel @Inject constructor(
                         _state.update { s ->
                             s.copy(
                                 stats = if (statsOk) statsResponse.body() ?: DashboardStats() else s.stats,
-                                activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive } else s.activeOrders,
+                                activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive && it.status != OrderStatus.SCHEDULED } else s.activeOrders,
                                 isLoading = false,
                                 error = if (!statsOk && !ordersOk) "Failed to load dashboard (HTTP ${statsResponse.code()})" else null,
                             )
@@ -230,7 +231,7 @@ class DashboardViewModel @Inject constructor(
                     _state.update { s ->
                         s.copy(
                             stats = if (statsOk) statsResponse.body() ?: s.stats else s.stats,
-                            activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive } else s.activeOrders,
+                            activeOrders = if (ordersOk) ordersResponse.body().orEmpty().filter { it.status.isActive && it.status != OrderStatus.SCHEDULED } else s.activeOrders,
                         )
                     }
                 }
@@ -269,7 +270,7 @@ class DashboardViewModel @Inject constructor(
                     _state.update { s ->
                         s.copy(
                             stats = if (statsOk) statsResponse.body() ?: s.stats else s.stats,
-                            activeOrders = if (ordersOk) (ordersResponse.body() ?: s.activeOrders).filter { it.status.isActive } else s.activeOrders,
+                            activeOrders = if (ordersOk) (ordersResponse.body() ?: s.activeOrders).filter { it.status.isActive && it.status != OrderStatus.SCHEDULED } else s.activeOrders,
                             isRefreshing = false,
                             error = if (!statsOk && !ordersOk) "Failed to refresh dashboard (HTTP ${statsResponse.code()})" else null,
                         )

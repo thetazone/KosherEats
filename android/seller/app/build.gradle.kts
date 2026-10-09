@@ -49,7 +49,7 @@ android {
         applicationId = "com.koshereats.seller"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
+        versionCode = 14
         versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -126,7 +126,6 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
@@ -163,9 +162,6 @@ dependencies {
     // Same version the consumer module uses. Sensitive tokens must never touch
     // disk in cleartext — see TokenProvider in RetrofitClient.kt.
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-
-    // Splash screen
-    implementation("androidx.core:core-splashscreen:1.0.1")
 
     // Chrome Custom Tabs — Stripe payout onboarding + Partner Agreement terms.
     // Same version the courier module uses for its payouts flow.

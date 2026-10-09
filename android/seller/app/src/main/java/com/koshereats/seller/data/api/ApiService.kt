@@ -31,6 +31,17 @@ interface ApiService {
     @POST("auth/phone/verify")
     suspend fun phoneVerify(@Body request: PhoneVerifyRequest): Response<LoginResponse>
 
+    // Password reset (email code). Both answer 200 even for unknown emails.
+    @POST("auth/password/forgot")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<MessageResponse>
+
+    @POST("auth/password/reset")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<MessageResponse>
+
+    /** Deletes the signed-in seller's account; 409 while orders are still open. */
+    @DELETE("user/account")
+    suspend fun deleteAccount(): Response<Unit>
+
     // --- Dashboard ---
 
     @GET("seller/dashboard/stats")
@@ -38,11 +49,15 @@ interface ApiService {
 
     // --- Orders ---
 
+    /**
+     * Newest first. `status` is one status or a comma list; `cursor` is the
+     * created_at of the last order already held (RFC 3339) and pages older rows.
+     */
     @GET("seller/orders")
     suspend fun getOrders(
         @Query("status") status: String? = null,
-        @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 20,
+        @Query("cursor") cursor: String? = null,
+        @Query("limit") limit: Int = 50,
     ): Response<List<Order>>
 
     @GET("seller/orders/{orderId}")
@@ -101,14 +116,6 @@ interface ApiService {
         @Body body: Map<String, String>,
     ): Response<SellerMenuCategory>
 
-    @DELETE("seller/menu/categories/{id}")
-    suspend fun deleteCategory(@Path("id") categoryId: String): Response<Unit>
-
-    @POST("seller/menu/items")
-    suspend fun createMenuItem(
-        @Body item: UpdateMenuItemRequest,
-    ): Response<MenuItem>
-
     @POST("seller/menu/items")
     suspend fun createMenuItemWithCategory(
         @Body item: CreateMenuItemBody,
@@ -145,9 +152,6 @@ interface ApiService {
     /** Recent import jobs for the active restaurant, newest first. */
     @GET("seller/menu/imports")
     suspend fun listMenuImports(): Response<List<MenuImport>>
-
-    @GET("seller/menu/imports/{id}")
-    suspend fun getMenuImport(@Path("id") id: String): Response<MenuImport>
 
     @POST("seller/menu/items/{itemId}/modifier-groups")
     suspend fun createModifierGroup(

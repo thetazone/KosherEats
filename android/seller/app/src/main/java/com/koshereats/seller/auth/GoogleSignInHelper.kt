@@ -77,7 +77,7 @@ object GoogleSignInHelper {
             credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
         ) {
             val token = GoogleIdTokenCredential.createFrom(credential.data)
-            Log.d(TAG, "Google sign-in success, name=${token.givenName}")
+            Log.d(TAG, "Google sign-in success")
             return Result.success(
                 GoogleSignInResult(
                     idToken = token.idToken,

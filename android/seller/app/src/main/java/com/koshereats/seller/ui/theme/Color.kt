@@ -24,7 +24,6 @@ val StatusPending = Color(0xFFFBBF24)
 val StatusAccepted = Color(0xFF3B82F6)
 val StatusPreparing = Color(0xFF8B5CF6)
 val StatusReady = Color(0xFF22C55E)
-val StatusCompleted = Color(0xFF10B981)
 val StatusCancelled = Color(0xFFEF4444)
 
 // Misc

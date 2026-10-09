@@ -6,10 +6,13 @@ package com.koshereats.seller.ui.util
  * never drift between surfaces. Must match the iOS seller app and web.
  */
 object PartnerTermsCopy {
-    const val FEE_EXPLAINER =
+    const val FEE_SENTENCE =
         "KosherEats keeps 10% of the food subtotal on orders delivered by our courier partners, " +
-            "and 5% plus card processing on pickup and self-delivered orders. You receive 100% of the " +
-            "sales tax collected on your orders — you're responsible for reporting and remitting it."
+            "and 5% plus card processing on pickup and self-delivered orders."
+    const val TAX_SENTENCE =
+        "You receive 100% of the sales tax collected on your orders — you're responsible for " +
+            "reporting and remitting it."
+    const val FEE_EXPLAINER = "$FEE_SENTENCE $TAX_SENTENCE"
 
     /** Self-delivery economics, shown wherever the delivery mode is chosen. */
     const val SELF_DELIVERY_KEEP =

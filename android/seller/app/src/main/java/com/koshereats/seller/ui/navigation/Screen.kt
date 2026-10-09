@@ -22,6 +22,7 @@ sealed class Screen(
     // Auth
     data object Login : Screen("login", "Login")
     data object PhoneLogin : Screen("phone-login", "Phone Login")
+    data object ForgotPassword : Screen("forgot-password", "Forgot Password")
     data object Onboarding : Screen("onboarding", "Onboarding")
 
     // Bottom nav tabs
@@ -52,7 +53,6 @@ sealed class Screen(
     )
 
     // Onboarding
-    data object CreateRestaurant : Screen("onboarding/create-restaurant", "Create Restaurant")
 
     // Detail screens
     data object OrderDetail : Screen("orders/{orderId}", "Order Detail") {

@@ -80,6 +80,7 @@ import com.koshereats.seller.ui.viewmodels.AuthViewModel
 fun SellerLoginScreen(
     onLoginSuccess: () -> Unit,
     onPhoneLoginClick: () -> Unit = {},
+    onForgotPassword: (email: String) -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -316,20 +317,9 @@ fun SellerLoginScreen(
                     .focusRequester(passwordFocus),
             )
 
-            // Forgot password — opens mail to support
+            // Forgot password — emailed reset code (ForgotPasswordScreen)
             TextButton(
-                onClick = {
-                    try {
-                        context.startActivity(
-                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:support@koshereats.dev"))
-                                .apply { putExtra(Intent.EXTRA_SUBJECT, "Seller password reset") }
-                        )
-                    } catch (_: ActivityNotFoundException) {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("No email app available — contact support@koshereats.dev")
-                        }
-                    }
-                },
+                onClick = { onForgotPassword(email) },
                 modifier = Modifier.align(Alignment.End),
             ) {
                 Text(

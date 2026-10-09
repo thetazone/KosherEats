@@ -84,6 +84,7 @@ import com.koshereats.seller.data.models.Restaurant
 import com.koshereats.seller.data.util.Money
 import com.koshereats.seller.data.repository.PayoutSetupState
 import com.koshereats.seller.data.repository.setupState
+import com.koshereats.seller.ui.util.LegalUrls
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -194,12 +195,9 @@ fun RestaurantSettingsScreen(
     var certifyingAgency by remember(restaurantKey) {
         mutableStateOf(restaurant?.certificationDetails.orEmpty())
     }
-    // Who-delivers selector: restaurant = seller self-delivers; external = Uber
-    // only. Platform courier mode is hidden while the KosherEats courier network
-    // is shelved for launch.
-    var deliveryMode by remember(restaurantKey) {
-        mutableStateOf(normalizedDeliveryMode(restaurant?.deliveryMode))
-    }
+    // The who-delivers choice lives on the dashboard tile (setRestaurantDeliveryMode);
+    // this form never writes delivery_mode, so a legacy 'platform' restaurant is not
+    // silently flipped to 'external' by an unrelated save.
     var isSaving by remember { mutableStateOf(false) }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
@@ -704,7 +702,6 @@ fun RestaurantSettingsScreen(
                         estDeliveryMax = estDeliveryMax,
                         kosherCert = kosherCert,
                         certifyingAgency = certifyingAgency,
-                        deliveryMode = deliveryMode,
                     )
                     if (changes.isEmpty()) {
                         Toast.makeText(context, "No changes to save", Toast.LENGTH_SHORT).show()
@@ -827,12 +824,12 @@ fun RestaurantSettingsScreen(
                 LegalLinkRow(
                     icon = Icons.Filled.Shield,
                     label = "Privacy Policy",
-                ) { openExternalUri(context, Uri.parse("https://koshereats.com/privacy")) }
+                ) { openExternalUri(context, Uri.parse(LegalUrls.PRIVACY)) }
                 HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                 LegalLinkRow(
                     icon = Icons.Filled.Description,
                     label = "Terms of Service",
-                ) { openExternalUri(context, Uri.parse("https://koshereats.com/terms")) }
+                ) { openExternalUri(context, Uri.parse(LegalUrls.TERMS)) }
                 HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
                 LegalLinkRow(
                     icon = Icons.AutoMirrored.Filled.HelpOutline,
@@ -840,7 +837,7 @@ fun RestaurantSettingsScreen(
                 ) {
                     openExternalUri(
                         context = context,
-                        uri = Uri.parse("mailto:partners@koshereats.shop"),
+                        uri = Uri.parse("mailto:${LegalUrls.PARTNERS_EMAIL}"),
                         action = Intent.ACTION_SENDTO,
                     )
                 }
@@ -909,18 +906,15 @@ fun RestaurantSettingsScreen(
                         onClick = {
                             isDeletingAccount = true
                             scope.launch {
-                                val deleted = deleteAccountRequest()
+                                val error = authViewModel.deleteAccount()
                                 isDeletingAccount = false
                                 showDeleteConfirm = false
-                                if (deleted) {
+                                if (error == null) {
                                     // Clears local auth and routes back to login.
                                     onLogout()
                                 } else {
-                                    Toast.makeText(
-                                        context,
-                                        "Couldn't delete your account. Please try again.",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
+                                    // e.g. 409 while an order is still open — the backend says why.
+                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                                 }
                             }
                         },
@@ -1153,7 +1147,6 @@ private fun buildRestaurantChanges(
     estDeliveryMax: String,
     kosherCert: KosherCertification,
     certifyingAgency: String,
-    deliveryMode: String,
 ): Map<String, Any> {
     val changes = mutableMapOf<String, Any>()
     if (name.trim() != restaurant.name) changes["name"] = name.trim()
@@ -1183,34 +1176,5 @@ private fun buildRestaurantChanges(
     if (certifyingAgency != restaurant.certificationDetails) {
         changes["certifying_agency"] = certifyingAgency
     }
-    if (deliveryMode != restaurant.deliveryMode) {
-        changes["delivery_mode"] = deliveryMode
-    }
     return changes
-}
-
-private fun normalizedDeliveryMode(mode: String?): String = when (mode) {
-    "restaurant", "external" -> mode
-    else -> "external"
-}
-
-/**
- * Authenticated DELETE of the signed-in seller's account. Hits the same endpoint iOS uses
- * (`DELETE {BASE_URL}user/account`) with the cached bearer token. Returns true on 2xx.
- * Kept self-contained (raw OkHttp, mirroring the certificate-upload helper) so it works
- * without changing the shared ApiService; on success the caller clears local auth via onLogout.
- */
-private suspend fun deleteAccountRequest(): Boolean = withContext(Dispatchers.IO) {
-    try {
-        val token = com.koshereats.seller.data.api.NetworkModule.cachedToken
-            ?: return@withContext false
-        val request = Request.Builder()
-            .url(BuildConfig.BASE_URL + "user/account")
-            .addHeader("Authorization", "Bearer $token")
-            .delete()
-            .build()
-        certUploadClient.newCall(request).execute().use { it.isSuccessful }
-    } catch (_: Exception) {
-        false
-    }
 }

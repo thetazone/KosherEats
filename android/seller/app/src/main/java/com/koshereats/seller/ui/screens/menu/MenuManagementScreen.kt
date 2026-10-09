@@ -381,7 +381,7 @@ private fun ImportStatusBanner(
             )
             val subtitle = when {
                 failed -> import.error?.takeIf { it.isNotBlank() }
-                    ?: "Something went wrong. You can re-run the import from onboarding."
+                    ?: "Something went wrong. Add items from the Menu tab, or email partners@koshereats.shop and we'll re-run the import."
                 inProgress -> if (import.itemsCreated > 0) {
                     "${import.itemsCreated} items added so far — this can take a few minutes."
                 } else {

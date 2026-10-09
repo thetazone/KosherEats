@@ -40,6 +40,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.koshereats.seller.R
 import com.koshereats.seller.ui.screens.agreement.MerchantAgreementScreen
+import com.koshereats.seller.ui.screens.auth.ForgotPasswordScreen
 import com.koshereats.seller.ui.screens.auth.PhoneLoginScreen
 import com.koshereats.seller.ui.screens.auth.SellerLoginScreen
 import com.koshereats.seller.ui.screens.dashboard.DashboardScreen
@@ -89,7 +90,15 @@ fun NavGraph(
             return@LaunchedEffect
         }
         val hasRestaurants = authState.hasRestaurants ?: return@LaunchedEffect
-        agreementViewModel.check("$hasRestaurants:${authState.restaurant?.id.orEmpty()}")
+        if (!hasRestaurants) {
+            // The agreement is per restaurant. A brand-new seller has nothing to
+            // agree to yet, and gating here would block the onboarding that creates
+            // the restaurant. Onboarding's onComplete refreshes restaurants, which
+            // flips this key and runs the real check against the new restaurant.
+            agreementViewModel.skip()
+            return@LaunchedEffect
+        }
+        agreementViewModel.check(authState.restaurant?.id.orEmpty())
     }
 
     // While the auth check runs, or while a logged-in seller's restaurants are
@@ -229,6 +238,18 @@ fun NavGraph(
                     onPhoneLoginClick = {
                         navController.navigate(Screen.PhoneLogin.route)
                     },
+                    onForgotPassword = { email ->
+                        authViewModel.startResetFlow(email)
+                        navController.navigate(Screen.ForgotPassword.route)
+                    },
+                    viewModel = authViewModel,
+                )
+            }
+
+            composable(Screen.ForgotPassword.route) {
+                ForgotPasswordScreen(
+                    onBack = { navController.popBackStack() },
+                    onDone = { navController.popBackStack() },
                     viewModel = authViewModel,
                 )
             }

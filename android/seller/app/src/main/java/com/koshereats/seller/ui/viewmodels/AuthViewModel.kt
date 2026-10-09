@@ -5,13 +5,16 @@ import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.koshereats.seller.BuildConfig
+import com.koshereats.seller.data.SelectedRestaurant
 import com.koshereats.seller.data.api.ApiService
 import com.koshereats.seller.data.api.NetworkModule
 import com.koshereats.seller.data.api.PrefsKeys
 import com.koshereats.seller.data.api.SocialLoginRequest
 import com.koshereats.seller.data.api.TokenProvider
 import com.koshereats.seller.data.api.dataStore
+import com.koshereats.seller.data.models.ForgotPasswordRequest
 import com.koshereats.seller.data.models.LoginRequest
+import com.koshereats.seller.data.models.ResetPasswordRequest
 import com.koshereats.seller.data.models.PhoneStartRequest
 import com.koshereats.seller.data.models.PhoneVerifyRequest
 import com.koshereats.seller.data.models.PresignResponse
@@ -53,6 +56,14 @@ data class AuthState(
     val otpCode: String = "",
     val phoneIsSending: Boolean = false,
     val phoneIsVerifying: Boolean = false,
+    // Password reset (email code)
+    val resetEmail: String = "",
+    val resetCode: String = "",
+    val resetNewPassword: String = "",
+    val resetCodeSent: Boolean = false,
+    val resetBusy: Boolean = false,
+    val resetError: String? = null,
+    val resetDone: Boolean = false,
 )
 
 @HiltViewModel
@@ -107,6 +118,13 @@ class AuthViewModel @Inject constructor(
                 val restaurants = listResponse.body().orEmpty()
                 _state.value = _state.value.copy(hasRestaurants = restaurants.isNotEmpty())
                 if (restaurants.isEmpty()) return
+                // A persisted selection the seller no longer owns would scope every
+                // /seller/* call to a 404 — drop it before the first scoped request.
+                val persisted = NetworkModule.cachedRestaurantId
+                if (persisted != null && restaurants.none { it.id == persisted }) {
+                    SelectedRestaurant.clear(context)
+                    NetworkModule.cachedRestaurantId = null
+                }
             } else if (listResponse.code() == 401) {
                 clearAuth()
                 return
@@ -118,7 +136,14 @@ class AuthViewModel @Inject constructor(
                 return
             }
 
-            val response = apiService.getRestaurant()
+            var response = apiService.getRestaurant()
+            if (response.code() == 404 && NetworkModule.cachedRestaurantId != null) {
+                // Stale selection raced the list check: clear it and let the backend
+                // fall back to the seller's first restaurant.
+                SelectedRestaurant.clear(context)
+                NetworkModule.cachedRestaurantId = null
+                response = apiService.getRestaurant()
+            }
             if (response.isSuccessful) {
                 _state.value = _state.value.copy(restaurant = response.body())
             }
@@ -341,7 +366,7 @@ class AuthViewModel @Inject constructor(
                 }
             } else {
                 _state.value = _state.value.copy(
-                    updateFieldError = "Failed to save changes (HTTP ${response.code()})",
+                    updateFieldError = serverError(response) ?: "Failed to save changes (HTTP ${response.code()})",
                 )
                 false
             }
@@ -447,9 +472,10 @@ class AuthViewModel @Inject constructor(
                         )
                     }
                 } else {
+                    // e.g. 400 "external delivery needs a pickup phone" — show the reason.
                     _state.value = _state.value.copy(
                         isTogglingDeliveryMode = false,
-                        toggleError = "Failed to update delivery method",
+                        toggleError = serverError(response) ?: "Failed to update delivery method",
                     )
                 }
             } catch (e: CancellationException) {
@@ -610,6 +636,107 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             clearAuth()
         }
+    }
+
+    /**
+     * DELETE /user/account through the shared client. Returns null on success
+     * (the caller then logs out, which clears local auth) or a user-facing reason.
+     */
+    suspend fun deleteAccount(): String? {
+        return try {
+            val r = apiService.deleteAccount()
+            when {
+                r.isSuccessful -> null
+                r.code() == 401 -> "Your session expired — sign in again and retry"
+                r.code() == 409 -> serverError(r)
+                    ?: "You still have orders in progress. Once they're completed or cancelled you can delete your account."
+                else -> serverError(r) ?: "Couldn't delete your account (HTTP ${r.code()})"
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            e.localizedMessage ?: "Network error — please try again"
+        }
+    }
+
+    // ── Password reset (email code) — ForgotPasswordScreen ──
+
+    fun updateResetEmail(v: String) {
+        _state.value = _state.value.copy(resetEmail = v.trim().take(254), resetError = null)
+    }
+
+    fun updateResetCode(v: String) {
+        _state.value = _state.value.copy(resetCode = v.filter { c -> c.isDigit() }.take(6), resetError = null)
+    }
+
+    fun updateResetNewPassword(v: String) {
+        _state.value = _state.value.copy(resetNewPassword = v.take(128), resetError = null)
+    }
+
+    /** Entering the screen: seed the email from the login form and drop stale state. */
+    fun startResetFlow(loginEmail: String) {
+        _state.value = _state.value.copy(
+            resetEmail = _state.value.resetEmail.ifBlank { loginEmail.trim() },
+            resetCode = "", resetNewPassword = "", resetCodeSent = false,
+            resetBusy = false, resetError = null, resetDone = false,
+        )
+    }
+
+    fun backToResetEmail() {
+        _state.value = _state.value.copy(resetCodeSent = false, resetCode = "", resetError = null)
+    }
+
+    fun sendResetCode() {
+        val email = _state.value.resetEmail
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            _state.value = _state.value.copy(resetError = "Enter the email you signed up with")
+            return
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(resetBusy = true, resetError = null)
+            try {
+                val r = apiService.forgotPassword(ForgotPasswordRequest(email))
+                _state.value = if (r.isSuccessful) {
+                    _state.value.copy(resetBusy = false, resetCodeSent = true, resetCode = "")
+                } else {
+                    _state.value.copy(resetBusy = false, resetError = serverError(r) ?: "Couldn't send the reset code — try again")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(resetBusy = false, resetError = e.localizedMessage ?: "Network error")
+            }
+        }
+    }
+
+    fun submitPasswordReset() {
+        val s = _state.value
+        when {
+            s.resetCode.length < 4 -> { _state.value = s.copy(resetError = "Enter the code from your email"); return }
+            s.resetNewPassword.length < 6 -> { _state.value = s.copy(resetError = "Password must be at least 6 characters"); return }
+        }
+        viewModelScope.launch {
+            _state.value = _state.value.copy(resetBusy = true, resetError = null)
+            try {
+                val r = apiService.resetPassword(ResetPasswordRequest(s.resetEmail, s.resetCode, s.resetNewPassword))
+                _state.value = if (r.isSuccessful) {
+                    _state.value.copy(resetBusy = false, resetDone = true, resetCode = "", resetNewPassword = "", error = null)
+                } else {
+                    _state.value.copy(resetBusy = false, resetError = serverError(r) ?: "Couldn't reset the password — try again")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(resetBusy = false, resetError = e.localizedMessage ?: "Network error")
+            }
+        }
+    }
+
+    /** The backend's `{"error": "..."}` body, or null when absent/unparseable. */
+    private fun serverError(r: retrofit2.Response<*>): String? = try {
+        org.json.JSONObject(r.errorBody()?.string().orEmpty()).optString("error").takeIf { it.isNotBlank() }
+    } catch (_: Exception) {
+        null
     }
 
     companion object {

@@ -1801,8 +1801,6 @@ private suspend fun uploadCertificate(
             android.util.Log.e("CertUpload", "presign returned null")
             return@withContext null
         }
-        android.util.Log.d("CertUpload", "uploadUrl=${presignResponse.uploadUrl}")
-        android.util.Log.d("CertUpload", "publicUrl=${presignResponse.publicUrl}")
         val bytes = compressImageUri(context, uri, CERTIFICATE_MAX_LONG_EDGE_PX)
         if (bytes == null) {
             android.util.Log.e("CertUpload", "failed to read/compress bytes from uri")
@@ -1867,8 +1865,6 @@ private suspend fun uploadMenuItemImage(
             android.util.Log.e("MenuItemUpload", "presign returned null")
             return@withContext null
         }
-        android.util.Log.d("MenuItemUpload", "uploadUrl=${presignResponse.uploadUrl}")
-        android.util.Log.d("MenuItemUpload", "publicUrl=${presignResponse.publicUrl}")
         val bytes = compressImageUri(context, uri)
         if (bytes == null) {
             android.util.Log.e("MenuItemUpload", "failed to read/compress bytes from uri")

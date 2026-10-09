@@ -264,10 +264,6 @@ class MenuViewModel @Inject constructor(
                     isDairy = request.isDairy ?: false,
                     isKosherPareve = request.isKosherPareve ?: false,
                     isAvailable = request.isAvailable ?: true,
-                    spiceLevel = request.spiceLevel,
-                    preparationTime = request.preparationTime,
-                    allergens = request.allergens,
-                    calories = request.calories,
                 )
                 val response = apiService.createMenuItemWithCategory(body)
                 if (response.isSuccessful) {

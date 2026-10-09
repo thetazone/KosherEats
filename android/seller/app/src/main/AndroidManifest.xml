@@ -38,6 +38,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Channel (and icon) FCM uses when it renders a notification-payload push
+             itself (app in background). Must match KosherEatsMessagingService.CHANNEL_ID. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="koshereats_seller_default" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+
         <!-- Firebase Cloud Messaging receiver. Hilt-injected via
              @AndroidEntryPoint. See FIREBASE.md for project setup. -->
         <service

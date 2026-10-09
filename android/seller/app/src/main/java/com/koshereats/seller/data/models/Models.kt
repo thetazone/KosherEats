@@ -126,17 +126,12 @@ data class MenuItem(
     val name: String = "",
     val description: String = "",
     val price: Int = 0,
-    val category: MenuCategory = MenuCategory.UNKNOWN,
     @Json(name = "category_id") val categoryId: String? = null,
     @Json(name = "image_url") val imageUrl: String = "",
     @Json(name = "is_available") val isAvailable: Boolean = true,
     @Json(name = "is_pareve") val isKosherPareve: Boolean = false,
     @Json(name = "is_dairy") val isDairy: Boolean = false,
     @Json(name = "is_meat") val isMeat: Boolean = false,
-    @Json(name = "preparation_time") val preparationTime: Int = 15,
-    val allergens: List<String> = emptyList(),
-    @Json(name = "spice_level") val spiceLevel: Int = 0,
-    @Json(name = "calories") val calories: Int? = null,
     @Json(name = "sort_order") val sortOrder: Int = 0,
     @Json(name = "modifier_groups") val modifierGroups: List<ModifierGroup> = emptyList(),
 )
@@ -170,11 +165,6 @@ data class CourierPublic(
     val lat: Double = 0.0,
     val lng: Double = 0.0,
 ) {
-    val vehicleSummary: String
-        get() {
-            val parts = listOf(vehicleColor, vehicleMake, vehicleModel).filter { it.isNotBlank() }
-            return if (parts.isEmpty()) vehicleType.replaceFirstChar { it.uppercase() } else parts.joinToString(" ")
-        }
 }
 
 @JsonClass(generateAdapter = true)
@@ -207,6 +197,9 @@ data class Order(
     // The provider's customer-facing tracking URL — the only courier visibility we
     // get on the external path (Uber/DoorDash don't expose courier name/phone).
     @Json(name = "external_tracking_url") val externalTrackingUrl: String? = null,
+    // Latest courier position the provider reported (Uber Direct courier_update);
+    // null until the first fix. The seller app only shows "last seen" from it.
+    @Json(name = "external_courier_location") val externalCourierLocation: ExternalCourierLocation? = null,
     @Json(name = "created_at") val createdAt: String = "",
     @Json(name = "updated_at") val updatedAt: String = "",
     @Json(name = "scheduled_for") val scheduledFor: String? = null,
@@ -302,6 +295,27 @@ data class PhoneStartRequest(
     val phone: String,
 )
 
+// Password reset: the backend scopes the account by (email, role, vertical),
+// emails a short code, and trades the code for a new password.
+@JsonClass(generateAdapter = true)
+data class ForgotPasswordRequest(
+    val email: String,
+    val role: String = "seller",
+)
+
+@JsonClass(generateAdapter = true)
+data class ResetPasswordRequest(
+    val email: String,
+    val code: String,
+    @Json(name = "new_password") val newPassword: String,
+    val role: String = "seller",
+)
+
+@JsonClass(generateAdapter = true)
+data class MessageResponse(
+    val message: String = "",
+)
+
 @JsonClass(generateAdapter = true)
 data class PhoneStartResponse(
     val status: String,
@@ -356,10 +370,6 @@ data class UpdateMenuItemRequest(
     @Json(name = "is_pareve") val isKosherPareve: Boolean? = null,
     @Json(name = "is_dairy") val isDairy: Boolean? = null,
     @Json(name = "is_meat") val isMeat: Boolean? = null,
-    @Json(name = "preparation_time") val preparationTime: Int? = null,
-    val allergens: List<String>? = null,
-    @Json(name = "spice_level") val spiceLevel: Int? = null,
-    val calories: Int? = null,
 )
 
 // --- Deals ---
@@ -470,6 +480,13 @@ data class CreateDealRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class ExternalCourierLocation(
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
+    @Json(name = "updated_at") val updatedAt: String = "",
+)
+
+@JsonClass(generateAdapter = true)
 data class CreateMenuItemBody(
     @Json(name = "category_id") val categoryId: String,
     val name: String,
@@ -480,10 +497,6 @@ data class CreateMenuItemBody(
     @Json(name = "is_dairy") val isDairy: Boolean = false,
     @Json(name = "is_pareve") val isKosherPareve: Boolean = false,
     @Json(name = "is_available") val isAvailable: Boolean = true,
-    @Json(name = "spice_level") val spiceLevel: Int? = null,
-    @Json(name = "preparation_time") val preparationTime: Int? = null,
-    val allergens: List<String>? = null,
-    val calories: Int? = null,
 )
 
 // --- Modifiers ---

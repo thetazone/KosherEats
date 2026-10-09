@@ -65,6 +65,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.koshereats.seller.data.models.OrderStatus
 import com.koshereats.seller.data.models.formatPrice
 import com.koshereats.seller.ui.screens.dashboard.OrderStatusBadge
+import com.koshereats.seller.ui.util.openCustomTab
 import com.koshereats.seller.ui.theme.BackgroundBlack
 import com.koshereats.seller.ui.theme.DividerColor
 import com.koshereats.seller.ui.theme.ErrorRed
@@ -494,6 +495,8 @@ fun SellerOrderDetailScreen(
                     hasCourier = order.courier != null,
                     // Provider-aware copy ("Handed to Uber — …") once Uber/DoorDash owns it.
                     partnerStatusText = order.externalDeliveryStatusText,
+                    trackingUrl = order.externalTrackingUrl,
+                    courierSeenAt = order.externalCourierLocation?.updatedAt,
                     // External-mode order that hasn't been dispatched yet (the seconds
                     // between /ready returning and the provider claim landing).
                     isExternalMode = order.deliveryMode == "external",
@@ -574,6 +577,48 @@ private fun SavingsRow(label: String, amount: Int) {
  * a courier or external delivery partner — replaces a misleading "Awaiting Pickup"
  * button with a passive status (parity with iOS's partner-handoff cards).
  */
+/**
+ * "Track with Uber" — opens the provider's live tracking page (https only) in a
+ * Custom Tab, with the time of the courier's last reported position when the
+ * provider has sent one. Nothing renders until a tracking URL exists.
+ */
+@Composable
+private fun TrackWithPartnerButton(trackingUrl: String?, courierSeenAt: String?) {
+    if (trackingUrl == null || !trackingUrl.startsWith("https://")) return
+    val context = LocalContext.current
+    Spacer(modifier = Modifier.height(8.dp))
+    OutlinedButton(
+        onClick = { openCustomTab(context, trackingUrl) },
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Icon(Icons.Filled.LocalShipping, contentDescription = null, tint = Orange, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Track with Uber", color = Orange, fontWeight = FontWeight.SemiBold)
+    }
+    courierLastSeenLabel(courierSeenAt)?.let { seen ->
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(seen, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+    }
+}
+
+private fun courierLastSeenLabel(updatedAt: String?): String? {
+    if (updatedAt.isNullOrBlank()) return null
+    return try {
+        val at = java.time.OffsetDateTime.parse(updatedAt)
+        val minutes = java.time.Duration.between(at, java.time.OffsetDateTime.now()).toMinutes()
+        when {
+            minutes < 1 -> "Courier location updated just now"
+            minutes < 60 -> "Courier location updated $minutes min ago"
+            else -> "Courier location updated " +
+                at.atZoneSameInstant(java.time.ZoneId.systemDefault())
+                    .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+        }
+    } catch (_: Exception) {
+        null
+    }
+}
+
 @Composable
 private fun DispatchStatusCard(text: String) {
     Card(
@@ -620,6 +665,10 @@ private fun OrderActionButtons(
     // Order.externalDeliveryStatusText — non-null once an external provider owns the
     // delivery; already phrased for the current status.
     partnerStatusText: String?,
+    // Provider's live tracking page (https) once an external courier owns the order.
+    trackingUrl: String?,
+    // updated_at of the provider's last courier position report, if any.
+    courierSeenAt: String?,
     // delivery_mode == "external": the order WILL go to a provider on ready.
     isExternalMode: Boolean,
     scheduledFor: String?,
@@ -792,6 +841,7 @@ private fun OrderActionButtons(
                             partnerStatusText ?: "Handed to delivery partner — a courier is on the way"
                         },
                     )
+                    TrackWithPartnerButton(trackingUrl = trackingUrl, courierSeenAt = courierSeenAt)
                 } else {
                     // No courier and no provider yet. On an external-mode order this
                     // is the window between /ready returning and the Uber dispatch
@@ -860,6 +910,7 @@ private fun OrderActionButtons(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )
+                            TrackWithPartnerButton(trackingUrl = trackingUrl, courierSeenAt = courierSeenAt)
                         }
                     }
                 }

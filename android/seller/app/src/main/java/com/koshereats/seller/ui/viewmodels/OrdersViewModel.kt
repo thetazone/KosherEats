@@ -42,6 +42,8 @@ data class OrdersState(
     val isLoadingMore: Boolean = false,
     val hasMorePages: Boolean = false,
     val currentPage: Int = 1,
+    /** created_at of the oldest order held; sent as `cursor` to page older rows. */
+    val nextCursor: String? = null,
     val pendingOrderIds: Set<String> = emptySet(),
     val error: String? = null,
     val updateSuccess: String? = null,
@@ -356,19 +358,16 @@ class OrdersViewModel @Inject constructor(
             ) }
             try {
                 val statusStr = status?.name?.lowercase()
-                val response = apiService.getOrders(status = statusStr, page = 1, limit = PAGE_SIZE)
+                val response = apiService.getOrders(status = statusStr, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     val body = response.body() ?: emptyList()
-                    // The backend ignores the `status` query param, so it returns the newest
-                    // PAGE_SIZE orders of ALL statuses. Filter client-side so the selected chip
-                    // shows only matching orders immediately (matching pollSilently's merge).
-                    val filtered = if (status != null) body.filter { it.status == status } else body
+                    // The backend honours `status` and pages by cursor (the created_at of
+                    // the last row): a full page means older rows may remain.
                     _state.update { it.copy(
-                        orders = filtered,
+                        orders = body,
                         isLoading = false,
-                        // hasMorePages keys on the raw (unfiltered) page size: a full page means
-                        // the server may hold older rows beyond this window worth paging into.
                         hasMorePages = body.size == PAGE_SIZE,
+                        nextCursor = body.lastOrNull()?.createdAt,
                         currentPage = 1,
                     ) }
                 } else {
@@ -391,12 +390,13 @@ class OrdersViewModel @Inject constructor(
         val currentState = _state.value
         if (!currentState.hasMorePages || currentState.isLoadingMore || currentState.isLoading) return
         val filterAtStart = currentState.selectedFilter
+        val cursorAtStart = currentState.nextCursor ?: return
         val pageToLoad = currentState.currentPage + 1
         loadMoreJob = viewModelScope.launch {
             _state.update { it.copy(isLoadingMore = true) }
             try {
                 val statusStr = filterAtStart?.name?.lowercase()
-                val response = apiService.getOrders(status = statusStr, page = pageToLoad, limit = PAGE_SIZE)
+                val response = apiService.getOrders(status = statusStr, cursor = cursorAtStart, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     val body = response.body() ?: emptyList()
                     _state.update { current ->
@@ -404,24 +404,18 @@ class OrdersViewModel @Inject constructor(
                             current.copy(isLoadingMore = false)
                         } else {
                             // De-dup by id before appending: SellerOrdersScreen renders with
-                            // items(key = { it.id }) and Compose crashes on duplicate keys. Dupes
-                            // arise because the backend pagination ignores `page` (it only honors
-                            // `cursor`), so each load-more returns the same newest window, and even
-                            // with real cursor paging the OFFSET window shifts as new orders arrive.
+                            // items(key = { it.id }) and Compose crashes on duplicate keys.
+                            // Cursor paging is strictly older-than, so this only guards a row
+                            // the poll already merged in.
                             val existingIds = current.orders.map { it.id }.toSet()
                             val unseen = body.filter { it.id !in existingIds }
-                            // Apply the status filter client-side — the backend ignores `status`.
-                            val unseenFiltered = if (filterAtStart != null) {
-                                unseen.filter { it.status == filterAtStart }
-                            } else unseen
                             current.copy(
-                                orders = current.orders + unseenFiltered,
+                                orders = current.orders + unseen,
                                 currentPage = pageToLoad,
-                                // Terminate pagination when the page brought no unseen ids: the
-                                // server returned a window we already hold, so paging further would
-                                // loop forever fetching duplicates. A full page of new ids means
-                                // more may remain.
+                                // A short page is the end; a full page of already-held rows
+                                // would otherwise loop forever.
                                 hasMorePages = unseen.isNotEmpty() && body.size == PAGE_SIZE,
+                                nextCursor = body.lastOrNull()?.createdAt ?: current.nextCursor,
                                 isLoadingMore = false,
                             )
                         }
@@ -751,7 +745,7 @@ class OrdersViewModel @Inject constructor(
                 // with the visible list. Requesting more than PAGE_SIZE without resetting
                 // currentPage shifts pagination windows and causes duplicate rows on the
                 // next loadMoreOrders call.
-                val response = apiService.getOrders(status = statusStr, page = 1, limit = PAGE_SIZE)
+                val response = apiService.getOrders(status = statusStr, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     _state.update { current ->
                         if (current.selectedFilter == filterAtStart) {
@@ -761,8 +755,8 @@ class OrdersViewModel @Inject constructor(
                                 if (order.id in current.pendingOrderIds)
                                     current.orders.find { it.id == order.id } ?: order
                                 else order
-                            // The backend ignores `status`; filter client-side so a refreshed
-                            // filtered view shows only matching orders (consistent with loadOrders).
+                            // The server already filtered by status; this only drops optimistic
+                            // rows whose pending status no longer matches the chip.
                             }.let { list ->
                                 if (filterAtStart != null) list.filter { it.status == filterAtStart } else list
                             }
@@ -771,6 +765,7 @@ class OrdersViewModel @Inject constructor(
                                 isRefreshing = false,
                                 currentPage = 1,
                                 hasMorePages = body.size == PAGE_SIZE,
+                                nextCursor = body.lastOrNull()?.createdAt,
                             )
                         } else {
                             current.copy(isRefreshing = false)
@@ -802,6 +797,6 @@ class OrdersViewModel @Inject constructor(
         // Post-ready dispatch settle: ~10s total, comfortably past a typical Uber Direct
         // quote+create round-trip.
         private val DISPATCH_SETTLE_DELAYS = longArrayOf(1_500, 2_000, 3_000, 4_000)
-        private const val PAGE_SIZE = 20
+        private const val PAGE_SIZE = 50
     }
 }

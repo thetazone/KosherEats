@@ -56,11 +56,13 @@ class RestaurantPickerViewModel @Inject constructor(
                 }
                 val list = response.body().orEmpty()
                 val current = SelectedRestaurant.flow(context).first()
-                // First-launch default: if nothing is set and the seller owns
-                // at least one restaurant, pin it. Matches iOS's load() path.
-                val resolved = current ?: list.firstOrNull()?.id
-                if (current == null && resolved != null) {
-                    SelectedRestaurant.set(context, resolved)
+                // Honour the persisted selection only if the seller still owns it
+                // (a deleted restaurant or another account's id would scope every
+                // call to a 404); otherwise fall back to the first owned restaurant.
+                val resolved = current?.takeIf { id -> list.any { it.id == id } } ?: list.firstOrNull()?.id
+                if (resolved != current) {
+                    if (resolved != null) SelectedRestaurant.set(context, resolved) else SelectedRestaurant.clear(context)
+                    NetworkModule.cachedRestaurantId = resolved
                 }
                 _state.value = RestaurantPickerState(
                     restaurants = list,

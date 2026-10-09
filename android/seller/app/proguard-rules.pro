@@ -67,3 +67,12 @@
 
 # Compose (R8 full mode)
 -dontwarn androidx.compose.**
+
+# Release logging: drop v/d/i/w so presigned URLs, order payloads and account
+# details never reach logcat on a production device. Log.e stays for triage.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
+}

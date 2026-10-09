@@ -74,6 +74,16 @@ class AgreementViewModel @Inject constructor(
         }
     }
 
+    /**
+     * No restaurant yet (onboarding): nothing to gate on. Clears the key so the
+     * first real [check] after the restaurant is created is never deduplicated away.
+     */
+    fun skip() {
+        lastKey = null
+        generation++
+        _state.update { it.copy(status = AgreementGateStatus.NOT_REQUIRED) }
+    }
+
     /** Logout: forget everything so the next login re-checks from scratch. */
     fun reset() {
         lastKey = null
