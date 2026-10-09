@@ -530,7 +530,10 @@ fun KosherEatsNavHost(
                         }
                     },
                     onRegisterClick = { navController.navigate(Screen.Register.route) },
-                    onForgotPassword = { navController.navigate(Screen.ForgotPassword.route) },
+                    onForgotPassword = {
+                        authViewModel.startResetFlow()
+                        navController.navigate(Screen.ForgotPassword.route)
+                    },
                     onBack = { navController.popBackStack() },
                     viewModel = authViewModel,
                 )

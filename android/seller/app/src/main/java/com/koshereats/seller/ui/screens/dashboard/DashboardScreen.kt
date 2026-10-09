@@ -352,6 +352,20 @@ fun DashboardScreen(
                 }
             }
 
+            // Uber Direct needs a pickup phone (its create-delivery call rejects a
+            // blank one). Legacy 'platform' restaurants without a phone were left
+            // alone by the backfill, so tell the seller what unblocks delivery.
+            val tileRestaurant = authState.restaurant
+            if (tileRestaurant != null && tileRestaurant.deliveryMode != "restaurant" && tileRestaurant.phone.isBlank()) {
+                item(key = "uber_phone_note") {
+                    Text(
+                        text = "Add a pickup phone number in Settings to enable Uber delivery — couriers can't be requested without one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ErrorRed,
+                    )
+                }
+            }
+
             // Self-delivery economics under the delivery-mode tile, so the
             // seller sees what choosing Self-delivery means before tapping it.
             if (authState.restaurant != null) {

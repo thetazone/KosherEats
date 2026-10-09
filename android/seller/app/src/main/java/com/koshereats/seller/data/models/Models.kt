@@ -112,7 +112,7 @@ data class Restaurant(
     @Json(name = "delivery_fee") val deliveryFee: Int = 0,
     @Json(name = "min_order") val minimumOrder: Int = 0,
     @Json(name = "est_delivery_min") val averagePrepTime: Int = 30,
-    @Json(name = "delivery_mode") val deliveryMode: String = "platform",
+    @Json(name = "delivery_mode") val deliveryMode: String = "external",
     @Json(name = "est_delivery_max") val estDeliveryMax: Int = 0,
     val rating: Double = 0.0,
     @Json(name = "review_count") val totalReviews: Int = 0,
@@ -205,7 +205,7 @@ data class Order(
     @Json(name = "scheduled_for") val scheduledFor: String? = null,
     // Delivery mode for this order. Defaults from the restaurant, but can be
     // changed per order before courier handoff.
-    @Json(name = "delivery_mode") val deliveryMode: String = "platform",
+    @Json(name = "delivery_mode") val deliveryMode: String = "external",
 ) {
     val isPickup: Boolean get() = fulfillmentType == "pickup"
     val isSelfDelivery: Boolean get() = deliveryMode == "restaurant"

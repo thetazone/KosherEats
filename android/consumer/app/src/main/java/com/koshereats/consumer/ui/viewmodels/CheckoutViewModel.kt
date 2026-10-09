@@ -361,6 +361,14 @@ class CheckoutViewModel @Inject constructor(
         if (type != "delivery" && type != "pickup") return
         if (_uiState.value.fulfillmentType == type) return
         _uiState.update { it.copy(fulfillmentType = type) }
+        // Switching back to delivery re-quotes the selected address so a stale
+        // "delivery unavailable" verdict is refreshed rather than carried over.
+        if (type == "delivery") {
+            _uiState.value.selectedAddress?.let { addr ->
+                deliveryQuoteJob?.cancel()
+                deliveryQuoteJob = viewModelScope.launch { fetchDeliveryQuote(addr) }
+            }
+        }
         launchRefreshBundle()
     }
 
@@ -512,7 +520,15 @@ class CheckoutViewModel @Inject constructor(
             )
             if (resp.isSuccessful) {
                 val body = resp.body()
-                _uiState.update { it.copy(bundle = body, isLoadingBundle = false) }
+                _uiState.update {
+                    it.copy(
+                        bundle = body,
+                        isLoadingBundle = false,
+                        // A priced delivery bundle proves a courier can quote this route, so a
+                        // flag left by an earlier transient 503 must not keep Pay disabled.
+                        deliveryUnavailable = if (it.fulfillmentType != "pickup") false else it.deliveryUnavailable,
+                    )
+                }
                 // If recovery priced a percent tip against a 0 subtotal, the server
                 // now knows the real subtotal — re-refresh once so the percent applies.
                 if (needsReRefresh &&
@@ -636,7 +652,14 @@ class CheckoutViewModel @Inject constructor(
                 persistPresented(
                     PresentedCheckout(
                         paymentIntentId = pi,
-                        bundle = bundle,
+                        // Amounts only: the ephemeral key / client secret / customer id
+                        // never touch disk (DataStore is plaintext).
+                        bundle = bundle.copy(
+                            publishableKey = "",
+                            customerId = "",
+                            ephemeralKeySecret = "",
+                            paymentIntentSecret = "",
+                        ),
                         fulfillmentType = state.fulfillmentType,
                         scheduledFor = state.scheduledFor?.toString(),
                         addressId = state.selectedAddress?.id,
@@ -669,6 +692,7 @@ class CheckoutViewModel @Inject constructor(
         }
         viewModelScope.launch {
             var bundle = paid
+            var restoredIntentId: String? = null
             if (bundle == null) {
                 // Process death while the sheet was open: Stripe's ActivityResult survives
                 // it, our memory did not. Restore the charged bundle and the checkout
@@ -676,6 +700,7 @@ class CheckoutViewModel @Inject constructor(
                 val snap = readPresented()
                 if (snap != null) {
                     bundle = snap.bundle
+                    restoredIntentId = snap.paymentIntentId
                     if (_restaurantId.isEmpty()) _restaurantId = snap.restaurantId
                     val restoredSchedule = snap.scheduledFor?.let { runCatching { LocalDateTime.parse(it) }.getOrNull() }
                     _uiState.update { it.copy(fulfillmentType = snap.fulfillmentType, scheduledFor = restoredSchedule) }
@@ -691,7 +716,7 @@ class CheckoutViewModel @Inject constructor(
                 _uiState.update { it.copy(isProcessing = false, errorMessage = "Payment recorded but order summary was lost. Please check your orders.") }
                 return@launch
             }
-            val intentId = extractIntentId(bundle.paymentIntentSecret)
+            val intentId = restoredIntentId ?: extractIntentId(bundle.paymentIntentSecret)
             if (intentId == null) {
                 _uiState.update { it.copy(isProcessing = false, errorMessage = "Unexpected Stripe response — please try again") }
                 return@launch

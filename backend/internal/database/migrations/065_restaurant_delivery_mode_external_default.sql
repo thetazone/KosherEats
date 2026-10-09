@@ -14,7 +14,7 @@ ALTER TABLE restaurants
 UPDATE restaurants
    SET delivery_mode = 'external'
  WHERE delivery_mode = 'platform'
-   AND COALESCE(phone, '') <> '';
+   AND regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') ~ '^[0-9]{10,15}$';
 
 COMMENT ON COLUMN restaurants.delivery_mode IS
     'external = Uber/DoorDash (default), restaurant = own couriers, platform = legacy KE courier pool then external fallback';

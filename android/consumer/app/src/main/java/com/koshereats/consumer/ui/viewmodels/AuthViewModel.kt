@@ -794,7 +794,9 @@ class AuthViewModel @Inject constructor(
             try {
                 val response = apiService.getProfile()
                 if (response.isSuccessful) {
-                    _uiState.update { it.copy(user = response.body()) }
+                    // A fresh profile means the session is healthy again — clear the stale
+                    // flag a failed restore may have left, or isLoggedIn stays false forever.
+                    _uiState.update { it.copy(user = response.body(), isSessionStale = false) }
                 }
             } catch (e: Exception) { if (e is CancellationException) throw e }
         }

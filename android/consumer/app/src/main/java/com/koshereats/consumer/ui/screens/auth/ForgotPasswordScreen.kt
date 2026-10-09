@@ -51,7 +51,8 @@ import com.koshereats.consumer.ui.viewmodels.AuthViewModel
 /**
  * Two-step password reset backed by POST auth/password/forgot and
  * auth/password/reset: email → emailed code + new password. On success the
- * view model pre-fills the sign-in form and [onDone] pops back to it.
+ * view model pre-fills the sign-in form and [onDone] pops back to it. The
+ * caller seeds the flow with AuthViewModel.startResetFlow() before navigating.
  */
 @Composable
 fun ForgotPasswordScreen(
@@ -61,7 +62,8 @@ fun ForgotPasswordScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(Unit) { viewModel.startResetFlow() }
+    // NavGraph calls startResetFlow() before navigating here, so resetDone is
+    // always false on entry and this never pops the screen on a stale value.
     LaunchedEffect(state.resetDone) { if (state.resetDone) onDone() }
 
     Box(modifier = Modifier.fillMaxSize().background(BackgroundBlack).imePadding()) {

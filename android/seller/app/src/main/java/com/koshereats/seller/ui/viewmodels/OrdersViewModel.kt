@@ -741,10 +741,9 @@ class OrdersViewModel @Inject constructor(
             _state.update { it.copy(isRefreshing = true) }
             try {
                 val statusStr = filterAtStart?.name?.lowercase()
-                // Treat refresh as a clean page-1 reload so currentPage stays in sync
-                // with the visible list. Requesting more than PAGE_SIZE without resetting
-                // currentPage shifts pagination windows and causes duplicate rows on the
-                // next loadMoreOrders call.
+                // Refresh is a clean reload of the newest page: it resets the cursor
+                // (nextCursor) and the page counter the poll guard keys on, so the next
+                // loadMoreOrders continues from the refreshed window.
                 val response = apiService.getOrders(status = statusStr, limit = PAGE_SIZE)
                 if (response.isSuccessful) {
                     _state.update { current ->

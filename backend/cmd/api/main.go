@@ -215,7 +215,10 @@ func main() {
 		r.Post("/phone/verify", h.VerifyPhoneLogin)
 		// Email password reset: forgot emails a 6-digit code; reset trades the
 		// code + new password for an updated credential.
-		r.Post("/password/forgot", h.ForgotPassword)
+		// forgot is double-limited like /email/start (group authLimiter + strict
+		// per-IP emailOtpLimiter) and has a per-account cooldown in the handler,
+		// so it can't be used to bomb an inbox.
+		r.With(emailOtpLimiter.PerIP).Post("/password/forgot", h.ForgotPassword)
 		r.Post("/password/reset", h.ResetPassword)
 		// Email OTP for the email-signup flow: start emails a 6-digit code,
 		// verify stamps the proof that Register checks before creating the

@@ -44,9 +44,6 @@
 # Gson
 -keep class com.google.gson.** { *; }
 -keepattributes EnclosingMethod
-# Anonymous TypeToken subclasses rely on their generic superclass signature;
-# R8 full mode drops it unless the subclasses are kept.
--keep class * extends com.google.gson.reflect.TypeToken
 # Persisted cart snapshot lives outside data.models — keep it whole so the
 # DataStore JSON written by one build is readable by the next.
 -keep class com.koshereats.consumer.ui.viewmodels.CartSnapshot { *; }

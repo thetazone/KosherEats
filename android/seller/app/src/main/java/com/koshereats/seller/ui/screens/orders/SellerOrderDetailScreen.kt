@@ -497,6 +497,7 @@ fun SellerOrderDetailScreen(
                     partnerStatusText = order.externalDeliveryStatusText,
                     trackingUrl = order.externalTrackingUrl,
                     courierSeenAt = order.externalCourierLocation?.updatedAt,
+                    providerName = order.externalProviderName,
                     // External-mode order that hasn't been dispatched yet (the seconds
                     // between /ready returning and the provider claim landing).
                     isExternalMode = order.deliveryMode == "external",
@@ -583,7 +584,7 @@ private fun SavingsRow(label: String, amount: Int) {
  * provider has sent one. Nothing renders until a tracking URL exists.
  */
 @Composable
-private fun TrackWithPartnerButton(trackingUrl: String?, courierSeenAt: String?) {
+private fun TrackWithPartnerButton(trackingUrl: String?, courierSeenAt: String?, providerName: String) {
     if (trackingUrl == null || !trackingUrl.startsWith("https://")) return
     val context = LocalContext.current
     Spacer(modifier = Modifier.height(8.dp))
@@ -594,7 +595,7 @@ private fun TrackWithPartnerButton(trackingUrl: String?, courierSeenAt: String?)
     ) {
         Icon(Icons.Filled.LocalShipping, contentDescription = null, tint = Orange, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(8.dp))
-        Text("Track with Uber", color = Orange, fontWeight = FontWeight.SemiBold)
+        Text("Track with ${providerName.ifBlank { "delivery partner" }}", color = Orange, fontWeight = FontWeight.SemiBold)
     }
     courierLastSeenLabel(courierSeenAt)?.let { seen ->
         Spacer(modifier = Modifier.height(4.dp))
@@ -669,6 +670,8 @@ private fun OrderActionButtons(
     trackingUrl: String?,
     // updated_at of the provider's last courier position report, if any.
     courierSeenAt: String?,
+    // "Uber" / "DoorDash" for the tracking button label.
+    providerName: String,
     // delivery_mode == "external": the order WILL go to a provider on ready.
     isExternalMode: Boolean,
     scheduledFor: String?,
@@ -841,7 +844,7 @@ private fun OrderActionButtons(
                             partnerStatusText ?: "Handed to delivery partner — a courier is on the way"
                         },
                     )
-                    TrackWithPartnerButton(trackingUrl = trackingUrl, courierSeenAt = courierSeenAt)
+                    TrackWithPartnerButton(trackingUrl = trackingUrl, courierSeenAt = courierSeenAt, providerName = providerName)
                 } else {
                     // No courier and no provider yet. On an external-mode order this
                     // is the window between /ready returning and the Uber dispatch
@@ -857,7 +860,9 @@ private fun OrderActionButtons(
                         Icon(Icons.Filled.LocalShipping, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            if (isExternalMode) "Requesting a courier from Uber…" else "Awaiting Pickup…",
+                            // Only external-mode orders reach here (self-delivery has its own
+                            // branch); legacy 'platform' orders also end up with Uber.
+                            "Requesting a courier from Uber…",
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
@@ -910,7 +915,7 @@ private fun OrderActionButtons(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )
-                            TrackWithPartnerButton(trackingUrl = trackingUrl, courierSeenAt = courierSeenAt)
+                            TrackWithPartnerButton(trackingUrl = trackingUrl, courierSeenAt = courierSeenAt, providerName = providerName)
                         }
                     }
                 }

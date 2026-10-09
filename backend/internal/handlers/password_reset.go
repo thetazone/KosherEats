@@ -79,6 +79,17 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Per-account cooldown: a code issued less than a minute ago is still valid,
+	// so don't mint (and email) another one. Same 200 either way — the response
+	// must not reveal whether the account exists or when it last asked.
+	var recentlyIssued bool
+	if err := h.db.Pool.QueryRow(r.Context(),
+		`SELECT COALESCE(reset_code_expires_at > NOW() + interval '14 minutes', false) FROM users WHERE id = $1`,
+		userID).Scan(&recentlyIssued); err == nil && recentlyIssued {
+		respondOK()
+		return
+	}
+
 	code := sixDigitCode()
 	hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
 	if err != nil {
