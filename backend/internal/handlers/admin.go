@@ -339,6 +339,10 @@ func (h *Handler) AdminCourierDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c.CreatedAt = createdAt.Format(time.RFC3339)
+	// Identity documents are private; hand the reviewer short-lived links.
+	c.DriversLicenseURL = h.storage.DocumentURL(r.Context(), c.DriversLicenseURL)
+	c.InsuranceURL = h.storage.DocumentURL(r.Context(), c.InsuranceURL)
+	c.VehicleRegistrationURL = h.storage.DocumentURL(r.Context(), c.VehicleRegistrationURL)
 	writeJSON(w, http.StatusOK, c)
 }
 

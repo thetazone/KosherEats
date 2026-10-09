@@ -48,6 +48,15 @@ type Config struct {
 	S3Endpoint  string // empty for AWS, set to https://fly.storage.tigris.dev for Tigris
 	S3PublicURL string // optional CDN prefix (e.g. cloudfront). Computed from endpoint+bucket if empty.
 
+	// Private bucket for courier identity documents (driver's license / ID,
+	// insurance, vehicle registration). Same endpoint + region as the public
+	// bucket but its own credentials, because Tigris keys are per bucket.
+	// Objects are never public: clients get short-lived presigned GET URLs.
+	// When unset in production, those upload kinds fail closed (503).
+	PrivateS3Bucket          string
+	PrivateS3AccessKeyID     string
+	PrivateS3SecretAccessKey string
+
 	// Checkr (courier background checks)
 	CheckrAPIKey     string
 	CheckrPackage    string // e.g. "driver_pro". Package slug couriers get invited to.
@@ -273,6 +282,10 @@ func Load() *Config {
 		S3Region:    firstNonEmpty(getEnv("AWS_REGION", ""), getEnv("S3_REGION", "us-east-1")),
 		S3Endpoint:  firstNonEmpty(getEnv("AWS_ENDPOINT_URL_S3", ""), getEnv("S3_ENDPOINT", "")),
 		S3PublicURL: getEnv("S3_PUBLIC_URL", ""),
+
+		PrivateS3Bucket:          getEnv("PRIVATE_BUCKET_NAME", ""),
+		PrivateS3AccessKeyID:     getEnv("PRIVATE_AWS_ACCESS_KEY_ID", ""),
+		PrivateS3SecretAccessKey: getEnv("PRIVATE_AWS_SECRET_ACCESS_KEY", ""),
 
 		CheckrAPIKey:     getEnv("CHECKR_API_KEY", ""),
 		CheckrPackage:    getEnv("CHECKR_PACKAGE", "driver_pro"),

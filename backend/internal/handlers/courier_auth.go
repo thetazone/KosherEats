@@ -215,6 +215,17 @@ func (h *Handler) UpdateCourierDocuments(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "ID photo is required")
 		return
 	}
+	// Identity documents live in the private bucket. Accept only this
+	// courier's own private uploads and store the bare reference, never a
+	// public or third-party URL (see storage.NormalizeDocumentRef).
+	for _, f := range []*string{&req.DriversLicenseURL, &req.InsuranceURL, &req.VehicleRegistrationURL} {
+		ref, nerr := h.storage.NormalizeDocumentRef(user["user_id"], *f)
+		if nerr != nil {
+			writeError(w, http.StatusBadRequest, "please re-upload your documents from the app")
+			return
+		}
+		*f = ref
+	}
 
 	_, err = h.db.Pool.Exec(r.Context(),
 		`UPDATE courier_profiles
@@ -366,5 +377,9 @@ func (h *Handler) loadCourierProfile(r *http.Request, userID string) (*models.Co
 	if err != nil {
 		return nil, err
 	}
+	// Stored private refs become short-lived signed links for the response.
+	p.DriversLicenseURL = h.storage.DocumentURL(r.Context(), p.DriversLicenseURL)
+	p.InsuranceURL = h.storage.DocumentURL(r.Context(), p.InsuranceURL)
+	p.VehicleRegistrationURL = h.storage.DocumentURL(r.Context(), p.VehicleRegistrationURL)
 	return &p, nil
 }

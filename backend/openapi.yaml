@@ -1674,6 +1674,13 @@ paths:
     put:
       tags: [courier]
       summary: Submit courier documents (license, insurance, registration)
+      description: >-
+        Identity documents are private. drivers_license_url, insurance_url and
+        vehicle_registration_url must each be the public_url returned by
+        POST /uploads/presign for this courier's own courier/license,
+        courier/insurance or courier/registration upload (or the value read
+        back from the profile). Anything else is a 400. The server stores a
+        private reference, never a public URL.
       requestBody:
         required: true
         content:
@@ -1692,6 +1699,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierProfile" }
+        "400": { $ref: "#/components/responses/Error" }
 
   /api/v1/courier/online:
     post:
@@ -1887,6 +1895,12 @@ paths:
     post:
       tags: [uploads]
       summary: Get an S3 presigned upload URL
+      description: >-
+        PUT the file to upload_url with the same Content-Type. For
+        courier/license, courier/insurance and courier/registration the file
+        goes to a private bucket and public_url is a signed preview link valid
+        for one hour; send it back as the document field. For every other kind
+        public_url is the permanent public address.
       requestBody:
         required: true
         content:
@@ -1894,9 +1908,11 @@ paths:
             schema:
               type: object
               properties:
+                kind:
+                  type: string
+                  description: e.g. courier/license, courier/insurance, courier/registration, courier/profile, restaurant/cover, menu_item, deal, delivery_proof
                 content_type: { type: string }
-                purpose: { type: string }
-              required: [content_type]
+              required: [kind, content_type]
       responses:
         "200":
           description: Presigned URL
@@ -1907,6 +1923,11 @@ paths:
                 properties:
                   upload_url: { type: string, format: uri }
                   public_url: { type: string, format: uri }
+                  key: { type: string }
+                  expires_in: { type: integer, description: Seconds the upload_url stays valid }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 
   # ── Admin (auth + admin role) ─────────────────────────────────────────────
   /api/v1/admin/stats:
@@ -2678,10 +2699,10 @@ components:
         vehicle_year: { type: integer }
         vehicle_color: { type: string }
         license_plate: { type: string }
-        drivers_license_url: { type: string }
+        drivers_license_url: { type: string, description: Signed link to the private document; valid 15 minutes }
         drivers_license_number: { type: string }
-        insurance_url: { type: string }
-        vehicle_registration_url: { type: string }
+        insurance_url: { type: string, description: Signed link to the private document; valid 15 minutes }
+        vehicle_registration_url: { type: string, description: Signed link to the private document; valid 15 minutes }
         profile_photo_url: { type: string }
         background_check_status: { type: string }
         payout_ready: { type: boolean }

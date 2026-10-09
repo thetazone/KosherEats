@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/koshereats/backend/internal/storage"
 )
 
 // Upload presigning. Clients call this to get a short-lived PUT URL, then
@@ -86,6 +89,10 @@ func (h *Handler) PresignUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.storage.Presign(r.Context(), user["user_id"], req.Kind, req.ContentType)
+	if errors.Is(err, storage.ErrPrivateStorageUnavailable) {
+		writeError(w, http.StatusServiceUnavailable, "document uploads are temporarily unavailable")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to presign upload")
 		return
